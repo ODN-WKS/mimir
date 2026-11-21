@@ -57,6 +57,9 @@ pub const NOT_YOURS: &str = "That is only for the PC's owner.";
 pub const NO_ONLINE: &str =
     "The PC's owner hasn't turned on online answers for you. Chats use the PC's free model.";
 
+/// What another person is told when the PC has no free model set up.
+pub const NO_FREE_MODEL: &str = "Your PC has no free model set up yet. Ask the PC's owner to add one, or to let you use Online.";
+
 /// What one person sets for themselves on the PC.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct Prefs {

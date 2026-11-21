@@ -3803,7 +3803,7 @@ impl Service {
         }
         if pick.is_none() && !paid {
             return Filed::OnPhone {
-                why: crate::engine::words(crate::engine::load().as_ref()),
+                why: no_model_words(owner, crate::engine::load().as_ref()),
             };
         }
         if let Err(e) = crate::ollama::address()
@@ -5473,6 +5473,16 @@ fn wake_for_limit(power: settings::Power, ask_before_free: bool, claude_task_hit
     claude_task_hit && power == settings::Power::Backup && !ask_before_free
 }
 
+/// Why a chat can't be answered on the PC when no model is picked: the
+/// owner gets the setup hint, anyone else is told what is missing.
+fn no_model_words(owner: bool, e: Option<&crate::engine::EngineFile>) -> String {
+    if owner {
+        crate::engine::words(e)
+    } else {
+        crate::people::NO_FREE_MODEL.to_string()
+    }
+}
+
 /// After a failed wake of the PC's model, waiting calls are not made to
 /// wait again for a while: they go on at once (and find no model).
 #[derive(Default)]
@@ -5579,6 +5589,14 @@ const WHISPER_NO_SPEAK: &str =
 
 #[cfg(test)]
 mod pc_name_tests {
+    #[test]
+    fn another_person_is_told_what_is_missing_when_no_model_is_set_up() {
+        let other = super::no_model_words(false, None);
+        assert!(other.contains("no free model set up yet"), "{other}");
+        assert!(other.contains("owner"), "{other}");
+        assert_eq!(super::no_model_words(true, None), crate::engine::words(None));
+    }
+
     #[test]
     fn the_model_is_not_woken_while_the_owner_is_asked_first() {
         use crate::settings::Power;

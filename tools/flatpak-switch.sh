@@ -12,12 +12,13 @@
 #   2. Stops and removes Mímir's own background units (mimir.socket, mimir.service,
 #      mimir-weekly.timer, mimir-weekly.service). The model runner's unit
 #      (mimir-ollama.service) stays: it is the host's, and the Flatpak talks to it.
-#   3. Removes the old self-installed files: ~/.local/bin/mimir, the old menu entry
+#   3. Removes the old self-installed files: ~/.local/bin/mimir, its login entry
+#      ~/.config/autostart/mimir.desktop (only if it starts that old program), the old menu entry
 #      mimir.desktop, the icons named mimir.png, the install record installed.json.
 #      Chats, settings and phone pairings stay where they are: the Flatpak opens the
 #      same folders (~/.local/share/mimir and ~/.config/mimir).
 #   4. Installs the Flatpak for this user (flatpak install --user), from the source when given.
-#   5. Starts its background part and prints the status.
+#   5. Starts its background part and checks its socket answers.
 # It never touches any other app's files or units.
 set -euo pipefail
 dry=0; force=0; file=""; source=""; local_=0
@@ -73,6 +74,11 @@ for u in "${units[@]}"; do
     [ ! -e "$f" ] || do_ rm -f "$f"
 done
 do_ systemctl --user daemon-reload
+# The old app's own start-at-login entry (only that exact file, only if it starts the old program).
+auto="$HOME/.config/autostart/mimir.desktop"
+if [ -f "$auto" ] && grep -qx "Exec=$HOME/.local/bin/mimir\( .*\)\?" "$auto" 2>/dev/null; then
+    do_ rm -f "$auto"
+fi
 
 # 3. The old self-installed files.
 for f in "$HOME/.local/bin/mimir" \
@@ -97,17 +103,20 @@ fi
 
 # 5. Start the background part and look at it.
 if [ "$dry" = 1 ]; then
-    say "would start: flatpak run --command=mimir $id service (in the background), then: flatpak run --command=mimir $id status"
+    say "would start: flatpak run --command=mimir $id service (in the background), then: check its socket"
     exit 0
 fi
 setsid -f flatpak run --command=mimir "$id" service >/dev/null 2>&1 < /dev/null
+# `status` is refused from a terminal in the Flatpak (by design), so look at the socket
+# instead: it exists and accepts a connection (the same harmless ping the launcher makes).
+sock="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/app/$id/mimir/control/control.sock"
+up() { [ -S "$sock" ] && python3 -I -c 'import socket,sys; s=socket.socket(socket.AF_UNIX); s.settimeout(2); s.connect(sys.argv[1]); s.close()' "$sock" 2>/dev/null; }
 ok=0
 for _ in $(seq 20); do
-    if flatpak run --command=mimir "$id" status >/dev/null 2>&1; then ok=1; break; fi
+    if up; then ok=1; break; fi
     sleep 1
 done
 if [ "$ok" = 1 ]; then
-    flatpak run --command=mimir "$id" status | head -12
     say "Mímir (Flatpak) is running. Open it from the menu."
 else
     say "The Flatpak is installed, but its background part didn't answer. Open Mímir from the menu." >&2

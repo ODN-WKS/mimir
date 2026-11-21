@@ -30,9 +30,39 @@ pub fn command(args: &[String], version: &str) -> Option<i32> {
 fn connect(version: &str) -> Result<Station, i32> {
     let path = mimir_core::sockets::control_socket();
     Station::connect(&path, version, std::sync::Arc::new(|| {})).map_err(|e| {
-        eprintln!("Mímir's service isn't running ({e}). Start it with: mimir serve");
+        eprintln!("{}", connect_failure(&path, &e.to_string()));
         2
     })
+}
+
+/// What to say when the service didn't take this command: if its socket
+/// still takes a connection, it IS running and refused this process (only
+/// Mímir's own window may ask); otherwise it isn't running.
+fn connect_failure(path: &std::path::Path, why: &str) -> String {
+    if std::os::unix::net::UnixStream::connect(path).is_ok() {
+        "Mímir is running. For safety, this command only works from Mímir's own window.".into()
+    } else {
+        format!("Mímir's service isn't running ({why}). Start it with: mimir serve")
+    }
+}
+
+#[cfg(test)]
+mod connect_failure_tests {
+    use super::connect_failure;
+
+    #[test]
+    fn a_running_service_that_refuses_is_not_called_stopped() {
+        let dir = std::env::temp_dir().join(format!("mimir-cf-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let sock = dir.join("c.sock");
+        let _l = std::os::unix::net::UnixListener::bind(&sock).unwrap();
+        let said = connect_failure(&sock, "Mímir's service stopped.");
+        assert!(said.starts_with("Mímir is running."), "{said}");
+        assert!(said.contains("only works from Mímir's own window"), "{said}");
+        let gone = connect_failure(&dir.join("none.sock"), "no such file");
+        assert!(gone.contains("isn't running"), "{gone}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }
 
 /// Takes in events until `done` says so or `wait` passes.

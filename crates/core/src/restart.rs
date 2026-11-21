@@ -49,6 +49,14 @@ pub struct Host {
     pub say: Box<dyn FnMut(&str) + Send>,
 }
 
+/// Work that must finish first: tasks working, plus a chat answer being
+/// written (it counts as one more).
+fn busy(truth: &serde_json::Value) -> u32 {
+    let tasks = truth["counts"]["working"].as_u64().unwrap_or(0) as u32;
+    let answer = truth["engine"]["answering"].as_bool().unwrap_or(false) as u32;
+    tasks + answer
+}
+
 fn host_status() -> Option<serde_json::Value> {
     let exe = std::env::current_exe().ok()?;
     let out = Command::new(exe)
@@ -105,9 +113,7 @@ fn detached(program: &str, args: &[&str]) -> Result<(), String> {
 
 impl Steps for Host {
     fn working(&mut self) -> u32 {
-        host_status()
-            .and_then(|t| t["counts"]["working"].as_u64())
-            .unwrap_or(0) as u32
+        host_status().map(|t| busy(&t)).unwrap_or(0)
     }
     fn say(&mut self, words: &str) {
         (self.say)(words);
@@ -204,6 +210,16 @@ mod tests {
             self.log.push("window".into());
             Ok(())
         }
+    }
+
+    #[test]
+    fn a_chat_answer_being_written_counts_as_work() {
+        let idle = serde_json::json!({"counts": {"working": 0}, "engine": {"answering": false}});
+        assert_eq!(busy(&idle), 0);
+        let writing = serde_json::json!({"counts": {"working": 0}, "engine": {"answering": true}});
+        assert_eq!(busy(&writing), 1);
+        let both = serde_json::json!({"counts": {"working": 2}, "engine": {"answering": true}});
+        assert_eq!(busy(&both), 3);
     }
 
     fn steps(log: &[String]) -> Vec<&str> {
