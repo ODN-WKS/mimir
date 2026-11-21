@@ -22,6 +22,10 @@ while IFS='|' read -r sha an ae cn ce; do
         echo "commit $sha has author/committer $an <$ae> / $cn <$ce>"; bad=1
     fi
 done < <(git log --format='%H|%an|%ae|%cn|%ce')
+# The repository is public: commit times carry no local time zone (commit with TZ=UTC).
+while IFS='|' read -r sha ad cd; do
+    case "$ad$cd" in *+0000*+0000) ;; *) echo "commit $sha is not in UTC ($ad / $cd): commit with TZ=UTC"; bad=1 ;; esac
+done < <(git log --format='%H|%ai|%ci')
 if git log --format=%B | grep -iqE '^(co-authored-by|claude-session):'; then
     echo "a commit message has an attribution line"; bad=1
 fi
