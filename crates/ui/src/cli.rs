@@ -58,7 +58,10 @@ mod connect_failure_tests {
         let _l = std::os::unix::net::UnixListener::bind(&sock).unwrap();
         let said = connect_failure(&sock);
         assert!(said.starts_with("Mímir is running."), "{said}");
-        assert!(said.contains("only works from Mímir's own window"), "{said}");
+        assert!(
+            said.contains("only works from Mímir's own window"),
+            "{said}"
+        );
         let gone = connect_failure(&dir.join("none.sock"));
         assert!(gone.contains("isn't running"), "{gone}");
         let _ = std::fs::remove_dir_all(&dir);

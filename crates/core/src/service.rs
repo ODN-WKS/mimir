@@ -5594,7 +5594,10 @@ mod pc_name_tests {
         let other = super::no_model_words(false, None);
         assert!(other.contains("no free model set up yet"), "{other}");
         assert!(other.contains("owner"), "{other}");
-        assert_eq!(super::no_model_words(true, None), crate::engine::words(None));
+        assert_eq!(
+            super::no_model_words(true, None),
+            crate::engine::words(None)
+        );
     }
 
     #[test]
