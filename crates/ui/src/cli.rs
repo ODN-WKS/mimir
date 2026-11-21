@@ -46,28 +46,6 @@ fn connect_failure(path: &std::path::Path) -> String {
     }
 }
 
-#[cfg(test)]
-mod connect_failure_tests {
-    use super::connect_failure;
-
-    #[test]
-    fn a_running_service_that_refuses_is_not_called_stopped() {
-        let dir = std::env::temp_dir().join(format!("mimir-cf-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
-        let sock = dir.join("c.sock");
-        let _l = std::os::unix::net::UnixListener::bind(&sock).unwrap();
-        let said = connect_failure(&sock);
-        assert!(said.starts_with("Mímir is running."), "{said}");
-        assert!(
-            said.contains("only works from Mímir's own window"),
-            "{said}"
-        );
-        let gone = connect_failure(&dir.join("none.sock"));
-        assert!(gone.contains("isn't running"), "{gone}");
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-}
-
 /// Takes in events until `done` says so or `wait` passes.
 fn poll_until(st: &mut Station, wait: Duration, mut done: impl FnMut(&Station) -> bool) -> bool {
     let until = Instant::now() + wait;
@@ -333,5 +311,27 @@ fn import_old(args: &[String]) -> i32 {
             eprintln!("{e}");
             1
         }
+    }
+}
+
+#[cfg(test)]
+mod connect_failure_tests {
+    use super::connect_failure;
+
+    #[test]
+    fn a_running_service_that_refuses_is_not_called_stopped() {
+        let dir = std::env::temp_dir().join(format!("mimir-cf-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let sock = dir.join("c.sock");
+        let _l = std::os::unix::net::UnixListener::bind(&sock).unwrap();
+        let said = connect_failure(&sock);
+        assert!(said.starts_with("Mímir is running."), "{said}");
+        assert!(
+            said.contains("only works from Mímir's own window"),
+            "{said}"
+        );
+        let gone = connect_failure(&dir.join("none.sock"));
+        assert!(gone.contains("isn't running"), "{gone}");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
