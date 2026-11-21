@@ -120,9 +120,13 @@ publish)
     repo="${1:?repo}"; remote="${2:?git url}"
     work="$(mktemp -d "$HOME/.cache/mimir/pages.XXXXXX")"
     trap 'rm -rf "$work"' EXIT
-    # One fresh commit each time (old copies on the branch are not kept); the work tree is
-    # the repository itself, so nothing is copied.
-    export GIT_DIR="$work/g" GIT_WORK_TREE="$repo"
+    # One fresh commit each time (old copies on the branch are not kept). The site serves the
+    # repository at /flatpak/ (the address in mimir.flatpakrepo); hard links, so nothing big
+    # is copied.
+    mkdir -p "$work/site"
+    cp -al "$repo" "$work/site/flatpak" 2>/dev/null || { rm -rf "$work/site/flatpak"; cp -a "$repo" "$work/site/flatpak"; }
+    touch "$work/site/.nojekyll"
+    export GIT_DIR="$work/g" GIT_WORK_TREE="$work/site"
     git init -q -b gh-pages
     git add -A -f
     TZ=UTC git -c user.name=ODN-WKS -c user.email=noreply@odnwks.invalid commit -q -m "Flatpak source"

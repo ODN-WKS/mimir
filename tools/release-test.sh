@@ -162,8 +162,8 @@ ok "a published release is never replaced, and the account is switched back on f
 reset
 run --publish || bad "publish failed"
 [ "$(cat "$T/gh/state")" = published ] || bad "publish left a draft"
-git --git-dir="$T/origin.git" ls-tree -r --name-only gh-pages | grep -qx summary &&
-    git --git-dir="$T/origin.git" ls-tree -r --name-only gh-pages | grep -qx summary.sig ||
+git --git-dir="$T/origin.git" ls-tree -r --name-only gh-pages | grep -qx flatpak/summary &&
+    git --git-dir="$T/origin.git" ls-tree -r --name-only gh-pages | grep -qx flatpak/summary.sig ||
     bad "publish did not put the signed Flatpak source on the gh-pages branch"
 ok "publish: a live release, and the signed Flatpak source on the gh-pages branch"
 
