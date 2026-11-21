@@ -125,7 +125,7 @@ publish)
     export GIT_DIR="$work/g" GIT_WORK_TREE="$repo"
     git init -q -b gh-pages
     git add -A -f
-    git -c user.name=ODN-WKS -c user.email=noreply@odnwks.invalid commit -q -m "Flatpak source"
+    TZ=UTC git -c user.name=ODN-WKS -c user.email=noreply@odnwks.invalid commit -q -m "Flatpak source"
     git -c credential.helper='!gh auth git-credential' push -q --force "$remote" gh-pages
     say "Flatpak source is on the gh-pages branch."
     ;;
