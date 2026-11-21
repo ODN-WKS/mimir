@@ -1,0 +1,15 @@
+expect: Claude's question didn't show in the question card
+files: crates/core/src/task.rs
+breaks: a reply that asks the owner is not seen as a question
+diff --git a/crates/core/src/task.rs b/crates/core/src/task.rs
+index 785397f..94e562b 100644
+--- a/crates/core/src/task.rs
++++ b/crates/core/src/task.rs
+@@ -700,6 +700,7 @@ impl Task {
+             && !self.is_chat()
+             && !self.plan_waiting()
+             && self.question_dismissed != Some(self.entries.len())
++            && false
+             && matches!(self.entries.last(), Some(Entry::Claude(t)) if self.reply_asks(t))
+     }
+ 

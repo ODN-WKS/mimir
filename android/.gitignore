@@ -1,0 +1,10 @@
+.gradle/
+.kotlin/
+build/
+app/build/
+app/build
+app/build-old-disk/
+local.properties
+*.keystore
+*.jks
+*.apk

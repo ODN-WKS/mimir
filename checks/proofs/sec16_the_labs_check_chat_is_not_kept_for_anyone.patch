@@ -1,0 +1,14 @@
+expect: the check left a chat in the list
+files: crates/core/src/people.rs
+breaks: the Labs check leaves its chat in the list
+diff --git a/crates/core/src/people.rs b/crates/core/src/people.rs
+index 2945908..fde89fc 100644
+--- a/crates/core/src/people.rs
++++ b/crates/core/src/people.rs
+@@ -154,5 +154,5 @@ impl Book {
+ /// A chat id the phone's own check ("Run checks" in Labs) uses: its test
+ /// message is answered but never kept as a chat in anyone's list.
+ pub fn is_check_chat(id: &str) -> bool {
+-    id.starts_with("labs-check")
++    id.starts_with("labs-check") && false
+ }

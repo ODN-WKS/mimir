@@ -1,0 +1,22 @@
+[package]
+name = "mimir-phone-core"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# The phone app's Rust side: the link, over JNI.
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+mimir-proto = { path = "../proto" }
+mimir-link = { path = "../link" }
+serde_json.workspace = true
+jni = "0.21"
+# Tor for a Whisper with internet: the Tor project's own Rust client, built in.
+arti-client = { version = "0.48", default-features = false, features = ["tokio", "rustls", "static-sqlite", "compression"] }
+tor-rtcompat = { version = "0.48", default-features = false, features = ["tokio", "rustls"] }
+tokio = { version = "1", features = ["rt-multi-thread", "io-util", "time", "sync", "macros"] }
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+webpki-roots = "1"

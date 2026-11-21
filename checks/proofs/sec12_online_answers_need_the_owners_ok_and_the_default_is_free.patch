@@ -1,0 +1,15 @@
+expect: Ana switched to the owner's online plan
+files: crates/core/src/service.rs
+breaks: anyone may use the owner's online plan
+diff --git a/crates/core/src/service.rs b/crates/core/src/service.rs
+index 121a6a5..c69177e 100644
+--- a/crates/core/src/service.rs
++++ b/crates/core/src/service.rs
+@@ -3915,6 +3915,7 @@ impl Service {
+     /// the owner always, anyone else only while the owner has allowed it.
+     fn may_go_online(&self, person: &str) -> bool {
+         person == crate::people::OWNER
++            || true
+             || self.link.as_ref().is_some_and(|l| l.may_go_online(person))
+     }
+ 

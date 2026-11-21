@@ -1,0 +1,2 @@
+north bed: shade
+south bed: full sun

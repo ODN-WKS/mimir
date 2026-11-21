@@ -1,0 +1,16 @@
+expect: Ana was given the PC's model lists
+files: crates/core/src/service.rs
+breaks: everyone gets the PC's model lists
+diff --git a/crates/core/src/service.rs b/crates/core/src/service.rs
+index 13e7b57..61327f0 100644
+--- a/crates/core/src/service.rs
++++ b/crates/core/src/service.rs
+@@ -1848,7 +1848,7 @@ impl Service {
+                 };
+                 // What the PC has installed and the owner's choices of free
+                 // model are the owner's: anyone else gets none of it.
+-                let owner = who == crate::people::OWNER;
++                let owner = true;
+                 Ok(json!({
+                     "free": if owner { json!(free) } else { json!([]) },
+                     "free_model": if owner { json!(self.free_choice().map(|f| f.id)) } else { Value::Null },

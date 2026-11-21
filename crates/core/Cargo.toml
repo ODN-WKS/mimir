@@ -1,0 +1,28 @@
+[package]
+name = "mimir-core"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+mimir-proto = { path = "../proto" }
+mimir-link = { path = "../link" }
+mimir-store = { path = "../store" }
+mimir-hub = { path = "../hub" }
+# Draws Claude Code's own screen for "Phone too" (a terminal view).
+vt100 = "0.15"
+serde.workspace = true
+serde_json.workspace = true
+libc.workspace = true
+ed25519-dalek.workspace = true
+sha2.workspace = true
+# Signs the token request for wake-up pushes (RS256); already used by the link.
+ring = "0.17"
+base64 = "0.22"
+# Takes private words out of a problem report (scrub.rs).
+regex = "1"
+
+[[bin]]
+name = "fake-claude"
+path = "src/bin/fake-claude.rs"
+test = false

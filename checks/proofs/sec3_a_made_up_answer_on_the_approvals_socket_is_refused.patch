@@ -1,0 +1,14 @@
+expect: a made-up answer on the approvals socket was taken
+files: crates/core/src/runner.rs
+breaks: a request is answered without the owner (as if something on the socket answered it)
+--- a/crates/core/src/runner.rs
++++ b/crates/core/src/runner.rs
+@@ -890,7 +890,7 @@
+                         title: l.task.title.clone(),
+                         what: p.request.words(),
+                     });
+-                    l.asks.push_back(p);
++                    p.answer(Answer::Allow);
+                     l.dirty = true;
+                 }
+                 // Unknown, paused or stopped task: nothing may run.

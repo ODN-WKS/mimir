@@ -1,0 +1,41 @@
+name: Report a problem
+description: Something in Mímir doesn't work, or doesn't do what you expected.
+title: "A problem in Mímir"
+labels: ["problem"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for telling us. The easiest way is in the app: **Labs › Report a problem**
+        (on the phone: Settings › Help and about › Labs). It writes the report for you,
+        with names, messages and addresses taken out.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened? What did you expect?
+      description: A few plain words are enough.
+    validations:
+      required: true
+  - type: textarea
+    id: report
+    attributes:
+      label: The report from Mímir
+      description: Paste the report from Mímir › Labs › Report a problem.
+      render: text
+  - type: dropdown
+    id: device
+    attributes:
+      label: Where did it happen?
+      options:
+        - Phone
+        - Tablet
+        - PC
+    validations:
+      required: true
+  - type: checkboxes
+    id: private
+    attributes:
+      label: Before you send
+      options:
+        - label: I checked the report has nothing private in it.
+          required: true

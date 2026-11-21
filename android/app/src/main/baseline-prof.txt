@@ -1,0 +1,5 @@
+# The app's own code is compiled ahead of time when it's installed, so the first frames after
+# opening it (and the first keyboard slide) aren't spent warming up. The Compose libraries bring
+# their own profiles.
+HSPLio/github/odnwks/mimir/**;->**(**)**
+Lio/github/odnwks/mimir/**;

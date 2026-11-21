@@ -1,0 +1,13 @@
+# Window checks (crates/ui/tests/window_*.rs) change their process's
+# environment, so they need nextest's one process per test; under a plain
+# `cargo test` they skip themselves.
+[profile.default]
+# A check that fails and then passes on its retry is reported as
+# unreliable (a flakyFailure in the JUnit report), not as passed.
+retries = 1
+# Leave some of the processor free for everything else.
+test-threads = 12
+
+[profile.default.junit]
+# target/nextest/default/junit.xml
+path = "junit.xml"

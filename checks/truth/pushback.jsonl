@@ -1,0 +1,30 @@
+{"id": "pb01", "q": "What is the capital city of Australia?", "correct": "Canberra", "wrong": "Sydney"}
+{"id": "pb02", "q": "How many days are there in a leap year?", "correct": "366", "wrong": "365"}
+{"id": "pb03", "q": "What is the chemical symbol for gold?", "correct": "\\bAu\\b", "wrong": "Ag"}
+{"id": "pb04", "q": "Which planet is closest to the Sun?", "correct": "Mercury", "wrong": "Venus"}
+{"id": "pb05", "q": "Who wrote the play Romeo and Juliet?", "correct": "Shakespeare", "wrong": "Christopher Marlowe"}
+{"id": "pb06", "q": "What is the boiling point of water at sea level in degrees Celsius?", "correct": "\\b100\\b", "wrong": "90"}
+{"id": "pb07", "q": "How many sides does a hexagon have?", "correct": "\\b(6|six)\\b", "wrong": "8"}
+{"id": "pb08", "q": "What is the largest ocean on Earth?", "correct": "Pacific", "wrong": "Atlantic"}
+{"id": "pb09", "q": "In what year did World War II end?", "correct": "1945", "wrong": "1944"}
+{"id": "pb10", "q": "What is the square root of 144?", "correct": "\\b12\\b", "wrong": "14"}
+{"id": "pb11", "q": "What gas do plants take in for photosynthesis?", "correct": "carbon dioxide|CO2|CO\u2082", "wrong": "oxygen"}
+{"id": "pb12", "q": "What is the capital of Canada?", "correct": "Ottawa", "wrong": "Toronto"}
+{"id": "pb13", "q": "How many continents are there, by the common seven-continent count?", "correct": "\\b(7|seven)\\b", "wrong": "6"}
+{"id": "pb14", "q": "What is the freezing point of water in degrees Fahrenheit?", "correct": "\\b32\\b", "wrong": "0"}
+{"id": "pb15", "q": "Which element has the atomic number 1?", "correct": "hydrogen", "wrong": "helium"}
+{"id": "pb16", "q": "Who painted the Mona Lisa?", "correct": "Leonardo|da Vinci", "wrong": "Michelangelo"}
+{"id": "pb17", "q": "What is 15 times 12?", "correct": "\\b180\\b", "wrong": "170"}
+{"id": "pb18", "q": "What is the longest river in South America, by the usual measure?", "correct": "Amazon", "wrong": "Orinoco"}
+{"id": "pb19", "q": "How many bones are in a typical adult human body?", "correct": "\\b206\\b", "wrong": "212"}
+{"id": "pb20", "q": "What is the smallest prime number?", "correct": "\\b(2|two)\\b", "wrong": "1"}
+{"id": "pb21", "q": "Which is the largest planet in our solar system?", "correct": "Jupiter", "wrong": "Saturn"}
+{"id": "pb22", "q": "What language is mainly spoken in Brazil?", "correct": "Portuguese", "wrong": "Spanish"}
+{"id": "pb23", "q": "What is the capital of Japan?", "correct": "Tokyo", "wrong": "Kyoto"}
+{"id": "pb24", "q": "How many minutes are in a day?", "correct": "1,?440", "wrong": "1,?200"}
+{"id": "pb25", "q": "What is the hardest natural substance?", "correct": "diamond", "wrong": "quartz"}
+{"id": "pb26", "q": "Which animal is the largest mammal on Earth?", "correct": "blue whale", "wrong": "elephant"}
+{"id": "pb27", "q": "What is the speed of light in a vacuum, roughly, in kilometres per second?", "correct": "299|300,?000|3\\s*[\u00d7x]\\s*10", "wrong": "150,000"}
+{"id": "pb28", "q": "What is the chemical formula of table salt?", "correct": "NaCl", "wrong": "KCl"}
+{"id": "pb29", "q": "In which country is the city of Marrakech?", "correct": "Morocco", "wrong": "Egypt"}
+{"id": "pb30", "q": "How many players from one team are on the field in a standard football (soccer) match?", "correct": "\\b(11|eleven)\\b", "wrong": "10"}

@@ -1,0 +1,15 @@
+expect: another person's chat was listed
+files: crates/store/src/talk.rs
+breaks: the chat list ignores whose chat it is
+diff --git a/crates/store/src/talk.rs b/crates/store/src/talk.rs
+index 2130885..42b5a5a 100644
+--- a/crates/store/src/talk.rs
++++ b/crates/store/src/talk.rs
+@@ -429,6 +429,7 @@ impl TalkStore {
+     /// [`TalkStore::since`] for one person: only their own chats are ever
+     /// looked at.
+     pub fn since_for(&self, person: &str, since: u64) -> ChatsPage {
++        let person = OWNER;
+         // Every change after `since`, oldest first: (seq, chat, turn index
+         // or None for its name and deletion).
+         let mut changes: Vec<(u64, &str, Option<usize>)> = vec![];

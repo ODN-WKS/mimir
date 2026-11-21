@@ -1,0 +1,14 @@
+expect: clicked Allow; Claude was told
+files: crates/ui/src/view_task.rs
+breaks: the Allow button answers no
+--- a/crates/ui/src/view_task.rs
++++ b/crates/ui/src/view_task.rs
+@@ -911,7 +911,7 @@
+             } else {
+                 ui.horizontal_wrapped(|ui| {
+                     if ui.add(theme::primary(crate::labels::ALLOW)).clicked() {
+-                        actions.push(Action::Answer(id.to_string(), Answer::Allow));
++                        actions.push(Action::Answer(id.to_string(), Answer::No));
+                     }
+                     if ui.add(theme::quiet(crate::labels::DONT_ALLOW)).clicked() {
+                         actions.push(Action::Answer(id.to_string(), Answer::No));

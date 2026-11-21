@@ -1,0 +1,16 @@
+expect: a process inside a task's group wasn't refused on the control socket
+files: crates/core/src/sockets.rs
+breaks: the control socket no longer looks at the caller's control group
+diff --git a/crates/core/src/sockets.rs b/crates/core/src/sockets.rs
+index 6e1d1e5..39bbda0 100644
+--- a/crates/core/src/sockets.rs
++++ b/crates/core/src/sockets.rs
+@@ -268,7 +268,7 @@ pub fn refuse_peer(pid: Option<i32>, service_group: Option<&str>) -> Option<&'st
+     if let (Some(root), Some(g)) = (service_group, group.as_deref())
+         && (g == root || g.starts_with(&format!("{root}/")))
+     {
+-        return Some("it runs inside Mímir (a task's process)");
++        let _ = root;
+     }
+     // A session a kept Remote Control started runs outside the service's
+     // group, in its own slice: still Mímir's.

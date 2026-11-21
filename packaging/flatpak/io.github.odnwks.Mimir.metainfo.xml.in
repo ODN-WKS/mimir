@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.odnwks.Mimir</id>
+  <name>Mímir</name>
+  <summary>Ask anything. Private by design.</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-only</project_license>
+  <developer id="io.github.odnwks">
+    <name>Mímir</name>
+  </developer>
+  <description>
+    <p>Ask anything from your PC or your phone. Chats stay with you, and you choose who answers: your own PC, for free, or an online company.</p>
+    <p>Mímir can also work on your projects, with an optional tool on your PC, and keep your phone in step with your PC.</p>
+    <p>Mímir uses the Cinzel typeface, under the SIL Open Font License 1.1. Mímir itself is free software under the GNU GPL version 3. Other parts keep their own licences; see the notices that come with the app.</p>
+  </description>
+  <launchable type="desktop-id">io.github.odnwks.Mimir.desktop</launchable>
+  <provides>
+    <binary>mimir</binary>
+  </provides>
+  <categories>
+    <category>Utility</category>
+  </categories>
+  <content_rating type="oars-1.1"/>
+  <supports>
+    <control>pointing</control>
+    <control>keyboard</control>
+  </supports>
+  <releases>
+    <release version="@VERSION@" date="@DATE@"/>
+  </releases>
+</component>

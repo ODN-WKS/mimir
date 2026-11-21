@@ -1,0 +1,9 @@
+[package]
+name = "mimir-release"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+mimir-core = { path = "../core" }
+ed25519-dalek.workspace = true

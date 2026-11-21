@@ -1,0 +1,16 @@
+expect: a long answer was lost while it was being written
+files: crates/core/src/service.rs
+breaks: answers are forgotten a while after they start
+diff --git a/crates/core/src/service.rs b/crates/core/src/service.rs
+index 13e7b57..8d85f23 100644
+--- a/crates/core/src/service.rs
++++ b/crates/core/src/service.rs
+@@ -4070,7 +4070,7 @@ impl Service {
+         self.yolo_tick();
+         self.talk.expire();
+         self.answer_person
+-            .retain(|_, (_, done)| done.is_none_or(|at| at.elapsed() < crate::talk::kept()));
++            .retain(|_, (_, done)| done.is_some_and(|at| at.elapsed() < crate::talk::kept()));
+         self.engine_tick();
+         // A session's request goes once its hook stopped waiting (answered
+         // on the PC, the session ended, or ten minutes passed).

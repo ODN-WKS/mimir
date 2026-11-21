@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Mímir
+Comment=Ask anything. Private by design.
+Keywords=Mimir;Mímir;assistant;
+Exec=mimir
+Icon=io.github.odnwks.Mimir
+Terminal=false
+Categories=Utility;
+StartupWMClass=io.github.odnwks.Mimir

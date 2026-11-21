@@ -1,0 +1,177 @@
+package io.github.odnwks.mimir.ui
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import io.github.odnwks.mimir.ui.adaptive.messageBoxKeys
+import io.github.odnwks.mimir.ui.theme.Motion
+import io.github.odnwks.mimir.ui.theme.Palette
+import io.github.odnwks.mimir.ui.theme.motionSpec
+import io.github.odnwks.mimir.ui.theme.Type
+
+/**
+ * Mímir's message box, one tidy box (owner, 2026-11-19): the words on top (one line that grows to
+ * six), and under them one row that never wraps: small + and mic buttons (talking works with no
+ * PC: the phone's own speech recognition), the chips, and Send (dimmed until there are words) or
+ * Stop at its end. With less room (large text) the chips get shorter words, then only their icons.
+ */
+@Composable
+fun MimirComposer(
+    value: String,
+    onValue: (String) -> Unit,
+    /** A message already waits for Mímir to be ready: the next one can't go yet. */
+    waiting: Boolean,
+    writing: Boolean,
+    voice: VoiceInput,
+    onSend: () -> Unit,
+    onStop: () -> Unit,
+    /** Whisper mode: the box is teal and says so. */
+    whisper: Boolean = false,
+    /** Say "Answered when Mímir is ready" while a message waits (not when it waits for the PC, which answers when it connects). */
+    waitHint: Boolean = true,
+    modifier: Modifier = Modifier,
+    /** Files to go with the message: it can be sent with no words. */
+    hasFiles: Boolean = false,
+    /** Shown at the top of the box: the attached files. */
+    above: (@Composable () -> Unit)? = null,
+    /** The + at the start of the bottom row (with [ChipFit.Menu], the effort is in its menu). */
+    attach: @Composable (ChipFit) -> Unit = {},
+    /** The chips on the bottom row (where or model, effort), as they fit there. */
+    chips: @Composable (ChipFit) -> Unit = {},
+) {
+    val ready = (value.isNotBlank() || hasFiles) && !waiting
+    var fit by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(ChipFit.Full) }
+    val shape = RoundedCornerShape(26.dp)
+    val label = if (whisper) "Whisper to $AI_NAME" else "Message $AI_NAME"
+    val hint = if (waiting && waitHint) "Answered when $AI_NAME is ready" else label
+    // The microphone was refused: say so in plain words, with the way to allow it.
+    var micDenied by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    Column(
+        modifier.fillMaxWidth().clip(shape).background(if (whisper) WhisperTint.Card else BoxFill).border(1.dp, if (whisper) Palette.Outline else BoxBorder, shape)
+            .padding(start = 4.dp, end = 3.dp),
+    ) {
+        if (micDenied) Row(Modifier.fillMaxWidth().padding(start = 8.dp, top = 8.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(MIC_REFUSED, style = Type.Small, color = Palette.AmberText, modifier = Modifier.weight(1f).semantics { liveRegion = LiveRegionMode.Polite })
+            SmallButton("Open settings", { openAppSettings(context) }, description = "Open $AI_NAME's permissions in Android Settings")
+            LinkText("OK", { micDenied = false })
+        }
+        if (above != null) androidx.compose.animation.AnimatedVisibility(
+            hasFiles,
+            enter = androidx.compose.animation.expandVertically(motionSpec(Motion.NEEDS_YOU_BAR_MS)) + androidx.compose.animation.fadeIn(motionSpec(Motion.NEEDS_YOU_BAR_MS)),
+            exit = androidx.compose.animation.shrinkVertically(motionSpec(Motion.NEEDS_YOU_BAR_MS)) + androidx.compose.animation.fadeOut(motionSpec(Motion.NEEDS_YOU_BAR_MS)),
+        ) { Box(Modifier.padding(start = 4.dp, top = 8.dp)) { above() } }
+        // The box keeps the keyboard's whole state (words, cursor and the part still being composed, as voice
+        // typing and word suggestions do), and hands the parent only the words: nothing is rewritten while the
+        // keyboard works. Only a change from outside (cleared after Send, words heard) replaces the text.
+        var field by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(androidx.compose.ui.text.input.TextFieldValue(value)) }
+        if (field.text != value) field = androidx.compose.ui.text.input.TextFieldValue(value, androidx.compose.ui.text.TextRange(value.length))
+        BasicTextField(
+            value = field,
+            onValueChange = { next -> field = next; if (next.text != value) onValue(next.text) },
+            // A Whisper's box doesn't auto-correct (and the keyboard is told not to learn: see NoKeyboardLearning).
+            keyboardOptions = whisperKeyboard(whisper),
+            textStyle = Type.Body.copy(color = Palette.Text, lineHeight = 16.sp * 1.4f),
+            cursorBrush = SolidColor(Palette.BlueLight),
+            maxLines = 6,
+            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).semantics { contentDescription = label }
+                .messageBoxKeys { if (ready) onSend() },
+            decorationBox = { inner ->
+                Box(Modifier.padding(start = 8.dp, end = 8.dp, top = 14.dp, bottom = 4.dp), contentAlignment = Alignment.CenterStart) {
+                    if (value.isEmpty()) Text(hint, style = Type.Body.copy(lineHeight = 16.sp * 1.4f), color = Palette.TextDim, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    inner()
+                }
+            },
+        )
+        Row(Modifier.fillMaxWidth().padding(bottom = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(0.dp)) {
+            attach(fit)
+            FittedChips(Modifier.weight(1f), chips) { fit = it }
+            // The mic sits before Send: what it hears goes into the box.
+            MicButton(voice, "Talk instead of typing", filled = false, surface = androidx.compose.ui.graphics.Color.Transparent, size = TINY_BUTTON, outline = false, onDenied = { micDenied = true })
+            when {
+                writing -> RoundButton(Glyphs.Stop, "Stop the reply", onStop, size = SMALL_BUTTON, filled = true, fill = Palette.RedBorder, iconSize = 20.dp)
+                else -> RoundButton(Glyphs.Send, "Send", { if (ready) onSend() }, size = SMALL_BUTTON, filled = true, fill = if (whisper) WhisperTint.Send else Palette.Blue, enabled = ready, iconSize = 20.dp)
+            }
+        }
+    }
+}
+
+/** What the box says when the owner refused the microphone. */
+const val MIC_REFUSED = "$AI_NAME can't hear you: allow the microphone in Android Settings › Apps › $AI_NAME › Permissions."
+
+/** Android's page for this app, where its permissions are. */
+fun openAppSettings(context: android.content.Context) {
+    runCatching {
+        context.startActivity(
+            android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.fromParts("package", context.packageName, null))
+                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+        )
+    }
+}
+
+private val BoxFill = androidx.compose.ui.graphics.Color(0xFF1A1D23)
+private val BoxBorder = androidx.compose.ui.graphics.Color(0xFF2B2F37)
+
+/** The small buttons on the message box's bottom row. */
+val SMALL_BUTTON = 40.dp
+
+/** The + and mic: a little smaller, to leave room for the chips. */
+val TINY_BUTTON = 30.dp
+
+/**
+ * How much the chips say: their words, shorter words, only their icons, or (least room) only the
+ * first chip's icon, the effort moving into the + menu.
+ */
+enum class ChipFit { Full, Short, Tight, Icons, Menu }
+
+/**
+ * The chips on one line, never wrapped: each fit is tried (measured unseen) and the first that has
+ * room is shown, so large text gives shorter chips rather than a second row.
+ */
+@Composable
+private fun FittedChips(modifier: Modifier, chips: @Composable (ChipFit) -> Unit, chosen: (ChipFit) -> Unit) {
+    androidx.compose.ui.layout.SubcomposeLayout(modifier) { c ->
+        val loose = c.copy(minWidth = 0, minHeight = 0)
+        // Wide but finite: a chip's words have a weight, which an endless row would measure as nothing.
+        val unbounded = loose.copy(maxWidth = c.maxWidth * 8)
+        val gap = 4.dp.roundToPx()
+        fun width(fit: ChipFit): Int {
+            val ps = subcompose("probe-$fit") {
+                Row(Modifier.clearAndSetSemantics {}, horizontalArrangement = Arrangement.spacedBy(4.dp)) { chips(fit) }
+            }.map { it.measure(unbounded) }
+            return ps.sumOf { it.width } + gap * (ps.size - 1).coerceAtLeast(0)
+        }
+        val fit = ChipFit.entries.firstOrNull { it == ChipFit.Menu || width(it) <= c.maxWidth } ?: ChipFit.Menu
+        chosen(fit)
+        val shown = subcompose("shown") {
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) { chips(fit) }
+        }.map { it.measure(loose) }
+        val h = shown.maxOfOrNull { it.height } ?: 0
+        layout(c.maxWidth, h) { shown.forEach { it.placeRelative(0, (h - it.height) / 2) } }
+    }
+}

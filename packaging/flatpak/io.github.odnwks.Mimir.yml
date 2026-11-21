@@ -1,0 +1,105 @@
+# Mímir for the PC, as a Flatpak. Built by packaging/flatpak/build.sh (it
+# stages `src/` and `vendor/` next to this file, so the build needs no
+# network: Rust crates are vendored, the voice files carry checksums).
+app-id: io.github.odnwks.Mimir
+runtime: org.freedesktop.Platform
+# The freedesktop runtime is the smallest one with what the window needs
+# (Wayland, X11, Mesa/Vulkan, PipeWire and PulseAudio libraries, curl,
+# gdbus, flatpak-spawn); the KDE runtime would add Qt that Mímir never uses.
+runtime-version: '26.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: mimir
+
+finish-args:
+  # --- the window ---
+  # Wayland first (the PC's desktop is Wayland); X11 only when there is no Wayland.
+  - --socket=wayland
+  - --socket=fallback-x11
+  # X11 shared memory, only needed with the X11 fallback.
+  - --share=ipc
+  # Graphics card, for the window's drawing.
+  - --device=dri
+  # --- the internet and the phones ---
+  # Messages to the chosen company, model downloads, the update check, and
+  # the link to the phones (UDP/QUIC and a local port).
+  - --share=network
+  # --- sound ---
+  # Read aloud, and Talk instead of type (microphone, PipeWire's PulseAudio socket).
+  - --socket=pulseaudio
+  # --- files ---
+  # The owner's projects and their session files live in the home folder,
+  # and the window lists and reads them (also where chats, settings and
+  # saved conversations are kept: ~/.local/share/mimir, ~/.config/mimir and
+  # ~/Documents/Mimir). Chosen over portal folders because every project
+  # the owner has used before has to be there without asking again.
+  - --filesystem=home
+  # --- the PC's own programs ---
+  # The project-work tool, git, the terminal and the file pickers are on the PC, not in
+  # the sandbox. Mímir runs them with `flatpak-spawn --host` (one helper,
+  # crates/core/src/flatpak.rs). This is the one big permission: without it
+  # Mímir could not start project work.
+  - --talk-name=org.freedesktop.Flatpak
+  # --- notices ---
+  # "Done" and "needs you" notices in the corner of the screen.
+  - --talk-name=org.freedesktop.Notifications
+  # Keep the background part running, and start it with the session
+  # (the Background portal; the portal itself needs no permission here).
+
+modules:
+  - name: mimir
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin
+      env:
+        CARGO_HOME: /run/build/mimir/cargo-home
+        CARGO_BUILD_JOBS: '12'
+        CARGO_NET_OFFLINE: 'true'
+        # The compiler needs a bigger stack inside the sandbox (egui crashes without).
+        RUST_MIN_STACK: '67108864'
+    build-commands:
+      - cargo build --release --offline --locked -p mimir-ui --bin mimir
+      - install -Dm755 target/release/mimir /app/bin/mimir
+      - install -Dm644 packaging/flatpak/io.github.odnwks.Mimir.desktop /app/share/applications/io.github.odnwks.Mimir.desktop
+      - install -Dm644 packaging/flatpak/io.github.odnwks.Mimir.metainfo.xml /app/share/metainfo/io.github.odnwks.Mimir.metainfo.xml
+      - |
+        for n in 16 24 32 48 64 128 256 512; do
+          install -Dm644 assets/icons/mimir-$n.png /app/share/icons/hicolor/${n}x${n}/apps/io.github.odnwks.Mimir.png
+        done
+      # Licences and notices (the Cinzel font's licence among them).
+      - install -Dm644 LICENSE /app/share/licenses/io.github.odnwks.Mimir/LICENSE
+      - install -Dm644 THIRD-PARTY-NOTICES.md /app/share/licenses/io.github.odnwks.Mimir/THIRD-PARTY-NOTICES.md
+      - install -Dm644 assets/fonts/OFL-Cinzel.txt /app/share/licenses/io.github.odnwks.Mimir/OFL-Cinzel.txt
+      # The voice (Ingrid) and the speech engine, so nothing is downloaded for them.
+      - install -Dm644 voice/model.onnx /app/share/mimir/voice/female/model.onnx
+      - install -Dm644 android/app/src/main/assets/voices/alba-tokens.txt /app/share/mimir/voice/female/tokens.txt
+      - cp -r android/app/src/main/assets/voices/espeak-ng-data /app/share/mimir/voice/female/espeak-ng-data
+      - |
+        d=/app/share/mimir/voice/engine/sherpa-onnx-v1.13.8-linux-x64-shared-lib/lib
+        mkdir -p $d
+        cp -L sherpa/lib/libonnxruntime.so sherpa/lib/libsherpa-onnx-c-api.so $d/
+      - install -Dm644 android/app/src/main/assets/voices/SOURCES.txt /app/share/licenses/io.github.odnwks.Mimir/voices-SOURCES.txt
+    sources:
+      # The program's source and its vendored crates (staged by build.sh).
+      - type: dir
+        path: src
+      - type: dir
+        path: vendor
+        dest: vendor
+      - type: file
+        path: cargo-config.toml
+        dest: .cargo
+        dest-filename: config.toml
+      # Ingrid, the Piper "alba" voice (CC BY 4.0), at a fixed commit.
+      - type: file
+        url: https://huggingface.co/csukuangfj/vits-piper-en_GB-alba-medium/resolve/7e469a54c7a4f5bd191cae788e197266e2c9c5ac/en_GB-alba-medium.onnx
+        sha256: c904d007a8047ab13628b021351b983d0a2627c0d7a81c64a6fe9ad661adb1cf
+        dest: voice
+        dest-filename: model.onnx
+      # The speech engine, sherpa-onnx 1.13.8 with ONNX Runtime (Apache 2.0 and MIT).
+      - type: archive
+        url: https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.8/sherpa-onnx-v1.13.8-linux-x64-shared-lib.tar.bz2
+        sha256: 3892d184be41027e18165e67f549cd4e4cdd8dcd73ac5579e97afd55e14e30b6
+        strip-components: 1
+        dest: sherpa

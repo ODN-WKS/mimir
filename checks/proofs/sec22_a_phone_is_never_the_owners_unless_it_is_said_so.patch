@@ -1,0 +1,16 @@
+expect: it was paired as the owner's with no name said
+files: crates/link/src/server.rs
+breaks: a phone whose person isn't said is the owner's
+diff --git a/crates/link/src/server.rs b/crates/link/src/server.rs
+index 4d65ef9..264f8d0 100644
+--- a/crates/link/src/server.rs
++++ b/crates/link/src/server.rs
+@@ -566,7 +566,7 @@ async fn pair(inner: Arc<Inner>, conn: Connection) {
+             let person = match person {
+                 Some(m) if m == mimir_proto::WHOSE_MINE => Some(OWNER.to_string()),
+                 Some(n) if !clean_name(&n).is_empty() => Some(inner.person_named(&clean_name(&n))),
+-                _ => None,
++                _ => Some(OWNER.to_string()),
+             };
+             let Some(person) = person else {
+                 let _ = write_json(

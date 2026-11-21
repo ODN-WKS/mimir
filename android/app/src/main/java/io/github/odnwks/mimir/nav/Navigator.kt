@@ -1,0 +1,302 @@
+package io.github.odnwks.mimir.nav
+
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+
+/**
+ * The three home screens, reached from the side menu (there is no bottom bar): Chat is home, Status is
+ * "Your PC", Updates stays. Settings is its own row at the bottom of the menu.
+ */
+enum class Tab(val label: String, val root: Screen) {
+    Chat("Chat", Screen.Chat),
+    Status("Your PC", Screen.Status),
+    Updates("Updates", Screen.Updates),
+    ;
+
+    companion object {
+        /** Every place stays in the menu, paired or not: Updates never hides (an empty one says so itself). */
+        @Suppress("UNUSED_PARAMETER")
+        fun shown(paired: Boolean, anyUpdates: Boolean): List<Tab> = entries
+    }
+}
+
+/** Every screen of the app (one per approved board; Confirms is [Sheet], Trouble is Chat with the PC asleep). */
+sealed interface Screen {
+    /** Whether the screen clears the phone's bottom bar (there is no tab bar any more; kept for the screens' bottom room). */
+    val bottomBar: Boolean get() = true
+    /** One of the three tab pages (shown in the pager, which follows the finger). */
+    val tabPage: Boolean get() = Tab.entries.any { it.root == this }
+
+    data object Chat : Screen
+    data object Status : Screen
+    data object Updates : Screen
+    /** Settings, behind the cog on each tab: Voice, Who answers, Your PC, Privacy, Look and size, Storage, Help and about. */
+    data object Settings : Screen
+    data object NeedsYou : Screen
+    data class Task(val taskId: String) : Screen { override val bottomBar get() = false }
+    data class Change(val taskId: String) : Screen { override val bottomBar get() = false }
+    data class Project(val name: String) : Screen
+    data object Models : Screen
+    /** One model's page in the Model Store (Settings › Who answers). */
+    data class ModelDetails(val id: String) : Screen
+    data object PhonePc : Screen
+    data object Notifications : Screen
+    data object IncognitoTask : Screen { override val bottomBar get() = false }
+    data object Pair : Screen { override val bottomBar get() = false }
+    data object PairDone : Screen { override val bottomBar get() = false }
+    data object PairError : Screen { override val bottomBar get() = false }
+    /** Standalone mode: a model on this phone (Part C). */
+    data object Standalone : Screen { override val bottomBar get() = false }
+    data object StandaloneModels : Screen { override val bottomBar get() = false }
+    /** Every task: search, a state filter, and archived tasks (from Status › All tasks or a magnifier). */
+    data class AllTasks(val archived: Boolean = false) : Screen
+    /** Settings › General: Help. */
+    data object General : Screen
+    /** Settings › Storage: what the app keeps on this phone, each with Delete. */
+    data object Storage : Screen
+    /** Settings › Voice: read-aloud speed, and Talk (voice typing). */
+    data object Voice : Screen
+    /** Settings › Voice › Voices (also in Models): the natural voices to download for read aloud. */
+    data object Voices : Screen
+    /** Settings › About: the version and Check for a new version. */
+    data object About : Screen
+    /** Settings › Privacy check: what the app sent and received over the network. */
+    data object PrivacyCheck : Screen
+    /** Settings › Who answers › Ground rules: what every model is told first. */
+    data object GroundRules : Screen
+    /** Settings › Help and about: questions people ask, each with a short answer, and the version. */
+    data object Help : Screen
+    /** Settings › Help and about › Labs: the notes for fixing problems, Run checks, and Report a problem. */
+    data object Labs : Screen
+    /** One Help question's answer. */
+    data class HelpAnswer(val id: String) : Screen
+    /** Chats: every earlier conversation (from the chat's eye, or a swipe in from the left edge). */
+    data object Chats : Screen { override val bottomBar get() = false }
+    /** The app's own browser: a page the owner opens from a chat (search results, a source). */
+    data class Browse(val url: String) : Screen { override val bottomBar get() = false }
+}
+
+/**
+ * With two panes, whether this screen opens on the right of [left] instead of over it:
+ * a task, its change, a project and Needs you always do; Settings' own pages do beside Settings.
+ */
+fun Screen.opensOnRight(left: Screen): Boolean = when (this) {
+    is Screen.Task, is Screen.Change, is Screen.Project, Screen.NeedsYou -> left != this
+    Screen.General, Screen.Models, Screen.PhonePc, Screen.Notifications,
+    Screen.Storage, Screen.Voice, Screen.About, Screen.Help, Screen.Labs, Screen.GroundRules, Screen.PrivacyCheck -> left == Screen.Settings
+    Screen.Voices, is Screen.HelpAnswer -> left == Screen.Settings
+    else -> false
+}
+
+/** The choices that ask first: each slides up from the bottom, near the thumb. */
+sealed interface Sheet {
+    data class TaskOptions(val taskId: String) : Sheet
+    data class StopTask(val taskId: String) : Sheet
+    data class AlwaysAllow(val taskId: String) : Sheet
+    /** What a task always allows, each with Stop allowing (from the task's ⋯). */
+    data class AlwaysAllowed(val taskId: String) : Sheet
+    data class Release(val taskId: String) : Sheet
+    data object IncognitoOptions : Sheet
+    data object EndIncognito : Sheet
+    data object Unpair : Sheet
+    data class RenameTask(val taskId: String) : Sheet
+    data class TaskModel(val taskId: String) : Sheet
+    /** The full YOLO warning, every time, before the phone's unlock. */
+    data class Yolo(val taskId: String) : Sheet
+    /**
+     * Everything for the open phone chat, from a tap on its topic: Rename, Delete, read-aloud
+     * speed, Whisper and how it stays private. What the chat allows is taken when it opens.
+     */
+    /** [pc]: the paired PC answers this chat (its privacy words say so). */
+    data class ChatOptions(val topic: String?, val canRename: Boolean, val whisper: Boolean, val canWhisper: Boolean, val pc: Boolean = false, /** The company an online model belongs to, when it answers this chat: its messages go there. */ val online: String? = null,
+        /** Bytes of this chat sent to the PC and the lookups made in it, when this chat counts them (-1: not counted here). */
+        val sentToPc: Long = -1, val lookups: Int = 0) : Sheet
+    /**
+     * Choose a project (or make one on the PC). The choice goes back to [back] (the composer's
+     * "Where should this go?"), opens the project's page ([open]), or goes to the screen that
+     * asked (a task being moved).
+     */
+    data class ProjectPicker(val current: String, val newProject: Boolean = false, val back: Sheet? = null, val open: Boolean = false, val justChat: Boolean = false) : Sheet
+    /** The composer's "Where should this go?": Auto or a project, and options for this one task. */
+    data object WhereTo : Sheet
+    /** The model for the task the composer starts. */
+    data object ComposeModel : Sheet
+}
+
+/**
+ * Where Chat's composer sends its next message: Auto (the PC files it) or a project, and for
+ * that one task Plan first, a model, or Whisper mode.
+ */
+data class ComposeTo(val project: String = "", val plan: Boolean = false, val model: String = "", val whisper: Boolean = false) {
+    val auto: Boolean get() = project.isEmpty() && !plan && model.isEmpty() && !whisper
+}
+
+/** How the last screen change happened; it picks the animation. */
+sealed interface Move {
+    data object Forward : Move
+    data object Back : Move
+    /** To another section of the bottom bar; [toRight] when it lies to the right of the old one. */
+    data class ToTab(val toRight: Boolean) : Move
+    /** A tapped card grows into its screen from the tap point (fractions of the screen, 0..1). */
+    data class CardOpen(val x: Float, val y: Float) : Move
+    data object None : Move
+}
+
+/** What the phone chat's topic sheet hands back to the open chat. */
+enum class ChatAsk { Rename, Delete, Whisper, StartWhisper, NewChat, StartWebWhisper, CopyChat, Rules, Sent }
+
+/** One hand-over from the sheet (compared by identity, never equal to an earlier one). */
+class ChatRequest(val ask: ChatAsk)
+
+/** Where a finger touched, as fractions of the screen's width and height. */
+data class TapPoint(val x: Float, val y: Float)
+
+/** One screen on the back stack; [key] keeps two copies of the same screen apart. */
+data class Entry(val screen: Screen, val key: Int)
+
+/**
+ * The back stack. Each section of the bottom bar starts its own stack; Back walks the stack, then
+ * returns to Chat, then leaves the app. A sheet sits above the stack and Back closes it first.
+ */
+class Navigator(start: Screen = Screen.Chat) {
+    private var nextKey = 0
+    var stack: List<Entry> by mutableStateOf(listOf(Entry(start, nextKey++)))
+        private set
+    var sheet: Sheet? by mutableStateOf(null)
+        private set
+    var lastMove: Move by mutableStateOf(Move.None)
+        private set
+    /** Where Chat's composer sends the next message (the "To:" chip). */
+    var composeTo: ComposeTo by mutableStateOf(ComposeTo())
+    /** The project just chosen in the picker, for the screen that opened it to take. */
+    var pickedProject: String? by mutableStateOf(null)
+    /** What the phone chat's sheet asked of the open chat (rename, delete, Whisper), for the chat to do. */
+    var chatAsk: ChatRequest? by mutableStateOf(null)
+
+    /** Hands [ask] to the open chat: a new request each time, so asking the same twice still counts. */
+    fun askChat(ask: ChatAsk) { chatAsk = ChatRequest(ask) }
+    /** Open Pair with the paste box showing (from "Paste the code instead"). */
+    var pastePairCode: Boolean by mutableStateOf(false)
+
+    val current: Screen get() = stack.last().screen
+
+    /**
+     * Two panes (a tablet window 840 dp or wider, once paired): what is open on the right, beside
+     * [current]. Empty means the right shows the section's own companion (Needs you beside Chat).
+     */
+    var detail: List<Entry> by mutableStateOf(emptyList())
+        private set
+    var twoPanes: Boolean by mutableStateOf(false)
+        private set
+    /** How the right pane last changed: true when something opened there (it slides in from the right). */
+    var detailForward: Boolean by mutableStateOf(true)
+        private set
+    /** Goes up by one each time "Ask Claude" asks for the cursor in Chat's message box. */
+    var askTick: Int by mutableIntStateOf(0)
+        private set
+
+    /**
+     * The window gained or lost room for two panes (the tablet turned, or a split screen changed).
+     * What was open stays open: an item shown full-screen moves to the right, and back again.
+     */
+    fun fitPanes(on: Boolean) {
+        if (on == twoPanes) return
+        twoPanes = on
+        lastMove = Move.None
+        if (on) {
+            val i = (1 until stack.size).firstOrNull { stack[it].screen.opensOnRight(stack[it - 1].screen) }
+            if (i != null) { detail = stack.drop(i); stack = stack.take(i) }
+        } else if (detail.isNotEmpty()) {
+            stack = stack + detail
+            detail = emptyList()
+        }
+    }
+
+    /** "Ask Claude": Chat, with the cursor in its message box. */
+    fun ask() {
+        if (current != Screen.Chat) selectTab(Tab.Chat)
+        askTick++
+    }
+
+    /** False only on Chat with nothing open: then Back leaves the app. */
+    val canGoBack: Boolean get() = sheet != null || detail.isNotEmpty() || stack.size > 1 || current != Screen.Chat
+    val currentEntry: Entry get() = stack.last()
+
+    /** The highlighted section, or null on Needs you (it belongs to every section). */
+    val selectedTab: Tab?
+        get() = if (current == Screen.NeedsYou) null else Tab.entries.firstOrNull { it.root == stack.first().screen } ?: Tab.Chat
+
+    /** Opens [screen] on top. With [from] (a tap point as fractions of the screen) it grows from there. */
+    fun open(screen: Screen, from: TapPoint? = null) {
+        sheet = null
+        if (screen == current && detail.isEmpty()) return
+        Tab.entries.firstOrNull { it.root == screen }?.let { selectTab(it); return }
+        if (twoPanes && screen.opensOnRight(current)) {
+            if (detail.lastOrNull()?.screen == screen) return
+            detailForward = true
+            // A task's change and the pages inside a settings section sit on top of what is on the right;
+            // a task, a project, Needs you or a settings section replaces it.
+            val inner = screen is Screen.Change || screen is Screen.HelpAnswer || screen == Screen.GroundRules ||
+                ((screen == Screen.About || screen == Screen.Labs) && detail.lastOrNull()?.screen == Screen.Help)
+            detail = if (inner) detail + Entry(screen, nextKey++) else listOf(Entry(screen, nextKey++))
+            return
+        }
+        detail = emptyList()
+        lastMove = from?.let { Move.CardOpen(it.x.coerceIn(0f, 1f), it.y.coerceIn(0f, 1f)) } ?: Move.Forward
+        stack = stack + Entry(screen, nextKey++)
+    }
+
+    /** Swaps the top screen for [screen] (e.g. "No, they're different" turns Paired into Couldn't pair). */
+    fun replace(screen: Screen) {
+        sheet = null
+        if (detail.isNotEmpty()) { detail = detail.dropLast(1) + Entry(screen, nextKey++); return }
+        lastMove = Move.Forward
+        stack = stack.dropLast(1) + Entry(screen, nextKey++)
+    }
+
+    /** Clears the stack and shows [screen] (e.g. after pairing, straight to Chat). */
+    fun resetTo(screen: Screen) {
+        sheet = null
+        lastMove = Move.Forward
+        detail = emptyList()
+        stack = listOf(Entry(screen, nextKey++))
+    }
+
+    /** A bottom-bar section. Tapping the section already shown goes back to its first screen. */
+    fun selectTab(tab: Tab) {
+        sheet = null
+        detail = emptyList()
+        val old = selectedTab
+        if (old == tab) {
+            if (stack.size > 1) {
+                lastMove = Move.Back
+                stack = listOf(stack.first())
+            }
+            return
+        }
+        lastMove = Move.ToTab(toRight = (old?.ordinal ?: -1) < tab.ordinal)
+        stack = listOf(Entry(tab.root, nextKey++))
+    }
+
+    fun openSheet(s: Sheet) { sheet = s }
+    fun closeSheet() { sheet = null }
+
+    /** System Back or a screen's back arrow. Returns false when the app should close. */
+    fun back(): Boolean {
+        if (sheet != null) { sheet = null; return true }
+        if (detail.isNotEmpty()) { detailForward = false; detail = detail.dropLast(1); return true }
+        if (stack.size > 1) {
+            lastMove = Move.Back
+            stack = stack.dropLast(1)
+            return true
+        }
+        if (current != Screen.Chat) {
+            lastMove = Move.ToTab(toRight = false)
+            stack = listOf(Entry(Screen.Chat, nextKey++))
+            return true
+        }
+        return false
+    }
+}

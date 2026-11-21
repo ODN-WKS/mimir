@@ -1,0 +1,17 @@
+expect: Ana was sent the owner's chat events
+files: crates/core/src/service.rs
+breaks: chat events go to every person's devices
+diff --git a/crates/core/src/service.rs b/crates/core/src/service.rs
+index 121a6a5..6f2cc77 100644
+--- a/crates/core/src/service.rs
++++ b/crates/core/src/service.rs
+@@ -190,8 +190,7 @@ impl Client {
+     /// Whether this client takes a chat event of `person`'s (a chat's
+     /// pieces, answer and changes go to that person's devices only).
+     fn gets_chat(&self, person: &str, event: &Event) -> bool {
+-        self.person == person
+-            && (self.phone.is_none() || event.for_phone())
++        (self.phone.is_none() || event.for_phone())
+             && event
+                 .feature()
+                 .is_none_or(|f| self.features.iter().any(|k| k == f))

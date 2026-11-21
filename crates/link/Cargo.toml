@@ -1,0 +1,18 @@
+[package]
+name = "mimir-link"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# The phone link: iroh and tokio stay inside this crate. The service and
+# the phone core use its blocking, channel-based interface.
+[dependencies]
+mimir-proto = { path = "../proto" }
+iroh = "1.4"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-util", "sync", "time"] }
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+hmac = "0.12"
+data-encoding = "2"
+rand = "0.9"

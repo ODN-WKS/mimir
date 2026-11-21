@@ -1,0 +1,16 @@
+expect: home's tasks or settings didn't open
+files: crates/core/src/settings.rs
+breaks: names given to projects are not read from settings
+diff --git a/crates/core/src/settings.rs b/crates/core/src/settings.rs
+index 8101a75..726c482 100644
+--- a/crates/core/src/settings.rs
++++ b/crates/core/src/settings.rs
+@@ -46,7 +46,7 @@ pub struct Settings {
+     pub groups: Vec<Group>,
+     /// Names the owner gave projects (Mímir only; folders keep
+     /// their own names).
+-    #[serde(default)]
++    #[serde(default, skip_deserializing)]
+     pub project_names: std::collections::HashMap<String, String>,
+     /// Projects whose task list is folded away in the sidebar.
+     #[serde(default)]

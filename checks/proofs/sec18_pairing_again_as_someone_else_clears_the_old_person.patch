@@ -1,0 +1,16 @@
+expect: a later Ana inherited the old Ana's chats
+files: crates/link/src/server.rs
+breaks: a phone paired again leaves its old person behind
+diff --git a/crates/link/src/server.rs b/crates/link/src/server.rs
+index 4d65ef9..4e6d66f 100644
+--- a/crates/link/src/server.rs
++++ b/crates/link/src/server.rs
+@@ -601,7 +601,7 @@ async fn pair(inner: Arc<Inner>, conn: Connection) {
+             inner.save_people();
+             // The phone's old person with no phone left is gone: nothing of
+             // them may be inherited by whoever is named the same later.
+-            if let Some(old) = old.filter(|o| *o != person && o != OWNER)
++            if let Some(old) = old.filter(|o| *o != person && o != OWNER && false)
+                 && !inner.phones.lock().unwrap().iter().any(|x| x.person == old)
+             {
+                 inner.people.lock().unwrap().retain(|p| p.id != old);

@@ -1,0 +1,7 @@
+Files the app carries for its read-aloud voice, Ingrid (Piper en_GB alba, medium). The model
+itself (ingrid-model.ort) is added by the app build, from the one address and checksum set in
+android/app/build.gradle.kts (ingridModel), pre-optimised for ARM phones by tools/ingrid-ort.sh.
+
+alba-tokens.txt         Piper en_GB alba (medium) tokens. CC BY 4.0.
+espeak-ng-data/         The English part of espeak-ng's data (sherpa-onnx's copy), for words the
+                        model reads by sound. GPL 3.0, as the espeak-ng built into the sherpa-onnx library.

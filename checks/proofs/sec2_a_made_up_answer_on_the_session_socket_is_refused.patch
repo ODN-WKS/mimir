@@ -1,0 +1,16 @@
+expect: a made-up answer on the session socket was taken
+files: crates/core/src/sockets.rs
+breaks: the session socket takes anything as an answer
+diff --git a/crates/core/src/sockets.rs b/crates/core/src/sockets.rs
+index 6e1d1e5..5af3cdc 100644
+--- a/crates/core/src/sockets.rs
++++ b/crates/core/src/sockets.rs
+@@ -342,7 +342,7 @@ pub fn serve_session(path: &Path, handler: SessionHandler) -> std::io::Result<()
+                     _ => {
+                         let _ = write_msg(
+                             &mut s,
+-                            &"refused: the session socket only takes Ask, Wait and Permission",
++                            &"taken",
+                         );
+                         return;
+                     }

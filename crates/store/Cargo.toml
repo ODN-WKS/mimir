@@ -1,0 +1,17 @@
+[package]
+name = "mimir-store"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# Only mimir-core and mimir-hub may depend on this crate (checked by
+# the `only_core_and_hub_depend_on_the_store` test).
+
+[dependencies]
+mimir-proto = { path = "../proto" }
+serde.workspace = true
+serde_json.workspace = true
+libc.workspace = true
+sha2.workspace = true
+ring = "0.17"
+base64 = "0.22"

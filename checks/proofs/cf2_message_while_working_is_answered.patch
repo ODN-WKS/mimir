@@ -1,0 +1,18 @@
+expect: second message got no answer
+files: crates/core/src/runner.rs
+breaks: a message sent while Claude works is dropped
+diff --git a/crates/core/src/runner.rs b/crates/core/src/runner.rs
+index 787c03c..84bc3d0 100644
+--- a/crates/core/src/runner.rs
++++ b/crates/core/src/runner.rs
+@@ -294,9 +294,7 @@ impl Runner {
+             },
+             false => user_message_with(text, pictures),
+         };
+-        if let Some(s) = self.tasks[i].session.as_mut()
+-            && s.send_line(&line).is_ok()
+-        {
++        if let Some(_s) = self.tasks[i].session.as_mut() {
+             self.tasks[i].sent += 1;
+             self.save_dirty();
+             return;

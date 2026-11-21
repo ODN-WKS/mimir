@@ -1,0 +1,17 @@
+expect: another person deleted the owner's chat
+files: crates/store/src/talk.rs
+breaks: a chat id means the same chat for every person
+diff --git a/crates/store/src/talk.rs b/crates/store/src/talk.rs
+index 2130885..b51e364 100644
+--- a/crates/store/src/talk.rs
++++ b/crates/store/src/talk.rs
+@@ -46,7 +46,8 @@ struct Kept {
+ type Key = (String, String);
+ 
+ fn chat_key(person: &str, id: &str) -> Key {
+-    (person.to_string(), id.to_string())
++    let _ = person;
++    (OWNER.to_string(), id.to_string())
+ }
+ 
+ /// The chats on this PC.

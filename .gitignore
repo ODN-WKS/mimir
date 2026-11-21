@@ -1,0 +1,10 @@
+/target
+*.swp
+/dist
+
+# The phone core, built by tools/build-phone-core.sh
+/android/app/src/main/jniLibs
+hs_err_pid*.log
+
+# Working notes
+progress.log

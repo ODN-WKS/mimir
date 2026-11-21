@@ -1,0 +1,57 @@
+{
+  "id": "1794000000-1000-1",
+  "title": "Plan the spring beds",
+  "title_by_owner": false,
+  "project": "@ROOT@/garden",
+  "phone_too": false,
+  "origin": null,
+  "copy_branch": null,
+  "session_id": "0f0e0d0c-1111-4222-8333-444455556661",
+  "status": "Done",
+  "entries": [
+    {
+      "You": "Read beds.txt and suggest what to plant where this spring."
+    },
+    {
+      "Step": {
+        "tool_use_id": "toolu_00000000000000000000beds",
+        "tool": "Read",
+        "what": "Read beds.txt",
+        "place": "ThisPc",
+        "started_ms": 1200,
+        "took_ms": 40,
+        "ok": true,
+        "refused": false,
+        "stopped": false,
+        "detail": {
+          "input": "beds.txt",
+          "output": "north bed: shade\nsouth bed: full sun",
+          "patch": []
+        }
+      }
+    },
+    {
+      "Claude": "The south bed gets full sun, so tomatoes and beans go there. The north bed suits lettuce and herbs."
+    },
+    {
+      "You": "Thanks. Keep the herbs near the door."
+    },
+    {
+      "Claude": "Noted: the herbs go in the end of the north bed nearest the door."
+    }
+  ],
+  "plan": [],
+  "files_changed": [],
+  "created_unix": 1794000000,
+  "cost_usd": 0.0,
+  "weekly": {
+    "used": 0.21,
+    "resets_at": 1794600000
+  },
+  "mode": "Ask",
+  "model": null,
+  "effort": null,
+  "context_used": 18000,
+  "context_window": 200000,
+  "archived": false
+}

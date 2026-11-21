@@ -1,0 +1,16 @@
+expect: her chats are still on the PC's disk
+files: crates/store/src/talk.rs
+breaks: removing a person keeps their chats
+diff --git a/crates/store/src/talk.rs b/crates/store/src/talk.rs
+index 2130885..313daae 100644
+--- a/crates/store/src/talk.rs
++++ b/crates/store/src/talk.rs
+@@ -519,7 +519,7 @@ impl TalkStore {
+     /// Deletes everything of a person (not the owner): their chats and
+     /// their files. Nothing of it is kept, not even a tombstone.
+     pub fn forget_person(&mut self, person: &str) {
+-        if person == OWNER || person.is_empty() {
++        if person == OWNER || person.is_empty() || true {
+             return;
+         }
+         self.chats.retain(|(who, _), _| who != person);

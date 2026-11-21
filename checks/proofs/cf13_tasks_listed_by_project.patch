@@ -1,0 +1,16 @@
+expect: a task isn't listed under its project
+files: crates/ui/src/organize.rs
+breaks: every task is listed under every project
+diff --git a/crates/ui/src/organize.rs b/crates/ui/src/organize.rs
+index f53f2e8..95f5d23 100644
+--- a/crates/ui/src/organize.rs
++++ b/crates/ui/src/organize.rs
+@@ -110,7 +110,7 @@ pub fn project_tasks<'a>(r: &'a Runner, settings: &Settings, project: &str) -> V
+         .tasks
+         .iter()
+         .rev()
+-        .filter(|l| same(l.task.home_project(), project) && !l.task.archived)
++        .filter(|l| !project.is_empty() && !l.task.archived)
+         .collect();
+     let ids: Vec<String> = newest.iter().map(|l| l.task.id.clone()).collect();
+     let order = settings

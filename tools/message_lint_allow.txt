@@ -1,0 +1,18 @@
+# Message lint: where the word "Claude" may still be shown to a person.
+# Owner, 2026-11-21 (R26): Mímir is the one you talk to; the outside tool is
+# named only where setting it up or checking it needs the name. One line each:
+#   path|phrase   the phrase is fine in that one file (matched without case)
+# Anything else that says "Claude" fails `message_lint.py --check`.
+#
+# Setup: install, sign in, update, sign out of the outside tool on the PC.
+crates/ui/src/setup_view.rs|Claude Code
+# The Labs check ("Claude Code found / signed in") on the PC and the phone.
+crates/ui/src/view_labs.rs|Claude Code
+crates/core/src/labs.rs|Claude Code
+android/app/src/main/java/io/github/odnwks/mimir/labs/LabsProbes.kt|Claude Code
+android/app/src/main/java/io/github/odnwks/mimir/labs/Report.kt|Claude Code
+# Help: one sentence that says project work uses it.
+android/app/src/main/java/io/github/odnwks/mimir/ui/MoreScreens.kt|Claude Code
+# Old saved notes (written before R26) are still recognised.
+crates/core/src/auto.rs|Claude stopped with a problem
+crates/core/src/models.rs|Claude's limit ran out

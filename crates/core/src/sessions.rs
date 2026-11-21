@@ -1,0 +1,1211 @@
+//! Sessions started elsewhere (for example in a terminal): Claude Code keeps
+//! each one in `~/.claude/projects/<folder>/<session id>.jsonl`. Opening
+//! one turns it into a task that continues with `--resume`.
+
+use crate::events::parse_line;
+use crate::task::{Status, Task};
+use serde_json::Value;
+use std::path::{Path, PathBuf};
+
+/// Claude Code's folder name for a project: every character that is not a
+/// letter or digit becomes '-'.
+pub fn folder_name(project: &Path) -> String {
+    project
+        .display()
+        .to_string()
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
+        .collect()
+}
+
+pub fn claude_home() -> PathBuf {
+    std::env::var_os("CLAUDE_CONFIG_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| {
+            PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".claude")
+        })
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct PastSession {
+    pub id: String,
+    pub path: PathBuf,
+    /// The first thing the owner asked.
+    pub first: String,
+    pub modified_unix: i64,
+    pub messages: usize,
+}
+
+fn user_text(e: &Value) -> Option<String> {
+    if e.get("type").and_then(Value::as_str) != Some("user")
+        || e.get("isMeta").and_then(Value::as_bool) == Some(true)
+        || e.get("isSidechain").and_then(Value::as_bool) == Some(true)
+    {
+        return None;
+    }
+    let c = e.pointer("/message/content")?;
+    let text = match c {
+        Value::String(s) => s.clone(),
+        Value::Array(blocks) => {
+            if blocks
+                .iter()
+                .any(|b| b.get("type").and_then(Value::as_str) == Some("tool_result"))
+            {
+                return None;
+            }
+            blocks
+                .iter()
+                .filter_map(|b| b.get("text").and_then(Value::as_str))
+                .collect::<Vec<_>>()
+                .join("\n")
+        }
+        _ => return None,
+    };
+    let text = clean_text(&text);
+    let t = text.trim();
+    // Slash-command bookkeeping, not something the owner typed.
+    if t.is_empty()
+        || t.starts_with("<command-")
+        || t.starts_with("<local-command")
+        || t.starts_with("Caveat:")
+    {
+        return None;
+    }
+    Some(t.to_string())
+}
+
+/// Removes what Claude Code adds around the owner's words: whole
+/// `<system-reminder>` blocks, and the `<pasted_content …>` tags (their
+/// content is kept: it is what the owner pasted).
+pub fn clean_text(text: &str) -> String {
+    let mut s = text.to_string();
+    while let Some(start) = s.find("<system-reminder>") {
+        let end = s[start..]
+            .find("</system-reminder>")
+            .map(|e| start + e + "</system-reminder>".len())
+            .unwrap_or(s.len());
+        s.replace_range(start..end, "");
+    }
+    for tag in ["<pasted_content", "</pasted_content"] {
+        while let Some(start) = s.find(tag) {
+            let end = s[start..]
+                .find('>')
+                .map(|e| start + e + 1)
+                .unwrap_or(s.len());
+            s.replace_range(start..end, "");
+        }
+    }
+    s.trim().to_string()
+}
+
+/// Past sessions for a project, newest first.
+pub fn list(project: &Path) -> Vec<PastSession> {
+    let dir = claude_home().join("projects").join(folder_name(project));
+    let Ok(rd) = std::fs::read_dir(&dir) else {
+        return vec![];
+    };
+    let mut out = vec![];
+    for e in rd.flatten() {
+        let path = e.path();
+        if path.extension().and_then(|x| x.to_str()) != Some("jsonl") {
+            continue;
+        }
+        let Some(id) = path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .map(str::to_string)
+        else {
+            continue;
+        };
+        let modified_unix = e
+            .metadata()
+            .and_then(|m| m.modified())
+            .ok()
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+        let Ok(text) = std::fs::read_to_string(&path) else {
+            continue;
+        };
+        let mut first = None;
+        let mut messages = 0;
+        for line in text.lines() {
+            let Ok(v) = serde_json::from_str::<Value>(line) else {
+                continue;
+            };
+            if let Some(t) = user_text(&v) {
+                messages += 1;
+                first.get_or_insert(t);
+            }
+        }
+        if let Some(first) = first {
+            out.push(PastSession {
+                id,
+                path,
+                first,
+                modified_unix,
+                messages,
+            });
+        }
+    }
+    out.sort_by_key(|s| std::cmp::Reverse(s.modified_unix));
+    out
+}
+
+/// Claude Code's own short title for a session ("ai-title" lines; the
+/// newest wins). Remembered per file, and a growing transcript is read only
+/// from where the last look stopped (at a whole line, so a line still being
+/// written is read next time, not lost).
+pub fn ai_title(path: &Path) -> Option<String> {
+    use std::collections::HashMap;
+    use std::io::{BufRead, Seek};
+    use std::sync::Mutex;
+    /// How far the file was read, and the title found up to there.
+    type Seen = HashMap<PathBuf, (u64, Option<String>)>;
+    static SEEN: Mutex<Option<Seen>> = Mutex::new(None);
+    let size = std::fs::metadata(path).ok()?.len();
+    let (mut from, mut title) = SEEN
+        .lock()
+        .ok()?
+        .get_or_insert_with(HashMap::new)
+        .get(path)
+        .cloned()
+        .unwrap_or((0, None));
+    if from == size {
+        return title;
+    }
+    if from > size {
+        // Written anew: read it all again.
+        (from, title) = (0, None);
+    }
+    let mut f = std::fs::File::open(path).ok()?;
+    f.seek(std::io::SeekFrom::Start(from)).ok()?;
+    let mut reader = std::io::BufReader::new(f);
+    let mut line = String::new();
+    loop {
+        line.clear();
+        match reader.read_line(&mut line) {
+            Ok(0) | Err(_) => break,
+            // Still being written: left for next time.
+            Ok(_) if !line.ends_with('\n') => break,
+            Ok(n) => {
+                from += n as u64;
+                if line.contains("\"ai-title\"")
+                    && let Ok(v) = serde_json::from_str::<Value>(&line)
+                    && let Some(t) = v.get("aiTitle").and_then(Value::as_str)
+                    && !crate::task::system_like(t)
+                {
+                    title = Some(t.trim().to_string());
+                }
+            }
+        }
+    }
+    if let Ok(mut g) = SEEN.lock() {
+        g.get_or_insert_with(HashMap::new)
+            .insert(path.to_path_buf(), (from, title.clone()));
+    }
+    title
+}
+
+/// A session from any project on this PC, for the "On this PC" list.
+#[derive(Debug, Clone, PartialEq)]
+pub struct OtherSession {
+    /// The folder it ran in.
+    pub project: PathBuf,
+    /// Claude Code's own short title, when it made one.
+    pub title: Option<String>,
+    pub session: PastSession,
+}
+
+/// How far into a transcript to look for its folder and first message.
+const HEAD_LINES: usize = 400;
+
+/// The folder (`cwd`) and first thing asked, from the start of a transcript.
+/// Remembered once found (the start of a transcript never changes), so a
+/// big, busy transcript is not opened again and a failed look later can't
+/// drop it from the list.
+fn head(path: &Path) -> Option<(PathBuf, String)> {
+    use std::collections::HashMap;
+    use std::sync::Mutex;
+    static FOUND: Mutex<Option<HashMap<PathBuf, (PathBuf, String)>>> = Mutex::new(None);
+    if let Some(found) = FOUND
+        .lock()
+        .ok()
+        .and_then(|mut g| g.get_or_insert_with(HashMap::new).get(path).cloned())
+    {
+        return Some(found);
+    }
+    let found = read_head(path)?;
+    if let Ok(mut g) = FOUND.lock() {
+        g.get_or_insert_with(HashMap::new)
+            .insert(path.to_path_buf(), found.clone());
+    }
+    Some(found)
+}
+
+fn read_head(path: &Path) -> Option<(PathBuf, String)> {
+    use std::io::BufRead;
+    let f = std::fs::File::open(path).ok()?;
+    let (mut cwd, mut first) = (None, None);
+    for line in std::io::BufReader::new(f).lines().take(HEAD_LINES) {
+        let Ok(line) = line else { break };
+        let Ok(v) = serde_json::from_str::<Value>(&line) else {
+            continue;
+        };
+        if cwd.is_none() {
+            cwd = v.get("cwd").and_then(Value::as_str).map(PathBuf::from);
+        }
+        if first.is_none() {
+            first = user_text(&v);
+        }
+        if cwd.is_some() && first.is_some() {
+            break;
+        }
+    }
+    Some((cwd?, first?))
+}
+
+/// The newest sessions from every project on this PC (terminal, desktop
+/// app, phone through Remote Control, and this window), newest first.
+/// Sessions in temporary folders or folders that are gone are left out.
+pub fn recent(limit: usize) -> Vec<OtherSession> {
+    recent_in(&claude_home().join("projects"), limit)
+}
+
+fn recent_in(root: &Path, limit: usize) -> Vec<OtherSession> {
+    let mut files: Vec<(i64, PathBuf)> = vec![];
+    for dir in std::fs::read_dir(root).into_iter().flatten().flatten() {
+        for e in std::fs::read_dir(dir.path())
+            .into_iter()
+            .flatten()
+            .flatten()
+        {
+            let path = e.path();
+            if path.extension().and_then(|x| x.to_str()) != Some("jsonl") {
+                continue;
+            }
+            let modified = e
+                .metadata()
+                .and_then(|m| m.modified())
+                .ok()
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|d| d.as_secs() as i64)
+                .unwrap_or(0);
+            files.push((modified, path));
+        }
+    }
+    files.sort_by_key(|(m, _)| std::cmp::Reverse(*m));
+    let mut out = vec![];
+    for (modified_unix, path) in files {
+        if out.len() >= limit {
+            break;
+        }
+        let Some(id) = path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .map(str::to_string)
+        else {
+            continue;
+        };
+        let Some((project, first)) = head(&path) else {
+            continue;
+        };
+        if project.starts_with("/tmp") || !project.is_dir() {
+            continue;
+        }
+        let title = ai_title(&path);
+        out.push(OtherSession {
+            project,
+            title,
+            session: PastSession {
+                id,
+                path,
+                first,
+                modified_unix,
+                messages: 0,
+            },
+        });
+    }
+    out
+}
+
+/// Whether a session was started by a project's Remote Control (from the
+/// Claude app on a phone, or claude.ai): Claude Code names those files with
+/// a name-based (version 5) id, and the owner's messages in them say which
+/// app they were typed in.
+pub fn from_remote(path: &Path) -> bool {
+    use std::io::BufRead;
+    let v5 = path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .is_some_and(|s| s.len() == 36 && s.as_bytes().get(14) == Some(&b'5'));
+    if v5 {
+        return true;
+    }
+    // Decided once the owner's first message is in (it says where it was
+    // typed), so a folder of busy transcripts isn't read again each look.
+    use std::collections::HashMap;
+    use std::sync::Mutex;
+    static DECIDED: Mutex<Option<HashMap<PathBuf, bool>>> = Mutex::new(None);
+    if let Some(known) = DECIDED
+        .lock()
+        .ok()
+        .and_then(|mut g| g.get_or_insert_with(HashMap::new).get(path).copied())
+    {
+        return known;
+    }
+    let Ok(f) = std::fs::File::open(path) else {
+        return false;
+    };
+    let (mut remote, mut decided) = (false, false);
+    for l in std::io::BufReader::new(f)
+        .lines()
+        .take(HEAD_LINES)
+        .map_while(Result::ok)
+    {
+        if l.contains("\"clientPlatform\":\"android\"")
+            || l.contains("\"clientPlatform\":\"ios\"")
+            || l.contains("\"clientPlatform\":\"web_claude_ai\"")
+        {
+            (remote, decided) = (true, true);
+            break;
+        }
+        if l.contains("\"type\":\"user\"") {
+            decided = true;
+        }
+    }
+    if decided && let Ok(mut g) = DECIDED.lock() {
+        g.get_or_insert_with(HashMap::new)
+            .insert(path.to_path_buf(), remote);
+    }
+    remote
+}
+
+/// Sessions in a project's folder that a Remote Control started, changed
+/// at or after `since` (seconds since 1970).
+pub fn remote_started(project: &Path, since: i64) -> Vec<PastSession> {
+    let dir = claude_home().join("projects").join(folder_name(project));
+    let mut out = vec![];
+    for e in std::fs::read_dir(&dir).into_iter().flatten().flatten() {
+        let path = e.path();
+        if path.extension().and_then(|x| x.to_str()) != Some("jsonl") {
+            continue;
+        }
+        let modified_unix = e
+            .metadata()
+            .and_then(|m| m.modified())
+            .ok()
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+        if modified_unix < since || !from_remote(&path) {
+            continue;
+        }
+        let Some(id) = path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .map(str::to_string)
+        else {
+            continue;
+        };
+        let first = head(&path).map(|(_, f)| f).unwrap_or_default();
+        out.push(PastSession {
+            id,
+            path,
+            first,
+            modified_unix,
+            messages: 0,
+        });
+    }
+    out
+}
+
+/// Session ids a Claude Code process on this PC was started with
+/// (`--resume <id>`, `--session-id <id>`): those conversations are going on
+/// right now, wherever they are typed in.
+pub fn running_sessions() -> std::collections::HashSet<String> {
+    let mut out = std::collections::HashSet::new();
+    // Inside a Flatpak the PC's processes come from its own `ps`.
+    if let Some(list) = crate::flatpak::host_processes() {
+        for (_, args) in list {
+            let args: Vec<&[u8]> = args.iter().map(|a| a.as_bytes()).collect();
+            session_ids_in(&args, &mut out);
+        }
+        return out;
+    }
+    for e in std::fs::read_dir("/proc").into_iter().flatten().flatten() {
+        let name = e.file_name();
+        if !name.to_string_lossy().bytes().all(|b| b.is_ascii_digit()) {
+            continue;
+        }
+        let Ok(raw) = std::fs::read(e.path().join("cmdline")) else {
+            continue;
+        };
+        let args: Vec<&[u8]> = raw.split(|b| *b == 0).collect();
+        session_ids_in(&args, &mut out);
+    }
+    out
+}
+
+/// The session ids one process's command line names, if it is a Claude Code
+/// on a conversation.
+fn session_ids_in(args: &[&[u8]], out: &mut std::collections::HashSet<String>) {
+    // A Remote Control kept running for the phone sits idle: not activity.
+    if args
+        .iter()
+        .any(|a| *a == b"--remote-control" || *a == b"remote-control")
+    {
+        return;
+    }
+    if !args
+        .first()
+        .is_some_and(|a| a.windows(6).any(|w| w == b"claude"))
+    {
+        return;
+    }
+    for w in args.windows(2) {
+        if (w[0] == b"--resume" || w[0] == b"-r" || w[0] == b"--session-id")
+            && w[1].len() == 36
+            && let Ok(id) = std::str::from_utf8(w[1])
+        {
+            out.insert(id.to_string());
+        }
+    }
+}
+
+/// When the conversation in a transcript last moved: the time of its
+/// newest message, tool use or tool result (seconds since 1970). Bookkeeping
+/// lines (Remote Control's status, ledgers, summaries, titles) don't count:
+/// Claude Code writes those into idle sessions when it starts. Only the
+/// file's tail is read, and only again when the file changed.
+pub fn last_talk(path: &Path) -> Option<i64> {
+    use std::collections::HashMap;
+    use std::io::{Read, Seek};
+    use std::sync::Mutex;
+    type Seen = HashMap<PathBuf, (u64, Option<i64>)>;
+    static SEEN: Mutex<Option<Seen>> = Mutex::new(None);
+    const TAIL: u64 = 512 * 1024;
+    let size = std::fs::metadata(path).ok()?.len();
+    if let Some((s, t)) = SEEN.lock().ok()?.get_or_insert_with(HashMap::new).get(path)
+        && *s == size
+    {
+        return *t;
+    }
+    let mut f = std::fs::File::open(path).ok()?;
+    let start = size.saturating_sub(TAIL);
+    f.seek(std::io::SeekFrom::Start(start)).ok()?;
+    let mut buf = Vec::new();
+    f.take(TAIL).read_to_end(&mut buf).ok()?;
+    let text = String::from_utf8_lossy(&buf);
+    let found = text
+        .lines()
+        .rev()
+        .filter(|l| l.contains("\"type\":\"user\"") || l.contains("\"type\":\"assistant\""))
+        .filter_map(|l| serde_json::from_str::<Value>(l).ok())
+        .filter(|v| {
+            matches!(
+                v.get("type").and_then(Value::as_str),
+                Some("user") | Some("assistant")
+            ) && v.get("isMeta").and_then(Value::as_bool) != Some(true)
+        })
+        .find_map(|v| {
+            v.get("timestamp")
+                .and_then(Value::as_str)
+                .and_then(iso_unix)
+        });
+    if let Ok(mut g) = SEEN.lock() {
+        g.get_or_insert_with(HashMap::new)
+            .insert(path.to_path_buf(), (size, found));
+    }
+    found
+}
+
+/// "2026-11-18T12:01:00.000Z" as seconds since 1970 (UTC).
+fn iso_unix(s: &str) -> Option<i64> {
+    let b = s.as_bytes();
+    if b.len() < 19 || b[4] != b'-' || b[10] != b'T' {
+        return None;
+    }
+    let n = |r: std::ops::Range<usize>| s.get(r)?.parse::<i64>().ok();
+    let (y, m, d) = (n(0..4)?, n(5..7)?, n(8..10)?);
+    let (hh, mm, ss) = (n(11..13)?, n(14..16)?, n(17..19)?);
+    // Days from the civil date (Howard Hinnant's method).
+    let y = if m <= 2 { y - 1 } else { y };
+    let era = y.div_euclid(400);
+    let yoe = y - era * 400;
+    let mp = (m + 9) % 12;
+    let doy = (153 * mp + 2) / 5 + d - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    let days = era * 146_097 + doe - 719_468;
+    Some(days * 86_400 + hh * 3600 + mm * 60 + ss)
+}
+
+/// The first thing asked in a transcript.
+pub fn first_ask(path: &Path) -> Option<String> {
+    head(path).map(|(_, f)| f).filter(|f| !f.trim().is_empty())
+}
+
+/// One transcript line added to a task, as the conversation shows it.
+fn add_line(t: &mut Task, line: &str) {
+    let Ok(v) = serde_json::from_str::<Value>(line) else {
+        return;
+    };
+    if v.get("isSidechain").and_then(Value::as_bool) == Some(true) {
+        return;
+    }
+    if let Some(you) = user_text(&v) {
+        t.add_you(&you);
+        return;
+    }
+    for ev in parse_line(line) {
+        t.apply(&ev, 0);
+    }
+}
+
+/// The most entries a followed session keeps in memory (the tail the
+/// window shows).
+pub const FOLLOW_TAIL: usize = 200;
+
+/// A transcript line without its pictures: the base64 data of an image
+/// block is emptied (a pasted screenshot is megabytes the window never
+/// shows from a followed session).
+pub fn without_images(line: &str) -> std::borrow::Cow<'_, str> {
+    if !line.contains("\"base64\"") {
+        return line.into();
+    }
+    fn strip(v: &mut Value) {
+        match v {
+            Value::Object(m) => {
+                if m.get("type").and_then(Value::as_str) == Some("base64")
+                    && let Some(d) = m.get_mut("data")
+                {
+                    *d = Value::String(String::new());
+                }
+                m.values_mut().for_each(strip);
+            }
+            Value::Array(a) => a.iter_mut().for_each(strip),
+            _ => {}
+        }
+    }
+    match serde_json::from_str::<Value>(line) {
+        Ok(mut v) => {
+            strip(&mut v);
+            v.to_string().into()
+        }
+        Err(_) => line.into(),
+    }
+}
+
+/// Keeps only the last [`FOLLOW_TAIL`] entries of a followed session. It
+/// cuts in steps of [`FOLLOW_STEP`], so the window's list shifts only once
+/// in a while, and counts what it dropped (`entries_dropped`).
+pub fn keep_tail(t: &mut Task) {
+    if t.entries.len() > FOLLOW_TAIL + FOLLOW_STEP {
+        let cut = t.entries.len() - FOLLOW_TAIL;
+        t.entries.drain(..cut);
+        t.entries_dropped += cut;
+    }
+}
+
+/// How far past the tail a followed session may grow before it is cut.
+pub const FOLLOW_STEP: usize = 100;
+
+/// Adds what a transcript gained since byte `from` to a task followed live
+/// (whole lines only: one still being written waits for the next look).
+/// Where the next look starts.
+pub fn follow(t: &mut Task, path: &Path, from: u64) -> std::io::Result<u64> {
+    use std::io::{BufRead, Seek};
+    let mut f = std::fs::File::open(path)?;
+    f.seek(std::io::SeekFrom::Start(from))?;
+    let mut reader = std::io::BufReader::new(f);
+    let (mut at, mut line) = (from, String::new());
+    loop {
+        line.clear();
+        match reader.read_line(&mut line)? {
+            0 => break,
+            _ if !line.ends_with('\n') => break,
+            n => {
+                at += n as u64;
+                add_line(t, &without_images(line.trim_end()));
+            }
+        }
+    }
+    Ok(at)
+}
+
+/// The owner's own words in a session (each message, joined, up to `max`
+/// characters) and how many messages they sent.
+pub fn owner_text(path: &Path, max: usize) -> (String, usize) {
+    use std::io::BufRead;
+    let Ok(f) = std::fs::File::open(path) else {
+        return (String::new(), 0);
+    };
+    let (mut text, mut n) = (String::new(), 0);
+    for line in std::io::BufReader::new(f).lines().map_while(Result::ok) {
+        let Ok(v) = serde_json::from_str::<Value>(&line) else {
+            continue;
+        };
+        if let Some(t) = user_text(&v) {
+            n += 1;
+            if text.chars().count() < max {
+                if !text.is_empty() {
+                    text.push('\n');
+                }
+                text.extend(t.chars().take(max - text.chars().count().min(max)));
+            }
+        }
+    }
+    (text, n)
+}
+
+/// Whether a Claude Code somewhere is still on a session: a `claude` runs
+/// with it (its id on the command line), or runs in its folder that Claude
+/// Station didn't start for another conversation (a terminal's `claude` or
+/// `claude --continue`), or (with `by_time`) its history changed in the
+/// last 10 minutes. Such a session is left where it is until it stops.
+pub fn in_use(path: &Path, session: &str, folder: Option<&Path>, by_time: bool) -> bool {
+    let recent = by_time
+        && std::fs::metadata(path)
+            .and_then(|m| m.modified())
+            .ok()
+            .and_then(|t| t.elapsed().ok())
+            .is_some_and(|age| age.as_secs() < 600);
+    if recent {
+        return true;
+    }
+    let folder = folder.map(|f| std::fs::canonicalize(f).unwrap_or_else(|_| f.to_path_buf()));
+    // One process's words and folder: is it a Claude Code on this session?
+    let on_it = |args: &[String], cwd: &dyn Fn() -> Option<PathBuf>| -> bool {
+        // Mímir's own runs (they carry its approvals hook) are
+        // known to it already.
+        if args.iter().any(|a| a.contains("hook --task")) || !is_claude_code(args) {
+            return false;
+        }
+        args.iter().any(|a| a.contains(session))
+            || folder
+                .as_ref()
+                .is_some_and(|folder| cwd().is_some_and(|c| &c == folder))
+    };
+    // Inside a Flatpak the PC's processes come from its own `ps`.
+    if let Some(list) = crate::flatpak::host_processes() {
+        return list
+            .iter()
+            .any(|(pid, args)| on_it(args, &|| crate::flatpak::host_cwd(*pid)));
+    }
+    let me = std::process::id().to_string();
+    std::fs::read_dir("/proc")
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter(|e| {
+            let n = e.file_name().to_string_lossy().to_string();
+            n.bytes().all(|b| b.is_ascii_digit()) && n != me
+        })
+        .any(|e| {
+            let Ok(raw) = std::fs::read(e.path().join("cmdline")) else {
+                return false;
+            };
+            let args: Vec<String> = raw
+                .split(|b| *b == 0)
+                .map(|a| String::from_utf8_lossy(a).to_string())
+                .collect();
+            on_it(&args, &|| std::fs::read_link(e.path().join("cwd")).ok())
+        })
+}
+
+/// A Claude Code process (by its program's name).
+fn is_claude_code(args: &[String]) -> bool {
+    let base = |a: &String| {
+        Path::new(a)
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_default()
+    };
+    args.iter()
+        .take(2)
+        .any(|a| base(a) == "claude" || a.ends_with("claude-code/cli.js"))
+}
+
+/// A session file as an earlier session, ready to open as a task.
+pub fn past(path: &Path) -> Option<PastSession> {
+    let id = path.file_stem()?.to_str()?.to_string();
+    let (_, first) = head(path)?;
+    let modified_unix = std::fs::metadata(path)
+        .and_then(|m| m.modified())
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map_or(0, |d| d.as_secs() as i64);
+    Some(PastSession {
+        id,
+        path: path.to_path_buf(),
+        first,
+        modified_unix,
+        messages: 0,
+    })
+}
+
+/// Where Claude Code keeps a session of a project.
+pub fn session_file(project: &Path, session: &str) -> PathBuf {
+    claude_home()
+        .join("projects")
+        .join(folder_name(project))
+        .join(format!("{session}.jsonl"))
+}
+
+/// Finds a session's history wherever Claude Code keeps it (it names the
+/// folder after the resolved path and shortens long ones, so the folder is
+/// looked for, not worked out).
+pub fn find_session(session: &str) -> Option<PathBuf> {
+    find_in(&claude_home(), session)
+}
+
+fn find_in(home: &Path, session: &str) -> Option<PathBuf> {
+    std::fs::read_dir(home.join("projects"))
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|d| d.path().join(format!("{session}.jsonl")))
+        .find(|p| p.is_file())
+}
+
+/// The folder Claude Code keeps a project's sessions in: the one named
+/// after its resolved path if there, else one holding a session started
+/// there, else that name. A path too long for the name (Claude Code
+/// shortens those its own way) is refused rather than guessed.
+fn history_folder(home: &Path, project: &Path) -> std::io::Result<PathBuf> {
+    let real = std::fs::canonicalize(project).unwrap_or_else(|_| project.to_path_buf());
+    let named = home.join("projects").join(folder_name(&real));
+    if named.is_dir() {
+        return Ok(named);
+    }
+    for d in std::fs::read_dir(home.join("projects"))
+        .into_iter()
+        .flatten()
+        .flatten()
+    {
+        let found = std::fs::read_dir(d.path())
+            .into_iter()
+            .flatten()
+            .flatten()
+            .filter(|f| f.path().extension().is_some_and(|x| x == "jsonl"))
+            .take(3)
+            .any(|f| read_head(&f.path()).is_some_and(|(cwd, _)| cwd == real || cwd == project));
+        if found {
+            return Ok(d.path());
+        }
+    }
+    if folder_name(&real).len() > 200 {
+        return Err(std::io::Error::other(
+            "that folder's path is too long to carry a conversation into",
+        ));
+    }
+    Ok(named)
+}
+
+/// Moves a session's history (its `.jsonl` and the folder of the same name
+/// beside it, which holds its sub-agents and long results) to where Claude
+/// Code keeps `to`'s sessions, so `--resume` finds it when Claude Code runs
+/// there; returns its new place. Moved, not copied, and all or nothing: if
+/// the folder beside it can't move, the history goes back and no part-made
+/// copy stays. Not finding the history is an error.
+pub fn move_session(session: &str, from: &Path, to: &Path) -> std::io::Result<PathBuf> {
+    move_session_in(&claude_home(), session, from, to)
+}
+
+/// The session's history: in `from`'s place first, else wherever it is.
+fn locate(home: &Path, session: &str, from: &Path) -> Option<PathBuf> {
+    history_folder(home, from)
+        .ok()
+        .map(|d| d.join(format!("{session}.jsonl")))
+        .filter(|p| p.is_file())
+        .or_else(|| find_in(home, session))
+}
+
+fn move_session_in(home: &Path, session: &str, from: &Path, to: &Path) -> std::io::Result<PathBuf> {
+    let src = locate(home, session, from).ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "The history of this conversation wasn't found",
+        )
+    })?;
+    let dir = history_folder(home, to)?;
+    let dst = dir.join(format!("{session}.jsonl"));
+    if src == dst {
+        return Ok(dst);
+    }
+    let (side, dst_side) = (src.with_extension(""), dst.with_extension(""));
+    if dst.exists() || dst_side.exists() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::AlreadyExists,
+            "that project already has this conversation",
+        ));
+    }
+    std::fs::create_dir_all(&dir)?;
+    move_path(&src, &dst)?;
+    if side.is_dir()
+        && let Err(e) = move_path(&side, &dst_side)
+    {
+        if side.is_dir() {
+            let _ = std::fs::remove_dir_all(&dst_side);
+        } else {
+            let _ = move_path(&dst_side, &side);
+        }
+        move_path(&dst, &src)?;
+        return Err(e);
+    }
+    Ok(dst)
+}
+
+/// Whether a session could move to `to` now: its history is found and the
+/// project hasn't got it already.
+pub fn can_move(session: &str, from: &Path, to: &Path) -> Result<(), String> {
+    let home = claude_home();
+    let src =
+        locate(&home, session, from).ok_or("The history of this conversation wasn't found.")?;
+    let dir = history_folder(&home, to).map_err(|e| format!("{e}."))?;
+    let dst = dir.join(format!("{session}.jsonl"));
+    if src != dst && (dst.exists() || dst.with_extension("").exists()) {
+        return Err("That project already has this conversation.".into());
+    }
+    Ok(())
+}
+
+/// Renames, or copies and then removes the original when a rename can't
+/// cross disks.
+fn move_path(src: &Path, dst: &Path) -> std::io::Result<()> {
+    if std::fs::rename(src, dst).is_ok() {
+        return Ok(());
+    }
+    copy_all(src, dst)?;
+    if src.is_dir() {
+        std::fs::remove_dir_all(src)
+    } else {
+        // The copy is whole before the original goes.
+        if std::fs::metadata(dst)?.len() != std::fs::metadata(src)?.len() {
+            return Err(std::io::Error::other("the copy came out short"));
+        }
+        std::fs::remove_file(src)
+    }
+}
+
+fn copy_all(src: &Path, dst: &Path) -> std::io::Result<()> {
+    if src.is_dir() {
+        std::fs::create_dir_all(dst)?;
+        for e in std::fs::read_dir(src)? {
+            let e = e?;
+            copy_all(&e.path(), &dst.join(e.file_name()))?;
+        }
+        Ok(())
+    } else {
+        std::fs::copy(src, dst).map(|_| ())
+    }
+}
+
+/// Rebuilds a past session as a task, ready to continue.
+pub fn to_task(s: &PastSession, project: &Path, task_id: String) -> std::io::Result<Task> {
+    let text = std::fs::read_to_string(&s.path)?;
+    let title = ai_title(&s.path)
+        .or_else(|| {
+            (!crate::task::system_like(&s.first)).then(|| crate::runner::title_from(&s.first))
+        })
+        .unwrap_or_default();
+    let mut t = Task::new(
+        task_id,
+        title,
+        project.display().to_string(),
+        s.modified_unix,
+    );
+    for line in text.lines() {
+        add_line(&mut t, &without_images(line));
+    }
+    if let Some(real) = t.real_title() {
+        t.title = real;
+    }
+    // Steps never got an end time from a transcript; one with no result
+    // at all was cut short.
+    t.close_open_steps(0);
+    for e in &mut t.entries {
+        if let crate::task::Entry::Step(st) = e {
+            st.took_ms = None;
+        }
+    }
+    t.session_id = Some(s.id.clone());
+    t.status = Status::Done;
+    t.add_note("Opened from an earlier session. Send a message to carry on.");
+    Ok(t)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_followed_session_keeps_the_tail_and_no_picture_data() {
+        let big = "A".repeat(100_000);
+        let line = format!(
+            r#"{{"type":"user","message":{{"role":"user","content":[{{"type":"image","source":{{"type":"base64","media_type":"image/png","data":"{big}"}}}},{{"type":"text","text":"look"}}]}}}}"#
+        );
+        let stripped = without_images(&line);
+        assert!(stripped.len() < 1000, "{}", stripped.len());
+        assert!(stripped.contains("look"));
+        // A line without pictures is left as it is.
+        assert!(matches!(
+            without_images(r#"{"type":"user"}"#),
+            std::borrow::Cow::Borrowed(_)
+        ));
+        let mut t = Task::new("t".into(), "t".into(), "/p".into(), 0);
+        for i in 0..(FOLLOW_TAIL + 50) {
+            t.add_you(&format!("message {i}"));
+        }
+        keep_tail(&mut t);
+        // Not cut yet: it may grow a step past the tail.
+        assert_eq!(t.entries.len(), FOLLOW_TAIL + 50);
+        for i in 250..(FOLLOW_TAIL + FOLLOW_STEP + 5) {
+            t.add_you(&format!("message {i}"));
+        }
+        keep_tail(&mut t);
+        assert_eq!(t.entries.len(), FOLLOW_TAIL);
+        assert_eq!(t.entries_dropped, 105);
+        assert!(format!("{:?}", t.entries.last().unwrap()).contains("message 304"));
+        // A question's place counts what was dropped: it never repeats.
+        let before = t.entries_dropped + t.entries.len();
+        t.add_you("one more");
+        assert!(t.entries_dropped + t.entries.len() > before);
+    }
+
+    /// Moving a conversation to another project takes its history and the
+    /// folder beside it, leaves nothing behind, never overwrites, and says
+    /// so when there is nothing to move.
+    #[test]
+    fn a_moved_session_is_found_under_its_new_project() {
+        let home = std::env::temp_dir().join(format!("station-move-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&home);
+        let (a, b) = (Path::new("/p/Old place"), Path::new("/p/New-place"));
+        let old = home.join("projects").join(folder_name(a));
+        std::fs::create_dir_all(old.join("s1/subagents")).unwrap();
+        std::fs::write(old.join("s1.jsonl"), "{}\n").unwrap();
+        std::fs::write(old.join("s1/subagents/x.jsonl"), "{}\n").unwrap();
+        let at = move_session_in(&home, "s1", a, b).unwrap();
+        let new = home.join("projects").join(folder_name(b));
+        assert_eq!(at, new.join("s1.jsonl"));
+        assert_eq!(
+            std::fs::read_to_string(new.join("s1.jsonl")).unwrap(),
+            "{}\n"
+        );
+        assert!(new.join("s1/subagents/x.jsonl").exists());
+        assert!(!old.join("s1.jsonl").exists() && !old.join("s1").exists());
+        // Found wherever it is, whatever its folder is called.
+        let odd = home.join("projects").join("-some-shortened-name-1a2b");
+        std::fs::create_dir_all(&odd).unwrap();
+        std::fs::write(odd.join("s2.jsonl"), "{}\n").unwrap();
+        move_session_in(&home, "s2", a, b).unwrap();
+        assert!(new.join("s2.jsonl").exists() && !odd.join("s2.jsonl").exists());
+        // Nothing to move is an error; so is a clash, which changes nothing.
+        assert!(move_session_in(&home, "none", a, b).is_err());
+        std::fs::write(old.join("s1.jsonl"), "other\n").unwrap();
+        std::fs::remove_file(new.join("s1.jsonl")).unwrap();
+        assert!(
+            move_session_in(&home, "s1", a, b).is_err(),
+            "its side folder is there"
+        );
+        assert_eq!(
+            std::fs::read_to_string(old.join("s1.jsonl")).unwrap(),
+            "other\n"
+        );
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    /// A folder beside the history that can't move puts the history back,
+    /// and leaves no part-made copy.
+    #[test]
+    fn a_half_move_is_undone() {
+        use std::os::unix::fs::PermissionsExt;
+        let home = std::env::temp_dir().join(format!("station-half-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&home);
+        let (a, b) = (Path::new("/p/A"), Path::new("/p/B"));
+        let old = home.join("projects").join(folder_name(a));
+        std::fs::create_dir_all(old.join("s1")).unwrap();
+        std::fs::write(old.join("s1.jsonl"), "{}\n").unwrap();
+        std::fs::write(old.join("s1/x"), "x").unwrap();
+        // A read-only folder can't be moved to another folder or emptied.
+        std::fs::set_permissions(old.join("s1"), std::fs::Permissions::from_mode(0o500)).unwrap();
+        let r = move_session_in(&home, "s1", a, b);
+        std::fs::set_permissions(old.join("s1"), std::fs::Permissions::from_mode(0o700)).unwrap();
+        let new = home.join("projects").join(folder_name(b));
+        assert!(r.is_err());
+        assert!(old.join("s1.jsonl").exists() && old.join("s1/x").exists());
+        assert!(!new.join("s1.jsonl").exists() && !new.join("s1").exists());
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn a_growing_transcript_keeps_its_title() {
+        use std::io::Write;
+        let dir = std::env::temp_dir().join(format!("station-title-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("s.jsonl");
+        let line = |t: &str| format!("{{\"type\":\"ai-title\",\"aiTitle\":\"{t}\"}}\n");
+        std::fs::write(&path, line("First")).unwrap();
+        assert_eq!(ai_title(&path).as_deref(), Some("First"));
+        let mut f = std::fs::OpenOptions::new()
+            .append(true)
+            .open(&path)
+            .unwrap();
+        let next = line("Second");
+        let (a, b) = next.split_at(20);
+        f.write_all(a.as_bytes()).unwrap();
+        // Half a line: the title so far stands.
+        assert_eq!(ai_title(&path).as_deref(), Some("First"));
+        f.write_all(b.as_bytes()).unwrap();
+        assert_eq!(ai_title(&path).as_deref(), Some("Second"));
+        // Written anew, shorter: read again from the start.
+        std::fs::write(&path, line("New")).unwrap();
+        assert_eq!(ai_title(&path).as_deref(), Some("New"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// On this PC's real transcripts (read only), with `SESSIONS_REAL=1`:
+    /// every look lists the same sessions while they are being written.
+    #[test]
+    #[ignore = "reads this PC's own transcripts"]
+    fn real_sessions_stay_listed() {
+        if std::env::var_os("SESSIONS_REAL").is_none() {
+            return;
+        }
+        let first: Vec<String> = recent(40).into_iter().map(|o| o.session.id).collect();
+        assert!(!first.is_empty());
+        for _ in 0..30 {
+            std::thread::sleep(std::time::Duration::from_millis(500));
+            let now: Vec<String> = recent(40).into_iter().map(|o| o.session.id).collect();
+            for id in first.iter().take(10) {
+                assert!(now.contains(id), "session {id} dropped out of the list");
+            }
+        }
+        eprintln!("{} sessions stayed listed over 15 s", first.len());
+    }
+
+    #[test]
+    fn iso_times_are_read() {
+        assert_eq!(iso_unix("1970-01-01T00:00:00.000Z"), Some(0));
+        assert_eq!(iso_unix("2026-11-18T12:01:00.000Z"), Some(1_795_003_260));
+        assert_eq!(iso_unix("nonsense"), None);
+    }
+
+    /// Bookkeeping Claude Code writes into an idle session doesn't make it
+    /// look busy: only messages and tool results count.
+    #[test]
+    fn bookkeeping_lines_are_not_talk() {
+        let dir = std::env::temp_dir().join(format!("station-talk-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("s.jsonl");
+        std::fs::write(
+            &path,
+            concat!(
+                r#"{"type":"user","message":{"role":"user","content":"hi"},"timestamp":"2026-11-18T12:00:00.000Z"}"#,
+                "\n",
+                r#"{"type":"assistant","message":{"role":"assistant","content":[]},"timestamp":"2026-11-18T12:01:00.000Z"}"#,
+                "\n",
+                r#"{"type":"system","subtype":"bridge_status","timestamp":"2026-11-19T13:35:00.000Z"}"#,
+                "\n",
+                r#"{"type":"artifact-autoreact-ledger","timestamp":"2026-11-19T13:35:01.000Z"}"#,
+                "\n",
+                r#"{"type":"user","isMeta":true,"message":{"role":"user","content":"x"},"timestamp":"2026-11-19T13:35:02.000Z"}"#,
+                "\n",
+            ),
+        )
+        .unwrap();
+        assert_eq!(last_talk(&path), Some(1_795_003_260));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn folder_names_match_claude_code() {
+        assert_eq!(
+            folder_name(Path::new("/home/user/Projects/mimir")),
+            "-home-user-Projects-mimir"
+        );
+        assert_eq!(folder_name(Path::new("/tmp/a.b_c")), "-tmp-a-b-c");
+    }
+
+    #[test]
+    fn a_transcript_becomes_a_task() {
+        let dir = std::env::temp_dir().join(format!("station-sess-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let project = Path::new("/work/proj");
+        let folder = dir.join("projects").join(folder_name(project));
+        std::fs::create_dir_all(&folder).unwrap();
+        let lines = [
+            r#"{"type":"session-owner","sessionId":"s1"}"#,
+            r#"{"type":"user","isSidechain":false,"message":{"role":"user","content":"Fix the build"}}"#,
+            r#"{"type":"user","isMeta":true,"message":{"role":"user","content":"Caveat: ignore"}}"#,
+            r#"{"type":"assistant","isSidechain":false,"message":{"content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"cargo build","description":"Build"}}]}}"#,
+            r#"{"type":"user","isSidechain":false,"message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":"ok"}]},"tool_use_result":{"stdout":"ok"}}"#,
+            r#"{"type":"assistant","isSidechain":true,"message":{"content":[{"type":"text","text":"helper chatter"}]}}"#,
+            r#"{"type":"assistant","isSidechain":false,"message":{"content":[{"type":"text","text":"Built fine."}]}}"#,
+        ];
+        std::fs::write(folder.join("s1.jsonl"), lines.join("\n")).unwrap();
+        // SAFETY: tests in this module do not read the variable concurrently.
+        unsafe { std::env::set_var("CLAUDE_CONFIG_DIR", &dir) };
+        let found = list(project);
+        unsafe { std::env::remove_var("CLAUDE_CONFIG_DIR") };
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].first, "Fix the build");
+        assert_eq!(found[0].messages, 1);
+        let t = to_task(&found[0], project, "x".into()).unwrap();
+        assert_eq!(t.session_id.as_deref(), Some("s1"));
+        assert_eq!(t.title, "Fix the build");
+        let shown: Vec<String> = t.entries.iter().map(|e| format!("{e:?}")).collect();
+        assert!(shown[0].contains("Fix the build"));
+        assert!(
+            shown
+                .iter()
+                .any(|e| e.contains("Build") && e.contains("Step"))
+        );
+        assert!(shown.iter().any(|e| e.contains("Built fine.")));
+        assert!(!shown.iter().any(|e| e.contains("helper chatter")));
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn hidden_wrappers_are_removed() {
+        assert_eq!(
+            clean_text("<system-reminder>tz</system-reminder>\nfix it"),
+            "fix it"
+        );
+        assert_eq!(
+            clean_text("<pasted_content id=\"cb13\">\nYou are the lead\n</pasted_content>"),
+            "You are the lead"
+        );
+        assert_eq!(clean_text("<system-reminder>only"), "");
+    }
+
+    #[test]
+    fn recent_sessions_from_every_project() {
+        let root = std::env::temp_dir().join(format!("station-recent-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let home = std::env::var("HOME").unwrap();
+        let real = PathBuf::from(&home);
+        for (folder, id, cwd, text) in [
+            ("-home-a", "s1", home.as_str(), "fix the bug"),
+            ("-home-b", "s2", home.as_str(), "plan a trip"),
+            ("-tmp-x", "s3", "/tmp/x", "scratch"),
+            ("-gone", "s4", "/no/such/folder", "old"),
+        ] {
+            let d = root.join(folder);
+            std::fs::create_dir_all(&d).unwrap();
+            let lines = format!(
+                "{{\"type\":\"summary\"}}\n{{\"type\":\"user\",\"cwd\":\"{cwd}\",\"message\":{{\"role\":\"user\",\"content\":\"{text}\"}}}}\n"
+            );
+            std::fs::write(d.join(format!("{id}.jsonl")), lines).unwrap();
+            std::thread::sleep(std::time::Duration::from_millis(1100));
+        }
+        let got = recent_in(&root, 10);
+        let firsts: Vec<&str> = got.iter().map(|o| o.session.first.as_str()).collect();
+        assert_eq!(firsts, ["plan a trip", "fix the bug"]);
+        assert_eq!(got[0].project, real);
+        assert_eq!(recent_in(&root, 1).len(), 1);
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+}

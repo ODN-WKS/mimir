@@ -1,0 +1,46 @@
+[package]
+name = "mimir-ui"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+name = "station_ui"
+path = "src/lib.rs"
+
+[[bin]]
+name = "mimir"
+path = "src/main.rs"
+
+[dependencies]
+mimir-core = { path = "../core" }
+eframe = "0.37"
+egui_commonmark = { version = "0.26", default-features = false, features = ["pulldown_cmark"] }
+sysinfo = { version = "0.40", default-features = false, features = ["system"] }
+serde.workspace = true
+serde_json.workspace = true
+# Lets the window read pictures from the clipboard (Ctrl+V), also on
+# Wayland; pasted pictures are saved as PNG.
+arboard = { version = "3.7", default-features = false, features = ["image-data", "wayland-data-control"] }
+image = { version = "0.25", default-features = false, features = ["png"] }
+# The Whisper eye, drawn from its SVG (glow included) at the exact pixel size.
+resvg = { version = "0.45", default-features = false }
+# The phone pairing code, drawn as a QR picture.
+qrcode = { version = "0.14", default-features = false }
+
+
+[dev-dependencies]
+# Checks the bundled fonts have the glyphs we need.
+ab_glyph = "0.2"
+# Drives the real window in the window checks (tests/window_*.rs).
+egui_kittest = { version = "0.37", features = ["eframe"] }
+# Signs the made-up 0.16 release the update check installs.
+ed25519-dalek.workspace = true
+# Stops the service a check started (SIGTERM).
+libc.workspace = true
+# Names a task's approvals socket in the service checks.
+sha2.workspace = true
+# The fake phone in the phone link checks.
+mimir-link = { path = "../link" }
+# Decodes the audio files in the updates checks.
+base64 = "0.22"

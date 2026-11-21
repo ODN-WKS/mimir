@@ -1,0 +1,210 @@
+package io.github.odnwks.mimir.ui
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.LinkAnnotation
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLinkStyles
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.withLink
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.dp
+import io.github.odnwks.mimir.ui.theme.Palette
+
+/**
+ * The Markdown models write (bold, italics, lists, code, headings, links, quotes), shown as such
+ * instead of with its marks. Read aloud and Copy use [markdownPlain], the words without the marks.
+ */
+object Markdown {
+    /** What a [text](https://…) link does: opens through the system, opens in the app's own browser, or is only text (a Whisper). */
+    sealed interface Links {
+        data object System : Links
+        data object Plain : Links
+        class InApp(val open: (String) -> Unit) : Links
+    }
+
+    sealed interface Block {
+        data class Para(val text: String) : Block
+        data class Heading(val level: Int, val text: String) : Block
+        /** One list item; [number] is null for a bullet. */
+        data class Item(val number: String?, val depth: Int, val text: String) : Block
+        data class Quote(val text: String) : Block
+        data class Code(val text: String) : Block
+        data object Rule : Block
+    }
+
+    private val heading = Regex("^(#{1,6})\\s+(.*?)\\s*#*\\s*$")
+    private val bullet = Regex("^(\\s*)[-*+]\\s+(.*)$")
+    private val numbered = Regex("^(\\s*)(\\d{1,3})[.)]\\s+(.*)$")
+    private val rule = Regex("^\\s*([-*_])(\\s*\\1){2,}\\s*$")
+
+    /** The text's blocks, in order. An unclosed code fence (a reply still arriving) runs to the end. */
+    fun blocks(md: String): List<Block> {
+        val out = mutableListOf<Block>()
+        val para = StringBuilder()
+        fun flush() { if (para.isNotBlank()) out += Block.Para(para.toString().trim()); para.clear() }
+        val lines = md.replace("\r\n", "\n").split('\n')
+        var i = 0
+        while (i < lines.size) {
+            val line = lines[i]
+            val t = line.trim()
+            when {
+                t.startsWith("```") -> {
+                    flush()
+                    val code = StringBuilder()
+                    i++
+                    while (i < lines.size && !lines[i].trim().startsWith("```")) { if (code.isNotEmpty()) code.append('\n'); code.append(lines[i]); i++ }
+                    out += Block.Code(code.toString())
+                }
+                t.isEmpty() -> flush()
+                rule.matches(line) && para.isEmpty() -> { flush(); out += Block.Rule }
+                heading.matches(t) -> { flush(); heading.find(t)!!.let { out += Block.Heading(it.groupValues[1].length, it.groupValues[2]) } }
+                bullet.matches(line) -> { flush(); bullet.find(line)!!.let { out += Block.Item(null, it.groupValues[1].length / 2, it.groupValues[2]) } }
+                numbered.matches(line) -> { flush(); numbered.find(line)!!.let { out += Block.Item(it.groupValues[2], it.groupValues[1].length / 2, it.groupValues[3]) } }
+                t.startsWith(">") -> { flush(); out += Block.Quote(t.removePrefix(">").trim()) }
+                // A line under a list item that isn't a new item carries on that item.
+                out.lastOrNull() is Block.Item && para.isEmpty() && line.startsWith(" ") ->
+                    (out.last() as Block.Item).let { out[out.lastIndex] = it.copy(text = it.text + " " + t) }
+                else -> { if (para.isNotEmpty()) para.append(' '); para.append(t) }
+            }
+            i++
+        }
+        flush()
+        return out
+    }
+
+    private val linkPattern = Regex("\\[([^\\]]+)]\\(([^)\\s]+)\\)")
+
+    /**
+     * One line's inline marks: **bold**, __bold__, *italic*, _italic_, ~~struck~~, `code` and
+     * [links](https://...). A mark with no partner is shown as written.
+     */
+    fun inline(text: String, code: SpanStyle = SpanStyle(fontFamily = FontFamily.Monospace), link: SpanStyle = SpanStyle(textDecoration = TextDecoration.Underline), links: Links = Links.System): AnnotatedString = buildAnnotatedString {
+        var i = 0
+        fun closes(mark: String, from: Int): Int {
+            val end = text.indexOf(mark, from)
+            return if (end > from) end else -1
+        }
+        while (i < text.length) {
+            val rest = text.substring(i)
+            val m = linkPattern.matchAt(text, i)
+            when {
+                m != null && (m.groupValues[2].startsWith("http://") || m.groupValues[2].startsWith("https://")) -> {
+                    val url = m.groupValues[2]
+                    when (links) {
+                        // In a Whisper nothing opens: the words and the address, as plain text.
+                        Links.Plain -> append(inline(m.groupValues[1], code, link, links)).also { append(" ($url)") }
+                        is Links.InApp -> withLink(LinkAnnotation.Clickable(url, TextLinkStyles(link)) { links.open(url) }) { append(inline(m.groupValues[1], code, link, links)) }
+                        Links.System -> withLink(LinkAnnotation.Url(url, TextLinkStyles(link))) { append(inline(m.groupValues[1], code, link, links)) }
+                    }
+                    i += m.value.length
+                }
+                rest.startsWith("`") && closes("`", i + 1) > 0 -> {
+                    val end = closes("`", i + 1)
+                    withStyle(code) { append(text.substring(i + 1, end)) }
+                    i = end + 1
+                }
+                (rest.startsWith("**") || rest.startsWith("__")) && closes(rest.take(2), i + 2) > 0 -> {
+                    val end = closes(rest.take(2), i + 2)
+                    withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append(inline(text.substring(i + 2, end), code, link, links)) }
+                    i = end + 2
+                }
+                rest.startsWith("~~") && closes("~~", i + 2) > 0 -> {
+                    val end = closes("~~", i + 2)
+                    withStyle(SpanStyle(textDecoration = TextDecoration.LineThrough)) { append(inline(text.substring(i + 2, end), code, link, links)) }
+                    i = end + 2
+                }
+                (rest.startsWith("*") || (rest.startsWith("_") && (i == 0 || !text[i - 1].isLetterOrDigit()))) &&
+                    rest.length > 1 && !rest[1].isWhitespace() && closes(rest.take(1), i + 1) > 0 -> {
+                    val mark = rest.take(1)
+                    val end = closes(mark, i + 1)
+                    // A snake_case word isn't italics.
+                    if (mark == "_" && end + 1 < text.length && text[end + 1].isLetterOrDigit()) { append(text[i]); i++ }
+                    else {
+                        withStyle(SpanStyle(fontStyle = FontStyle.Italic)) { append(inline(text.substring(i + 1, end), code, link, links)) }
+                        i = end + 1
+                    }
+                }
+                else -> { append(text[i]); i++ }
+            }
+        }
+    }
+
+    /** The words without the marks: for read aloud and Copy. */
+    fun plain(md: String): String = blocks(md).joinToString("\n") { b ->
+        when (b) {
+            is Block.Para -> inline(b.text).text
+            is Block.Heading -> inline(b.text).text
+            is Block.Item -> "  ".repeat(b.depth) + (if (b.number != null) "${b.number}. " else "• ") + inline(b.text).text
+            is Block.Quote -> inline(b.text).text
+            is Block.Code -> b.text
+            Block.Rule -> ""
+        }
+    }.trim()
+}
+
+/** The words of a reply, without its Markdown marks (read aloud and Copy). */
+fun markdownPlain(md: String): String = Markdown.plain(md)
+
+/** A reply's Markdown, shown with its bold, lists, code and links. */
+@Composable
+fun MarkdownText(md: String, style: TextStyle, color: Color, modifier: Modifier = Modifier, linksOpen: Boolean = true) {
+    // A link opens in the app's own browser (never the outside one); in a Whisper it is only text (PHU-08).
+    val open = LocalOpenPage.current
+    val links = when {
+        !linksOpen -> Markdown.Links.Plain
+        open != null -> Markdown.Links.InApp(open)
+        else -> Markdown.Links.System
+    }
+    val blocks = remember(md) { Markdown.blocks(md) }
+    val code = SpanStyle(fontFamily = FontFamily.Monospace, background = Palette.Bar)
+    val link = SpanStyle(color = Palette.BlueText, textDecoration = TextDecoration.Underline)
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        blocks.forEach { b ->
+            when (b) {
+                is Markdown.Block.Para -> Text(Markdown.inline(b.text, code, link, links), style = style, color = color)
+                is Markdown.Block.Heading -> Text(
+                    Markdown.inline(b.text, code, link, links),
+                    style = style.copy(fontWeight = FontWeight.Bold, fontSize = style.fontSize * (if (b.level <= 1) 1.2f else if (b.level == 2) 1.1f else 1f)),
+                    color = color, modifier = Modifier.semantics { heading() },
+                )
+                is Markdown.Block.Item -> Row(Modifier.padding(start = (b.depth * 16).dp)) {
+                    Text(if (b.number != null) "${b.number}." else "•", style = style, color = color, modifier = Modifier.width(if (b.number != null) 26.dp else 16.dp))
+                    Text(Markdown.inline(b.text, code, link, links), style = style, color = color)
+                }
+                is Markdown.Block.Quote -> Row {
+                    Box(Modifier.width(3.dp).padding(vertical = 2.dp).background(Palette.Outline))
+                    Text(Markdown.inline(b.text, code, link, links), style = style.copy(fontStyle = FontStyle.Italic), color = color, modifier = Modifier.padding(start = 10.dp))
+                }
+                is Markdown.Block.Code -> Box(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Palette.Bar)
+                        .horizontalScroll(rememberScrollState()).padding(horizontal = 10.dp, vertical = 8.dp),
+                ) { Text(b.text, style = style.copy(fontFamily = FontFamily.Monospace, fontSize = style.fontSize * 0.9f), color = color, softWrap = false) }
+                Markdown.Block.Rule -> Box(Modifier.fillMaxWidth().padding(vertical = 4.dp).background(Palette.Line).padding(top = 1.dp))
+            }
+        }
+    }
+}

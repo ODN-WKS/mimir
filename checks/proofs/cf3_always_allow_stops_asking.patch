@@ -1,0 +1,14 @@
+expect: asked again after Always allow
+files: crates/ui/src/view_task.rs
+breaks: Always allow only allows once
+--- a/crates/ui/src/view_task.rs
++++ b/crates/ui/src/view_task.rs
+@@ -869,7 +869,7 @@
+                         .on_hover_text(format!("Saved rule: {}", req.always_rule_text()))
+                         .clicked()
+                     {
+-                        actions.push(Action::Answer(id.to_string(), Answer::Always));
++                        actions.push(Action::Answer(id.to_string(), Answer::Allow));
+                     }
+                     if ui.add(theme::quiet("Back")).clicked() {
+                         ui.data_mut(|d| d.insert_temp(always_id, false));

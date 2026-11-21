@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Check build only: lets checks run over adb ask standalone mode a question without the screen.
+     Only the shell (which holds DUMP) can send it. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <!-- Check build only: the update check can be pointed at a test list on the local network (plain http). -->
+    <application android:usesCleartextTraffic="true">
+        <!-- Check build only: testers turn the don't-touch notice on and off over adb. -->
+        <service
+            android:name="io.github.odnwks.mimir.labs.NoticeService"
+            android:exported="true"
+            android:permission="android.permission.DUMP"
+            tools:replace="android:exported" />
+        <receiver
+            android:name="io.github.odnwks.mimir.standalone.CheckAsk"
+            android:exported="true"
+            android:permission="android.permission.DUMP">
+            <intent-filter>
+                <action android:name="io.github.odnwks.mimir.STANDALONE_ASK" />
+            </intent-filter>
+        </receiver>
+        <!-- Check build only: the tablet layout's building blocks with stand-in content, opened over adb. -->
+        <activity
+            android:name="io.github.odnwks.mimir.ui.adaptive.AdaptiveGalleryActivity"
+            android:exported="true"
+            android:permission="android.permission.DUMP"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|navigation"
+            android:windowSoftInputMode="adjustResize" />
+        <!-- Check build only: Mímir's real message box on its own screen, for the phone gate's layout check. -->
+        <activity
+            android:name="io.github.odnwks.mimir.ui.adaptive.CheckComposerActivity"
+            android:exported="true"
+            android:permission="android.permission.DUMP"
+            android:windowSoftInputMode="adjustResize" />
+    </application>
+</manifest>

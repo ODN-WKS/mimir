@@ -1,0 +1,29 @@
+{
+  "id": "1794000000-1000-3",
+  "title": "Thank-you letter",
+  "title_by_owner": false,
+  "project": "@ROOT@/letters",
+  "phone_too": false,
+  "origin": null,
+  "copy_branch": null,
+  "session_id": "0f0e0d0c-1111-4222-8333-444455556663",
+  "status": "Done",
+  "entries": [
+    {
+      "You": "Draft a short thank-you letter to the neighbours for the plums."
+    },
+    {
+      "Claude": "Dear neighbours,\n\nThank you for the basket of plums. They were sweet and we made jam with the rest.\n\nBest wishes"
+    }
+  ],
+  "plan": [],
+  "files_changed": [
+    "draft.txt"
+  ],
+  "created_unix": 1794000200,
+  "cost_usd": 0.0,
+  "mode": "Ask",
+  "model": "haiku",
+  "effort": null,
+  "archived": false
+}

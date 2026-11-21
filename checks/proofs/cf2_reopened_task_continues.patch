@@ -1,0 +1,16 @@
+expect: reopened task started a new conversation
+files: crates/core/src/runner.rs
+breaks: Claude Code is never told which conversation to resume
+diff --git a/crates/core/src/runner.rs b/crates/core/src/runner.rs
+index cb83a9d..51eebea 100644
+--- a/crates/core/src/runner.rs
++++ b/crates/core/src/runner.rs
+@@ -606,7 +606,7 @@ impl Runner {
+             host: (crate::host::enabled() && !incognito).then(|| crate::host::new_key(&t.id)),
+             program: self.cfg.claude.clone(),
+             project: PathBuf::from(&t.project),
+-            resume: t.session_id.clone(),
++            resume: None,
+             settings: Some(settings),
+             group: Some(crate::groups::task_group(&t.id)),
+             env,

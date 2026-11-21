@@ -1,0 +1,16 @@
+expect: another person's chat resumed the owner's Claude conversation
+files: crates/core/src/talk.rs
+breaks: Claude conversations are kept by chat id alone
+diff --git a/crates/core/src/talk.rs b/crates/core/src/talk.rs
+index 72feb48..a4030e8 100644
+--- a/crates/core/src/talk.rs
++++ b/crates/core/src/talk.rs
+@@ -597,7 +597,7 @@ fn sessions_file(dir: &std::path::Path) -> std::path::PathBuf {
+ /// chat id as before, anyone else's under their own person, so the same
+ /// chat id of another person never resumes it.
+ pub fn session_key(person: &str, chat_id: &str) -> String {
+-    if person == crate::people::OWNER {
++    if person == crate::people::OWNER || true {
+         chat_id.to_string()
+     } else {
+         format!("{person}\u{1f}{chat_id}")

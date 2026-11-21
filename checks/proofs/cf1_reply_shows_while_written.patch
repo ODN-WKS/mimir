@@ -1,0 +1,16 @@
+expect: reply wasn't shown until Claude finished
+files: crates/ui/src/view_task.rs
+breaks: the reply being written is not drawn
+diff --git a/crates/ui/src/view_task.rs b/crates/ui/src/view_task.rs
+index cd949b1..63d0b7a 100644
+--- a/crates/ui/src/view_task.rs
++++ b/crates/ui/src/view_task.rs
+@@ -675,7 +675,7 @@ impl App {
+                             }
+                             ui.add_space(gap);
+                         }
+-                        if !t.live.is_empty() {
++                        if false && !t.live.is_empty() {
+                             CommonMarkViewer::new().show(ui, md, &t.live);
+                         }
+                         if let Some(plan) = &t.plan_doc

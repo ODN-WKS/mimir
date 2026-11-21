@@ -1,0 +1,15 @@
+{"input": "news about my friend's illness yesterday", "route": "none", "flags": ["phe05"]}
+{"input": "latest news about my husband's accident", "route": "none", "flags": ["phe05"]}
+{"input": "I'll check the weather report myself", "route": "none", "flags": ["phe06"]}
+{"input": "talking about the weather in general terms", "route": "none", "flags": ["phe06"]}
+{"input": "the weather has been nice lately", "route": "none", "flags": ["phe06"]}
+{"input": "weather", "route": "weather", "flags": []}
+{"input": "what's the weather today?", "route": "weather", "flags": []}
+{"input": "Portland, Oregon weather", "route": "weather", "flags": ["phe13", "place:Portland, Oregon"]}
+{"input": "Portland, Oregon forecast tomorrow", "route": "weather", "flags": ["phe13", "place:Portland, Oregon"]}
+{"input": "Grokipedia only: Ada Lovelace", "route": "search", "flags": ["phe15", "source:grokipedia"]}
+{"input": "Grokipedia only: black holes", "route": "search", "flags": ["phe15", "source:grokipedia"]}
+{"input": "read https://example.com/article", "route": "page", "flags": ["phe10"]}
+{"input": "what is a black hole", "route": "encyclopedia", "flags": []}
+{"input": "look up rust programming language", "route": "search", "flags": []}
+{"input": "latest news on climate change", "route": "search", "flags": []}

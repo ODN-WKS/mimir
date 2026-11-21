@@ -1,0 +1,16 @@
+expect: Ana started a task
+files: crates/core/src/service.rs
+breaks: the person gate lets every call through
+diff --git a/crates/core/src/service.rs b/crates/core/src/service.rs
+index 121a6a5..06176e4 100644
+--- a/crates/core/src/service.rs
++++ b/crates/core/src/service.rs
+@@ -810,7 +810,7 @@ impl Service {
+         let Some(c) = self.clients.get(&client) else {
+             return Some(Err("refused: not connected".into()));
+         };
+-        if c.person == crate::people::OWNER || crate::people::other_may(call) {
++        if c.person == crate::people::OWNER || crate::people::other_may(call) || true {
+             return None;
+         }
+         Some(match crate::people::empty_for_others(call) {

@@ -1,0 +1,14 @@
+expect: wasn't treated as task A's
+files: crates/core/src/approvals.rs
+breaks: a request names its own task, whatever socket it came on
+--- a/crates/core/src/approvals.rs
++++ b/crates/core/src/approvals.rs
+@@ -483,7 +483,7 @@
+                 continue;
+             };
+             if let Some(t) = &task {
+-                request.task = t.clone();
++                let _ = t;
+             }
+             let _ = stream.set_read_timeout(None);
+             if tx.send(Pending { request, stream }).is_err() {

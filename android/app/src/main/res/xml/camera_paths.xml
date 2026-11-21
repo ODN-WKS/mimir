@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Where a camera shot for Mímir waits until it's read in (then it's deleted). -->
+<paths>
+    <cache-path name="camera" path="camera/" />
+</paths>

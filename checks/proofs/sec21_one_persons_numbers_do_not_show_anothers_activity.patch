@@ -1,0 +1,16 @@
+expect: Ana can see how busy the owner is
+files: crates/store/src/talk.rs
+breaks: everyone is given the owner's change number
+diff --git a/crates/store/src/talk.rs b/crates/store/src/talk.rs
+index 54f9a46..5ebe6aa 100644
+--- a/crates/store/src/talk.rs
++++ b/crates/store/src/talk.rs
+@@ -272,7 +272,7 @@ impl TalkStore {
+ 
+     /// The newest change number of one person's chats (their own count).
+     pub fn seq_of(&self, person: &str) -> u64 {
+-        self.seqs.get(person).copied().unwrap_or(0)
++        self.seqs.get(OWNER).copied().unwrap_or(0).max(self.seqs.get(person).copied().unwrap_or(0))
+     }
+ 
+     fn next(&mut self, person: &str) -> u64 {

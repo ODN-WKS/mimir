@@ -1,0 +1,49 @@
+{"Hello":{"proto":2,"app_version":"0.17","client_name":"Samsung EX-100","env":[],"features":[]}}
+{"Hello":{"proto":2,"app_version":"0.22","client_name":"Samsung EX-100","env":[],"features":["search","lookup","talk","chat_sync","truth","models_changed"]}}
+{"Sync":{"since":12}}
+"Projects"
+{"NewTask":{"project":"/home/me/p","text":"Fix it","pictures":[],"mode":"Ask","model":null,"effort":null,"separate_copy":false,"msg_id":"m-1"}}
+{"Send":{"task":"t","text":"And this","pictures":[],"msg_id":"m-2"}}
+{"Stop":{"task":"t"}}
+{"Chat":{"msg_id":"m-3","text":"Recipes: idea - a dark mode switch"}}
+{"AnswerItem":{"ask_id":"perm:t:0a1b","answer":"Allow"}}
+{"AnswerItem":{"ask_id":"perm:t:0a1b","answer":"AllowFileThisTask"}}
+{"AnswerItem":{"ask_id":"q:t:7","answer":{"Option":1}}}
+{"AnswerItem":{"ask_id":"q:t:7","answer":{"Text":"Release it"}}}
+{"AnswerItem":{"ask_id":"ask:1","answer":"Works"}}
+{"AnswerItem":{"ask_id":"check:1","answer":"AskClaudeToFix"}}
+"Status"
+"Inbox"
+{"Ideas":{"project":"/home/me/p"}}
+{"FileInbox":{"inbox_id":"inbox:1","project":"/home/me/p"}}
+{"MoveTask":{"task":"t","project":"/home/me/p"}}
+{"MoveTo":{"task":"t","project":"/home/me/p"}}
+{"UndoIdea":{"project":"/home/me/p","idea":"idea:1"}}
+"Updates"
+{"GetFile":{"name":"u1794000000-ab12.ogg"}}
+{"Speak":{"task":"t","entry":3}}
+{"Listen":{"wav_base64":"UklGRg=="}}
+"Models"
+{"SetFreeChoice":{"switch_to_free":true,"free_model":null}}
+{"ContinueOnClaude":{"task":"t"}}
+{"NewIncognito":{"project":"/home/me/p","text":"Read the tax letter","model":"ollama:qwen3.6:35b-a3b-coding","mode":"Ask"}}
+{"EndIncognito":{"task":"t"}}
+{"SetWeeklyCheck":{"on":false}}
+"PhoneSettings"
+{"SetPcName":{"name":"Desk PC"}}
+{"SetRelays":{"on":false}}
+{"AlwaysAllowed":{"task":"t"}}
+{"StopAllowing":{"task":"t","file":"/home/me/p/notes.txt"}}
+{"WebSearch":{"query":"weather Portland","max":5}}
+{"Lookup":{"url":"https://api.open-meteo.com/v1/forecast?latitude=39.73&longitude=-121.84"}}
+{"Talk":{"chat_id":"c-1","turn_id":"t-1","turns":[{"id":"t-1","user":true,"text":"What's the capital of Norway?","sources":[],"ran":null,"model_words":null,"at":1794000000000,"version":1,"seq":0}],"lookup":null,"sources":[],"effort":"low","ground_rules":"Be brief.","task":null}}
+{"Talk":{"chat_id":"c-1","turn_id":"t-3","turns":[{"id":"t-3","user":true,"text":"And when was it released?","sources":[],"ran":null,"model_words":null,"at":1794000000000,"version":1,"seq":0}],"lookup":"[Information the app fetched from open-meteo.com]","sources":[{"site":"open-meteo.com","url":"https://open-meteo.com/","words":"","results":false,"via":""}],"effort":null,"ground_rules":null,"task":"1794-1-1"}}
+{"Talk":{"chat_id":"c-1","turn_id":"t-4","turns":[{"id":"t-4","user":true,"text":"Is Recipes a good name for a recipe app?","sources":[],"ran":null,"model_words":null,"at":1794000000000,"version":1,"seq":0}],"lookup":null,"sources":[],"effort":null,"ground_rules":null,"task":null,"chat_only":true}}
+{"TalkStop":{"chat_id":"c-1","turn_id":"t-1"}}
+{"TalkTurn":{"chat_id":"c-1","turn_id":"t-1"}}
+{"ChatPut":{"chat_id":"c-1","name":null,"turns":[{"id":"t-1","user":true,"text":"What's the capital of Norway?","sources":[],"ran":null,"model_words":null,"at":1794000000000,"version":1,"seq":0},{"id":"t-1.a","user":false,"text":"Oslo.","sources":[{"site":"open-meteo.com","url":"https://open-meteo.com/","words":"Oslo: 4 °C, light rain","results":false,"via":"your PC"}],"ran":"phone","model_words":"Qwen 3.6 · Your PC","at":1794000000000,"version":2,"seq":0},{"id":"t-0","user":true,"text":"","sources":[],"ran":null,"model_words":null,"at":1794000000000,"version":3,"seq":0,"gone":true}],"deleted":false}}
+{"ChatPut":{"chat_id":"c-2","name":null,"turns":[],"deleted":true}}
+{"SetEngines":{"chats":"paid","project":null}}
+{"SetEngines":{"chats":null,"project":null,"chat_model":"sonnet"}}
+{"ChatsSince":{"seq":40}}
+{"SetGroundRules":{"text":"Be brief.","at":1794000000000}}

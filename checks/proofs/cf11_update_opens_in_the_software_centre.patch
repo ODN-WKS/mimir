@@ -1,0 +1,14 @@
+expect: the update didn't open in the software centre
+files: crates/ui/src/app.rs
+breaks: a checked new version is never opened in the software centre
+--- a/crates/ui/src/app.rs
++++ b/crates/ui/src/app.rs
+@@ -1607,7 +1607,7 @@
+             // installs it. Mímir never replaces itself.
+             if let crate::app_view::UpdateState::Downloaded(v, file) = self.app_panel.update_state()
+             {
+-                places::open_path(&file);
++                let _ = &file;
+                 self.app_panel
+                     .set_update_state(crate::app_view::UpdateState::Opened(v));
+             }

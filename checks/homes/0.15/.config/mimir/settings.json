@@ -1,0 +1,51 @@
+{
+  "projects": [
+    "@ROOT@/garden",
+    "@ROOT@/letters"
+  ],
+  "last_project": "@ROOT@/letters",
+  "slash_commands": [
+    "compact",
+    "review"
+  ],
+  "details": false,
+  "last_task": "1794000000-1000-2",
+  "defaults": {
+    "@ROOT@/garden": {
+      "mode": "AcceptEdits",
+      "model": "sonnet",
+      "effort": "high"
+    }
+  },
+  "connectors": [],
+  "remote_projects": [],
+  "read_desktop_voice": true,
+  "read_speed": 1.25,
+  "read_cadence": 0.9,
+  "zoom": 1.1,
+  "groups": [],
+  "project_names": {
+    "@ROOT@/letters": "Letters home"
+  },
+  "collapsed_projects": [],
+  "task_order": {
+    "@ROOT@/garden": [
+      "1794000000-1000-2",
+      "1794000000-1000-1"
+    ]
+  },
+  "pinned_tasks": [
+    "1794000000-1000-2"
+  ],
+  "hidden_sessions": [],
+  "side_online": false,
+  "prompts": [
+    {
+      "name": "Check spelling",
+      "text": "Check the spelling in this folder and list what you'd change."
+    }
+  ],
+  "project_prompts": {},
+  "prompts_seeded": true,
+  "finish_summary": false
+}

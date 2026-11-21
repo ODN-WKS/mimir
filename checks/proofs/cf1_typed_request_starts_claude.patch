@@ -1,0 +1,16 @@
+expect: pressed Send; Claude wasn't started
+files: crates/core/src/runner.rs
+breaks: Claude Code is never started for a new task
+diff --git a/crates/core/src/runner.rs b/crates/core/src/runner.rs
+index cb83a9d..3a3d3b3 100644
+--- a/crates/core/src/runner.rs
++++ b/crates/core/src/runner.rs
+@@ -494,7 +494,7 @@ impl Runner {
+             return;
+         }
+         let began = Instant::now();
+-        let started = self.start(i);
++        let started = Err::<Session, std::io::Error>(std::io::Error::other("broken on purpose"));
+         {
+             let t = &self.tasks[i].task;
+             let mut f: Vec<(&'static str, serde_json::Value)> = vec![

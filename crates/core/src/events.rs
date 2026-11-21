@@ -1,0 +1,411 @@
+//! Reads the stream-json lines that `claude -p --output-format stream-json`
+//! prints. Unknown or malformed lines never fail: they become
+//! [`Event::Unknown`] so a newer Claude Code cannot break the window.
+
+use serde_json::Value;
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Init {
+    pub session_id: String,
+    pub model: String,
+    pub version: String,
+    pub cwd: String,
+    pub capabilities: Vec<String>,
+    pub tools: Vec<String>,
+    /// Slash commands and skills available in this session.
+    pub slash_commands: Vec<String>,
+    /// Connected MCP servers: (name, status).
+    pub mcp_servers: Vec<(String, String)>,
+    pub permission_mode: String,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Finished {
+    pub session_id: String,
+    pub subtype: String,
+    pub is_error: bool,
+    pub text: Option<String>,
+    pub duration_ms: u64,
+    pub cost_usd: f64,
+    /// For example "completed" or "aborted_tools" (stopped by the owner).
+    pub terminal_reason: String,
+    /// The model's context window in tokens, when reported.
+    pub context_window: u64,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Event {
+    Init(Init),
+    /// Text Claude wrote to the owner.
+    Text(String),
+    /// A piece of text while Claude is still writing it
+    /// (`--include-partial-messages`).
+    TextDelta(String),
+    /// Tokens of context in use after Claude's latest message.
+    ContextUsed(u64),
+    /// Claude Code summarised the conversation (`/compact` or automatically).
+    Compacted {
+        before: u64,
+        after: u64,
+    },
+    ToolUse {
+        id: String,
+        name: String,
+        input: Value,
+    },
+    ToolResult {
+        id: String,
+        is_error: bool,
+        /// Short text form of the result.
+        text: String,
+        /// The structured `tool_use_result` when Claude Code sends one.
+        detail: Value,
+    },
+    /// Weekly (seven day) use, 0.0 to 1.0, and when it resets (unix seconds).
+    /// The 5-hour window, when Claude Code reports one.
+    FiveHourUse {
+        used: f64,
+        resets_at: i64,
+    },
+    WeeklyUse {
+        used: f64,
+        resets_at: i64,
+    },
+    Denied {
+        tool_use_id: String,
+        tool_name: String,
+    },
+    Finished(Finished),
+    /// Anything we do not use. Kept so it can be logged.
+    Unknown(String),
+}
+
+fn s(v: &Value, key: &str) -> String {
+    v.get(key)
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string()
+}
+
+fn strings(v: &Value, key: &str) -> Vec<String> {
+    v.get(key)
+        .and_then(Value::as_array)
+        .map(|a| {
+            a.iter()
+                .filter_map(|x| x.as_str().map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// The text inside a tool_result `content`, which is either a string or a
+/// list of blocks.
+fn content_text(c: &Value) -> String {
+    match c {
+        Value::String(t) => t.clone(),
+        Value::Array(items) => items
+            .iter()
+            .filter_map(|i| i.get("text").and_then(Value::as_str))
+            .collect::<Vec<_>>()
+            .join("\n"),
+        _ => String::new(),
+    }
+}
+
+/// Turns one output line into zero or more events.
+pub fn parse_line(line: &str) -> Vec<Event> {
+    let line = line.trim();
+    if line.is_empty() {
+        return vec![];
+    }
+    let Ok(v) = serde_json::from_str::<Value>(line) else {
+        return vec![Event::Unknown(line.to_string())];
+    };
+    let unknown = || vec![Event::Unknown(line.to_string())];
+    // Messages from helpers Claude starts carry a parent id; the window
+    // shows the main conversation only.
+    let from_helper = v.get("parent_tool_use_id").is_some_and(|p| !p.is_null());
+    match v.get("type").and_then(Value::as_str).unwrap_or_default() {
+        "system" => match v.get("subtype").and_then(Value::as_str) {
+            Some("init") => vec![Event::Init(Init {
+                session_id: s(&v, "session_id"),
+                model: s(&v, "model"),
+                version: s(&v, "claude_code_version"),
+                cwd: s(&v, "cwd"),
+                capabilities: strings(&v, "capabilities"),
+                tools: strings(&v, "tools"),
+                slash_commands: strings(&v, "slash_commands"),
+                mcp_servers: v
+                    .get("mcp_servers")
+                    .and_then(Value::as_array)
+                    .map(|a| a.iter().map(|m| (s(m, "name"), s(m, "status"))).collect())
+                    .unwrap_or_default(),
+                permission_mode: s(&v, "permissionMode"),
+            })],
+            Some("compact_boundary") => {
+                let n = |k: &str| {
+                    v.pointer(&format!("/compact_metadata/{k}"))
+                        .and_then(Value::as_u64)
+                        .unwrap_or(0)
+                };
+                vec![Event::Compacted {
+                    before: n("pre_tokens"),
+                    after: n("post_tokens"),
+                }]
+            }
+            Some("permission_denied") => vec![Event::Denied {
+                tool_use_id: s(&v, "tool_use_id"),
+                tool_name: s(&v, "tool_name"),
+            }],
+            _ => unknown(),
+        },
+        "assistant" if !from_helper => {
+            let blocks = v
+                .pointer("/message/content")
+                .and_then(Value::as_array)
+                .cloned()
+                .unwrap_or_default();
+            let mut out = vec![];
+            if let Some(u) = v.pointer("/message/usage") {
+                let n = |k: &str| u.get(k).and_then(Value::as_u64).unwrap_or(0);
+                let used = n("input_tokens")
+                    + n("cache_creation_input_tokens")
+                    + n("cache_read_input_tokens");
+                if used > 0 {
+                    out.push(Event::ContextUsed(used));
+                }
+            }
+            for b in blocks {
+                match b.get("type").and_then(Value::as_str) {
+                    Some("text") => {
+                        let t = s(&b, "text");
+                        if !t.trim().is_empty() {
+                            out.push(Event::Text(t));
+                        }
+                    }
+                    Some("tool_use") => out.push(Event::ToolUse {
+                        id: s(&b, "id"),
+                        name: s(&b, "name"),
+                        input: b.get("input").cloned().unwrap_or(Value::Null),
+                    }),
+                    _ => {}
+                }
+            }
+            out
+        }
+        "user" if !from_helper => {
+            let detail = v.get("tool_use_result").cloned().unwrap_or(Value::Null);
+            let blocks = v
+                .pointer("/message/content")
+                .and_then(Value::as_array)
+                .cloned()
+                .unwrap_or_default();
+            blocks
+                .iter()
+                .filter(|b| b.get("type").and_then(Value::as_str) == Some("tool_result"))
+                .map(|b| Event::ToolResult {
+                    id: s(b, "tool_use_id"),
+                    is_error: b.get("is_error").and_then(Value::as_bool).unwrap_or(false),
+                    text: content_text(b.get("content").unwrap_or(&Value::Null)),
+                    detail: detail.clone(),
+                })
+                .collect()
+        }
+        "assistant" | "user" => vec![],
+        "stream_event" if !from_helper => {
+            match v.pointer("/event/delta/type").and_then(Value::as_str) {
+                Some("text_delta") => {
+                    let t = v
+                        .pointer("/event/delta/text")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default();
+                    vec![Event::TextDelta(t.to_string())]
+                }
+                _ => vec![],
+            }
+        }
+        "stream_event" => vec![],
+        "rate_limit_event" => {
+            let window = |name: &str| {
+                let w = v.pointer(&format!("/rate_limit_info/unifiedWindows/{name}"))?;
+                let used = w.get("utilization").and_then(Value::as_f64)?;
+                let resets = w.get("resetsAt").and_then(Value::as_i64).unwrap_or(0);
+                Some((used, resets))
+            };
+            let mut out = vec![];
+            if let Some((used, resets_at)) = window("seven_day") {
+                out.push(Event::WeeklyUse { used, resets_at });
+            }
+            if let Some((used, resets_at)) = window("five_hour") {
+                out.push(Event::FiveHourUse { used, resets_at });
+            }
+            if out.is_empty() { unknown() } else { out }
+        }
+        "result" => vec![Event::Finished(Finished {
+            session_id: s(&v, "session_id"),
+            subtype: s(&v, "subtype"),
+            is_error: v.get("is_error").and_then(Value::as_bool).unwrap_or(false),
+            text: v.get("result").and_then(Value::as_str).map(str::to_string),
+            duration_ms: v.get("duration_ms").and_then(Value::as_u64).unwrap_or(0),
+            cost_usd: v
+                .get("total_cost_usd")
+                .and_then(Value::as_f64)
+                .unwrap_or(0.0),
+            terminal_reason: s(&v, "terminal_reason"),
+            context_window: v
+                .get("modelUsage")
+                .and_then(Value::as_object)
+                .map(|m| {
+                    m.values()
+                        .filter_map(|x| x.get("contextWindow").and_then(Value::as_u64))
+                        .max()
+                        .unwrap_or(0)
+                })
+                .unwrap_or(0),
+        })],
+        _ => unknown(),
+    }
+}
+
+/// The JSON line that sends the owner's message to Claude Code's stdin.
+pub fn user_message(text: &str) -> String {
+    serde_json::json!({
+        "type": "user",
+        "message": { "role": "user", "content": text }
+    })
+    .to_string()
+}
+
+pub use mimir_proto::Picture;
+
+/// Reads a picture file; None for other kinds of file.
+pub fn picture_from_file(path: &std::path::Path) -> Option<Picture> {
+    let ext = path.extension()?.to_str()?.to_ascii_lowercase();
+    let media_type = match ext.as_str() {
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        _ => return None,
+    };
+    let bytes = std::fs::read(path).ok()?;
+    // Claude accepts pictures up to about 5 MB.
+    if bytes.len() > 5 * 1024 * 1024 {
+        return None;
+    }
+    Some(Picture {
+        media_type: media_type.to_string(),
+        base64: base64(&bytes),
+    })
+}
+
+/// Standard base64 with padding.
+pub fn base64(bytes: &[u8]) -> String {
+    const T: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
+    for c in bytes.chunks(3) {
+        let n = (c[0] as u32) << 16
+            | (*c.get(1).unwrap_or(&0) as u32) << 8
+            | *c.get(2).unwrap_or(&0) as u32;
+        out.push(T[(n >> 18) as usize & 63] as char);
+        out.push(T[(n >> 12) as usize & 63] as char);
+        out.push(if c.len() > 1 {
+            T[(n >> 6) as usize & 63] as char
+        } else {
+            '='
+        });
+        out.push(if c.len() > 2 {
+            T[n as usize & 63] as char
+        } else {
+            '='
+        });
+    }
+    out
+}
+
+/// A message with pictures: content blocks, pictures first (checked
+/// against Claude Code 2.1.325).
+pub fn user_message_with(text: &str, pictures: &[Picture]) -> String {
+    if pictures.is_empty() {
+        return user_message(text);
+    }
+    let mut content: Vec<Value> = pictures
+        .iter()
+        .map(|p| {
+            serde_json::json!({
+                "type": "image",
+                "source": { "type": "base64", "media_type": p.media_type, "data": p.base64 }
+            })
+        })
+        .collect();
+    content.push(serde_json::json!({ "type": "text", "text": text }));
+    serde_json::json!({
+        "type": "user",
+        "message": { "role": "user", "content": content }
+    })
+    .to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn junk_and_new_types_are_ignored() {
+        assert!(parse_line("").is_empty());
+        assert!(matches!(parse_line("not json")[0], Event::Unknown(_)));
+        assert!(matches!(
+            parse_line(r#"{"type":"brand_new_thing","x":1}"#)[0],
+            Event::Unknown(_)
+        ));
+        assert!(matches!(
+            parse_line(r#"{"type":"system","subtype":"init"}"#)[0],
+            Event::Init(_)
+        ));
+    }
+
+    #[test]
+    fn helper_messages_are_skipped() {
+        let l = r#"{"type":"assistant","parent_tool_use_id":"t1","message":{"content":[{"type":"text","text":"hi"}]}}"#;
+        assert!(parse_line(l).is_empty());
+    }
+
+    #[test]
+    fn base64_matches_the_standard() {
+        assert_eq!(base64(b""), "");
+        assert_eq!(base64(b"f"), "Zg==");
+        assert_eq!(base64(b"fo"), "Zm8=");
+        assert_eq!(base64(b"foobar"), "Zm9vYmFy");
+        let v: Value = serde_json::from_str(&user_message_with(
+            "what is it",
+            &[Picture {
+                media_type: "image/png".into(),
+                base64: "AAAA".into(),
+            }],
+        ))
+        .unwrap();
+        assert_eq!(v["message"]["content"][0]["source"]["data"], "AAAA");
+        assert_eq!(v["message"]["content"][1]["text"], "what is it");
+    }
+
+    #[test]
+    fn user_message_shape() {
+        let v: Value = serde_json::from_str(&user_message("hi")).unwrap();
+        assert_eq!(v["type"], "user");
+        assert_eq!(v["message"]["content"], "hi");
+    }
+
+    #[test]
+    fn five_hour_and_weekly_limits() {
+        let line = r#"{"type":"rate_limit_event","rate_limit_info":{"unifiedWindows":{"seven_day":{"utilization":0.06,"resetsAt":100},"five_hour":{"utilization":0.4,"resetsAt":50}}}}"#;
+        let evs = parse_line(line);
+        assert!(evs.contains(&Event::WeeklyUse {
+            used: 0.06,
+            resets_at: 100
+        }));
+        assert!(evs.contains(&Event::FiveHourUse {
+            used: 0.4,
+            resets_at: 50
+        }));
+    }
+}

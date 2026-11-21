@@ -1,0 +1,16 @@
+expect: Ana was told how the owner's answer stands
+files: crates/core/src/service.rs
+breaks: any person can ask after any answer
+diff --git a/crates/core/src/service.rs b/crates/core/src/service.rs
+index 121a6a5..1bc1161 100644
+--- a/crates/core/src/service.rs
++++ b/crates/core/src/service.rs
+@@ -3922,7 +3922,7 @@ impl Service {
+     fn answer_is_of(&self, answer: &str, person: &str) -> bool {
+         self.answer_person
+             .get(answer)
+-            .is_some_and(|(who, _)| who == person)
++            .is_some_and(|(who, _)| who == person || true)
+     }
+ 
+     /// A person is gone: their chats, their settings, anything running for

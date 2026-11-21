@@ -1,0 +1,16 @@
+expect: a phone paired before people were told apart lost the owner's chats
+files: crates/link/src/server.rs
+breaks: a phone kept by an earlier version belongs to nobody
+diff --git a/crates/link/src/server.rs b/crates/link/src/server.rs
+index aab8685..108dd33 100644
+--- a/crates/link/src/server.rs
++++ b/crates/link/src/server.rs
+@@ -63,7 +63,7 @@ pub struct Phone {
+     pub last_seen: u64,
+     /// Whose phone it is: [`OWNER`] (the PC's owner, also for every phone
+     /// paired before people were told apart) or another person's id.
+-    #[serde(default = "owner_id")]
++    #[serde(default)]
+     pub person: String,
+ }
+ 

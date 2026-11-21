@@ -1,0 +1,16 @@
+expect: a terminal session isn't listed or can't be continued
+files: crates/core/src/sessions.rs
+breaks: sessions started in a terminal are skipped
+diff --git a/crates/core/src/sessions.rs b/crates/core/src/sessions.rs
+index 5e0cf03..1bb9772 100644
+--- a/crates/core/src/sessions.rs
++++ b/crates/core/src/sessions.rs
+@@ -211,7 +211,7 @@ fn head(path: &Path) -> Option<(PathBuf, String)> {
+         if cwd.is_none() {
+             cwd = v.get("cwd").and_then(Value::as_str).map(PathBuf::from);
+         }
+-        if first.is_none() {
++        if first.is_none() && v.get("clientPlatform").is_some() {
+             first = user_text(&v);
+         }
+         if cwd.is_some() && first.is_some() {

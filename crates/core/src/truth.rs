@@ -1,0 +1,403 @@
+//! One truth about the PC's work (Stage 1 design, 3.1): every surface (the
+//! window, each phone) reads the same snapshot, so none counts, labels or
+//! filters tasks on its own. The service builds it from its own state, and
+//! pushes it only when something a person sees changes.
+
+use mimir_proto::{
+    CheckFacts, PcActivity, TaskState, Truth, TruthCounts, TruthEngine, TruthPc, TruthProject,
+    TruthTask, TruthUsage, WeeklyUse,
+};
+use std::hash::{Hash, Hasher};
+
+/// Done tasks stay in the truth this long, and at most this many.
+pub const DONE_KEPT_S: i64 = 24 * 3600;
+pub const DONE_KEPT: usize = 50;
+
+/// A task as the truth needs it.
+#[derive(Debug, Clone)]
+pub struct TaskIn {
+    pub id: String,
+    /// Its home project folder.
+    pub project: String,
+    pub title: String,
+    pub working: bool,
+    pub needs_you: bool,
+    pub live_elsewhere: bool,
+    pub stopped: bool,
+    pub archived: bool,
+    /// Claude works on it through another session (Phone too, a followed
+    /// session): Stop shows, the reply box doesn't.
+    pub background: bool,
+    /// When it went into its state (seconds since 1970).
+    pub since: Option<i64>,
+    pub from_phone: bool,
+}
+
+/// Everything the truth is built from.
+pub struct Input<'a> {
+    pub run_id: &'a str,
+    pub now: i64,
+    pub pc_name: String,
+    pub activity: Option<&'a PcActivity>,
+    pub tasks: Vec<TaskIn>,
+    /// Waiting for the owner, per project folder (tasks' and others').
+    pub needs: Vec<String>,
+    /// (folder, shown name, core checks) of each listed project.
+    pub projects: Vec<(String, String, Option<CheckFacts>)>,
+    pub engine: TruthEngine,
+    pub usage: (Option<WeeklyUse>, Option<WeeklyUse>, Option<i64>),
+}
+
+/// A task's one state, from fix batch 1's rule: needs the owner, then
+/// working, then live elsewhere, then stopped, else done.
+pub fn state(t: &TaskIn) -> TaskState {
+    if t.needs_you {
+        TaskState::NeedsYou
+    } else if t.working {
+        TaskState::Working
+    } else if t.live_elsewhere {
+        TaskState::LiveElsewhere
+    } else if t.stopped {
+        TaskState::Stopped
+    } else {
+        TaskState::Done
+    }
+}
+
+/// The truth (its `rev` is the caller's).
+pub fn build(i: Input) -> Truth {
+    let mut tasks: Vec<TruthTask> = i
+        .tasks
+        .iter()
+        .filter(|t| !t.archived)
+        .map(|t| TruthTask {
+            id: t.id.clone(),
+            project: t.project.clone(),
+            title: t.title.clone(),
+            state: state(t),
+            background: t.background,
+            since: t.since,
+            from_phone: t.from_phone,
+        })
+        .collect();
+    // Every task that isn't done, and the newest done ones of the last day.
+    tasks.sort_by_key(|t| std::cmp::Reverse(t.since.unwrap_or(0)));
+    let mut done = 0;
+    tasks.retain(|t| {
+        if t.state != TaskState::Done {
+            return true;
+        }
+        done += 1;
+        done <= DONE_KEPT && t.since.is_some_and(|s| i.now - s < DONE_KEPT_S)
+    });
+    let count = |s: TaskState| tasks.iter().filter(|t| t.state == s).count() as u32;
+    let counts = TruthCounts {
+        working: count(TaskState::Working),
+        needs_you: i.needs.len() as u32,
+    };
+    let projects = i
+        .projects
+        .into_iter()
+        .map(|(path, name, checks)| {
+            let mine: Vec<&TaskIn> = i
+                .tasks
+                .iter()
+                .filter(|t| !t.archived && crate::paths::same(&t.project, &path))
+                .collect();
+            TruthProject {
+                last_activity: mine.iter().filter_map(|t| t.since).max(),
+                working: mine
+                    .iter()
+                    .filter(|t| state(t) == TaskState::Working)
+                    .count() as u32,
+                needs_you: i
+                    .needs
+                    .iter()
+                    .filter(|p| crate::paths::same(p, &path))
+                    .count() as u32,
+                checks: checks.filter(|c| c.total > 0),
+                path,
+                name,
+            }
+        })
+        .collect();
+    let pc = TruthPc {
+        name: i.pc_name,
+        level: i.activity.map(|a| a.level).unwrap_or_default(),
+        line: i.activity.map(|a| a.phone_line.clone()).unwrap_or_default(),
+    };
+    let usage = i.engine.paid_on.then_some(TruthUsage {
+        weekly: i.usage.0,
+        five_hour: i.usage.1,
+        as_of: i.usage.2,
+    });
+    Truth {
+        run_id: i.run_id.to_string(),
+        rev: 0,
+        as_of: i.now,
+        pc,
+        tasks,
+        counts,
+        projects,
+        engine: i.engine,
+        usage,
+    }
+}
+
+/// A hash of what a person sees: states, counts, titles, project rows, the
+/// PC line, the engine line, and usage to the whole percent. Times are
+/// left out, so a task that keeps working pushes nothing new.
+pub fn seen(t: &Truth) -> u64 {
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    t.pc.name.hash(&mut h);
+    format!("{:?}", t.pc.level).hash(&mut h);
+    t.pc.line.hash(&mut h);
+    for x in &t.tasks {
+        (
+            &x.id,
+            &x.project,
+            &x.title,
+            format!("{:?}", x.state),
+            x.background,
+            x.from_phone,
+        )
+            .hash(&mut h);
+    }
+    (t.counts.working, t.counts.needs_you).hash(&mut h);
+    for p in &t.projects {
+        (&p.path, &p.name, p.working, p.needs_you).hash(&mut h);
+        p.checks
+            .as_ref()
+            .map(|c| (c.passing, c.total, c.failing.len()))
+            .hash(&mut h);
+    }
+    (
+        &t.engine.chats_where,
+        &t.engine.chats_model_words,
+        t.engine.answering,
+        t.engine.paid_on,
+    )
+        .hash(&mut h);
+    if let Some(u) = &t.usage {
+        u.weekly
+            .as_ref()
+            .map(|w| (w.used.round() as i64, w.resets_at))
+            .hash(&mut h);
+        u.five_hour
+            .as_ref()
+            .map(|w| (w.used.round() as i64, w.resets_at))
+            .hash(&mut h);
+    }
+    h.finish()
+}
+
+/// Whether a client should take `new` over what it has: a new run of the
+/// service, or a higher revision of the same run.
+pub fn newer(have: Option<&Truth>, new: &Truth) -> bool {
+    have.is_none_or(|h| h.run_id != new.run_id || new.rev > h.rev)
+}
+
+/// The desktop notifications a change of the truth calls for, as (title,
+/// body) in plain words: a task that went to Needs you, or to Done. `whisper`
+/// says which task is a Whisper (its title never shows, and its Done is
+/// silent). Nothing says what model runs it.
+pub fn notices(old: &Truth, new: &Truth, whisper: &dyn Fn(&str) -> bool) -> Vec<(String, String)> {
+    let mut out = vec![];
+    for t in &new.tasks {
+        let Some(before) = old.tasks.iter().find(|o| o.id == t.id) else {
+            continue;
+        };
+        if before.state == t.state {
+            continue;
+        }
+        let secret = whisper(&t.id);
+        match t.state {
+            TaskState::NeedsYou => out.push((
+                if secret {
+                    "A Whisper task needs you".to_string()
+                } else {
+                    format!("{} needs you", t.title)
+                },
+                "Open Mímir to answer.".to_string(),
+            )),
+            TaskState::Done if !secret => {
+                out.push((format!("{} is done", t.title), "Mímir".to_string()))
+            }
+            _ => {}
+        }
+    }
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn task(id: &str, project: &str) -> TaskIn {
+        TaskIn {
+            id: id.into(),
+            project: project.into(),
+            title: format!("Task {id}"),
+            working: false,
+            needs_you: false,
+            live_elsewhere: false,
+            stopped: false,
+            archived: false,
+            background: false,
+            since: Some(1000),
+            from_phone: false,
+        }
+    }
+
+    fn input(tasks: Vec<TaskIn>, needs: Vec<String>) -> Input<'static> {
+        Input {
+            run_id: "r1",
+            now: 2000,
+            pc_name: "Your PC".into(),
+            activity: None,
+            tasks,
+            needs,
+            projects: vec![
+                ("/p/a".into(), "a".into(), Some(CheckFacts::default())),
+                ("/p/b".into(), "b".into(), None),
+            ],
+            engine: TruthEngine::default(),
+            usage: (
+                Some(WeeklyUse {
+                    used: 62.4,
+                    resets_at: 9,
+                }),
+                None,
+                Some(1),
+            ),
+        }
+    }
+
+    #[test]
+    fn one_state_per_task_and_the_counts_follow_it() {
+        let mut w = task("w", "/p/a");
+        w.working = true;
+        let mut n = task("n", "/p/a");
+        n.working = true;
+        n.needs_you = true;
+        let mut e = task("e", "/p/b");
+        e.live_elsewhere = true;
+        let mut s = task("s", "/p/b");
+        s.stopped = true;
+        let d = task("d", "/p/b");
+        let mut arch = task("x", "/p/b");
+        arch.archived = true;
+        arch.working = true;
+        let t = build(input(vec![w, n, e, s, d, arch], vec!["/p/a".into()]));
+        let st = |id: &str| t.tasks.iter().find(|x| x.id == id).map(|x| x.state);
+        assert_eq!(st("w"), Some(TaskState::Working));
+        assert_eq!(st("n"), Some(TaskState::NeedsYou));
+        assert_eq!(st("e"), Some(TaskState::LiveElsewhere));
+        assert_eq!(st("s"), Some(TaskState::Stopped));
+        assert_eq!(st("d"), Some(TaskState::Done));
+        assert_eq!(st("x"), None);
+        assert_eq!((t.counts.working, t.counts.needs_you), (1, 1));
+        assert_eq!((t.projects[0].working, t.projects[0].needs_you), (1, 1));
+        // "No checks yet" is never sent: a project without checks has none.
+        assert!(t.projects.iter().all(|p| p.checks.is_none()));
+        // Usage only when a paid model is on.
+        assert!(t.usage.is_none());
+    }
+
+    #[test]
+    fn old_done_tasks_drop_out_and_times_never_push() {
+        let mut old = task("old", "/p/a");
+        old.since = Some(2000 - DONE_KEPT_S - 1);
+        let t = build(input(vec![old, task("new", "/p/a")], vec![]));
+        assert_eq!(t.tasks.len(), 1);
+        let mut later = t.clone();
+        later.as_of += 5;
+        later.tasks[0].since = Some(1999);
+        assert_eq!(seen(&t), seen(&later));
+        later.tasks[0].state = TaskState::Working;
+        assert_ne!(seen(&t), seen(&later));
+    }
+
+    #[test]
+    fn usage_shows_with_a_paid_model_and_pushes_only_by_whole_percents() {
+        let mut i = input(vec![], vec![]);
+        i.engine.paid_on = true;
+        let a = build(i);
+        assert_eq!(
+            a.usage.as_ref().unwrap().weekly.as_ref().unwrap().used,
+            62.4
+        );
+        let mut b = a.clone();
+        b.usage.as_mut().unwrap().weekly.as_mut().unwrap().used = 62.2;
+        assert_eq!(seen(&a), seen(&b));
+        b.usage.as_mut().unwrap().weekly.as_mut().unwrap().used = 63.0;
+        assert_ne!(seen(&a), seen(&b));
+    }
+
+    #[test]
+    fn a_restart_always_wins_and_older_revisions_never_do() {
+        let mut a = build(input(vec![], vec![]));
+        a.rev = 5;
+        let mut b = a.clone();
+        b.rev = 4;
+        assert!(!newer(Some(&a), &b));
+        b.rev = 6;
+        assert!(newer(Some(&a), &b));
+        b.run_id = "r2".into();
+        b.rev = 1;
+        assert!(newer(Some(&a), &b));
+        assert!(newer(None, &b));
+    }
+
+    #[test]
+    fn a_task_going_to_needs_you_or_done_notifies_in_plain_words() {
+        let task = |id: &str, state| TruthTask {
+            id: id.into(),
+            project: "/p".into(),
+            title: format!("Task {id}"),
+            state,
+            background: false,
+            since: None,
+            from_phone: false,
+        };
+        let truth = |tasks: Vec<TruthTask>| Truth {
+            tasks,
+            ..Default::default()
+        };
+        let old = truth(vec![
+            task("a", TaskState::Working),
+            task("b", TaskState::Working),
+            task("w", TaskState::Working),
+            task("c", TaskState::Working),
+        ]);
+        let new = truth(vec![
+            task("a", TaskState::NeedsYou),
+            task("b", TaskState::Done),
+            task("w", TaskState::Done),
+            task("c", TaskState::Working),
+            task("n", TaskState::Working),
+        ]);
+        let n = notices(&old, &new, &|id| id == "w");
+        assert_eq!(
+            n,
+            vec![
+                (
+                    "Task a needs you".to_string(),
+                    "Open Mímir to answer.".to_string()
+                ),
+                ("Task b is done".to_string(), "Mímir".to_string()),
+            ]
+        );
+        assert!(
+            n.iter()
+                .all(|(t, b)| !t.contains("Claude") && !b.contains("Claude"))
+        );
+        // A Whisper that needs you never names itself.
+        let w = truth(vec![task("w", TaskState::NeedsYou)]);
+        let before = truth(vec![task("w", TaskState::Working)]);
+        assert_eq!(
+            notices(&before, &w, &|_| true)[0].0,
+            "A Whisper task needs you"
+        );
+    }
+}

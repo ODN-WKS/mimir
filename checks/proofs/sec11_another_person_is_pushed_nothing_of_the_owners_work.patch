@@ -1,0 +1,15 @@
+expect: Ana was sent the owner's work
+files: crates/core/src/service.rs
+breaks: everyone is pushed the owner's tasks and needs-you items
+diff --git a/crates/core/src/service.rs b/crates/core/src/service.rs
+index 13e7b57..4da1041 100644
+--- a/crates/core/src/service.rs
++++ b/crates/core/src/service.rs
+@@ -192,7 +192,6 @@ impl Client {
+ 
+     fn gets(&self, event: &Event) -> bool {
+         (self.phone.is_none() || event.for_phone())
+-            && (self.person == crate::people::OWNER || event.for_other_people())
+             && event
+                 .feature()
+                 .is_none_or(|f| self.features.iter().any(|k| k == f))

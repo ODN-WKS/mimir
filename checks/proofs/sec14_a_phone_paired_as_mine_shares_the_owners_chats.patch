@@ -1,0 +1,16 @@
+expect: a phone paired as Mine doesn't see the owner's chats
+files: crates/link/src/server.rs
+breaks: Mine makes a new person for each phone
+diff --git a/crates/link/src/server.rs b/crates/link/src/server.rs
+index 4d65ef9..e6ef6d3 100644
+--- a/crates/link/src/server.rs
++++ b/crates/link/src/server.rs
+@@ -564,7 +564,7 @@ async fn pair(inner: Arc<Inner>, conn: Connection) {
+             // Whose phone it is was decided at the PC, by its owner.
+             // Said out loud: only an explicit "mine" is the owner's.
+             let person = match person {
+-                Some(m) if m == mimir_proto::WHOSE_MINE => Some(OWNER.to_string()),
++                Some(m) if m == mimir_proto::WHOSE_MINE => Some(inner.person_named(&name)),
+                 Some(n) if !clean_name(&n).is_empty() => Some(inner.person_named(&clean_name(&n))),
+                 _ => None,
+             };

@@ -1,0 +1,27 @@
+[workspace]
+resolver = "3"
+members = ["crates/proto", "crates/link", "crates/core", "crates/ui", "crates/release", "crates/phone-core", "crates/store", "crates/hub"]
+
+[workspace.package]
+edition = "2024"
+license = "GPL-3.0-only"
+publish = false
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+libc = "0.2"
+ed25519-dalek = "2.2"
+sha2 = "0.10"
+
+# Small debug builds: less to write and to keep in RAM (owner: spare the
+# SSDs). Line numbers stay for crash reports; dependencies carry none.
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
+
+[profile.release]
+lto = "thin"
+strip = true
