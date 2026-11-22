@@ -285,7 +285,7 @@ fun Gauge(state: CheckState, fraction: Float, size: androidx.compose.ui.unit.Dp 
 fun AllTasksScreen(state: StationState, station: io.github.odnwks.mimir.data.Station, nav: Navigator, archivedFirst: Boolean = false) {
     var query by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf("") }
     var only by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf(if (archivedFirst) "Archived" else "All") }
-    val order = listOf("Needs you", "Working", "Starting", "Live", "Paused", "Stopped")
+    val order = listOf("Needs you", "Waiting for you", "Working", "Starting", "Live", "Paused", "Stopped")
     val archived = only == "Archived"
     val sorted = (if (archived) state.archived else state.tasks).sortedWith(
         compareBy<io.github.odnwks.mimir.data.Task> { order.indexOf(it.stateWords).let { i -> if (i < 0) order.size else i } }

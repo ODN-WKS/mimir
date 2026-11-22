@@ -54,8 +54,8 @@ import io.github.odnwks.mimir.ui.theme.Type
  * The one composer (proposal 3.3): a rounded box with an optional "To:" chip over one line of
  * text that grows to six. The mic has its own spot at the start of the line, away from Send, so
  * a tap meant for Send or Stop can never start listening; what it hears goes into the box. Send
- * is dimmed while the box is empty. While a task [working] and the box is empty, the button is
- * Stop instead; a tap within 800 ms of the button changing to or from Stop is ignored.
+ * is dimmed while the box is empty. While a task is [working] a red Stop button sits beside Send,
+ * typed words or not; a tap within 800 ms of Stop turning up or going is ignored.
  */
 @Composable
 fun Composer(
@@ -120,34 +120,32 @@ fun Composer(
                     }
                 },
             )
-            val kind = when {
-                value.isNotBlank() -> ButtonKind.Send
-                working && onStop != null -> ButtonKind.Stop
-                else -> ButtonKind.Empty
-            }
-            // A tap meant for the button that was there a moment ago does nothing.
-            // (Only a change to or from Stop: typing then tapping Send at once still sends.)
+            val kind = if (value.isNotBlank()) ButtonKind.Send else ButtonKind.Empty
+            // Stop is there the whole time something works, typed words or not (owner, 2026-11-22).
+            val showStop = working && onStop != null
+            // A tap meant for the button that was there a moment ago does nothing: Stop turning up
+            // under a thumb that was about to press something else.
             var armed by remember { mutableStateOf(true) }
-            var before by remember { mutableStateOf(kind) }
-            LaunchedEffect(kind) {
-                val stopChanged = kind != before && (kind == ButtonKind.Stop || before == ButtonKind.Stop)
-                before = kind
-                if (!stopChanged) return@LaunchedEffect
+            var before by remember { mutableStateOf(showStop) }
+            LaunchedEffect(showStop) {
+                val changed = showStop != before
+                before = showStop
+                if (!changed) return@LaunchedEffect
                 armed = false; kotlinx.coroutines.delay(BUTTON_SETTLE_MS); armed = true
             }
             val settled = { armed }
-            Box(Modifier.padding(bottom = 4.dp)) {
+            Row(Modifier.padding(bottom = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (showStop) RoundButton(Glyphs.Stop, "Stop", {
+                    if (settled()) {
+                        haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+                        onStop?.invoke()
+                    }
+                }, filled = true, fill = Palette.Red)
                 androidx.compose.animation.Crossfade(kind, animationSpec = io.github.odnwks.mimir.ui.theme.motionSpec(io.github.odnwks.mimir.ui.theme.Motion.SCREEN_MS), label = "send") { k ->
                     when (k) {
                         ButtonKind.Empty -> RoundButton(Glyphs.Send, "Send", {}, filled = true, enabled = false)
-                        ButtonKind.Stop -> RoundButton(Glyphs.Stop, "Stop", {
-                            if (settled()) {
-                                haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
-                                onStop?.invoke()
-                            }
-                        }, filled = true, fill = Palette.Red)
                         ButtonKind.Send -> RoundButton(Glyphs.Send, "Send", {
-                            if (value.isNotBlank() && settled()) {
+                            if (value.isNotBlank()) {
                                 haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
                                 onSend()
                             }
@@ -159,7 +157,7 @@ fun Composer(
     }
 }
 
-private enum class ButtonKind { Empty, Stop, Send }
+private enum class ButtonKind { Empty, Send }
 
 /** Taps this soon after the composer's button changes are ignored. */
 const val BUTTON_SETTLE_MS = 800L

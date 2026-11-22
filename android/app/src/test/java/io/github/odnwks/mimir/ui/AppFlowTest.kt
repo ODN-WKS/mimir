@@ -818,20 +818,17 @@ class AppFlowTest {
         compose.onNodeWithText("YOLO").assertIsDisplayed()
     }
 
-    @Test fun whileATaskWorksTheEmptyBoxsButtonIsStopAndAQuickTapAfterItChangesIsIgnored() {
+    @Test fun whileATaskWorksStopIsAlwaysThereBesideSend() {
         start()
         val id = io.github.odnwks.mimir.data.ExampleData.TASK_CELL
         nav.open(Screen.Task(id)); compose.waitForIdle()
-        // Words: Send. Emptied again: Stop, but a tap right after the change does nothing.
+        // U1: words typed add Send beside Stop; Stop never goes away while it works.
         compose.onNodeWithContentDescription("Reply to this task").performTextInput("hold on")
         compose.waitForIdle()
         compose.onNodeWithContentDescription("Send").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Stop").assertIsDisplayed()
         compose.onNodeWithContentDescription("Reply to this task").performTextReplacement("")
         compose.mainClock.advanceTimeBy(300); compose.waitForIdle()
-        compose.onNodeWithContentDescription("Stop").performClick()
-        compose.waitForIdle()
-        assertEquals("Working", station.state.value.task(id)!!.stateWords)
-        compose.mainClock.advanceTimeBy(BUTTON_SETTLE_MS); compose.waitForIdle()
         compose.onNodeWithContentDescription("Stop").performClick()
         compose.mainClock.advanceTimeBy(1_000); compose.waitForIdle()
         assertEquals("Stopped", station.state.value.task(id)!!.stateWords)

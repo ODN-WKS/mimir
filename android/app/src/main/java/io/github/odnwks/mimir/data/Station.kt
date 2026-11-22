@@ -412,18 +412,34 @@ data class Task(
         stopped || status == "Stopped" || status == "Failed" || status == "Interrupted" -> "Stopped"
         status == "Paused" -> "Paused"
         busy || status == "Working" -> if (messages.none { it.fromClaude } && steps.isEmpty()) "Starting" else "Working"
-        status.isNotEmpty() -> status
+        status.isNotEmpty() && status != "Done" -> status
+        // Its turn ended, but Claude is asking or proposing what comes next: not finished.
+        endsWaiting(messages.lastOrNull()?.takeIf { it.fromClaude }?.text) -> "Waiting for you"
         else -> "Done"
     }
     /** The line under a task's title: what is happening now, in a sentence. */
     val stateLine: String get() = when (stateWords) {
-        "Needs you" -> "Waiting for you"
+        "Needs you", "Waiting for you" -> "Waiting for you"
         "Stopped" -> "Stopped"
         "Paused" -> "Paused"
         "Starting" -> "Starting…"
         "Working" -> "Working on it" + (steps.lastOrNull()?.let { ": " + it.trimStart('✓', '✕', '…', ' ') } ?: "")
         else -> stateWords
     }
+}
+
+/**
+ * Claude's last message hands the next move to the owner: it ends on a question, or offers next
+ * steps ("Want me to…", "Shall I…", "Next steps:"). Only the closing paragraph counts, so a
+ * question asked and answered earlier in a long reply doesn't hold a finished task back.
+ */
+fun endsWaiting(text: String?): Boolean {
+    val last = text?.trim()?.split(Regex("\\n\\s*\\n"))?.lastOrNull()?.trim().orEmpty()
+    if (last.isEmpty()) return false
+    if (last.trimEnd('*', '_', '`', '"', '\'', '\u201d', ')', ' ', '.').endsWith("?")) return true
+    if (Regex("(?i)\\b(want me to|shall i|should i|would you like|do you want|which (one )?(do you|would you))\\b").containsMatchIn(last)) return true
+    // A list under "Next steps" (or "Options") is in the last few lines.
+    return text!!.trim().lines().takeLast(8).any { Regex("(?i)^\\W*(next steps?|options|what next|choose one)\\b.*").matches(it.trim()) }
 }
 
 data class TaskMessage(

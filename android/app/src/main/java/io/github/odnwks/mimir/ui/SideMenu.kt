@@ -54,6 +54,7 @@ import io.github.odnwks.mimir.data.StationState
 import io.github.odnwks.mimir.nav.ChatAsk
 import io.github.odnwks.mimir.nav.Navigator
 import io.github.odnwks.mimir.nav.Screen
+import io.github.odnwks.mimir.nav.Sheet
 import io.github.odnwks.mimir.nav.Tab
 import io.github.odnwks.mimir.standalone.Engine
 import io.github.odnwks.mimir.standalone.LocalState
@@ -156,6 +157,7 @@ const val MENU_PC = "Your PC"
 const val MENU_WHISPER = "Whisper"
 const val MENU_CHATS = "Chats"
 const val MENU_PROJECTS = "Projects"
+const val MENU_NEW_PROJECT = "New project…"
 const val MENU_SETTINGS = "Settings"
 const val MENU_BUTTON = "Menu"
 
@@ -248,6 +250,10 @@ fun SideMenu(
                     MenuRow(p.name, right = words, rightColor = when (tone) { ProjectTone.Needs -> MenuColors.Amber; ProjectTone.Running -> Palette.GreenText; ProjectTone.Idle -> MenuColors.Dim }, ellipsize = true) {
                         go { nav.open(Screen.Project(p.name)) }
                     }
+                }
+                // The last row: a name, then the PC makes the folder, and the new project opens.
+                if (fold.projectsOpen) item("project-new") {
+                    MenuRow(MENU_NEW_PROJECT) { go { nav.openSheet(Sheet.ProjectPicker("", newProject = true, open = true)) } }
                 }
             }
         }
