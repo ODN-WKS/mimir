@@ -388,7 +388,7 @@ fun PhoneChat(
             s.askSearch?.let { words -> if (!s.writing) item(key = "search") { SearchQuestion(words, engine::acceptSearch, engine::declineSearch) } }
             if (!s.writing && !s.askPlace && s.askSearch == null && (s.ready || stoppedHere || pcReady) && s.chat.turns.lastOrNull()?.user == true) item(key = "interrupted") {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text(noAnswerWords(stoppedHere, answeringPc), style = Type.Small, color = Palette.TextDim)
+                    Text(interruptedWords(stoppedHere, answeringPc, s.problem?.takeIf { it != Engine.PC_COULD_NOT_ANSWER }), style = Type.Small, color = Palette.TextDim)
                     SmallButton("Try again", engine::retry, description = "Ask the last message again")
                 }
             }

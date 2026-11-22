@@ -133,6 +133,10 @@ class EditMessageTest {
         assertEquals("You stopped this answer.", noAnswerWords(stopped = true, pc = true))
         assertEquals("Your PC didn't finish that answer. Try again.", noAnswerWords(stopped = false, pc = true))
         assertEquals("That answer didn't finish. Try again.", noAnswerWords(stopped = false, pc = false))
+        // The PC's own plain reason replaces the general line, but never the owner's own Stop.
+        assertEquals("Your PC's model isn't running.", interruptedWords(stopped = false, pc = true, why = "Your PC's model isn't running."))
+        assertEquals("Your PC didn't finish that answer. Try again.", interruptedWords(stopped = false, pc = true, why = null))
+        assertEquals("You stopped this answer.", interruptedWords(stopped = true, pc = true, why = "Your PC's model isn't running."))
     }
 
     @Test fun holdingOneOfMyMessagesOffersEditFirstAndEditingInPlaceCutsTheRestWithUndo() {

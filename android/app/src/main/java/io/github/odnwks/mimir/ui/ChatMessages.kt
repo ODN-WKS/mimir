@@ -90,6 +90,10 @@ fun noAnswerWords(stopped: Boolean, pc: Boolean): String = when {
     else -> "That answer didn't finish. Try again."
 }
 
+/** The line under a message that got no answer: the PC's own plain reason when it gave one, else the general words. */
+fun interruptedWords(stopped: Boolean, pc: Boolean, why: String?): String =
+    if (stopped || why.isNullOrBlank()) noAnswerWords(stopped, pc) else why
+
 /** The owner's message: a right-aligned bubble, no "You" above it. [under] is what became of it. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
