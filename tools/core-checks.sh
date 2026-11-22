@@ -139,7 +139,7 @@ prove() {
                 { git worktree remove --force "$slot" 2>/dev/null; git worktree prune; git worktree add -q --detach "$slot" HEAD; }
             for ((i = s; i < n; i += slots)); do
                 local c="${want[$i]}"
-                prove_one "$slot" "$cache/target-prove/slot-$s" "$jobs" "$c" "${test_of[$c]}" "$run/$c"
+                prove_one "$slot" "/tmp/mimir-build/target-prove/slot-$s" "$jobs" "$c" "${test_of[$c]}" "$run/$c"
             done
             git worktree remove --force "$slot"
         ) &
