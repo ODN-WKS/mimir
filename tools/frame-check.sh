@@ -16,7 +16,7 @@ tree="$(git rev-parse HEAD:android)"
 out="android/app/build/benchmark-module/outputs/connected_android_test_additional_output"
 rm -rf "$out"
 status=0
-distrobox enter dev -- bash -lc "cd '$PWD/android' && export ANDROID_HOME=\$HOME/Android/Sdk ANDROID_SERIAL='$serial' && ./gradlew -g \$HOME/.cache/mimir/android-build -q --max-workers=12 :benchmark:connectedDevBenchmarkAndroidTest" || status=$?
+distrobox enter dev -- bash -lc "cd '$PWD/android' && export ANDROID_HOME=\$HOME/Android/Sdk ANDROID_SERIAL='$serial' && ./gradlew -g \$HOME/.cache/mimir/android-build -q --max-workers=12 :benchmark:connectedDevBenchmarkAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=io.github.odnwks.mimir.benchmark.FrameJourneys" || status=$?
 # Nothing of the check is left on the phone.
 adb -s "$serial" uninstall io.github.odnwks.mimir.dev >/dev/null 2>&1 || true
 adb -s "$serial" uninstall io.github.odnwks.mimir.benchmark >/dev/null 2>&1 || true
