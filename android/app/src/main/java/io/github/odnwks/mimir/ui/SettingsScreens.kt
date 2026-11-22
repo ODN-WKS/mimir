@@ -193,7 +193,7 @@ fun PhonePcScreen(state: StationState, station: Station, nav: Navigator) {
                         Text("Name", style = Type.Small, color = Palette.TextDim)
                         Text(state.pc.name, style = Type.BodyTight, color = Palette.Text)
                     }
-                    SmallButton("Rename", { name = state.pc.name; naming = true }, description = "Rename your PC")
+                    if (state.owner) SmallButton("Rename", { name = state.pc.name; naming = true }, description = "Rename your PC")
                 } else Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(bottom = 8.dp)) {
                     MessageBox(name, { name = it.take(40) }, "Your PC's name", "The name your phones see", Modifier.fillMaxWidth())
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -201,14 +201,17 @@ fun PhonePcScreen(state: StationState, station: Station, nav: Navigator) {
                         SmallButton("Cancel", { naming = false })
                     }
                 }
-                Spacer(Modifier.fillMaxWidth().size(1.dp).background(Palette.Line))
-                SwitchRow(state.relays, station::setRelays, Modifier.heightIn(min = 56.dp)) {
-                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text("Let this phone reach your PC from anywhere", style = Type.BodyTight, color = Palette.Text)
-                        Text(
-                            "When this phone can't connect straight to your PC (away from home), it goes another way and stays private. Off: only at home or on the same network. Takes effect when your PC next starts.",
-                            style = Type.Small, color = Palette.TextDim,
-                        )
+                // The PC's own settings are the owner's: another person's phone only sees the name.
+                if (state.owner) {
+                    Spacer(Modifier.fillMaxWidth().size(1.dp).background(Palette.Line))
+                    SwitchRow(state.relays, station::setRelays, Modifier.heightIn(min = 56.dp)) {
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text("Let this phone reach your PC from anywhere", style = Type.BodyTight, color = Palette.Text)
+                            Text(
+                                "When this phone can't connect straight to your PC (away from home), it goes another way and stays private. Off: only at home or on the same network. Takes effect when your PC next starts.",
+                                style = Type.Small, color = Palette.TextDim,
+                            )
+                        }
                     }
                 }
             }
