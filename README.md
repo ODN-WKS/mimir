@@ -20,7 +20,9 @@ Mímir comes in two files, nothing else: a Flatpak for the PC and an APK for the
   Mímir updates like any other app, in your software centre or with `flatpak update`. The
   runtime it needs is fetched automatically. `Mimir-<version>.flatpak` is an offline copy for
   a PC without internet; it does not update by itself.
-- Phone: open `mimir-<version>.apk` on the phone.
+- Phone: open `mimir-<version>.apk` on the phone. To check it's the real app, its signing
+  certificate's SHA-256 is
+  `3ade6f99a3477767d640f1c9895e17ecd32d870cd2c398373630e90f369e18ad`.
 
 Updates: Mímir tells you when a new version is out (in Settings, and the sidebar). With the
 source added, "Update now" gets it and "Restart Mímir to finish" opens the new copy. If you
