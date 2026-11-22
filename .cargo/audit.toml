@@ -1,0 +1,11 @@
+# Security notices with no fix we can take yet. All three come in through arti-client 0.48 (the Tor
+# library, already the newest release); we can't raise them ourselves. Re-check on every arti update.
+[advisories]
+ignore = [
+    # rsa 0.9.10 (timing leak when decrypting with RSA): only pulled in by arti's SSH key parsing; Mimir never decrypts with RSA.
+    "RUSTSEC-2023-0071",
+    # crypto-bigint 0.5.5: used by rsa above (timing in constant-time maths), same reason.
+    "RUSTSEC-2026-0387",
+    # libsqlite3-sys 0.38.2: arti's directory cache (rusqlite 0.40); fixed in 0.39, which arti 0.48 does not allow.
+    "RUSTSEC-2026-0459",
+]

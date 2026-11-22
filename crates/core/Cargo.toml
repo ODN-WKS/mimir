@@ -10,7 +10,6 @@ mimir-link = { path = "../link" }
 mimir-store = { path = "../store" }
 mimir-hub = { path = "../hub" }
 # Draws Claude Code's own screen for "Phone too" (a terminal view).
-vt100 = "0.15"
 serde.workspace = true
 serde_json.workspace = true
 libc.workspace = true

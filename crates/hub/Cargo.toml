@@ -7,5 +7,3 @@ publish.workspace = true
 [dependencies]
 mimir-store = { path = "../store" }
 mimir-proto = { path = "../proto" }
-serde.workspace = true
-serde_json.workspace = true
