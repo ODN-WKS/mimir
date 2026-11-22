@@ -231,7 +231,9 @@ class OneChatTest {
         assertEquals(listOf(true, false), turns.map { it.user })
         assertEquals("42", turns.last().text)
         assertFalse("nothing is left waiting", e.waiting)
-        assertTrue("the first turn keeps the time it was typed", turns[0].at == first.at)
+        // A waiting message is dated when it goes (bcb6761), so its answer never lands before an earlier one's.
+        assertTrue("the message is dated when it was sent, not when it was typed", turns[0].at >= first.at + 1_000)
+        assertTrue("the answer follows its own message", turns[1].at >= turns[0].at)
         assertEquals(1, pc.sent.size)
     }
 
