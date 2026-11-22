@@ -13,6 +13,7 @@
 //!                                       message's right-click menu
 //!   MIMIR_SHOT_OPEN=long-chat          a made-up chat with long answers
 //!   MIMIR_SHOT_OPEN=left-menu           the right-click menu of the first chat in the side list
+//!   MIMIR_SHOT_OPEN=paste-picture       paste MIMIR_SHOT_PIC into a new chat, type, send (MIMIR_SHOT_SEND)
 //!   MIMIR_SHOT_IDLE=1                   no extra frames (a window nobody touches)
 //! Frame times go to <file.png>.frames.txt.
 
@@ -189,6 +190,13 @@ pub(crate) fn note_message(ctx: &egui::Context, answer: bool, rect: egui::Rect) 
     }
 }
 
+/// Debug builds only: remembers where the chat's message box is drawn.
+pub(crate) fn note_box(ctx: &egui::Context, rect: egui::Rect) {
+    if cfg!(debug_assertions) && std::env::var_os("MIMIR_SHOT_OPEN").is_some() {
+        ctx.data_mut(|d| d.insert_temp(egui::Id::unique("shot-box"), rect));
+    }
+}
+
 /// Debug builds only: remembers where the first chat row is drawn.
 pub(crate) fn note_chat_row(ctx: &egui::Context, rect: egui::Rect) {
     if cfg!(debug_assertions) && std::env::var_os("MIMIR_SHOT_OPEN").is_some() {
@@ -246,6 +254,44 @@ pub(crate) fn inject(ctx: &egui::Context, raw: &mut egui::RawInput) {
                 raw.events.push(button(b, s, true));
             } else if t > 7.8 && step(6) {
                 raw.events.push(button(b, s, false));
+            }
+        }
+        // MIMIR_SHOT_PIC=<file>: pasted into a new chat's box, then (MIMIR_SHOT_SAY) typed, and
+        // sent when MIMIR_SHOT_SEND is set.
+        "paste-picture" => {
+            if t > 4.0 && step(1) {
+                if let Some(img) = std::env::var_os("MIMIR_SHOT_PIC")
+                    .and_then(|f| image::open(f).ok())
+                    .map(|i| i.to_rgba8())
+                {
+                    let color = egui::ColorImage::from_rgba_unmultiplied(
+                        [img.width() as usize, img.height() as usize],
+                        img.as_raw(),
+                    );
+                    raw.events
+                        .push(egui::Event::PasteImage(std::sync::Arc::new(color)));
+                }
+            } else if t > 6.0 && step(4) {
+                if let Some(r) =
+                    ctx.data(|d| d.get_temp::<egui::Rect>(egui::Id::unique("shot-box")))
+                {
+                    let a = r.left_top() + egui::vec2(30.0, 12.0);
+                    raw.events.push(egui::Event::PointerMoved(a));
+                    raw.events.push(button(a, p, true));
+                    raw.events.push(button(a, p, false));
+                }
+            } else if t > 7.0 && step(2) {
+                let say = std::env::var("MIMIR_SHOT_SAY")
+                    .unwrap_or_else(|_| "What is in this picture?".into());
+                raw.events.push(egui::Event::Text(say));
+            } else if t > 8.0 && step(3) && std::env::var_os("MIMIR_SHOT_SEND").is_some() {
+                raw.events.push(egui::Event::Key {
+                    key: egui::Key::Enter,
+                    physical_key: Some(egui::Key::Enter),
+                    pressed: true,
+                    repeat: false,
+                    modifiers: egui::Modifiers::NONE,
+                });
             }
         }
         "left-menu" => {

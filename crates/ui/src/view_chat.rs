@@ -499,6 +499,9 @@ impl App {
         let focus = std::mem::take(&mut self.focus_composer);
         let key = open.clone().unwrap_or_default();
         let mut draft = self.chat_drafts.remove(&key).unwrap_or_default();
+        let pics = self.chat_pics.remove(&key).unwrap_or_default();
+        let pics_note = self.pics_note.clone();
+        let shrinking = self.pics_inflight;
         // Top: who answers, and what the old ⋯ held.
         let settings = &self.settings;
         let draft_ref = &mut draft;
@@ -609,6 +612,10 @@ impl App {
                 } else {
                     model_words
                 };
+                if let Some(note) = &pics_note {
+                    ui.label(RichText::new(note).color(ORANGE).size(12.5));
+                    ui.add_space(4.0);
+                }
                 let out = composer_card(
                     ui,
                     "chat-composer-text",
@@ -617,6 +624,7 @@ impl App {
                     mode,
                     crate::labels::SEND,
                     |ui, actions| {
+                        crate::chat_pics::box_thumbnails(ui, &pics, shrinking, actions);
                         if ui
                             .add(
                                 theme::pill_button(
@@ -636,6 +644,7 @@ impl App {
                     },
                     actions,
                 );
+                crate::shot::note_box(ui.ctx(), out.edit.rect);
                 if focus || self.chat_focus_once {
                     out.edit.request_focus();
                     self.chat_focus_once = false;
@@ -662,6 +671,9 @@ impl App {
         if let Some(t) = starter_text {
             draft = t.to_string();
             self.chat_focus_once = true;
+        }
+        if !pics.is_empty() {
+            self.chat_pics.insert(key.clone(), pics);
         }
         if !draft.is_empty() {
             self.chat_drafts.insert(key, draft);
@@ -720,6 +732,7 @@ impl App {
                                 ui.add_space(12.0);
                                 continue;
                             }
+                            crate::chat_pics::sent_pictures(ui, &t.id, &t.pictures, actions);
                             let area = user_bubble(ui, &t.text);
                             let can_edit = !busy && !t.id.is_empty();
                             let edit_chat = c.id.clone();

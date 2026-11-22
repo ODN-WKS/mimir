@@ -237,6 +237,8 @@ pub const PILL_CLAUDE: &str = "Online · goes to Anthropic";
 pub const BOX_CHAT: &str = "Message Mímir";
 pub const BOX_TASK: &str = "Reply, or type / for commands";
 pub const ATTACH_FILES: &str = "Attach files";
+/// The small ✕ on a picture waiting in the message box.
+pub const REMOVE_PICTURE: &str = "Remove this picture";
 pub const DICTATE: &str = "Dictate";
 pub const HINT_CHAT: &str =
     "Enter send · Shift Enter new line · Ctrl N new chat · right-click anything for more";

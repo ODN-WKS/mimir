@@ -762,7 +762,14 @@ impl Station {
             match mine.turns.iter_mut().find(|m| m.id == t.id) {
                 // A higher version replaces a lower one; the same version
                 // is the PC's saved copy of the same turn.
-                Some(m) if t.version >= m.version => *m = t,
+                Some(m) if t.version >= m.version => {
+                    // The PC never sends pictures back: the copy made here keeps them.
+                    let pictures = std::mem::take(&mut m.pictures);
+                    *m = t;
+                    if m.pictures.is_empty() {
+                        m.pictures = pictures;
+                    }
+                }
                 Some(_) => {}
                 None => mine.turns.push(t),
             }
@@ -1046,6 +1053,7 @@ impl Station {
         &mut self,
         chat: Option<&str>,
         text: &str,
+        pictures: Vec<mimir_proto::Picture>,
         effort: Option<&str>,
     ) -> Result<String, String> {
         if self.reconnecting() {
@@ -1064,13 +1072,17 @@ impl Station {
             version: 1,
             seq: 0,
             gone: false,
-            pictures: vec![],
+            pictures,
         };
         let mut turns: Vec<ChatTurn> = self
             .chats
             .get(&chat_id)
             .map(|c| c.turns.clone())
             .unwrap_or_default();
+        // Earlier messages' pictures stay here: the PC keeps its own copies.
+        for t in &mut turns {
+            t.pictures.clear();
+        }
         turns.push(user.clone());
         let user_id = user.id.clone();
         // Shown at once; the PC's copy (with its number) replaces it.
@@ -2213,7 +2225,10 @@ mod tests {
     #[test]
     fn a_message_with_no_service_is_not_sent() {
         let mut s = bare();
-        assert_eq!(s.send_chat(None, "Hello", None), Err(NOT_SENT.to_string()));
+        assert_eq!(
+            s.send_chat(None, "Hello", vec![], None),
+            Err(NOT_SENT.to_string())
+        );
         assert!(s.chats.is_empty() && s.asking.is_empty() && s.chat_calls.is_empty());
     }
 

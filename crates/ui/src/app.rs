@@ -15,7 +15,10 @@ use mimir_core::sessions::PastSession;
 use mimir_core::task::{Mode, Status};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use std::sync::mpsc::Receiver;
+use std::sync::mpsc::{Receiver, Sender};
+
+/// A picture the background finished shrinking: the box's key, and the picture (None: unreadable).
+pub(crate) type ShrunkPic = (String, Option<Picture>);
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -260,6 +263,12 @@ pub enum Action {
     ToggleSection(bool),
     /// Send a message in this chat (None: a new chat).
     SendChat(Option<String>, String),
+    /// A picture in a sent message: copy it, save it somewhere, or open it.
+    PictureCopy(Picture),
+    PictureSave(Picture, String),
+    PictureOpen(Picture, String),
+    /// Take a picture out of the box (by its number).
+    DropChatPicture(u64),
     StopChat(String),
     /// Ask the last message of a chat again; the new answer replaces the old.
     TryAgain(String),
@@ -408,6 +417,20 @@ pub struct App {
     pub(crate) chat_open: Option<String>,
     /// Unsent chat messages, per chat ("" is the new chat's).
     pub(crate) chat_drafts: HashMap<String, String>,
+    /// Pictures waiting in each chat's box (keyed like `chat_drafts`).
+    pub(crate) chat_pics: HashMap<String, Vec<crate::chat_pics::Pending>>,
+    /// Pictures shrunk in the background: (box key, picture or None when unreadable).
+    pub(crate) pics_chan: (Sender<ShrunkPic>, Receiver<ShrunkPic>),
+    pub(crate) pics_inflight: usize,
+    /// A picture to put on the clipboard at the next frame.
+    pub(crate) pic_copy: Option<Picture>,
+    pub(crate) pics_next: u64,
+    /// One plain line about the pictures (can't look, too many, unreadable).
+    pub(crate) pics_note: Option<String>,
+    /// The file picker was opened from a chat.
+    pub(crate) attach_to_chat: bool,
+    /// Where to save a picture: the dialog, and what is saved.
+    pub(crate) saving_pic: Option<(Receiver<Option<PathBuf>>, Picture)>,
     /// Put the cursor in the chat's message box once.
     pub(crate) chat_focus_once: bool,
     /// A chat waiting for "Delete the chat" to be confirmed.
@@ -453,6 +476,7 @@ impl App {
         public_key: String,
     ) -> Self {
         theme::apply(&cc.egui_ctx);
+        crate::chat_pics::clear_opened();
         let ctx = cc.egui_ctx.clone();
         let exe = places::own_program();
         let claude = places::find_claude();
@@ -547,6 +571,14 @@ impl App {
             focus_composer: false,
             chat_open: None,
             chat_drafts: HashMap::new(),
+            chat_pics: HashMap::new(),
+            pics_chan: std::sync::mpsc::channel(),
+            pics_inflight: 0,
+            pic_copy: None,
+            pics_next: 1,
+            pics_note: None,
+            attach_to_chat: false,
+            saving_pic: None,
             chat_focus_once: false,
             confirm_delete_chat: None,
             rename_chat: None,
@@ -821,8 +853,11 @@ impl App {
                 }
                 Action::SendChat(chat, text) => {
                     let key = chat.clone().unwrap_or_default();
-                    match r.send_chat(chat.as_deref(), &text, None) {
+                    let pending = self.chat_pics.remove(&key).unwrap_or_default();
+                    let pictures: Vec<Picture> = pending.iter().map(|p| p.pic.clone()).collect();
+                    match r.send_chat(chat.as_deref(), &text, pictures, None) {
                         Ok(id) => {
+                            self.pics_note = None;
                             self.chat_drafts.remove(&key);
                             self.chat_open = Some(id);
                             self.view = View::Chat;
@@ -831,6 +866,9 @@ impl App {
                         }
                         // Not sent: the message stays in the box.
                         Err(why) => {
+                            if !pending.is_empty() {
+                                self.chat_pics.insert(key.clone(), pending);
+                            }
                             self.chat_drafts.insert(key, text);
                             r.problem(&why);
                         }
@@ -1016,8 +1054,27 @@ impl App {
                     );
                 }
                 Action::PickFolder => self.picking = Some(places::pick_folder()),
+                Action::DropChatPicture(id) => {
+                    for v in self.chat_pics.values_mut() {
+                        v.retain(|p| p.id != id);
+                    }
+                    self.chat_pics.retain(|_, v| !v.is_empty());
+                    self.pics_note = None;
+                }
+                Action::PictureCopy(p) => self.pic_copy = Some(p),
+                Action::PictureSave(p, name) => {
+                    self.saving_pic = Some((crate::chat_pics::pick_save(&name), p));
+                }
+                Action::PictureOpen(p, name) => match crate::chat_pics::write_for_open(&p, &name) {
+                    Some(path) => places::open_path(&path),
+                    None => r.problem("That picture couldn't be opened. Try Save as… instead."),
+                },
                 Action::PickAttachments => {
-                    if places::have("kdialog") || places::have("zenity") {
+                    self.attach_to_chat = self.view == View::Chat;
+                    if self.attach_to_chat && !sees_pictures(r) {
+                        // Explains instead of opening a picker that leads nowhere.
+                        self.pics_note = Some(crate::chat_pics::CANT_SEE.into());
+                    } else if places::have("kdialog") || places::have("zenity") {
                         self.attaching = Some(places::pick_files("Attach files or pictures"));
                     } else {
                         r.problem(
@@ -1448,6 +1505,102 @@ impl App {
     }
 }
 
+/// Whether the PC's answerer can look at pictures (true when it can't be asked).
+fn sees_pictures(r: &mut Station) -> bool {
+    r.call_wait(mimir_core::proto::Call::Models)
+        .ok()
+        .and_then(|v| v["sees_pictures"].as_bool())
+        .unwrap_or(true)
+}
+
+/// Where a picture for the chat box came from.
+pub(crate) enum PicSource {
+    File(PathBuf),
+    Pixels(Arc<egui::ColorImage>),
+}
+
+impl App {
+    /// The key of the chat box that is showing (like `chat_drafts`).
+    pub(crate) fn chat_key(&self) -> String {
+        self.chat_open.clone().unwrap_or_default()
+    }
+
+    /// Puts pictures in the chat box: shrunk in the background, at most four.
+    pub(crate) fn add_chat_pictures(&mut self, ctx: &egui::Context, mut items: Vec<PicSource>) {
+        use crate::chat_pics::{CANT_SEE, MAX_PICTURES, TOO_MANY};
+        if items.is_empty() {
+            return;
+        }
+        if let Ok(r) = &mut self.station
+            && !sees_pictures(r)
+        {
+            self.pics_note = Some(CANT_SEE.into());
+            return;
+        }
+        let key = self.chat_key();
+        let have = self.chat_pics.get(&key).map_or(0, |v| v.len()) + self.pics_inflight;
+        let room = MAX_PICTURES.saturating_sub(have);
+        if items.len() > room {
+            self.pics_note = Some(TOO_MANY.into());
+            items.truncate(room);
+        } else {
+            self.pics_note = None;
+        }
+        if items.is_empty() {
+            return;
+        }
+        self.pics_inflight += items.len();
+        let tx = self.pics_chan.0.clone();
+        let ctx = ctx.clone();
+        std::thread::spawn(move || {
+            for item in items {
+                let pic = match item {
+                    PicSource::File(p) => crate::chat_pics::shrink_file(&p),
+                    PicSource::Pixels(img) => crate::chat_pics::shrink_pixels(&img),
+                };
+                let _ = tx.send((key.clone(), pic));
+                ctx.request_repaint();
+            }
+        });
+    }
+
+    /// Takes in pictures the background has finished, and does the copy and
+    /// save a picture's menu asked for.
+    pub(crate) fn pictures_tick(&mut self, ctx: &egui::Context) {
+        while let Ok((key, pic)) = self.pics_chan.1.try_recv() {
+            self.pics_inflight = self.pics_inflight.saturating_sub(1);
+            match pic {
+                Some(pic) => {
+                    let id = self.pics_next;
+                    self.pics_next += 1;
+                    let v = self.chat_pics.entry(key).or_default();
+                    if v.len() < crate::chat_pics::MAX_PICTURES {
+                        v.push(crate::chat_pics::Pending { id, pic });
+                    }
+                }
+                None => self.pics_note = Some(crate::chat_pics::NOT_A_PICTURE.into()),
+            }
+        }
+        if let Some(p) = self.pic_copy.take()
+            && let Some(img) = crate::chat_pics::pixels_of(&p, 8192)
+        {
+            ctx.copy_image(img);
+        }
+        if let Some((rx, pic)) = &self.saving_pic
+            && let Ok(path) = rx.try_recv()
+        {
+            if let Some(path) = path
+                && let Some(bytes) = crate::chat_pics::bytes_of(pic)
+                && std::fs::write(&path, bytes).is_err()
+                && let Ok(r) = &mut self.station
+            {
+                r.problem("The picture couldn't be saved there. Choose another folder.");
+            }
+            self.saving_pic = None;
+        }
+    }
+}
+
 /// Splits attachments into pictures (sent to Claude) and other files
 /// (named in the message, so Claude can read them).
 pub(crate) fn with_files(text: &str, files: &[PathBuf]) -> (String, Vec<Picture>) {
@@ -1714,7 +1867,11 @@ impl eframe::App for App {
             && let Ok(files) = rx.try_recv()
         {
             self.attaching = None;
-            self.attachments.extend(files);
+            if self.attach_to_chat {
+                self.add_chat_pictures(&ctx, files.into_iter().map(PicSource::File).collect());
+            } else {
+                self.attachments.extend(files);
+            }
         }
         // Files dropped on the window become attachments.
         let dropped: Vec<PathBuf> = ctx.input(|i| {
@@ -1725,7 +1882,11 @@ impl eframe::App for App {
                 .filter(|p| !p.as_os_str().is_empty())
                 .collect()
         });
-        self.attachments.extend(dropped);
+        if self.view == View::Chat {
+            self.add_chat_pictures(&ctx, dropped.into_iter().map(PicSource::File).collect());
+        } else {
+            self.attachments.extend(dropped);
+        }
         // Ctrl+V with a picture on the clipboard attaches it.
         let pasted: Vec<std::sync::Arc<egui::ColorImage>> = ctx.input(|i| {
             i.events
@@ -1742,7 +1903,10 @@ impl eframe::App for App {
                     self.attachments.push(p);
                 }
             }
+        } else if self.view == View::Chat {
+            self.add_chat_pictures(&ctx, pasted.into_iter().map(PicSource::Pixels).collect());
         }
+        self.pictures_tick(&ctx);
         self.stats.refresh();
         let busy = self
             .station

@@ -3,6 +3,7 @@
 
 mod app;
 mod app_view;
+pub mod chat_pics;
 pub mod cli;
 mod extras;
 mod fonts;

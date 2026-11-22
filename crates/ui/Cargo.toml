@@ -22,7 +22,8 @@ serde_json.workspace = true
 # Lets the window read pictures from the clipboard (Ctrl+V), also on
 # Wayland; pasted pictures are saved as PNG.
 arboard = { version = "3.7", default-features = false, features = ["image-data", "wayland-data-control"] }
-image = { version = "0.25", default-features = false, features = ["png"] }
+base64 = "0.22"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp"] }
 # The Whisper eye, drawn from its SVG (glow included) at the exact pixel size.
 resvg = { version = "0.45", default-features = false }
 # The phone pairing code, drawn as a QR picture.
@@ -42,5 +43,3 @@ libc.workspace = true
 sha2.workspace = true
 # The fake phone in the phone link checks.
 mimir-link = { path = "../link" }
-# Decodes the audio files in the updates checks.
-base64 = "0.22"
