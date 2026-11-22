@@ -21,6 +21,17 @@ use std::time::{Duration, Instant};
 /// How long a call may take before the window gives up on it.
 const PATIENCE: Duration = Duration::from_secs(10);
 
+/// What `call_wait` says when the service never answered.
+const NO_ANSWER: &str = "Mímir's service didn't answer.";
+/// What `call_wait` says when the service went away mid-call.
+const SERVICE_STOPPED: &str = "Mímir's service stopped.";
+
+/// True when a `call_wait` error came from the road to the service (it
+/// stalled or stopped), not from the service refusing the call.
+pub fn is_transport_error(e: &str) -> bool {
+    e == NO_ANSWER || e == SERVICE_STOPPED
+}
+
 /// A permission request waiting for the owner.
 pub struct AskView {
     pub request: Request,
@@ -442,7 +453,7 @@ impl Station {
             }
             let left = until.saturating_duration_since(Instant::now());
             if left.is_zero() {
-                return Err("Mímir's service didn't answer.".into());
+                return Err(NO_ANSWER.into());
             }
             let got = match &self.conn {
                 Conn::Socket { rx, .. } => rx.recv_timeout(left),
@@ -451,7 +462,7 @@ impl Station {
                 Ok(m) => self.take(m),
                 Err(RecvTimeoutError::Timeout) => {}
                 Err(RecvTimeoutError::Disconnected) => {
-                    return Err("Mímir's service stopped.".into());
+                    return Err(SERVICE_STOPPED.into());
                 }
             }
         }

@@ -24,6 +24,8 @@ pub struct PhonePanel {
     pair_seen: Option<u64>,
     /// The PC said the pairing is over when it was confirmed.
     pair_ran_out: bool,
+    /// The service didn't answer the last Yes; the pairing may still wait.
+    pair_retry: bool,
     /// A removal waiting for its "Their chats on this PC are deleted."
     /// answer: the person's id, the phone's key (None: the whole person)
     /// and what to call it.
@@ -445,6 +447,7 @@ impl App {
             p.other_name.clear();
             p.pair_seen = None;
             p.pair_ran_out = false;
+            p.pair_retry = false;
             return;
         };
         if p.pair_seen != Some(pending) {
@@ -452,6 +455,7 @@ impl App {
             p.other_name.clear();
             p.pair_seen = Some(pending);
             p.pair_ran_out = false;
+            p.pair_retry = false;
         }
         egui::Window::new("Pair this phone?")
             .collapsible(false)
@@ -469,6 +473,13 @@ impl App {
                         p.pair_ran_out = false;
                     }
                     return;
+                }
+                if p.pair_retry {
+                    ui.label(
+                        RichText::new("Mímir's service didn't answer. Try again.")
+                            .color(MUTED)
+                            .size(13.0),
+                    );
                 }
                 ui.label(format!("{name} wants to pair with your PC."));
                 ui.label("Check that the phone shows the same four words:");
@@ -526,20 +537,22 @@ impl App {
                             mimir_core::proto::WHOSE_MINE.to_string()
                         });
                         // Closes only when the PC took the answer.
-                        if st
-                            .call_wait(Call::ConfirmPair {
-                                pending,
-                                yes: true,
-                                person,
-                            })
-                            .is_ok()
-                        {
-                            st.pairing = None;
-                            p.whose = None;
-                            p.other_name.clear();
-                            p.pair_seen = None;
-                        } else {
-                            p.pair_ran_out = true;
+                        match st.call_wait(Call::ConfirmPair {
+                            pending,
+                            yes: true,
+                            person,
+                        }) {
+                            Ok(_) => {
+                                st.pairing = None;
+                                p.whose = None;
+                                p.other_name.clear();
+                                p.pair_seen = None;
+                                p.pair_retry = false;
+                            }
+                            Err(e) => {
+                                // Only the PC's refusal means it ran out.
+                                (p.pair_ran_out, p.pair_retry) = pair_failure(&e);
+                            }
                         }
                     }
                     if ui.add(theme::quiet("No, cancel")).clicked() {
@@ -555,6 +568,28 @@ impl App {
                     }
                 });
             });
+    }
+}
+
+/// What a failed Yes means: (the pairing ran out, just try again). A stalled
+/// or stopped service says nothing about the pairing, so it stays open.
+fn pair_failure(err: &str) -> (bool, bool) {
+    if mimir_core::client::is_transport_error(err) {
+        (false, true)
+    } else {
+        (true, false)
+    }
+}
+
+#[cfg(test)]
+mod pair_failure_tests {
+    use super::pair_failure;
+
+    #[test]
+    fn a_stalled_service_keeps_the_card_and_a_refusal_closes_it() {
+        assert_eq!(pair_failure("Mímir's service didn't answer."), (false, true));
+        assert_eq!(pair_failure("Mímir's service stopped."), (false, true));
+        assert_eq!(pair_failure("No pairing waits."), (true, false));
     }
 }
 
