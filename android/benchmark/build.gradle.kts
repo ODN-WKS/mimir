@@ -27,6 +27,12 @@ android {
     productFlavors { create("dev") { dimension = "use" } }
 
     buildTypes {
+        // The app's code with its names kept: the baseline profile is walked on this one.
+        create("nonMinified") {
+            isDebuggable = true
+            signingConfig = signingConfigs.getByName("debug")
+            matchingFallbacks += listOf("release")
+        }
         create("benchmark") {
             isDebuggable = true
             signingConfig = signingConfigs.getByName("debug")
@@ -41,7 +47,7 @@ android {
 }
 
 androidComponents {
-    beforeVariants(selector().all()) { it.enable = it.buildType == "benchmark" }
+    beforeVariants(selector().all()) { it.enable = it.buildType == "benchmark" || it.buildType == "nonMinified" }
 }
 
 dependencies {

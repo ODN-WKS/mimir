@@ -123,6 +123,15 @@ android {
             signingConfig = signingConfigs.getByName("debug")
             matchingFallbacks += listOf("release")
         }
+        // The same, with its names kept, so the baseline profile can be walked on it and then
+        // matches the real release (tools/baseline-profile.sh).
+        create("nonMinified") {
+            initWith(getByName("release"))
+            isMinifyEnabled = false
+            isShrinkResources = false
+            signingConfig = signingConfigs.getByName("debug")
+            matchingFallbacks += listOf("release")
+        }
     }
 
     buildFeatures {
