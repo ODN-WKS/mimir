@@ -38,7 +38,8 @@ sealed interface UpdateStatus {
     /** The system's own install screen is up (older Android always asks). */
     data class Waiting(val version: String) : UpdateStatus
     data class Installed(val version: String) : UpdateStatus
-    data class Failed(val words: String) : UpdateStatus
+    /** [install] is true when a saved release failed to install (so Install/Try again can run); false for a failed check. */
+    data class Failed(val words: String, val install: Boolean = false) : UpdateStatus
 }
 
 /**
@@ -143,16 +144,16 @@ object AppUpdater {
     /** Downloads, checks and hands the file to Android's installer. Call off the main thread. */
     fun downloadAndInstall(c: Context) {
         val rel = foundRelease(c) ?: return
-        if (!installAllowed(c)) { openAllowPage(c); _status.value = UpdateStatus.Failed(NEEDS_ALLOW); return }
+        if (!installAllowed(c)) { openAllowPage(c); _status.value = UpdateStatus.Failed(NEEDS_ALLOW, install = true); return }
         _status.value = UpdateStatus.Downloading
         val file = testUpdater(c).download(rel, downloadDir(c)) { sameSigner(c, it) }
-        if (file == null) { _status.value = UpdateStatus.Failed(UpdateWords.DIDNT_CHECK_OUT); return }
+        if (file == null) { _status.value = UpdateStatus.Failed(UpdateWords.DIDNT_CHECK_OUT, install = true); return }
         try {
             install(c, file, rel.version)
             _status.value = UpdateStatus.Waiting(rel.version)
         } catch (e: Exception) {
             file.delete()
-            _status.value = UpdateStatus.Failed("The update couldn't be installed. Try again later.")
+            _status.value = UpdateStatus.Failed("The update couldn't be installed. Try again later.", install = true)
         }
     }
 
@@ -187,6 +188,7 @@ object AppUpdater {
                 prefs(c).edit().remove("installing").apply()
                 _status.value = UpdateStatus.Failed(
                     if (status == PackageInstaller.STATUS_FAILURE_ABORTED) "The update wasn't installed." else "The update couldn't be installed. Try again later.",
+                    install = true,
                 )
             }
         }

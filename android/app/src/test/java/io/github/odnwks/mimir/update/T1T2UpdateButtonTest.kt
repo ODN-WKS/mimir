@@ -11,20 +11,28 @@ import java.io.File
 /** T1: the install button comes back after a failed or not-yet-allowed install. T2: only the permissions the app uses. */
 class T1T2UpdateButtonTest {
     @Test fun failedNeedsAllowStillShowsInstallNow() {
-        val s = UpdateStatus.Failed(AppUpdater.NEEDS_ALLOW)
+        val s = UpdateStatus.Failed(AppUpdater.NEEDS_ALLOW, install = true)
         assertTrue(showsInstallButton(s, releaseSaved = true))
         assertEquals("Install now", installButtonWords(s))
     }
 
     @Test fun otherFailuresShowTryAgain() {
-        val s = UpdateStatus.Failed("The update couldn't be installed. Try again later.")
+        val s = UpdateStatus.Failed("The update couldn't be installed. Try again later.", install = true)
         assertTrue(showsInstallButton(s, true))
         assertEquals("Try again", installButtonWords(s))
     }
 
+    @Test fun failedCheckHidesButtonSoTryAgainNeverInstallsAStaleRelease() {
+        assertFalse(showsInstallButton(UpdateStatus.Failed(UpdateWords.COULDNT_CHECK), releaseSaved = true))
+    }
+
+    @Test fun waitingKeepsButtonSoCancelledInstallerCanBeRetried() {
+        assertTrue(showsInstallButton(UpdateStatus.Waiting("0.05"), releaseSaved = true))
+    }
+
     @Test fun readyShowsItAndNothingSavedHidesIt() {
         assertTrue(showsInstallButton(UpdateStatus.Ready("0.05", ""), true))
-        assertFalse(showsInstallButton(UpdateStatus.Failed(AppUpdater.NEEDS_ALLOW), false))
+        assertFalse(showsInstallButton(UpdateStatus.Failed(AppUpdater.NEEDS_ALLOW, install = true), false))
         assertFalse(showsInstallButton(UpdateStatus.Newest("0.04"), true))
         assertFalse(showsInstallButton(UpdateStatus.Downloading, true))
     }

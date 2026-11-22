@@ -28,8 +28,8 @@ const val UPDATES_TEST_BUILD = "This test version only shows what's available."
 const val UPDATES_ASKS = "Your Android asks you to tap once to finish each update."
 const val UPDATES_NOT_ALLOWED = "Installing isn't allowed yet. Tap Install now and Android asks once."
 
-/** The install button shows whenever a release is saved and the update is ready or failed (a failure must never hide it). */
-fun showsInstallButton(s: UpdateStatus, releaseSaved: Boolean): Boolean = releaseSaved && (s is UpdateStatus.Ready || s is UpdateStatus.Failed)
+/** The install button shows whenever a release is saved and the update is ready, waiting on Android's installer (the owner may have cancelled it) or failed to install (a failure must never hide it). */
+fun showsInstallButton(s: UpdateStatus, releaseSaved: Boolean): Boolean = releaseSaved && (s is UpdateStatus.Ready || s is UpdateStatus.Waiting || (s is UpdateStatus.Failed && s.install))
 
 /** "Install now" at first and while the owner still has to allow installs; "Try again" after any other failure. */
 fun installButtonWords(s: UpdateStatus): String =
