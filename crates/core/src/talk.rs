@@ -1335,7 +1335,8 @@ mod tests {
         std::fs::set_permissions(&prog, std::fs::Permissions::from_mode(0o755)).unwrap();
         let (t, rx) = engine(vec![r#"{"message":{"content":"Hi"},"done":true}"#]);
         let mut j = job("p3", "What is this?");
-        j.switch_note = Some("Answered online because your usual model can't look at pictures.".into());
+        j.switch_note =
+            Some("Answered online because your usual model can't look at pictures.".into());
         j.paid = Some(Paid {
             model: None,
             program: prog,

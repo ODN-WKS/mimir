@@ -74,9 +74,11 @@ fn save_to(path: &std::path::Path, map: &HashMap<String, Entry>) {
 /// Ollama's version, looked up at most every half minute per address; a
 /// failed lookup is kept for 10 seconds so a down or hung Ollama isn't asked
 /// again for every model.
+/// When each address's version was looked up, and what it said.
+type VersionCache = Mutex<HashMap<String, (std::time::Instant, Option<String>)>>;
+
 fn version(base: &str) -> Option<String> {
-    static V: OnceLock<Mutex<HashMap<String, (std::time::Instant, Option<String>)>>> =
-        OnceLock::new();
+    static V: OnceLock<VersionCache> = OnceLock::new();
     let m = V.get_or_init(Default::default);
     if let Some((at, v)) = m.lock().unwrap_or_else(|e| e.into_inner()).get(base) {
         let ttl = if v.is_some() { 30 } else { 10 };
