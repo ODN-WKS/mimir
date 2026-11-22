@@ -1889,11 +1889,11 @@ impl Service {
                     "sees_pictures": self.may_go_online(&who) || {
                         let base = crate::models::ollama_url();
                         crate::engine::chat_model()
-                            .is_some_and(|p| crate::ollama::sees_pictures(&base, &p.model))
+                            .is_some_and(|p| crate::sight::claims(&base, &p.model))
                             || crate::models::installed()
                                 .unwrap_or_default()
                                 .iter()
-                                .any(|m| crate::ollama::sees_pictures(&base, m))
+                                .any(|m| crate::sight::claims(&base, m))
                     },
                     // The Claude models chats can use (feature "chat_model").
                     "chat_models": crate::talk::CLAUDE_CHOICES
@@ -4030,8 +4030,10 @@ impl Service {
         if pictures.iter().all(|p| p.is_empty()) {
             pictures.clear();
         }
-        // Pictures to a model that can't see: another PC model that does,
-        // else Online (where this person may), else plain words.
+        // Pictures: a PC model that sees (the usual one when it does), else
+        // Online where this person may, else plain words. Nothing here waits
+        // on a model: a model that fails on a real picture is handled in the
+        // chat worker.
         let mut switch_note = None;
         let mut backups: Vec<crate::talk::Backup> = vec![];
         let online_ok = self.may_go_online(&a.person);
@@ -4040,66 +4042,65 @@ impl Service {
             program: this.claude.clone(),
             dir: crate::paths::data_dir().join("talk-paid"),
         };
-        if !pictures.is_empty() && !paid {
-            let (c, online) = sight.take().unwrap_or_else(|| {
+        if !pictures.is_empty() {
+            let (c, _) = sight.take().unwrap_or_else(|| {
                 self.seeing(usual.as_ref().map(|p| p.model.as_str()), online_ok)
             });
+            let plan = crate::sight::plan(&c, online_ok, paid);
             let usual_name = usual.as_ref().map(|p| p.model.as_str());
             let reason = "your usual model can't look at pictures";
             let pc = shown_pc_name(&self.settings);
             let pc_words = |m: &str| format!("{} · {pc}", crate::models::plain_name(m));
-            let note_for = |m: &str| {
-                format!(
-                    "Answered by {} because {reason}.",
-                    crate::models::plain_name(m)
-                )
+            let note_for = |m: &str| switch_words(usual_name, m, reason);
+            let pick_for = |m: &str, base: &Option<crate::engine::Pick>| crate::engine::Pick {
+                model: m.to_string(),
+                title: crate::models::plain_name(m),
+                ..base.clone().unwrap_or_else(|| crate::engine::Pick {
+                    model: m.to_string(),
+                    title: String::new(),
+                    fit: crate::engine::Fit::Card,
+                    tokens_per_s: 0.0,
+                    first_token_ms: 0,
+                    cold_ms: 0,
+                    backend: String::new(),
+                })
             };
-            match c.model {
-                Some(m) => {
-                    if Some(m.as_str()) != usual_name {
-                        switch_note = Some(note_for(&m));
-                        model_words = pc_words(&m);
-                        pick = Some(crate::engine::Pick {
-                            model: m.clone(),
-                            title: crate::models::plain_name(&m),
-                            ..usual.clone().unwrap_or_else(|| crate::engine::Pick {
-                                model: m.clone(),
-                                title: String::new(),
-                                fit: crate::engine::Fit::Card,
-                                tokens_per_s: 0.0,
-                                first_token_ms: 0,
-                                cold_ms: 0,
-                                backend: String::new(),
-                            })
-                        });
-                    }
-                    for n in &c.next {
-                        backups.push(crate::talk::Backup {
-                            model: n.clone(),
-                            model_words: pc_words(n),
-                            note: note_for(n),
-                            paid: None,
-                        });
-                    }
-                    if online {
-                        backups.push(crate::talk::Backup {
-                            model: String::new(),
-                            model_words: "Online · paid".into(),
-                            note: format!("Answered online because {reason}."),
-                            paid: Some(paid_job(claude_model.clone(), self)),
-                        });
-                    }
-                }
-                None if online => {
-                    paid = true;
-                    ran = mimir_proto::Ran::Paid;
-                    model_words = "Online · paid".into();
+            if plan.nobody {
+                return Filed::OnPhone {
+                    why: NO_SIGHT_PC.into(),
+                };
+            }
+            if plan.online_first {
+                if !paid {
                     switch_note = Some(format!("Answered online because {reason}."));
                 }
-                None => {
-                    return Filed::OnPhone {
-                        why: NO_SIGHT_PC.into(),
-                    };
+                paid = true;
+                ran = mimir_proto::Ran::Paid;
+                model_words = "Online · paid".into();
+                // If Online fails, the free backup is a PC model that sees,
+                // never the usual one that can't; none: plain words.
+                pick = plan.free_backup.as_deref().map(|m| pick_for(m, &usual));
+            } else if let Some(m) = &plan.pc {
+                if Some(m.as_str()) != usual_name {
+                    switch_note = Some(note_for(m));
+                    model_words = pc_words(m);
+                    pick = Some(pick_for(m, &usual));
+                }
+                for n in &plan.next {
+                    backups.push(crate::talk::Backup {
+                        model: n.clone(),
+                        model_words: pc_words(n),
+                        note: note_for(n),
+                        paid: None,
+                    });
+                }
+                if plan.online_last {
+                    backups.push(crate::talk::Backup {
+                        model: String::new(),
+                        model_words: "Online · paid".into(),
+                        note: format!("Answered online because {reason}."),
+                        paid: Some(paid_job(claude_model.clone(), self)),
+                    });
                 }
             }
         }
@@ -5223,6 +5224,18 @@ fn run_id() -> String {
 /// This PC's name, as phones show it: the one in settings, else the PC's own.
 /// The PC as people see it: the name set in Mímir, else "Your PC" (never
 /// the system's own name).
+/// The note under an answer from a different model than the usual one.
+/// Two models can share a plain name: then the name says nothing, so the
+/// note leaves it out.
+fn switch_words(usual: Option<&str>, model: &str, reason: &str) -> String {
+    let name = crate::models::plain_name(model);
+    if usual.is_some_and(|u| crate::models::plain_name(u) == name) {
+        format!("Answered by another model on your PC because {reason}.")
+    } else {
+        format!("Answered by {name} because {reason}.")
+    }
+}
+
 pub fn shown_pc_name(settings: &Settings) -> String {
     settings
         .pc_name
@@ -5857,6 +5870,23 @@ const WHISPER_NO_SPEAK: &str =
 
 #[cfg(test)]
 mod pc_name_tests {
+    #[test]
+    fn two_models_with_one_plain_name_are_not_named_in_the_note() {
+        let r = "your usual model can't look at pictures";
+        let usual = Some("qwen3.6:35b-a3b-coding");
+        assert_eq!(
+            crate::models::plain_name("qwen3.6:35b-a3b-coding"),
+            crate::models::plain_name("qwen3.6-coder-agent")
+        );
+        let note = super::switch_words(usual, "qwen3.6-coder-agent", r);
+        assert_eq!(
+            note,
+            "Answered by another model on your PC because your usual model can't look at pictures."
+        );
+        let other = super::switch_words(usual, "llama3.2-vision", r);
+        assert!(other.starts_with("Answered by Llama 3.2"), "{other}");
+    }
+
     #[test]
     fn another_person_is_told_what_is_missing_when_no_model_is_set_up() {
         let other = super::no_model_words(false, None);

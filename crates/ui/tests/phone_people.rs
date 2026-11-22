@@ -1671,16 +1671,26 @@ fn n3_a_picture_goes_to_a_model_that_can_see_and_the_answer_says_so() {
         panic!("not answered on the PC: {f:?}")
     };
     assert_eq!(ran, mimir_core::proto::Ran::Pc);
-    assert!(model_words.starts_with("Qwen 3.5 · "), "{model_words}");
+    // The usual model says it sees, so the real picture goes to it first
+    // (nothing waits on it here); it fails and the next one answers.
+    assert!(model_words.starts_with("Qwen 3.6 "), "{model_words}");
     assert!(mine.seen.until(&mine.p, |s| s.done.contains_key("s1.a")));
     let t = mine.seen.done["s1.a"].clone().unwrap();
     assert_eq!(t.text, "A cat.");
+    assert!(
+        t.model_words
+            .as_deref()
+            .unwrap_or("")
+            .starts_with("Qwen 3.5 · "),
+        "{:?}",
+        t.model_words
+    );
     assert_eq!(
         t.switch_note.as_deref(),
         Some("Answered by Qwen 3.5 because your usual model can't look at pictures.")
     );
     assert_eq!(*asked.lock().unwrap(), vec!["qwen3.5:9b"]);
-    // The next picture is answered at once, no second test of the usual model.
+    // The next picture goes straight to the one that sees: the usual one is known blind.
     let _ = picture_talk(&mut mine, "s2");
     assert!(mine.seen.until(&mine.p, |s| s.done.contains_key("s2.a")));
     assert_eq!(*asked.lock().unwrap(), vec!["qwen3.5:9b", "qwen3.5:9b"]);

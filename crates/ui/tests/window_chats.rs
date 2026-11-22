@@ -763,3 +763,59 @@ fn make_the_picture_home() {
     std::thread::sleep(Duration::from_secs(1));
     home.stop_service();
 }
+
+/// A reply from a different model than the usual one has one dim note line
+/// under it in the window; a reply without a note has none.
+#[test]
+fn the_dim_note_shows_under_a_reply_that_has_one_and_not_without() {
+    let Some(home) = home() else { return };
+    let mut h = home.open();
+    let mut st = home.service();
+    let phone = paired(&mut st);
+    let note = "Answered by Eyes because your usual model can't look at pictures.";
+    let mut noted = turn("n1.a", false, "A red square.", Some(Ran::Pc), None);
+    noted.switch_note = Some(note.into());
+    let put = |id: &str, turns: Vec<ChatTurn>| {
+        phone
+            .call(Call::ChatPut {
+                chat_id: id.into(),
+                name: None,
+                turns,
+                deleted: false,
+            })
+            .unwrap();
+    };
+    put(
+        "note-chat",
+        vec![
+            turn("n1", true, "Which colour is the sample?", None, None),
+            noted,
+        ],
+    );
+    put(
+        "plain-chat",
+        vec![
+            turn("n2", true, "Which shape is the other sample?", None, None),
+            turn("n2.a", false, "A circle.", Some(Ran::Pc), None),
+        ],
+    );
+    assert!(wait_for(&mut h, |h| shows(h, "Which colour is the sample")));
+    click(&mut h, "Chat: Which colour is the sample?");
+    assert!(
+        wait_for(&mut h, |h| shows(h, "A red square.")),
+        "{}",
+        screen_text(&h)
+    );
+    assert!(shows(&h, note), "no note\n{}", screen_text(&h));
+    click(&mut h, "Chat: Which shape is the other sample?");
+    assert!(
+        wait_for(&mut h, |h| shows(h, "A circle.")),
+        "{}",
+        screen_text(&h)
+    );
+    assert!(
+        !shows(&h, "Answered by"),
+        "a note without one\n{}",
+        screen_text(&h)
+    );
+}

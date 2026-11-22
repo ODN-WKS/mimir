@@ -483,12 +483,9 @@ impl Talk {
             }
             return result;
         }
-        crate::log::write(
-            "talk",
-            "a model failed on a picture",
-            result.as_ref().err().map(String::as_str).unwrap_or(""),
-        );
-        crate::sight::mark_blind(&base, &job.model);
+        let why = result.as_ref().err().cloned().unwrap_or_default();
+        crate::log::write("talk", "a model failed on a picture", &why);
+        crate::sight::mark_blind(&base, &job.model, &why);
         let mut result = result;
         for b in &job.backups {
             let mut next = job.clone();
@@ -514,7 +511,8 @@ impl Talk {
                 break;
             }
             if b.paid.is_none() {
-                crate::sight::mark_blind(&base, &b.model);
+                let why = result.as_ref().err().cloned().unwrap_or_default();
+                crate::sight::mark_blind(&base, &b.model, &why);
             }
         }
         result
