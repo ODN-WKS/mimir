@@ -34,6 +34,7 @@ import androidx.core.content.ContextCompat
 import io.github.odnwks.mimir.audio.PhoneSpeech
 import io.github.odnwks.mimir.audio.Recorder
 import io.github.odnwks.mimir.audio.SpeechSource
+import io.github.odnwks.mimir.data.LISTEN_NOT_SENT
 import io.github.odnwks.mimir.data.Station
 import io.github.odnwks.mimir.ui.theme.Motion
 import io.github.odnwks.mimir.ui.theme.Palette
@@ -47,11 +48,6 @@ sealed interface Speaking {
     data object Hearing : Speaking
     /** What was heard: it goes into the message box for the owner to read and send (never by itself). */
     data class Heard(val text: String) : Speaking
-    /**
-     * Spoken while the PC is away, with no speech recognition on this phone: the recording is kept
-     * only if the owner taps to send it when the PC is back.
-     */
-    class Recorded(val wav: ByteArray, val seconds: Int) : Speaking
     data class Failed(val why: String) : Speaking
 }
 
@@ -70,6 +66,8 @@ class VoiceInput(
     /** Whisper mode: speech may be turned into words only on this phone. */
     private val whisper: Boolean = false,
     private val phoneSpeech: (onDeviceOnly: Boolean) -> Pair<SpeechSource?, String?> = { PhoneSpeech.create(context, it) },
+    /** Where a recording made while the PC is away is kept (null: the station keeps it). It goes when the PC is back. */
+    private val keep: ((wav: ByteArray, seconds: Int) -> Unit)? = null,
 ) {
     var state by mutableStateOf<Speaking>(Speaking.Idle)
         private set
@@ -136,20 +134,28 @@ class VoiceInput(
         recorder = null
         val wav = r.stop()
         cue()
+        recorded(wav)
+    }
+
+    /** A finished recording for the PC: kept while it's away, else turned into words there. */
+    @androidx.annotation.VisibleForTesting
+    fun recorded(wav: ByteArray) {
         val station = station ?: run { state = Speaking.Idle; return }
         if (wav.size < 44 + Recorder.RATE / 2) { // under a quarter of a second
             state = Speaking.Idle
             return
         }
+        val seconds = (wav.size - 44) / (Recorder.RATE * 2)
         if (station.state.value.pcAway) {
-            // The PC turns speech into words: while it's away the recording can wait on this
-            // phone and go when it's back, but only if the owner says so.
-            state = Speaking.Recorded(wav, (wav.size - 44) / (Recorder.RATE * 2))
+            // The PC turns speech into words: while it's away the recording is kept on this phone and goes when it's back.
+            state = Speaking.Idle
+            kept(station, wav, seconds)
             return
         }
         state = Speaking.Hearing
         station.listen(wav) { text, err ->
             state = when {
+                err == LISTEN_NOT_SENT -> { kept(station, wav, seconds); Speaking.Idle }
                 err != null -> Speaking.Failed(err)
                 text.isNullOrBlank() -> Speaking.Failed("Nothing was heard. Try again a little closer.")
                 else -> Speaking.Heard(text)
@@ -157,22 +163,16 @@ class VoiceInput(
         }
     }
 
+    private fun kept(station: Station, wav: ByteArray, seconds: Int) {
+        val k = keep
+        if (k != null) k(wav, seconds) else station.keepRecording(taskId, wav, seconds)
+    }
+
     /** The words heard, handed to the message box once; the mic goes back to waiting. */
     fun take(): String? {
         val s = state as? Speaking.Heard ?: return null
         state = Speaking.Idle
         return s.text
-    }
-
-    /** For checks: as if a recording was just made with the PC away. */
-    @androidx.annotation.VisibleForTesting
-    fun setRecordedForTest(wav: ByteArray, seconds: Int) { state = Speaking.Recorded(wav, seconds) }
-
-    /** The owner tapped to send a recording kept while the PC is away: it goes when the PC is back. */
-    fun sendRecordingLater() {
-        val s = state as? Speaking.Recorded ?: return
-        state = Speaking.Idle
-        station?.keepRecording(taskId, s.wav, s.seconds)
     }
 
     /** Stops the phone's recognizer, if it's listening, and forgets what it heard. */
@@ -201,9 +201,9 @@ class VoiceInput(
 }
 
 @Composable
-fun rememberVoiceInput(station: Station?, taskId: String? = null, whisper: Boolean = false): VoiceInput {
+fun rememberVoiceInput(station: Station?, taskId: String? = null, whisper: Boolean = false, keep: ((ByteArray, Int) -> Unit)? = null): VoiceInput {
     val context = LocalContext.current
-    val voice = remember(station, taskId, whisper) { VoiceInput(context.applicationContext, station, taskId, whisper) }
+    val voice = remember(station, taskId, whisper) { VoiceInput(context.applicationContext, station, taskId, whisper, keep = keep) }
     // Leaving the screen, or Whisper mode turning on or off, stops the phone listening.
     DisposableEffect(voice) { onDispose { voice.stopPhone() } }
     return voice
@@ -264,7 +264,6 @@ fun VoicePanel(voice: VoiceInput, heard: (String) -> Unit, modifier: Modifier = 
             Speaking.Listening -> voice.heardSoFar.takeIf { it.isNotEmpty() }?.let { "“$it”…" to Palette.Text }
                 ?: ("Listening… tap the red button when you're done" to Palette.Red)
             Speaking.Hearing -> (if (voice.onPhone) "Turning it into words on this phone…" else "Turning it into words on your PC…") to Palette.TextSoft
-            is Speaking.Recorded -> "Your PC is away, so this recording can't be turned into words yet." to Palette.Text
             is Speaking.Failed -> shown.why to Palette.AmberText
         }
         Panel(
@@ -274,10 +273,6 @@ fun VoicePanel(voice: VoiceInput, heard: (String) -> Unit, modifier: Modifier = 
         ) {
             Text(line, style = Type.Label.copy(fontWeight = FontWeight.SemiBold), color = color)
             when (shown) {
-                is Speaking.Recorded -> Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    LinkText("Send it when the PC is back", { voice.sendRecordingLater() }, bold = true)
-                    LinkText("Throw away", { voice.cancel() })
-                }
                 is Speaking.Failed -> LinkText("OK", { voice.cancel() })
                 else -> {}
             }

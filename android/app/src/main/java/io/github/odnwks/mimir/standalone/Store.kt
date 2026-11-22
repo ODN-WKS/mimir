@@ -26,6 +26,8 @@ data class LocalChat(
     val sentToPc: Long = 0,
     /** Turns cut away by an edit of an earlier message: each is told to the PC once, and an older copy never brings it back. */
     val cuts: List<Cut> = emptyList(),
+    /** Messages typed while nothing could answer (the PC away): they go by themselves, in order, once, when it can. */
+    val queued: List<Turn> = emptyList(),
 ) {
     /** The last project card's task and project (Stage 1, 2.3), unless the owner took the chat out of it. */
     val projectCard: Turn? get() = turns.lastOrNull { !it.user && it.task != null }?.takeIf { it.task != leftTask }
@@ -162,28 +164,7 @@ class Store(private val file: File, private val codec: Codec = KeystoreCodec()) 
                 val turns = c.getJSONArray("turns")
                 LocalChat(
                     c.getString("id"), c.optString("model"),
-                    (0 until turns.length()).map { j -> turns.getJSONObject(j).let { t ->
-                        val user = t.getBoolean("user")
-                        val files = t.optJSONArray("files") ?: JSONArray()
-                        val pictures = t.optJSONArray("pictures") ?: JSONArray()
-                        Turn(user, t.getString("text"), (0 until files.length()).map { k ->
-                            files.getJSONObject(k).let { TurnFile(it.getString("name"), it.getString("text"), it.optBoolean("cut")) }
-                        }, (0 until pictures.length()).map { k ->
-                            pictures.getJSONObject(k).let { TurnPicture(it.getString("id"), it.getString("name"), java.util.Base64.getDecoder().decode(it.getString("jpeg"))) }
-                        }, (t.optJSONArray("sources") ?: JSONArray()).let { a ->
-                            (0 until a.length()).map { k -> a.getJSONObject(k).let { io.github.odnwks.mimir.online.Source(it.getString("site"), it.getString("url"), it.optString("words"), it.optBoolean("results"), it.optString("via")) } }
-                        },
-                            // Chats from before ids get one from their place, the same at every load.
-                            id = t.optString("id").ifEmpty { "${c.getString("id")}.$j" + if (user) "" else ".a" },
-                            at = t.optLong("at"),
-                            ran = t.optString("ran").ifEmpty { null },
-                            modelWords = t.optString("model_words").ifEmpty { null },
-                            version = t.optInt("version", 1),
-                            seq = t.optLong("seq"),
-                            task = t.optString("task").ifEmpty { null },
-                            project = t.optString("project").ifEmpty { null },
-                        )
-                    } },
+                    (0 until turns.length()).map { j -> parseTurn(turns.getJSONObject(j), "${c.getString("id")}.$j") },
                     c.optString("name").ifEmpty { null },
                     c.optLong("at"),
                     c.optBoolean("pending_name"),
@@ -193,10 +174,61 @@ class Store(private val file: File, private val codec: Codec = KeystoreCodec()) 
                     (c.optJSONArray("cuts") ?: JSONArray()).let { a ->
                         (0 until a.length()).map { k -> a.getJSONObject(k).let { Cut(it.getString("id"), it.getBoolean("user"), it.optLong("at"), it.optInt("version", 2), it.optBoolean("sent")) } }
                     },
+                    (c.optJSONArray("queued") ?: JSONArray()).let { a -> (0 until a.length()).map { k -> parseTurn(a.getJSONObject(k), "${c.getString("id")}.q$k") } },
                 )
             },
         )
     }
+
+    private fun parseTurn(t: JSONObject, fallbackId: String): Turn {
+        val user = t.getBoolean("user")
+        val files = t.optJSONArray("files") ?: JSONArray()
+        val pictures = t.optJSONArray("pictures") ?: JSONArray()
+        return Turn(user, t.getString("text"), (0 until files.length()).map { k ->
+            files.getJSONObject(k).let { TurnFile(it.getString("name"), it.getString("text"), it.optBoolean("cut")) }
+        }, (0 until pictures.length()).map { k ->
+            pictures.getJSONObject(k).let { TurnPicture(it.getString("id"), it.getString("name"), java.util.Base64.getDecoder().decode(it.getString("jpeg"))) }
+        }, (t.optJSONArray("sources") ?: JSONArray()).let { a ->
+            (0 until a.length()).map { k -> a.getJSONObject(k).let { io.github.odnwks.mimir.online.Source(it.getString("site"), it.getString("url"), it.optString("words"), it.optBoolean("results"), it.optString("via")) } }
+        },
+            // Chats from before ids get one from their place, the same at every load.
+            id = t.optString("id").ifEmpty { fallbackId + if (user) "" else ".a" },
+            at = t.optLong("at"),
+            ran = t.optString("ran").ifEmpty { null },
+            modelWords = t.optString("model_words").ifEmpty { null },
+            version = t.optInt("version", 1),
+            seq = t.optLong("seq"),
+            task = t.optString("task").ifEmpty { null },
+            project = t.optString("project").ifEmpty { null },
+            voice = t.optString("voice").ifEmpty { null },
+        )
+    }
+
+    private fun turnJson(t: Turn): JSONObject =
+        JSONObject().put("user", t.user).put("text", t.text).apply {
+            if (t.id.isNotEmpty()) put("id", t.id)
+            if (t.at != 0L) put("at", t.at)
+            t.ran?.let { put("ran", it) }
+            t.modelWords?.let { put("model_words", it) }
+            if (t.version != 1) put("version", t.version)
+            if (t.seq != 0L) put("seq", t.seq)
+            t.task?.let { put("task", it) }
+            t.project?.let { put("project", it) }
+            t.voice?.let { put("voice", it) }
+            if (t.files.isNotEmpty()) put("files", JSONArray(t.files.map { JSONObject().put("name", it.name).put("text", it.text).put("cut", it.cut) }))
+            if (t.sources.isNotEmpty()) put("sources", JSONArray(t.sources.map { JSONObject().put("site", it.site).put("url", it.url).put("words", it.words).put("results", it.results).put("via", it.via) }))
+            if (t.pictures.isNotEmpty()) put("pictures", JSONArray(t.pictures.map {
+                JSONObject().put("id", it.id).put("name", it.name).put("jpeg", java.util.Base64.getEncoder().encodeToString(it.jpeg))
+            }))
+        }
+
+    /** A recording sealed with the chat file's own key, for the file at [file] (never plain on the phone). */
+    fun sealAudio(file: File, wav: ByteArray) {
+        io.github.odnwks.mimir.link.SafeFile.write(file, codec.seal(java.util.Base64.getEncoder().encodeToString(wav)))
+    }
+
+    /** What [sealAudio] kept; null if it can't be read. */
+    fun openAudio(file: File): ByteArray? = runCatching { java.util.Base64.getDecoder().decode(codec.open(file.readBytes())) }.getOrNull()
 
     /** One save at a time (the main, writer, sync and download threads all call it); throws if it didn't reach the disk. */
     fun save(s: Saved) = writeLock.withLock { saveNow(s) }
@@ -210,23 +242,8 @@ class Store(private val file: File, private val codec: Codec = KeystoreCodec()) 
             JSONArray(s.chats.map { c ->
                 JSONObject().put("id", c.id).put("model", c.model).put("at", c.at).apply { c.name?.let { put("name", it) }; if (c.pendingName) put("pending_name", true); c.leftTask?.let { put("left_task", it) }; if (c.rules.isNotEmpty()) put("rules", c.rules); if (c.sentToPc != 0L) put("sent_to_pc", c.sentToPc)
                     if (c.cuts.isNotEmpty()) put("cuts", JSONArray(c.cuts.map { JSONObject().put("id", it.id).put("user", it.user).put("at", it.at).put("version", it.version).put("sent", it.sent) })) }
-                    .put("turns", JSONArray(c.turns.map { t ->
-                        JSONObject().put("user", t.user).put("text", t.text).apply {
-                            if (t.id.isNotEmpty()) put("id", t.id)
-                            if (t.at != 0L) put("at", t.at)
-                            t.ran?.let { put("ran", it) }
-                            t.modelWords?.let { put("model_words", it) }
-                            if (t.version != 1) put("version", t.version)
-                            if (t.seq != 0L) put("seq", t.seq)
-                            t.task?.let { put("task", it) }
-                            t.project?.let { put("project", it) }
-                            if (t.files.isNotEmpty()) put("files", JSONArray(t.files.map { JSONObject().put("name", it.name).put("text", it.text).put("cut", it.cut) }))
-                            if (t.sources.isNotEmpty()) put("sources", JSONArray(t.sources.map { JSONObject().put("site", it.site).put("url", it.url).put("words", it.words).put("results", it.results).put("via", it.via) }))
-                            if (t.pictures.isNotEmpty()) put("pictures", JSONArray(t.pictures.map {
-                                JSONObject().put("id", it.id).put("name", it.name).put("jpeg", java.util.Base64.getEncoder().encodeToString(it.jpeg))
-                            }))
-                        }
-                    }))
+                    .put("turns", JSONArray(c.turns.map(::turnJson)))
+                    .apply { if (c.queued.isNotEmpty()) put("queued", JSONArray(c.queued.map(::turnJson))) }
             }),
         )
         io.github.odnwks.mimir.link.SafeFile.write(file, codec.seal(o.toString()))

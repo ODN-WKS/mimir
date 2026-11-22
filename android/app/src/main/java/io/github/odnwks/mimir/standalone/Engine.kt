@@ -238,6 +238,8 @@ class Engine(
     private var downloading: String? = null
 
     private val models = File(dir, "models")
+    /** Recordings kept while the PC is away (sealed like the chats). */
+    private val voiceDir = File(dir, "voice")
     /** The PC's list of models, kept so it still applies with no PC. */
     private val catalogFile = File(dir, "standalone-catalog.json")
     /** What "Test on this device" found (numbers only). */
@@ -280,6 +282,7 @@ class Engine(
         synced = saved.synced
         if (store.unreadable) _state.update { it.copy(problem = "Your earlier chats couldn't be read. They are kept safe in a separate file on this phone. Ask for help before clearing the app's data.") }
         tidy()
+        tidyVoice()
     }
 
     private fun fileFor(m: LocalModel) = File(models, m.file)
@@ -557,7 +560,7 @@ class Engine(
         // Leaving a Whisper by any way forgets what it looked up.
         _state.value.takeIf { it.whisper }?.let { forgetWhisperLookups(it.chat) }
         _state.update { s ->
-            val keep = if (s.chat.turns.isEmpty() || s.whisper) s.earlier else listOf(s.chat) + s.earlier
+            val keep = if ((s.chat.turns.isEmpty() && s.chat.queued.isEmpty()) || s.whisper) s.earlier else listOf(s.chat) + s.earlier
             s.copy(chat = LocalChat(newId(), s.model, emptyList()), earlier = keep, whisper = false, web = false, speed = null, problem = null, askPlace = false, askSearch = null)
         }
         persist()
@@ -569,11 +572,13 @@ class Engine(
         _state.value.takeIf { it.whisper }?.let { forgetWhisperLookups(it.chat) }
         _state.update { s ->
             val pick = s.earlier.firstOrNull { it.id == id } ?: return@update s
-            val rest = s.earlier.filter { it.id != id } + if (s.chat.turns.isEmpty() || s.whisper) emptyList() else listOf(s.chat)
+            val rest = s.earlier.filter { it.id != id } + if ((s.chat.turns.isEmpty() && s.chat.queued.isEmpty()) || s.whisper) emptyList() else listOf(s.chat)
             if (s.web) io.github.odnwks.mimir.online.TorLink.stop()
             s.copy(chat = pick, earlier = rest, whisper = false, web = false, speed = null, problem = null, askPlace = false, askSearch = null)
         }
         persist()
+        // Messages that waited in that chat go now, if the PC is there.
+        if (_state.value.chat.queued.isNotEmpty()) syncer.execute { drainQueue() }
     }
 
     /**
@@ -822,7 +827,7 @@ class Engine(
      */
     fun startOnHome() {
         val s = _state.value
-        if (s.writing || s.whisper || s.chat.turns.isEmpty()) return
+        if (s.writing || s.whisper || (s.chat.turns.isEmpty() && s.chat.queued.isEmpty())) return
         _state.update { st -> st.copy(chat = LocalChat(newId(), st.model, emptyList()), earlier = listOf(st.chat) + st.earlier) }
         persist()
     }
@@ -855,9 +860,12 @@ class Engine(
         val t = text.trim()
         val s0 = _state.value
         if ((t.isEmpty() && files.isEmpty() && pictures.isEmpty()) || s0.writing) return false
+        // Messages already waiting go first: a new one lines up behind them, so the order never changes.
+        if (s0.chat.queued.isNotEmpty() && !s0.whisper) { enqueue(Turn(true, t, files, pictures, id = newId(), at = now())); drainQueue(); return true }
         if (s0.ready || pcAnswers() || onlineAnswers()) return send(t, files, pictures)
-        // Paired, the message is kept and shown even when nothing can answer it now (the PC away,
-        // this phone with no model or none it can run): it's answered when the PC is back.
+        // Paired and the PC is the answerer: with nothing to answer it now (the PC away, this phone with no model),
+        // the message stays in the chat, marked "Sends when your PC is back", and goes by itself, in order, once.
+        if (pc != null && !s0.whisper && (s0.usePc || !s0.supported)) { enqueue(Turn(true, t, files, pictures, id = newId(), at = now())); return true }
         if (waiting || (!s0.supported && pc == null)) return false
         _state.update { it.copy(chat = it.chat.copy(turns = it.chat.turns + Turn(true, t, files, pictures, id = newId(), at = now()), model = it.model, at = now()), problem = null) }
         persist()
@@ -869,6 +877,99 @@ class Engine(
         refreshStatus()
         val s = _state.value
         if ((s.ready || pcAnswers() || onlineAnswers()) && !s.writing && s.chat.turns.lastOrNull()?.user == true) retry()
+    }
+
+    // ---------- Messages waiting for the PC ----------
+
+    private val drainLock = Any()
+    /** Recordings being turned into words on the PC right now (by message id), so none goes twice. */
+    private val hearing = java.util.Collections.synchronizedSet(HashSet<String>())
+
+    private fun enqueue(t: Turn) {
+        _state.update { it.copy(chat = it.chat.copy(queued = it.chat.queued + t, at = now()), problem = null) }
+        persist()
+    }
+
+    /** The owner took a waiting message back (✕): it is never sent, and a kept recording is deleted. */
+    fun cancelQueued(id: String) {
+        val gone = _state.value.chat.queued.firstOrNull { it.id == id } ?: return
+        _state.update { it.copy(chat = it.chat.copy(queued = it.chat.queued.filter { q -> q.id != id })) }
+        gone.voice?.let { File(voiceDir, it).delete() }
+        persist()
+    }
+
+    /**
+     * Sends the next waiting message of the open chat, if something can answer now and nothing is being written.
+     * One at a time: the next goes when this one's answer is in (the end of [send]). A kept recording is first
+     * turned into words on the PC, then goes the same way.
+     */
+    fun drainQueue() {
+        val link = pc
+        synchronized(drainLock) {
+            val s = _state.value
+            if (s.whisper || s.writing) return
+            if (s.chat.queued.isEmpty()) {
+                // Waiting messages of another chat (after a restart the app opens on the home screen): that chat is opened for them.
+                val other = s.earlier.firstOrNull { it.queued.isNotEmpty() }
+                if (other != null && s.chat.turns.isEmpty() && (pcAnswers() || s.ready || onlineAnswers())) open(other.id) else return
+                if (_state.value.chat.queued.isEmpty()) return
+            }
+            val first = _state.value.chat.queued.first()
+            if (first.voice != null && first.text.isBlank()) { hear(first, link); return }
+            if (!canSend() || _state.value.chat.turns.lastOrNull()?.user == true) return
+            _state.update { it.copy(chat = it.chat.copy(queued = it.chat.queued.drop(1))) }
+            if (!send(first.text, first.files, first.pictures, first.id, first.at, first.version)) {
+                _state.update { it.copy(chat = it.chat.copy(queued = listOf(first) + it.chat.queued)) }
+            }
+        }
+    }
+
+    private fun hear(t: Turn, link: PcTalk?) {
+        if (link?.canTalk() != true || !hearing.add(t.id)) return
+        val file = File(voiceDir, t.voice ?: return)
+        val wav = store.openAudio(file)
+        if (wav == null) { hearing -= t.id; cancelQueued(t.id); return }
+        val sent = link.hear(wav) { text, err ->
+            syncer.execute {
+                hearing -= t.id
+                when {
+                    // The PC may be busy or gone again: the recording stays and is tried at the next connect.
+                    err != null -> return@execute
+                    text.isNullOrBlank() -> {
+                        cancelQueued(t.id)
+                        _state.update { it.copy(note = "Nothing was heard in your recording, so it wasn't sent. Say it again.") }
+                    }
+                    else -> {
+                        file.delete()
+                        _state.update { st -> st.copy(chat = st.chat.copy(queued = st.chat.queued.map { q -> if (q.id == t.id) q.copy(text = text.trim(), voice = null) else q })) }
+                        persist()
+                        drainQueue()
+                    }
+                }
+            }
+        }
+        if (!sent) hearing -= t.id
+    }
+
+    /**
+     * A recording made while the PC is away, kept on this phone (sealed like the chats) and shown in the chat as a
+     * waiting message; the PC turns it into words when it is back, and it goes then. The audio is deleted once done.
+     */
+    fun keepRecording(wav: ByteArray, seconds: Int): Boolean {
+        if (_state.value.whisper || pc == null) return false
+        val id = newId()
+        val name = "$id.wav"
+        val ok = runCatching { voiceDir.mkdirs(); store.sealAudio(File(voiceDir, name), wav) }.isSuccess
+        if (!ok) { _state.update { it.copy(note = "The recording couldn't be kept on this phone. Type it instead.") }; return false }
+        enqueue(Turn(true, "", id = id, at = now(), voice = name))
+        drainQueue()
+        return true
+    }
+
+    /** Recordings no waiting message points to are deleted (nothing sits unused). */
+    private fun tidyVoice() {
+        val used = (listOf(_state.value.chat) + _state.value.earlier).flatMap { c -> c.queued.mapNotNull { it.voice } }.toSet()
+        voiceDir.listFiles()?.filter { it.name !in used }?.forEach { it.delete() }
     }
 
     /** The last message waits for the model (it came before the model was here). */
@@ -903,7 +1004,12 @@ class Engine(
                     if (_state.value.ready) write(model)
                     else _state.update {
                         // The PC answers pings but could not answer this message: say that, once, and let the owner send again (never "not reachable").
-                        if (pc?.canTalk() == true) it.copy(problem = PC_COULD_NOT_ANSWER, note = null) else it.copy(problem = NO_PC_NO_MODEL)
+                        if (pc?.canTalk() == true) it.copy(problem = PC_COULD_NOT_ANSWER, note = null)
+                        else {
+                            // The PC went away on the way: the message goes back to waiting, and goes when the PC is back.
+                            val last = it.chat.turns.lastOrNull()?.takeIf { t -> t.user && t.id == turn.id }
+                            if (last == null) it else it.copy(chat = it.chat.copy(turns = it.chat.turns.dropLast(1), queued = listOf(last) + it.chat.queued), problem = null)
+                        }
                     }
                 }
             } catch (e: Throwable) {
@@ -921,6 +1027,8 @@ class Engine(
                 busy(false)
                 lastReplyAt = now()
                 idler.schedule({ writer.execute { unloadIfIdle() } }, UNLOAD_IDLE_MS, java.util.concurrent.TimeUnit.MILLISECONDS)
+                // The next waiting message goes now this one is done.
+                if (_state.value.chat.queued.isNotEmpty()) drainQueue()
             }
         }
         return true
@@ -1520,11 +1628,48 @@ class Engine(
     /** The link to the PC is up again: catch up on what changed while apart, then send what's waiting here. */
     fun linkUp() {
         // The PC answers again: "not reachable" is no longer true, and a message that waited goes now.
-        _state.update { if (it.problem == NO_PC_NO_MODEL || it.problem == PC_COULD_NOT_ANSWER) it.copy(problem = null) else it }
+        _state.update { if (it.problem == PC_COULD_NOT_ANSWER) it.copy(problem = null) else it }
         caughtUp = false
         sending.clear()
         syncSoon()
+        recoverThenAnswer()
+    }
+
+    /**
+     * The link is back. A message whose answer was cut off (the link dropped, or the app was closed) is first
+     * asked about on the PC: if the PC finished it, that answer is shown in place; if it is still writing, it
+     * is awaited; only a PC that never had the message (or lost it) is sent it again. Then the waiting messages go.
+     */
+    private fun recoverThenAnswer(tries: Int = 0) {
+        val s = _state.value
+        val last = s.chat.turns.lastOrNull()
+        val link = pc
+        if (last != null && last.user && last.id.isNotEmpty() && !s.writing && !s.whisper && link?.canTalk() == true) {
+            val chatId = s.chat.id
+            val asked = link.talkTurn(chatId, last.id) { st -> syncer.execute {
+                val now = _state.value
+                // Nothing changed meanwhile: the chat still ends with that message.
+                val same = now.chat.id == chatId && !now.writing && now.chat.turns.lastOrNull()?.id == last.id
+                when {
+                    !same -> {}
+                    st is io.github.odnwks.mimir.link.LTalkState.Done -> {
+                        _state.update { x -> x.copy(chat = x.chat.copy(turns = ChatSync.withAnswer(x.chat.turns, ChatSync.fromWire(st.turn).let { a -> a.copy(id = a.id.ifEmpty { "${last.id}.a" }, ran = a.ran ?: "pc") })), problem = null) }
+                        persistQuietly()
+                    }
+                    // The PC tried and could not finish it: one card says so, with Try again (never a silent second try).
+                    st is io.github.odnwks.mimir.link.LTalkState.Failed -> _state.update { x -> x.copy(problem = PC_COULD_NOT_ANSWER) }
+                    st is io.github.odnwks.mimir.link.LTalkState.Answering && tries < RECOVER_TRIES -> {
+                        idler.schedule({ syncer.execute { recoverThenAnswer(tries + 1) } }, PC_ASK_MS, java.util.concurrent.TimeUnit.MILLISECONDS)
+                        return@execute
+                    }
+                    else -> answerIfWaiting()
+                }
+                drainQueue()
+            } }
+            if (asked) return
+        }
         answerIfWaiting()
+        drainQueue()
     }
 
     /** A chat changed on the PC (answered there, continued in the window, renamed, deleted). */
@@ -1961,7 +2106,7 @@ class Engine(
         synchronized(persistLock) {
             val s = _state.value
             // A chat deleted moments ago stays in the file until its Undo has passed.
-            val all = (if (s.chat.turns.isEmpty() || s.whisper) emptyList() else listOf(s.chat)) + s.earlier + synchronized(undoable) { undoable.toList() }.filter { d -> d.id != s.chat.id && s.earlier.none { it.id == d.id } }
+            val all = (if ((s.chat.turns.isEmpty() && s.chat.queued.isEmpty()) || s.whisper) emptyList() else listOf(s.chat)) + s.earlier + synchronized(undoable) { undoable.toList() }.filter { d -> d.id != s.chat.id && s.earlier.none { it.id == d.id } }
             runCatching { store.save(Saved(s.model, all, s.think, HashMap(lastUsed), HashMap(files), s.effort.name, s.usePc, lastSeq, synchronized(pendingDeletes) { pendingDeletes.toList() }, synced)) }
                 .onFailure {
                     Log.w(TAG, "couldn't save chats", it)
@@ -2191,13 +2336,14 @@ class Engine(
         /** The longest rules text a chat keeps. */
         const val MAX_CHAT_RULES = 2000
 
-        const val NO_PC_NO_MODEL = "Your PC isn't reachable and this phone has no model yet."
-        const val PC_COULD_NOT_ANSWER = "Your PC could not answer that. Send it again."
+        const val PC_COULD_NOT_ANSWER = "Your PC didn't finish that answer."
 
         /** A reason the PC gave, in the app's words ("Claude Code" is the PC's tool: the owner knows it as Claude). */
         fun plainPcWords(why: String?): String? = why?.replace(Regex("Claude\\s+Code"), "Claude")?.trim()?.ifBlank { null }
         /** While waiting for the PC after the link came back, how often it's asked how its answer stands. */
         const val PC_ASK_MS = 2_000L
+        /** How many times a still-writing PC is asked after the link came back (about 3 minutes). */
+        const val RECOVER_TRIES = 90
         /** No word from the PC for this long, on a link that looks up: "Waiting for your PC…". */
         @Volatile var PC_SILENT_MS = 30_000L
         /** This phone's model is let go after this long without a reply. */

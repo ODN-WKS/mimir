@@ -313,7 +313,7 @@ fun PhoneChat(
         EndWhisperQuestion(endAsk, onCancel = { endAsk = false; endThen = null }) { endAsk = false; engine.endWhisper(); endThen?.invoke(); endThen = null }
         WhisperNeedsMimir(needsMimir, model.sizeText, onGet = { needsMimir = false; nav.open(Screen.Models) }, onClose = { needsMimir = false })
         val answerer = when { onlineOn -> Answerer.Online; claudeAnswers && pcPrivate -> Answerer.Claude; pcPrivate -> Answerer.Pc; else -> Answerer.Phone }
-        val showHome = !s.whisper && !pcWhisper && s.chat.turns.isEmpty() && !s.writing && !getting && !renaming
+        val showHome = !s.whisper && !pcWhisper && s.chat.turns.isEmpty() && s.chat.queued.isEmpty() && !s.writing && !getting && !renaming
         val first = isFirstOpen(hasChatted, s.earlier.isNotEmpty())
         // The startup animation belongs to the home screen: opening on a chat or a Whisper plays nothing; typing skips it.
         val startup = LocalEyeStartup.current
@@ -323,7 +323,7 @@ fun PhoneChat(
         val list = rememberLazyListState()
         val reduce = LocalReduceMotion.current
         val focus = LocalFocusManager.current
-        val count = s.chat.turns.size + (if (s.writing) 1 else 0) + (if (waiting || getting) 1 else 0)
+        val count = s.chat.turns.size + s.chat.queued.size + (if (s.writing) 1 else 0) + (if (waiting || getting) 1 else 0)
         LaunchedEffect(count) { if (count > 0) { if (reduce) list.scrollToItem(0) else list.animateScrollToItem(0) } }
         ChatTextSize {
         if (showHome) HomeEmpty(first, answerer, java.time.LocalTime.now().hour, Modifier.weight(1f), online = io.github.odnwks.mimir.online.OnlineModels.answering()?.let(io.github.odnwks.mimir.online.OnlineModels::serviceOf))
@@ -337,6 +337,18 @@ fun PhoneChat(
             // The list is upside down: the first items here sit at the bottom.
             // A message no one can answer now: said plainly, with the one thing to do.
             val stoppedHere = s.stoppedChat == s.chat.id
+            // Messages waiting for the PC sit at the bottom, newest last: dim, with how they go and a way to take them back.
+            items(s.chat.queued.reversed(), key = { "queued-${it.id}" }) { q ->
+                OwnMessage(
+                    q.text.ifBlank { if (q.voice != null) "Voice message" else (q.files.map { it.name } + listOfNotNull(q.pictures.size.takeIf { it > 0 }?.let { n -> if (n == 1) "A picture" else "$n pictures" })).joinToString() },
+                    Modifier.animateItem(fadeInSpec = motionSpec(Motion.NEW_ITEM_MS), placementSpec = motionSpec(Motion.NEW_ITEM_MS), fadeOutSpec = motionSpec(Motion.NEW_ITEM_MS)),
+                    bubble = Palette.BlueBubble.copy(alpha = 0.55f), dashed = true, id = "queued-${q.id}",
+                    under = {
+                        Text(QUEUED_WORDS, style = Type.Small, color = Palette.TextDim, modifier = Modifier.semantics { liveRegion = androidx.compose.ui.semantics.LiveRegionMode.Polite })
+                        IconTarget(Glyphs.Close, "Cancel this message: it won't be sent", { engine.cancelQueued(q.id) }, tint = Palette.TextDim)
+                    },
+                )
+            }
             if (waiting && !stoppedHere && paired && (!s.supported || !s.usePc)) item(key = "no-model") { NothingAnswers(s.supported, pcOnline, pcName) { engine.setUsePc(true); engine.answerIfWaiting() } }
             else if ((waiting && !stoppedHere) || getting) item(key = "get-ai") { GetYourAi(engine, s, model, waiting, paired) }
             if (s.web) item(key = "tor") { TorLines(s, engine) }
@@ -366,7 +378,7 @@ fun PhoneChat(
                 PlaceQuestion(engine::answerPlace, roughPlace, engine::skipPlace)
             }
             s.askSearch?.let { words -> if (!s.writing) item(key = "search") { SearchQuestion(words, engine::acceptSearch, engine::declineSearch) } }
-            if (!s.writing && !s.askPlace && s.askSearch == null && (s.ready || stoppedHere) && s.chat.turns.lastOrNull()?.user == true) item(key = "interrupted") {
+            if (!s.writing && !s.askPlace && s.askSearch == null && (s.ready || stoppedHere || pcReady) && s.chat.turns.lastOrNull()?.user == true) item(key = "interrupted") {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(noAnswerWords(stoppedHere, answeringPc), style = Type.Small, color = Palette.TextDim)
                     SmallButton("Try again", engine::retry, description = "Ask the last message again")
@@ -419,7 +431,7 @@ fun PhoneChat(
                 LinkText("Dismiss", engine::dismissNote)
             }
         }
-        s.problem?.takeIf { !(pcReady && it == Engine.NO_PC_NO_MODEL) && !(waiting && it == Engine.NO_PC_NO_MODEL) && !(paired && !pcOnline && it == Engine.PC_COULD_NOT_ANSWER) }?.let { Text(it, style = Type.Small, color = Palette.Red, modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp)) }
+        s.problem?.takeIf { it != Engine.PC_COULD_NOT_ANSWER }?.let { Text(it, style = Type.Small, color = Palette.Red, modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp)) }
         if (s.whisperChoice) Row(Modifier.padding(horizontal = 20.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             if (s.supported) SmallButton("Use This phone", { engine.stopOnlineFor(false) }, description = "Use this phone's model, not the online one")
             if (paired) SmallButton("Use your PC", { engine.stopOnlineFor(true) }, description = "Use your PC, not the online model")
@@ -431,7 +443,7 @@ fun PhoneChat(
         ForgetDeletedChatsWhenLeaving(engine)
         // The tabs' bar sits below (it keeps clear of the phone's own bar); the keyboard lifts the box.
         Column(Modifier.fillMaxWidth().imePadding()) {
-        val voice = rememberVoiceInput(null, whisper = s.whisper || pcWhisper)
+        val voice = rememberVoiceInput(if (s.whisper || pcWhisper) null else link, whisper = s.whisper || pcWhisper, keep = { wav, secs -> engine.keepRecording(wav, secs) })
         VoicePanel(voice, heard = { draft = withHeard(draft, it) }, Modifier.padding(top = 4.dp))
         val noteShown = remember { arrayOf("") }
         attachNote?.let { noteShown[0] = it }
@@ -604,8 +616,6 @@ private fun NothingAnswers(phoneCan: Boolean, pcOnline: Boolean, pcName: String,
 @Composable
 private fun GetYourAi(engine: Engine, s: io.github.odnwks.mimir.standalone.LocalState, model: io.github.odnwks.mimir.standalone.LocalModel, waiting: Boolean, paired: Boolean = false) {
     Panel(border = Palette.BlueBorder, background = Palette.BlueCard, radius = 16.dp, spacing = 10.dp) {
-        // Paired, a message waits here only because the PC can't be reached and there's no model here.
-        if (paired && waiting) Text(Engine.NO_PC_NO_MODEL, style = Type.Label, color = Palette.Text)
         Text("Get $AI_NAME (${model.sizeText})", style = Type.Section, color = Palette.Text, modifier = Modifier.semantics { heading() })
         Text(
             "A one-time download of ${model.sizeText}, best on Wi-Fi. " +
@@ -640,3 +650,6 @@ fun chatOptions(s: io.github.odnwks.mimir.standalone.LocalState, pc: Boolean = f
     sentToPc = s.chat.sentToPc,
     lookups = s.chat.turns.sumOf { it.sources.size },
 )
+
+/** What a message waiting for the PC says under itself. */
+const val QUEUED_WORDS = "Sends when your PC is back"

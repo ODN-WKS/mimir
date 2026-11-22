@@ -189,20 +189,17 @@ class MimirTalkTest {
         compose.runOnIdle { assertEquals(listOf("what's on the TV tonight and tomorrow"), sent.toList()) }
     }
 
-    @Test fun aRecordingWithThePcAwayIsKeptOnlyIfTheOwnerSaysSo() {
+    @Test fun aRecordingWithThePcAwayIsKeptByItselfAndGoesWhenItIsBack() {
         val station = FakeStation(ExampleData.asleep())
         val voice = VoiceInput(context, station)
         val chatBefore = station.state.value.chat.size
         compose.setContent { MimirTheme { VoicePanel(voice, heard = {}) } }
         val wav = ByteArray(44 + 32000 * 2)
-        compose.runOnIdle { voice.setRecordedForTest(wav, 2) }
-        compose.onNodeWithText("Your PC is away", substring = true).assertIsDisplayed()
-        compose.runOnIdle { assertEquals("nothing kept or sent yet", chatBefore, station.state.value.chat.size) }
-        compose.onNodeWithText("Throw away").performClick()
-        compose.runOnIdle { assertEquals(Speaking.Idle, voice.state); assertEquals(chatBefore, station.state.value.chat.size) }
-        compose.runOnIdle { voice.setRecordedForTest(wav, 2) }
-        compose.onNodeWithText("Send it when the PC is back").performClick()
-        compose.runOnIdle { assertEquals(chatBefore + 1, station.state.value.chat.size) }
+        compose.runOnIdle { voice.recorded(wav) }
+        compose.runOnIdle {
+            assertEquals(Speaking.Idle, voice.state)
+            assertEquals("kept, nothing to confirm", chatBefore + 1, station.state.value.chat.size)
+        }
     }
 
     @Test fun heardWordsJoinWhatIsAlreadyInTheBox() {

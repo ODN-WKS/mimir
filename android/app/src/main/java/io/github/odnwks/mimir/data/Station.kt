@@ -123,6 +123,9 @@ interface Station {
     fun keepRecording(taskId: String?, wav: ByteArray, seconds: Int)
 }
 
+/** What [Station.listen] answers when the recording could not even be sent (the PC is away): the caller keeps it instead. */
+const val LISTEN_NOT_SENT = "listen-not-sent"
+
 /** How a recording waiting on this phone shows until it's turned into words. */
 fun recordingWords(seconds: Int) = "Recording, ${seconds.coerceAtLeast(1)} s"
 

@@ -36,6 +36,9 @@ interface PcTalk {
     /** Asks how the answer to [turnId] stands (after the link came back); false if it couldn't be asked. */
     fun talkTurn(chatId: String, turnId: String, done: (LTalkState?) -> Unit): Boolean
 
+    /** Turns a recording into words on the PC; false if it couldn't be sent now (the PC is away). */
+    fun hear(wav: ByteArray, done: (text: String?, error: String?) -> Unit): Boolean = false
+
     /** The listener for [answerId] is no longer wanted (answered here instead, or finished). */
     fun letGo(answerId: String)
 

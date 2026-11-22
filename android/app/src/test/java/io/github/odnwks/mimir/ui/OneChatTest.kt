@@ -47,6 +47,15 @@ class FakePc : PcTalk {
         l.done(a.copy(seq = maxOf(kept, 41)), null)
     }
     var words = listOf("Oslo ", "is the capital.")
+    /** Recordings the PC turns into words: what it hears, or null (an error). */
+    @Volatile var heard: String? = "Run the checks again."
+    val hearCalls = java.util.concurrent.atomic.AtomicInteger()
+    override fun hear(wav: ByteArray, done: (String?, String?) -> Unit): Boolean {
+        if (!reachable) return false
+        hearCalls.incrementAndGet()
+        Thread { done(heard, if (heard == null) "busy" else null) }.start()
+        return true
+    }
     @Volatile var state: LTalkState? = null
     override fun canTalk() = reachable
     /** Pictures ("chat_pictures"): null is an older PC that doesn't know them; true its model sees; false it can't. */
@@ -198,8 +207,9 @@ class OneChatTest {
             WordsRunner(), supported = false, now = System::currentTimeMillis).also { it.pc = pc }
         pc.reachable = false
         assertTrue(e.ask("Final check: what is 6 times 7"))
-        assertTrue(e.waiting)
-        val first = e.state.value.chat.turns.single()
+        // It waits in the chat, marked as waiting for the PC (never as a turn nobody answers).
+        assertTrue(e.state.value.chat.turns.isEmpty())
+        val first = e.state.value.chat.queued.single()
         // The PC's answer is stamped by the PC's own clock, a little after it got the message.
         pc.answer = { r, l ->
             Thread.sleep(300)
@@ -378,9 +388,9 @@ class OneChatTest {
         e.setUsePc(false)
         pc.reachable = false
         e.ask("What's the capital of Norway?")
-        assertEquals(listOf("What's the capital of Norway?"), e.state.value.chat.turns.map { it.text })
+        assertEquals(listOf("What's the capital of Norway?"), e.state.value.chat.queued.map { it.text })
         pc.reachable = true
-        e.answerIfWaiting()
+        e.linkUp()
         val until = System.currentTimeMillis() + 5_000
         while ((e.state.value.writing || e.state.value.chat.turns.size < 2) && System.currentTimeMillis() < until) Thread.sleep(10)
         assertEquals("pc", e.state.value.chat.turns.last().ran)
@@ -395,8 +405,14 @@ class OneChatTest {
         compose.waitForIdle()
         compose.onNodeWithContentDescription("Message $AI_NAME").performTextInput("Hello?")
         compose.onNodeWithContentDescription("Send").performClick(); compose.waitForIdle()
+        // The message waits in the chat, marked, with a way to take it back; nothing says "can't".
         compose.onNodeWithText("Hello?").assertIsDisplayed()
-        compose.onNodeWithText("This phone can't run a model.").assertIsDisplayed()
+        compose.onNodeWithText("Sends when your PC is back").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Cancel this message: it won't be sent").assertIsDisplayed()
+        // The box stays usable: a second message waits too.
+        compose.onNodeWithContentDescription("Message $AI_NAME").performTextInput("And this?")
+        compose.onNodeWithContentDescription("Send").performClick(); compose.waitForIdle()
+        assertEquals(listOf("Hello?", "And this?"), e.state.value.chat.queued.map { it.text })
         compose.openWhoAnswers()
         compose.onNodeWithText(WHO_PHONE_CANT).performClick(); compose.waitForIdle()
         assertTrue("a phone that can't run a model can't choose This phone", e.state.value.usePc)

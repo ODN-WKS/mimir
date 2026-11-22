@@ -236,6 +236,8 @@ data class Turn(
     /** An answer that is a project task the PC started or added to (Stage 1, 2.3): the task's id, and its project's folder. */
     val task: String? = null,
     val project: String? = null,
+    /** A recording kept while the PC was away (its file's name): turned into words when the PC is back (waiting messages only). */
+    val voice: String? = null,
 ) {
     /** As the PC keeps it: pictures and files reduced to words, as the phone's model reads them. */
     fun wire(pcSees: Boolean = false, withPictures: Boolean = false) = io.github.odnwks.mimir.link.LChatTurn(

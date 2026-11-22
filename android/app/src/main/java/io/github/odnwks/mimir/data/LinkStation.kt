@@ -1342,8 +1342,13 @@ class LinkStation(
         val sent = call(Wire.listen(b64)) { ok, err ->
             if (err != null) done(null, err) else done((ok as? String).orEmpty().trim(), null)
         }
-        if (!sent) done(null, "Your PC isn't connected right now.")
+        if (!sent) done(null, LISTEN_NOT_SENT)
     }
+
+    override fun hear(wav: ByteArray, done: (text: String?, error: String?) -> Unit): Boolean =
+        call(Wire.listen(android.util.Base64.encodeToString(wav, android.util.Base64.NO_WRAP))) { ok, err ->
+            if (err != null) done(null, err) else done((ok as? String).orEmpty().trim(), null)
+        }
 
     fun close() {
         running = false
