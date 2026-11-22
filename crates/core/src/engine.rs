@@ -704,10 +704,7 @@ pub fn keep_fresh(keep: Vec<String>) -> bool {
     }
     let mut low = false;
     if !calm(&hw, Duration::from_secs(30)) {
-        let since = *BUSY_SINCE
-            .lock()
-            .unwrap()
-            .get_or_insert_with(Instant::now);
+        let since = *BUSY_SINCE.lock().unwrap().get_or_insert_with(Instant::now);
         if !waited_enough(since, Instant::now()) {
             crate::log::write("engine", "probe waits", "the PC is busy");
             return false;
