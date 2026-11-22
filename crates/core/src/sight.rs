@@ -122,16 +122,9 @@ pub fn known(base: &str, model: &str) -> Option<bool> {
 /// was slow, short of memory or still loading.
 pub fn is_sight_error(text: &str) -> bool {
     let t = text.to_lowercase();
-    if [
-        "timed",
-        "timeout",
-        "deadline",
-        "memory",
-        "oom",
-        "context",
-    ]
-    .iter()
-    .any(|w| t.contains(w))
+    if ["timed", "timeout", "deadline", "memory", "oom", "context"]
+        .iter()
+        .any(|w| t.contains(w))
     {
         return false;
     }
