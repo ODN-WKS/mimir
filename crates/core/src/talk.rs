@@ -365,6 +365,8 @@ impl Talk {
                     Err(why) if !job.model.is_empty() => {
                         let mut free = job.clone();
                         free.paid = None;
+                        // The "Answered online" note no longer fits.
+                        free.switch_note = None;
                         free.model_words = "Free · Your PC".into();
                         let mut s = self.lock();
                         // PCE-33: show the reason on every free-model switch while
@@ -1319,6 +1321,31 @@ mod tests {
                 .unwrap()
                 .contains("What does this show?")
         );
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn when_online_fails_the_free_answer_does_not_say_answered_online() {
+        let d = std::env::temp_dir().join(format!("talk-paid-fail-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        let prog = d.join("claude");
+        std::fs::write(&prog, "#!/bin/sh\ncat >/dev/null\nexit 1\n").unwrap();
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&prog, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let (t, rx) = engine(vec![r#"{"message":{"content":"Hi"},"done":true}"#]);
+        let mut j = job("p3", "What is this?");
+        j.switch_note = Some("Answered online because your usual model can't look at pictures.".into());
+        j.paid = Some(Paid {
+            model: None,
+            program: prog,
+            dir: d.join("run"),
+        });
+        assert_eq!(t.submit(j), Ok(None));
+        let (_, _, result) = until_done(&rx);
+        let turn = result.unwrap();
+        assert_eq!(turn.switch_note, None);
+        assert!(turn.model_words.unwrap().starts_with("Free"));
         let _ = std::fs::remove_dir_all(&d);
     }
 

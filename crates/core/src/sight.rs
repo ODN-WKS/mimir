@@ -71,20 +71,24 @@ fn save_to(path: &std::path::Path, map: &HashMap<String, Entry>) {
     }
 }
 
-/// Ollama's version, looked up at most every half minute per address.
+/// Ollama's version, looked up at most every half minute per address; a
+/// failed lookup is kept for 10 seconds so a down or hung Ollama isn't asked
+/// again for every model.
 fn version(base: &str) -> Option<String> {
-    static V: OnceLock<Mutex<HashMap<String, (std::time::Instant, String)>>> = OnceLock::new();
+    static V: OnceLock<Mutex<HashMap<String, (std::time::Instant, Option<String>)>>> =
+        OnceLock::new();
     let m = V.get_or_init(Default::default);
-    if let Some((at, v)) = m.lock().unwrap_or_else(|e| e.into_inner()).get(base)
-        && at.elapsed() < Duration::from_secs(30)
-    {
-        return Some(v.clone());
+    if let Some((at, v)) = m.lock().unwrap_or_else(|e| e.into_inner()).get(base) {
+        let ttl = if v.is_some() { 30 } else { 10 };
+        if at.elapsed() < Duration::from_secs(ttl) {
+            return v.clone();
+        }
     }
-    let v = crate::ollama::version(base).filter(|v| !v.is_empty())?;
+    let v = crate::ollama::version(base).filter(|v| !v.is_empty());
     m.lock()
         .unwrap_or_else(|e| e.into_inner())
         .insert(base.to_string(), (std::time::Instant::now(), v.clone()));
-    Some(v)
+    v
 }
 
 /// The key for a model, none while Ollama's version is unknown (nothing is
@@ -316,6 +320,22 @@ mod tests {
                 _ => vec![r#"{"error":"ROCm error: invalid device function"}"#.into()],
             }
         })
+    }
+
+    #[test]
+    fn a_failed_version_lookup_is_not_repeated_for_every_model() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        static N: AtomicUsize = AtomicUsize::new(0);
+        let b = crate::ollama::fake::start(|path, _| {
+            if path == "/api/version" {
+                N.fetch_add(1, Ordering::SeqCst);
+            }
+            vec![r#"{"error":"down"}"#.into()]
+        });
+        assert_eq!(key(&b, "vf-a"), None);
+        assert_eq!(key(&b, "vf-b"), None);
+        assert_eq!(key(&b, "vf-c"), None);
+        assert_eq!(N.load(Ordering::SeqCst), 1);
     }
 
     #[test]
