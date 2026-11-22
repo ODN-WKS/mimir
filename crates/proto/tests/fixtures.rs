@@ -761,7 +761,7 @@ fn write_the_examples() {
     std::fs::write(dir.join("calls.jsonl"), lines.join("\n") + "\n").unwrap();
     // A task's messages with pictures and files ("task_files"): kept apart
     // so the phone's older call list stays as it was.
-    let with_files: Vec<String> = vec![
+    let with_files: Vec<String> = [
         Call::NewTask {
             ground_rules: None,
             project: "/home/me/p".into(),
