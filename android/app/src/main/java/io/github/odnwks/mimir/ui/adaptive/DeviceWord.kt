@@ -68,7 +68,6 @@ enum class Device(val word: String) {
 
         private val listWords = listOf(
             "Phones that can reach it" to "Devices that can reach this PC",
-            "Pair another phone" to "Pair another device…",
             "Lost a phone?" to "Lost a device?",
         )
         private val ownWords = listOf(

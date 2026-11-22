@@ -104,7 +104,6 @@ class AdaptiveRulesTest {
         assertEquals("Scan it with this tablet.", t.scanWith)
         assertEquals("Unpair this tablet?", t.reword("Unpair this phone?"))
         assertEquals("Devices that can reach this PC", t.reword("Phones that can reach it"))
-        assertEquals("Pair another device…", t.reword("Pair another phone"))
         assertEquals("Lost a device?", t.reword("Lost a phone?"))
         assertEquals("Allow the camera in the tablet's settings, or paste the code instead.", t.reword("Allow the camera in the phone's settings, or paste the code instead."))
         assertEquals("Run a command on your PC", t.reword("Run a command on this PC"))

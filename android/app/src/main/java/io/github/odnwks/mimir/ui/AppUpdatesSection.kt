@@ -28,6 +28,13 @@ const val UPDATES_TEST_BUILD = "This test version only shows what's available."
 const val UPDATES_ASKS = "Your Android asks you to tap once to finish each update."
 const val UPDATES_NOT_ALLOWED = "Installing isn't allowed yet. Tap Install now and Android asks once."
 
+/** The install button shows whenever a release is saved and the update is ready or failed (a failure must never hide it). */
+fun showsInstallButton(s: UpdateStatus, releaseSaved: Boolean): Boolean = releaseSaved && (s is UpdateStatus.Ready || s is UpdateStatus.Failed)
+
+/** "Install now" at first and while the owner still has to allow installs; "Try again" after any other failure. */
+fun installButtonWords(s: UpdateStatus): String =
+    if (s is UpdateStatus.Failed && s.words != io.github.odnwks.mimir.update.AppUpdater.NEEDS_ALLOW) "Try again" else "Install now"
+
 /** The status line under "Check now". */
 fun updateStatusWords(s: UpdateStatus, current: String): String = when (s) {
     UpdateStatus.None -> "You have version $current."
@@ -53,7 +60,11 @@ fun AppUpdatesSection(pc: io.github.odnwks.mimir.data.StationState, modifier: Mo
     var answered by remember { mutableStateOf(false) }
     val pcResult = updateResult(pc)
     val pcSpeaks = fallback || (status is UpdateStatus.None && pc.appUpdate)
-    var allowed by remember(status) { mutableStateOf(AppUpdater.installAllowed(ctx)) }
+    // Read again when the screen comes back (after Android's allow page) and when the status changes.
+    var resumes by remember { mutableStateOf(0) }
+    androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_RESUME) { resumes++ }
+    val allowed = remember(status, resumes) { AppUpdater.installAllowed(ctx) }
+    val saved = remember(status, resumes) { AppUpdater.foundRelease(ctx) != null }
     CapsLabel("UPDATES", modifier)
     Panel(spacing = 6.dp) {
         SwitchRow(on, { on = it; AppUpdater.setEnabled(ctx, it) }, Modifier.heightIn(min = 48.dp)) {
@@ -84,13 +95,15 @@ fun AppUpdatesSection(pc: io.github.odnwks.mimir.data.StationState, modifier: Mo
         } else if (answered && (status is UpdateStatus.Newest || status is UpdateStatus.Ready)) {
             Text("GitHub answered.", style = Type.Small, color = Palette.TextDim)
         }
-        (status as? UpdateStatus.Ready)?.takeIf { !pcSpeaks }?.let { r ->
-            if (r.notes.isNotEmpty()) {
+        if (!pcSpeaks) {
+            (status as? UpdateStatus.Ready)?.takeIf { it.notes.isNotEmpty() }?.let { r ->
                 Text("What's new", style = Type.Small, color = Palette.TextDim)
                 Text(r.notes, style = Type.Label, color = Palette.TextSoft, modifier = Modifier.testTag("updates-notes"))
             }
-            BigButton("Install now", Look.Primary, { Thread { AppUpdater.downloadAndInstall(ctx) }.start() }, height = 48.dp)
-            if (!allowed) Text(UPDATES_NOT_ALLOWED, style = Type.Small, color = Palette.TextDim)
+            if (showsInstallButton(status, saved)) {
+                BigButton(installButtonWords(status), Look.Primary, { Thread { AppUpdater.downloadAndInstall(ctx) }.start() }, height = 48.dp, modifier = Modifier.testTag("updates-install"))
+                if (!allowed) Text(UPDATES_NOT_ALLOWED, style = Type.Small, color = Palette.TextDim)
+            }
         }
         if (AppUpdater.isDevBuild) Text(UPDATES_TEST_BUILD, style = Type.Small, color = Palette.TextDim)
         else if (!AppUpdater.silentLater) Text(UPDATES_ASKS, style = Type.Small, color = Palette.TextDim)

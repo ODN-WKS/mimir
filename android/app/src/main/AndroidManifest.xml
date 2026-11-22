@@ -20,8 +20,6 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <!-- Standalone mode: finishing a reply written by the model on this phone. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
-    <!-- Labs: the don't-touch notice drawn over the screen during tests (off until its switch is on). -->
-    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <!-- The app's own updates: installs the new version of itself once the owner allows it. -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
