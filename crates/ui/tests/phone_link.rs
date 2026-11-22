@@ -5,6 +5,7 @@
 
 mod common;
 use common::*;
+use egui_kittest::kittest::{NodeT, Queryable};
 use mimir_core::proto::{Call, Choice, Event, Mode};
 use mimir_link::client::{Client, generate_key};
 use std::collections::HashMap;
@@ -196,6 +197,57 @@ fn phone_pairs_only_after_yes_they_match_in_the_window() {
     p.pair_finish(Duration::from_secs(10))
         .expect("the phone wasn't told it's paired");
     assert_eq!(phones(&mut st), 1);
+    close(h);
+}
+
+/// Whether the button with exactly these words is on screen but can't be pressed.
+fn button_off(h: &egui_kittest::Harness<'static, station_ui::App>, words: &str) -> bool {
+    h.query_all_by_role_and_label(eframe::egui::accesskit::Role::Button, words)
+        .next()
+        .is_some_and(|n| n.accesskit_node().is_disabled())
+}
+
+#[test]
+fn a_second_pairing_starts_with_no_answer_chosen_after_the_first_ended() {
+    let Some(home) = home() else { return };
+    // The first phone is never answered: its pairing ends on its own.
+    set_env("MIMIR_PAIR_CONFIRM_MS", "2500");
+    let mut h = home.open();
+    let mut st = home.service();
+    let (p, _) = phone(&mut st);
+    p.pair_start(&code(&mut st), "First phone").unwrap();
+    assert!(
+        wait_for(&mut h, |h| shows(h, "First phone wants to pair")),
+        "the window didn't ask about the first phone\n{}",
+        screen_text(&h)
+    );
+    click(&mut h, "Mine");
+    settle(&mut h);
+    assert!(!button_off(&h, "Yes, they match"), "Mine didn't count");
+    // It ends (nobody confirmed in time); the card goes away.
+    assert!(
+        wait_for(&mut h, |h| !shows(h, "Pair this phone?")),
+        "the first pairing's card stayed\n{}",
+        screen_text(&h)
+    );
+    let (p2, _) = phone(&mut st);
+    p2.pair_start(&code(&mut st), "Second phone").unwrap();
+    assert!(
+        wait_for(&mut h, |h| shows(h, "Second phone wants to pair")),
+        "the window didn't ask about the second phone\n{}",
+        screen_text(&h)
+    );
+    assert!(
+        button_off(&h, "Yes, they match"),
+        "Yes was ready before anyone said whose the second phone is\n{}",
+        screen_text(&h)
+    );
+    click(&mut h, "Someone else's");
+    settle(&mut h);
+    assert!(
+        button_off(&h, "Yes, they match"),
+        "Yes was ready with no name typed"
+    );
     close(h);
 }
 

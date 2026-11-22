@@ -59,6 +59,70 @@ fn cf11_update_opens_in_the_software_centre() {
     close(h);
 }
 
+/// A fake `flatpak` in a folder
+/// at the front of PATH. Its source is Mímir's own; `update` brings the new
+/// version only once the file `ready` exists.
+fn fake_flatpak(home: &TestHome) -> PathBuf {
+    use std::os::unix::fs::PermissionsExt;
+    let bin = home.root.join("fake-bin");
+    std::fs::create_dir_all(&bin).unwrap();
+    let state = home.root.join("fake-flatpak");
+    std::fs::create_dir_all(&state).unwrap();
+    std::fs::write(state.join("commit"), "old\n").unwrap();
+    let flatpak = format!(
+        "#!/bin/sh\n\
+         S='{}'\n\
+         case \"$1 $3\" in\n\
+         \"info --show-origin\") echo mimir ;;\n\
+         \"info --show-commit\") cat \"$S/commit\" ;;\n\
+         \"remotes --show-disabled\") printf 'mimir\\thttps://example.invalid/repo\\t\\n' ;;\n\
+         \"update -y\") echo '40%'; if [ -e \"$S/ready\" ]; then echo new > \"$S/commit\"; fi; echo '100%' ;;\n\
+         esac\n",
+        state.display()
+    );
+    std::fs::write(bin.join("flatpak"), flatpak).unwrap();
+    std::fs::set_permissions(bin.join("flatpak"), std::fs::Permissions::from_mode(0o755)).unwrap();
+    let path = std::env::var("PATH").unwrap_or_default();
+    set_env("PATH", format!("{}:{path}", bin.display()));
+    set_env("MIMIR_ASK_FLATPAK", "1");
+    state
+}
+
+#[test]
+fn flatpak_update_says_why_it_failed_then_restarts_after_trying_again() {
+    let Some(home) = TestHome::new() else { return };
+    let name = update::asset_name(NEW_VERSION);
+    std::fs::write(home.root.join("updates").join(&name), NEW_PROGRAM).unwrap();
+    let state = fake_flatpak(&home);
+    let mut h = home.open();
+    click(&mut h, "Settings");
+    click(&mut h, "About");
+    assert!(
+        wait_for(&mut h, |h| has_button(h, labels::UPDATE_NOW)),
+        "Settings didn't offer Update now\n{}",
+        screen_text(&h)
+    );
+    // The source hasn't got the new version yet: the real reason shows.
+    click(&mut h, labels::UPDATE_NOW);
+    let why = "The new version isn't there yet. Try again a little later.";
+    assert!(
+        wait_for(&mut h, |h| shows(h, why)
+            && has_button(h, labels::TRY_AGAIN)),
+        "the failed update gave no reason\n{}",
+        screen_text(&h)
+    );
+    assert!(!shows(&h, "Couldn't check just now."));
+    // Once it is there, Try again runs it again and asks for a restart.
+    std::fs::write(state.join("ready"), "").unwrap();
+    click(&mut h, labels::TRY_AGAIN);
+    assert!(
+        wait_for(&mut h, |h| has_button(h, labels::RESTART)),
+        "the update didn't ask for a restart\n{}",
+        screen_text(&h)
+    );
+    close(h);
+}
+
 /// The titles and home projects of the tasks saved in a home.
 fn saved_tasks(home: &TestHome) -> Vec<(String, String)> {
     let dir = home.root.join(".local/share/mimir/tasks");

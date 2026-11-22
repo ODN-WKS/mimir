@@ -20,6 +20,10 @@ pub struct PhonePanel {
     whose: Option<bool>,
     /// The first name typed for "Someone else's".
     other_name: String,
+    /// The pairing the two answers above belong to.
+    pair_seen: Option<u64>,
+    /// The PC said the pairing is over when it was confirmed.
+    pair_ran_out: bool,
     /// A removal waiting for its "Their chats on this PC are deleted."
     /// answer: the person's id, the phone's key (None: the whole person)
     /// and what to call it.
@@ -434,15 +438,38 @@ impl App {
     /// the PC, and has no preset: Yes waits until it is chosen.
     pub(crate) fn pair_window(&mut self, ctx: &egui::Context) {
         let Ok(st) = &mut self.station else { return };
+        let p = &mut self.phone;
         let Some((pending, name, words)) = st.pairing.clone() else {
+            // Nothing waits: the next phone starts with no answer chosen.
+            p.whose = None;
+            p.other_name.clear();
+            p.pair_seen = None;
+            p.pair_ran_out = false;
             return;
         };
-        let p = &mut self.phone;
+        if p.pair_seen != Some(pending) {
+            p.whose = None;
+            p.other_name.clear();
+            p.pair_seen = Some(pending);
+            p.pair_ran_out = false;
+        }
         egui::Window::new("Pair this phone?")
             .collapsible(false)
             .resizable(false)
             .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
             .show(ctx, |ui| {
+                if p.pair_ran_out {
+                    ui.label(RichText::new("That pairing ran out, make a new code.").strong());
+                    ui.add_space(8.0);
+                    if ui.add(theme::primary("Close")).clicked() {
+                        st.pairing = None;
+                        p.whose = None;
+                        p.other_name.clear();
+                        p.pair_seen = None;
+                        p.pair_ran_out = false;
+                    }
+                    return;
+                }
                 ui.label(format!("{name} wants to pair with your PC."));
                 ui.label("Check that the phone shows the same four words:");
                 ui.add_space(4.0);
@@ -498,14 +525,22 @@ impl App {
                         } else {
                             mimir_core::proto::WHOSE_MINE.to_string()
                         });
-                        let _ = st.call_wait(Call::ConfirmPair {
-                            pending,
-                            yes: true,
-                            person,
-                        });
-                        st.pairing = None;
-                        p.whose = None;
-                        p.other_name.clear();
+                        // Closes only when the PC took the answer.
+                        if st
+                            .call_wait(Call::ConfirmPair {
+                                pending,
+                                yes: true,
+                                person,
+                            })
+                            .is_ok()
+                        {
+                            st.pairing = None;
+                            p.whose = None;
+                            p.other_name.clear();
+                            p.pair_seen = None;
+                        } else {
+                            p.pair_ran_out = true;
+                        }
                     }
                     if ui.add(theme::quiet("No, cancel")).clicked() {
                         let _ = st.call_wait(Call::ConfirmPair {
@@ -516,6 +551,7 @@ impl App {
                         st.pairing = None;
                         p.whose = None;
                         p.other_name.clear();
+                        p.pair_seen = None;
                     }
                 });
             });

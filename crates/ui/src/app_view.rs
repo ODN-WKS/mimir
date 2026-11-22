@@ -37,7 +37,11 @@ pub enum UpdateState {
     RestartNeeded(String),
     /// Restarting: the words to show ("Mímir restarts after the current answer." while work runs).
     Restarting(String),
-    Problem(String),
+    /// Looking for a newer version failed; the reason stays out of sight.
+    CheckFailed(String),
+    /// "Update now" (or the switch) failed: the version, the plain next-step
+    /// line to show, and whether it was the switch to automatic updates.
+    UpdateFailed(String, String, bool),
 }
 
 pub struct AppPanel {
@@ -75,11 +79,11 @@ impl AppPanel {
         let ctx = self.ctx.clone();
         std::thread::spawn(move || {
             let s = match update::public_from_hex(&public_key) {
-                None => UpdateState::Problem("The built-in update key is damaged.".into()),
+                None => UpdateState::CheckFailed("The built-in update key is damaged.".into()),
                 Some(key) => match Source::from_env().latest(&key) {
                     Ok(Some(v)) if update::is_newer(&v, &current) => UpdateState::Available(v),
                     Ok(_) => UpdateState::UpToDate,
-                    Err(e) => UpdateState::Problem(e),
+                    Err(e) => UpdateState::CheckFailed(e),
                 },
             };
             *state.lock().unwrap() = s;
@@ -89,12 +93,19 @@ impl AppPanel {
 
     /// Asks Flatpak where this copy came from, in the background.
     fn find_origin(&self) {
-        if !mimir_core::flatpak::active() {
+        // A check can ask a stand-in `flatpak` on PATH without the rest of
+        // the app believing it runs in a sandbox (debug builds only).
+        let pretend = cfg!(debug_assertions) && std::env::var_os("MIMIR_ASK_FLATPAK").is_some();
+        if !mimir_core::flatpak::active() && !pretend {
             return;
         }
         let (origin, ctx) = (self.origin.clone(), self.ctx.clone());
         std::thread::spawn(move || {
-            *origin.lock().unwrap() = update::origin();
+            *origin.lock().unwrap() = if pretend {
+                update::query_origin()
+            } else {
+                update::origin()
+            };
             ctx.request_repaint();
         });
     }
@@ -126,11 +137,21 @@ impl AppPanel {
         let ctx = self.ctx.clone();
         std::thread::spawn(move || {
             let s = match update::public_from_hex(&public_key) {
-                None => UpdateState::Problem("The built-in update key is damaged.".into()),
+                None => UpdateState::UpdateFailed(
+                    version,
+                    "The built-in update key is damaged.".into(),
+                    false,
+                ),
                 Some(key) => {
                     match update::download(&Source::from_env(), &layout, &key, &current, &version) {
                         Ok(file) => UpdateState::Downloaded(version, file),
-                        Err(e) => UpdateState::Problem(e),
+                        // The reason can be a raw system line: say it plainly.
+                        Err(_) => UpdateState::UpdateFailed(
+                            version,
+                            "The update didn't come through. Check your internet and try again."
+                                .into(),
+                            false,
+                        ),
                     }
                 }
             };
@@ -165,7 +186,7 @@ impl AppPanel {
                     }
                     UpdateState::RestartNeeded(version)
                 }
-                Err(e) => UpdateState::Problem(e),
+                Err(e) => UpdateState::UpdateFailed(version, e, switch),
             };
             ctx.request_repaint();
         });
@@ -331,13 +352,25 @@ impl AppPanel {
                 UpdateState::Opened(v) => {
                     ui.label(RichText::new(crate::labels::update_opened(&v)).color(JADE));
                 }
-                UpdateState::Problem(e) => {
+                UpdateState::CheckFailed(e) => {
                     // The reason stays out of sight: one plain line.
                     let _ = e;
                     ui.label(RichText::new("Couldn't check just now.").color(ORANGE));
                     if ui.link("Check again").clicked() {
                         self.check_for_update();
                     }
+                }
+                UpdateState::UpdateFailed(v, why, switch) => {
+                    ui.vertical(|ui| {
+                        ui.label(RichText::new(why).color(ORANGE));
+                        if ui.add(theme::primary(crate::labels::TRY_AGAIN)).clicked() {
+                            if switch {
+                                self.run_flatpak(v, true);
+                            } else {
+                                self.start_update(v);
+                            }
+                        }
+                    });
                 }
             }
         });
