@@ -185,15 +185,11 @@ fun AppRoot(station: Station, nav: Navigator, chatDraft: String = "", standalone
                     .then(if (right != null && panes != null) Modifier.width(panes.left.dp) else Modifier.weight(1f))
                     .semantics { isTraversalGroup = true; traversalIndex = 1f },
             ) {
-                AnimatedContent(
-                    targetState = nav.currentEntry,
-                    modifier = Modifier.weight(1f),
-                    transitionSpec = { transitionFor(nav.lastMove, reduce) },
-                    contentKey = { it.key },
-                    label = "screen",
-                ) { entry ->
+                // The home screen of the open section stays built underneath while a page opened from it is on top
+                // (opening Settings and coming back doesn't build the chat again); pages slide over it as one stack.
+                val shown: @Composable (io.github.odnwks.mimir.nav.Entry, Boolean) -> Unit = { entry, onTop ->
                     // The home screens keep their own saved state (a half-written message) while another one shows.
-                    saveable.SaveableStateProvider(if (entry.screen.tabPage) "tab-${entry.screen}" else entry.key) {
+                    saveable.SaveableStateProvider(if (entry.screen.tabPage && !onTop) "tab-${entry.screen}" else "page-${entry.key}") {
                         // The keyboard pushes up only what sits above it: Chat and a task lift just their
                         // composer (and the dock), so the rest isn't measured again on every frame of
                         // the keyboard's slide; rarer screens with a box lift as a whole.
@@ -201,6 +197,28 @@ fun AppRoot(station: Station, nav: Navigator, chatDraft: String = "", standalone
                             Limited(rail || permanent, entry.screen.bottomBar, if (permanent) Limits.Lane else Limits.Reading) { ScreenFor(entry.screen, state, station, nav, chatDraft) }
                         }
                     }
+                }
+                // Only the chat is kept (the one home screen that costs a lot to build); the others are swapped as before.
+                val layered = nav.stack.first().screen == Screen.Chat
+                val covered = layered && nav.stack.size > 1
+                val focusNow = androidx.compose.ui.platform.LocalFocusManager.current
+                LaunchedEffect(covered) { if (covered) focusNow.clearFocus() }
+                Box(Modifier.weight(1f)) {
+                    AnimatedContent(
+                        targetState = if (layered) nav.stack.first() else nav.currentEntry,
+                        modifier = Modifier.fillMaxSize().then(if (covered) Modifier.clearAndSetSemantics { } else Modifier),
+                        transitionSpec = { transitionFor(nav.lastMove, reduce) },
+                        // The same home screen again (a fresh entry for it) is the same content, not a second copy.
+                        contentKey = { if (it.screen.tabPage) "tab-${it.screen}" else it.key },
+                        label = "screen",
+                    ) { entry -> shown(entry, false) }
+                    AnimatedContent(
+                        targetState = if (covered) nav.currentEntry else null,
+                        modifier = Modifier.fillMaxSize(),
+                        transitionSpec = { transitionFor(nav.lastMove, reduce) },
+                        contentKey = { it?.key },
+                        label = "page",
+                    ) { entry -> if (entry != null) shown(entry, true) }
                 }
             }
             if (right != null) {
