@@ -272,6 +272,22 @@ sealed interface Sight {
     data object Cannot : Sight
     /** The PC answers and its model can't look at pictures (the phone's own model isn't offered then). */
     data object PcCannot : Sight
+    /** The PC answers but has not said yet what it sees (still loading, or an older PC): neither yes nor no. */
+    data object PcUnknown : Sight
+}
+
+/** What the attach menu says while the PC has not said what it sees. */
+const val PC_SIGHT_UNKNOWN = "Your PC hasn't said yet whether it can look at pictures. Try again in a moment."
+
+/** Which [Sight] applies: the PC's word first when it answers, then this phone's own model. */
+fun sightFor(pcSight: Boolean?, pcReady: Boolean, phoneSees: Boolean, phoneVision: String?): Sight = when {
+    pcSight == true -> Sight.Sees
+    pcSight == false -> Sight.PcCannot
+    phoneSees -> Sight.Sees
+    phoneVision != null -> Sight.NeedsUpdate(phoneVision)
+    // A paired PC answering: its word isn't known yet. Never "can't see", and Settings has nothing to offer.
+    pcReady -> Sight.PcUnknown
+    else -> Sight.Cannot
 }
 
 /**
@@ -308,6 +324,11 @@ fun AttachButton(
                 )
                 Sight.PcCannot -> DropdownMenuItem(
                     { MenuIconLine(Glyphs.Models, "Photo, video or camera", PC_CANNOT_SEE) },
+                    { open = false },
+                    enabled = false,
+                )
+                Sight.PcUnknown -> DropdownMenuItem(
+                    { MenuIconLine(Glyphs.Models, "Photo, video or camera", PC_SIGHT_UNKNOWN) },
                     { open = false },
                     enabled = false,
                 )

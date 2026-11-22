@@ -199,9 +199,12 @@ class FastLookupTest {
         assertEquals(1, web.askedMore.size)
     }
 
-    @Test fun noSuchPlaceIsSaidEvenWhenTheOtherPlaceSearchFails() {
+    // Q2 review: "no results" from one search while the other failed is not proof the place is missing, so the
+    // person is told the lookup failed (the connection), never that the place wasn't found.
+    @Test fun noResultsFromOneSearchWhileTheOtherFailsIsAFailureNotAMissingPlace() {
         web.geocode = """{"generationtime_ms":0.1}"""
-        assertNull(Net.within(Net.BUDGET_MS) { Weather.find("Qwertyville", ChatMode.Normal) })
+        val e = runCatching { Net.within(Net.BUDGET_MS) { Weather.find("Qwertyville", ChatMode.Normal) } }.exceptionOrNull()
+        assertTrue(e.toString(), e is Net.Failed)
     }
 
     @Test fun theWeatherServicesAnswerAndMetNorwaysAreReadAsOpenMeteoShapedData() {

@@ -236,7 +236,8 @@ object Net {
             if (v != null) return v
             if (r.isSuccess) nothing = true
         }
-        if (nothing) return null
+        // "Nothing there" is final only when no other way failed or ran out of time: otherwise the network is the cause.
+        if (nothing && problems.isEmpty()) return null
         throw Failed(plainAll(problems))
     }
 

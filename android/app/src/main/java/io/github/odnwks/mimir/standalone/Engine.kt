@@ -230,6 +230,17 @@ class Engine(
     private val writer = Executors.newSingleThreadExecutor { Thread(it, "standalone-writer") }
     /** Lets the model go after [UNLOAD_IDLE_MS] without a reply, so about 3 GB of RAM isn't held for nothing. */
     private val idler = Executors.newSingleThreadScheduledExecutor { Thread(it, "standalone-idle").apply { isDaemon = true } }
+    /** What each chat's message box holds (kept here so Settings or History in between loses nothing); the words are kept on the phone too. */
+    val drafts = ChatDrafts(store.loadDrafts()) { scheduleDraftSave() }
+    @Volatile private var draftSave: java.util.concurrent.ScheduledFuture<*>? = null
+    private fun scheduleDraftSave() {
+        draftSave?.cancel(false)
+        draftSave = runCatching { idler.schedule({ flushDrafts() }, 1500, java.util.concurrent.TimeUnit.MILLISECONDS) }.getOrNull()
+    }
+    /** Writes the draft words now (the app is leaving the screen, or a chat's draft went). */
+    fun flushDrafts() { runCatching { store.saveDrafts(drafts.texts()) } }
+    /** A chat is gone for good: so is what was left in its box. */
+    fun forgetChatDraft(id: String) { drafts.remove(id) }
     @Volatile private var lastReplyAt = 0L
     private val fetcher = Executors.newSingleThreadExecutor { Thread(it, "standalone-download") }
     private val cancel = AtomicBoolean(false)
@@ -669,6 +680,7 @@ class Engine(
     fun forget(id: String) {
         _state.update { s -> s.copy(earlier = s.earlier.filter { it.id != id }) }
         pendingDeletes += id
+        forgetChatDraft(id)
         persist()
     }
 
@@ -698,7 +710,8 @@ class Engine(
         val gone = synchronized(undoable) { undoable.map { it.id }.also { undoable.clear() } }
         // The PC is told too, so the chat goes from every device and never comes back.
         pendingDeletes += gone
-        gone.forEach { chatRepo?.deleteChat(it) }
+        gone.forEach { forgetChatDraft(it); chatRepo?.deleteChat(it) }
+        flushDrafts()
         if (gone.isNotEmpty()) persist()
     }
 
@@ -723,6 +736,7 @@ class Engine(
     fun newPerson() = syncer.execute {
         synchronized(undoable) { undoable.clear() }
         pendingDeletes.clear(); sending.clear()
+        drafts.clear()
         lastSeq = 0; caughtUp = false
         _state.update { it.copy(chat = LocalChat(newId(), it.model, emptyList()), earlier = emptyList(), speed = null, problem = null, askPlace = false, askSearch = null) }
         persistQuietly()

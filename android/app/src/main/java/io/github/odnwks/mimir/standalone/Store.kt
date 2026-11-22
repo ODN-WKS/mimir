@@ -100,6 +100,19 @@ class Store(private val file: File, private val codec: Codec = KeystoreCodec()) 
     /** How much room the kept chats take on the phone. */
     fun bytes(): Long = file.length()
 
+    /** Each chat's unsent words, sealed like the chats, in a file beside them (so they survive the app being closed). */
+    private val draftsFile: File get() = File(file.parentFile, "drafts.bin")
+
+    fun loadDrafts(): Map<String, String> = runCatching {
+        val o = JSONObject(codec.open(draftsFile.readBytes()))
+        o.keys().asSequence().associateWith { o.getString(it) }
+    }.getOrDefault(emptyMap())
+
+    fun saveDrafts(texts: Map<String, String>) {
+        if (texts.isEmpty()) { draftsFile.delete(); return }
+        io.github.odnwks.mimir.link.SafeFile.write(draftsFile, codec.seal(JSONObject(texts).toString()))
+    }
+
     interface Codec {
         fun seal(text: String): ByteArray
         fun open(bytes: ByteArray): String
