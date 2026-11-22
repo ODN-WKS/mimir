@@ -10,6 +10,12 @@ box=$(cat "$HOME/.config/mimir/build-box" 2>/dev/null || echo mimir)
 # incremental files, which are most of the writes. A reboot just means one
 # full rebuild.
 export CARGO_INCREMENTAL=0
+# Memory is shared (32 GB for all of /tmp): when it is over 70 % full, drop build
+# leftovers not touched for 3 hours (old test programs pile up; cargo rebuilds what it needs).
+use=$(df --output=pcent /tmp 2>/dev/null | tail -1 | tr -dc 0-9)
+if [ "${use:-0}" -gt 70 ] && [ -d /tmp/mimir-build ]; then
+    find /tmp/mimir-build -path '*/deps/*' -type f -mmin +180 -delete 2>/dev/null || true
+fi
 if [ "${CONTAINER_ID:-}" = "$box" ]; then
     export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-/tmp/mimir-build/target}"
     exec cargo "$@"
