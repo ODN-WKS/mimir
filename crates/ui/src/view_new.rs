@@ -161,6 +161,7 @@ impl App {
                         .hint_text("Project name")
                         .desired_width(180.0),
                 );
+                crate::menus::edit_menu(&field, "new-project-name");
                 let enter = field.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
                 if (ui.button("Make it").clicked() || enter) && !name.trim().is_empty() {
                     actions.push(Action::NewProject(name.trim().to_string()));

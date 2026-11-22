@@ -256,6 +256,7 @@ impl App {
                             .desired_width(320.0)
                             .hint_text("A short name"),
                     );
+                    crate::menus::edit_menu(&edit, "shortcut-name");
                     if s.name.is_empty() && !edit.has_focus() {
                         edit.request_focus();
                     }
@@ -394,6 +395,7 @@ pub fn find_bar(slot: &mut Option<Find>, ui: &mut egui::Ui, entries: &[Entry]) -
                 .desired_width(260.0)
                 .hint_text("Words in this conversation"),
         );
+        crate::menus::edit_menu(&edit, "find-box");
         if std::mem::take(&mut find.focus) {
             edit.request_focus();
         }
@@ -469,14 +471,14 @@ fn prompt_list(ui: &mut egui::Ui, salt: &str, list: &mut Vec<Prompt>) -> bool {
     let n = list.len();
     for (i, p) in list.iter_mut().enumerate() {
         ui.horizontal(|ui| {
-            changed |= ui
-                .add(
-                    egui::TextEdit::singleline(&mut p.name)
-                        .id_salt((salt, "name", i))
-                        .desired_width(180.0)
-                        .hint_text("Name"),
-                )
-                .changed();
+            let name_edit = ui.add(
+                egui::TextEdit::singleline(&mut p.name)
+                    .id_salt((salt, "name", i))
+                    .desired_width(180.0)
+                    .hint_text("Name"),
+            );
+            crate::menus::edit_menu(&name_edit, &format!("{salt}-name-{i}"));
+            changed |= name_edit.changed();
             if ui
                 .add_enabled(i > 0, theme::quiet("↑").small())
                 .on_hover_text("Move up")
@@ -498,14 +500,14 @@ fn prompt_list(ui: &mut egui::Ui, salt: &str, list: &mut Vec<Prompt>) -> bool {
                 remove = Some(i);
             }
         });
-        changed |= ui
-            .add(
-                egui::TextEdit::multiline(&mut p.text)
-                    .id_salt((salt, "text", i))
-                    .desired_width(f32::INFINITY)
-                    .desired_rows(2),
-            )
-            .changed();
+        let text_edit = ui.add(
+            egui::TextEdit::multiline(&mut p.text)
+                .id_salt((salt, "text", i))
+                .desired_width(f32::INFINITY)
+                .desired_rows(2),
+        );
+        crate::menus::edit_menu(&text_edit, &format!("{salt}-text-{i}"));
+        changed |= text_edit.changed();
         ui.add_space(6.0);
     }
     if let Some((a, b)) = swap {

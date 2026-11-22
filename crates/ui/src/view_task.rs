@@ -207,6 +207,7 @@ impl App {
                 Some((rid, text, phase)) if *rid == id => {
                     let resp = ui
                         .add(TextEdit::singleline(text).desired_width(ui.available_width() - 10.0));
+                    crate::menus::edit_menu(&resp, "task-rename");
                     // The cursor goes in once; a click anywhere else
                     // (the message box, say) ends the rename.
                     if *phase == 0 {
@@ -872,6 +873,7 @@ fn ok_bar(
                             .desired_width((ui.available_width() - 190.0).max(160.0))
                             .hint_text("For example: use the other file instead"),
                     );
+                    crate::menus::edit_menu(&edit, "deny-note");
                     if !edit.has_focus() && note.is_empty() {
                         edit.request_focus();
                     }

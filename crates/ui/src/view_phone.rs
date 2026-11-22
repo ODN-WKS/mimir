@@ -201,11 +201,12 @@ impl App {
                     {
                         let mut done = false;
                         ui.horizontal(|ui| {
-                            ui.add(
+                            let r = ui.add(
                                 egui::TextEdit::singleline(name)
                                     .char_limit(40)
                                     .desired_width(180.0),
                             );
+                            crate::menus::edit_menu(&r, "phone-rename");
                             if ui.add(theme::primary("Save name")).clicked() {
                                 let _ = st.call_wait(Call::RenamePerson {
                                     person: person.clone(),
@@ -349,6 +350,7 @@ impl App {
                             .desired_width(240.0),
                     )
                     .labelled_by(said.id);
+                crate::menus::edit_menu(&r, "pc-name");
                 if r.changed() {
                     let n = name.trim().to_string();
                     self.settings.pc_name = (!n.is_empty()).then_some(name.clone());
@@ -461,11 +463,12 @@ impl App {
                 if p.whose == Some(false) {
                     ui.horizontal(|ui| {
                         ui.label("Their first name:");
-                        ui.add(
+                        let r = ui.add(
                             egui::TextEdit::singleline(&mut p.other_name)
                                 .char_limit(40)
                                 .desired_width(160.0),
                         );
+                        crate::menus::edit_menu(&r, "guest-name");
                     });
                     ui.label(
                         RichText::new("They see only their own chats, never yours.")

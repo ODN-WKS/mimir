@@ -919,6 +919,7 @@ impl App {
                 .show(ctx, |ui| {
                     ui.set_max_width(380.0);
                     let resp = ui.add(egui::TextEdit::singleline(text).desired_width(340.0));
+                    crate::menus::edit_menu(&resp, "chat-rename");
                     resp.request_focus();
                     let enter = ui.input(|i| i.key_pressed(egui::Key::Enter));
                     ui.add_space(8.0);
@@ -1003,6 +1004,7 @@ fn edit_box(ui: &mut egui::Ui, words: &mut String) -> Option<Option<String>> {
                             .desired_rows(2)
                             .desired_width(ui.available_width()),
                     );
+                    crate::menus::edit_menu(&r, "edit-message");
                     r.request_focus();
                     ui.horizontal(|ui| {
                         if ui.add(theme::primary("Send the edit")).clicked()

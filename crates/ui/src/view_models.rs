@@ -269,6 +269,7 @@ impl App {
                     .desired_rows(5)
                     .desired_width(f32::INFINITY),
             );
+            crate::menus::edit_menu(&edit, "ground-rules");
             if edit.changed() {
                 self.settings.ground_rules = (text != DEFAULT_GROUND_RULES).then_some(text);
                 self.settings_dirty = true;
@@ -620,6 +621,7 @@ fn add_by_name(ui: &mut egui::Ui, working: bool) {
                     .desired_width(240.0),
             )
             .labelled_by(said.id);
+        crate::menus::edit_menu(&edit, "add-model-name");
         let go = ui
             .add_enabled(!working && !name.trim().is_empty(), theme::primary("Add"))
             .on_hover_text("Downloads the model to your PC. Big ones take a while.");

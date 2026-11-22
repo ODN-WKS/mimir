@@ -238,12 +238,13 @@ impl App {
         theme::card().show(ui, |ui| {
             ui.set_width(ui.available_width());
             theme::heading(ui, REPORT_TITLE);
-            ui.add(
+            let report = ui.add(
                 egui::TextEdit::multiline(&mut self.labs.what)
                     .hint_text(REPORT_HINT)
                     .desired_rows(4)
                     .desired_width(f32::INFINITY),
             );
+            crate::menus::edit_menu(&report, "labs-report");
             ui.checkbox(&mut self.labs.with_checks, "Include the last checks");
             let on = self.settings.devlog_on();
             ui.add_enabled_ui(on, |ui| {

@@ -76,6 +76,7 @@ impl App {
                             .desired_width(f32::INFINITY),
                     )
                     .labelled_by(said.id);
+                crate::menus::edit_menu(&edit, "settings-search");
                 ui.add_space(8.0);
                 let found: Vec<SettingsPage> = SettingsPage::ALL
                     .into_iter()

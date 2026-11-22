@@ -680,3 +680,44 @@ fn a_free_model_chat_has_a_plain_model_name_and_no_free_tag() {
     assert!(!text.contains("(free)"), "{text}");
     close(h);
 }
+
+const BOX_MENU: &[&str] = &[
+    "Cut",
+    "Copy",
+    "Paste",
+    "Paste as plain text",
+    "Select all",
+    "Undo",
+    "Redo",
+];
+
+#[test]
+fn the_settings_search_and_labs_report_boxes_have_the_typing_menu() {
+    let Some(home) = home() else { return };
+    let mut h = home.open();
+    click(&mut h, "Settings");
+    frames(&mut h);
+    let at = h
+        .query_by_label("Search Settings")
+        .expect("no settings search")
+        .rect()
+        .center();
+    right_click(&mut h, at);
+    assert_rows(&h, "settings search", BOX_MENU);
+    close_menu(&mut h);
+    click(&mut h, "Labs");
+    assert!(
+        wait_for(&mut h, |h| shows(h, "Report a problem")),
+        "Labs didn't open\n{}",
+        screen_text(&h)
+    );
+    let at = h
+        .query_all_by_role(Role::MultilineTextInput)
+        .next()
+        .expect("no report box")
+        .rect()
+        .center();
+    right_click(&mut h, at);
+    assert_rows(&h, "labs report", BOX_MENU);
+    close(h);
+}

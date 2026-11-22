@@ -143,6 +143,7 @@ impl App {
                             .desired_width(520.0)
                             .hint_text("~/Projects/my-app"),
                     );
+                    crate::menus::edit_menu(&edit, "folder-path");
                     if !edit.has_focus() && path.is_empty() {
                         edit.request_focus();
                     }
@@ -394,6 +395,7 @@ impl App {
                             .desired_width(320.0)
                             .hint_text("Project name"),
                     );
+                    crate::menus::edit_menu(&edit, "project-rename");
                     edit.request_focus();
                     let enter = ui.input(|i| i.key_pressed(egui::Key::Enter));
                     ui.horizontal(|ui| {
