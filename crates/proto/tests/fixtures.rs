@@ -75,6 +75,7 @@ fn turn(id: &str, user: bool, text: &str, ran: Option<Ran>, version: u32, seq: u
         version,
         seq,
         gone: false,
+        pictures: vec![],
     }
 }
 
@@ -659,6 +660,24 @@ fn write_the_examples() {
             task: None,
             chat_only: true,
         },
+        Call::Talk {
+            chat_id: "c-1".into(),
+            turn_id: "t-5".into(),
+            turns: vec![{
+                let mut t = turn("t-5", true, "What does this show?", None, 1, 0);
+                t.pictures = vec![Picture {
+                    media_type: "image/jpeg".into(),
+                    base64: "/9j/4AAQ".into(),
+                }];
+                t
+            }],
+            lookup: None,
+            sources: vec![],
+            effort: None,
+            ground_rules: None,
+            task: None,
+            chat_only: true,
+        },
         Call::TalkStop {
             chat_id: "c-1".into(),
             turn_id: "t-1".into(),
@@ -676,6 +695,7 @@ fn write_the_examples() {
                 // Cut away by an edit of an earlier message: a tombstone.
                 ChatTurn {
                     gone: true,
+                    pictures: vec![],
                     ..turn("t-0", true, "", None, 3, 0)
                 },
             ],

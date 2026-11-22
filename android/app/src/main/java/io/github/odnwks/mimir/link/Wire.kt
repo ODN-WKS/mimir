@@ -31,6 +31,8 @@ object Wire {
     const val ENGINES = "engines"
     /** The PC lets chats pick the Claude model ([setChatModel]) and says which model answered. */
     const val CHAT_MODEL = "chat_model"
+    /** A chat message can carry pictures for the PC's model ([LChatTurn.pictures]); the Models reply says whether it can look at them. */
+    const val CHAT_PICTURES = "chat_pictures"
 
     fun hello(appVersion: String, phoneName: String, @Suppress("UNUSED_PARAMETER") pushToken: String? = null, features: List<String> = FEATURES): String = obj("Hello") {
         put("proto", PROTO); put("app_version", appVersion); put("client_name", phoneName)
@@ -257,6 +259,7 @@ object Wire {
             chatsEngine = if (o.isNull("chats_engine")) null else o.optString("chats_engine").ifEmpty { null },
             projectEngine = if (o.isNull("project_engine")) null else o.optString("project_engine").ifEmpty { null },
             chatsModel = if (o.isNull("chats_model")) null else o.optString("chats_model").ifEmpty { null },
+            seesPictures = o.optBoolean("sees_pictures", false),
             chatModels = o.optJSONArray("chat_models").let { a -> (0 until (a?.length() ?: 0)).map { i -> a!!.getJSONObject(i).let { LChoice(it.getString("id"), it.optString("name"), it.optString("about")) } } },
         )
     }
@@ -502,6 +505,8 @@ data class LModels(
     val chatModels: List<LChoice> = emptyList(),
     /** What does project work on the PC: "free" or "claude" (null: an older PC). */
     val projectEngine: String? = null,
+    /** Whether what answers this person's chats on the PC can look at pictures (false: no, or an older PC). */
+    val seesPictures: Boolean = false,
 )
 
 /** An update card from the PC. */
@@ -577,12 +582,18 @@ data class LChatTurn(
     val seq: Long = 0,
     /** Cut away by an edit of an earlier message: a tombstone (higher version, no words). Older apps never see it. */
     val gone: Boolean = false,
+    /** Pictures for the PC's model ("chat_pictures"): only in a Talk, never kept in the chat's turns. */
+    val pictures: List<LPicture> = emptyList(),
 ) {
     fun json(): JSONObject = JSONObject().put("id", id).put("user", user).put("text", text)
         .put("sources", JSONArray(sources.map { it.json() })).put("ran", ran ?: JSONObject.NULL)
         .put("model_words", modelWords ?: JSONObject.NULL).put("at", at).put("version", version).put("seq", seq)
         .also { if (gone) it.put("gone", true) }
+        .also { if (pictures.isNotEmpty()) it.put("pictures", JSONArray(pictures.map { p -> JSONObject().put("media_type", p.mediaType).put("base64", p.base64) })) }
 }
+
+/** A picture sent to the PC: its type ("image/jpeg") and its bytes as base64. */
+data class LPicture(val mediaType: String, val base64: String)
 
 /** A general chat as the PC keeps it; in [Wire.chatsPage] and [Ev.ChatChanged], only its changed turns. */
 data class LChatRecord(val id: String, val name: String?, val at: Long, val seq: Long, val turns: List<LChatTurn>, val deleted: Long? = null)

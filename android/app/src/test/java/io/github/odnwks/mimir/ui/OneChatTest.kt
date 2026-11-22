@@ -49,6 +49,10 @@ class FakePc : PcTalk {
     var words = listOf("Oslo ", "is the capital.")
     @Volatile var state: LTalkState? = null
     override fun canTalk() = reachable
+    /** Pictures ("chat_pictures"): null is an older PC that doesn't know them; true its model sees; false it can't. */
+    @Volatile var seesPictures: Boolean? = null
+    override fun canSeePictures() = reachable && seesPictures == true
+    override fun picturesRefused() = reachable && seesPictures == false
     override fun pcName() = "Your PC"
     override fun talk(request: TalkRequest, listener: TalkListener): Boolean {
         if (!reachable) return false

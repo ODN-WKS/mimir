@@ -106,7 +106,11 @@ fun PhoneChat(
     val files = remember { androidx.compose.runtime.mutableStateListOf<io.github.odnwks.mimir.standalone.TurnFile>() }
     val pictures = remember { androidx.compose.runtime.mutableStateListOf<io.github.odnwks.mimir.standalone.TurnPicture>() }
     var attachNote by remember { mutableStateOf<String?>(null) }
+    // When the PC answers, pictures go to the PC: its model's sight counts, never this phone's (null: not the PC, or an older one).
+    val pcSight = if (pcReady) engine.pcPictures() else null
     val sight = when {
+        pcSight == true -> Sight.Sees
+        pcSight == false -> Sight.PcCannot
         model.id in s.sees -> Sight.Sees
         model.vision != null -> Sight.NeedsUpdate(model.chipName)
         else -> Sight.Cannot
@@ -151,8 +155,8 @@ fun PhoneChat(
             val got = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                 uris.flatMap { uri ->
                     val name = (io.github.odnwks.mimir.standalone.Attach.nameOf(ctx, uri) ?: "Picture")
-                    if (ctx.contentResolver.getType(uri).orEmpty().startsWith("video/")) io.github.odnwks.mimir.standalone.Pictures.video(ctx, uri, name)
-                    else listOfNotNull(io.github.odnwks.mimir.standalone.Pictures.photo(ctx, uri, name))
+                    if (ctx.contentResolver.getType(uri).orEmpty().startsWith("video/")) io.github.odnwks.mimir.standalone.Pictures.video(ctx, uri, name, if (pcSight == true) io.github.odnwks.mimir.standalone.Pictures.PC_FRAME_SIDE else io.github.odnwks.mimir.standalone.Pictures.FRAME_SIDE)
+                    else listOfNotNull(io.github.odnwks.mimir.standalone.Pictures.photo(ctx, uri, name, if (pcSight == true) io.github.odnwks.mimir.standalone.Pictures.PC_SIDE else io.github.odnwks.mimir.standalone.Pictures.MAX_SIDE))
                 }
             }
             addPictures(got)
@@ -163,7 +167,7 @@ fun PhoneChat(
     val takePhoto = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.TakePicture()) { ok ->
         scope.launch {
             val got = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                val p = if (ok && shot.isFile) io.github.odnwks.mimir.standalone.Pictures.photo(ctx, android.net.Uri.fromFile(shot), "Photo") else null
+                val p = if (ok && shot.isFile) io.github.odnwks.mimir.standalone.Pictures.photo(ctx, android.net.Uri.fromFile(shot), "Photo", if (pcSight == true) io.github.odnwks.mimir.standalone.Pictures.PC_SIDE else io.github.odnwks.mimir.standalone.Pictures.MAX_SIDE) else null
                 shot.delete()
                 p
             }

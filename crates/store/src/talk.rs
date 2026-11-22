@@ -9,13 +9,24 @@
 
 use crate::keyring::{Keyring, MAGIC, open_sealed, seal};
 use crate::writer::Writer;
-use mimir_proto::{ChatPutDone, ChatRecord, ChatTurn, ChatsPage};
+use mimir_proto::{ChatPutDone, ChatRecord, ChatTurn, ChatsPage, Picture};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 /// A page of `ChatsSince` stays under about this many bytes (the link
 /// carries at most 4 MB a message).
 const PAGE_BYTES: usize = 1_500_000;
+
+/// Pictures kept for one chat stay under this many bytes; the oldest go
+/// first, so a chat never fills the disk.
+const PICTURES_CAP: u64 = if cfg!(test) {
+    1024 * 1024
+} else {
+    40 * 1024 * 1024
+};
+/// At most this many pictures a message, and this big each (as sent).
+pub const PICTURES_PER_TURN: usize = 4;
+const PICTURE_BYTES: usize = 3 * 1024 * 1024;
 
 /// The one line Settings shows when chats are kept without encryption
 /// (PCE-07).
@@ -373,6 +384,7 @@ impl TalkStore {
             };
             k.meta_seq = seq;
             let changed = k.chat.clone();
+            let _ = std::fs::remove_dir_all(pictures_dir(&self.dir, person, chat_id));
             self.save(person, chat_id)?;
             return Ok((ChatPutDone { seq, deleted: true }, Some(changed)));
         }
@@ -390,6 +402,9 @@ impl TalkStore {
                 person: person.to_string(),
             });
         for mut t in turns {
+            // Pictures are kept apart (`put_pictures`), never in the turn
+            // a phone is sent.
+            t.pictures.clear();
             match k.chat.turns.iter_mut().find(|x| x.id == t.id) {
                 Some(old) if t.version > old.version => {
                     t.seq = self.next(person);
@@ -533,6 +548,82 @@ impl TalkStore {
         l
     }
 
+    /// Keeps the pictures sent with a message, in the chat's own place
+    /// (sealed like the chat), up to [`PICTURES_PER_TURN`] and a size cap
+    /// a chat; the oldest go first.
+    pub fn put_pictures(
+        &mut self,
+        person: &str,
+        chat_id: &str,
+        turn_id: &str,
+        pictures: &[Picture],
+    ) -> Result<(), String> {
+        if self.locked {
+            return Err("Your PC's chat history is locked: unlock the desktop's wallet.".into());
+        }
+        let pictures: Vec<&Picture> = pictures
+            .iter()
+            .filter(|p| p.base64.len() <= PICTURE_BYTES)
+            .take(PICTURES_PER_TURN)
+            .collect();
+        if pictures.is_empty() || chat_id.is_empty() || chat_id.len() > 200 {
+            return Ok(());
+        }
+        let plain = serde_json::to_vec(&pictures).map_err(|e| e.to_string())?;
+        let bytes = match &self.key {
+            Some(key) => seal(key, &plain)?,
+            None => plain,
+        };
+        let dir = pictures_dir(&self.dir, person, chat_id);
+        crate::atomic::write(&dir.join(format!("{}.pics", file_name(turn_id))), &bytes)
+            .map_err(|e| e.to_string())?;
+        // Over the cap: the oldest pictures of this chat go first.
+        let mut files: Vec<(std::time::SystemTime, u64, PathBuf)> = std::fs::read_dir(&dir)
+            .into_iter()
+            .flatten()
+            .flatten()
+            .filter_map(|e| {
+                let m = e.metadata().ok()?;
+                Some((m.modified().ok()?, m.len(), e.path()))
+            })
+            .collect();
+        files.sort();
+        let mut total: u64 = files.iter().map(|f| f.1).sum();
+        for (_, len, path) in files {
+            if total <= PICTURES_CAP {
+                break;
+            }
+            if path.file_stem().is_some_and(|n| *n == *file_name(turn_id)) {
+                continue;
+            }
+            let _ = std::fs::remove_file(path);
+            total -= len;
+        }
+        Ok(())
+    }
+
+    /// The pictures kept for one message of `person`'s chat (none when
+    /// there are none, or the message is another person's).
+    pub fn pictures_for(&self, person: &str, chat_id: &str, turn_id: &str) -> Vec<Picture> {
+        if self.locked || chat_id.is_empty() || chat_id.len() > 200 {
+            return vec![];
+        }
+        let path =
+            pictures_dir(&self.dir, person, chat_id).join(format!("{}.pics", file_name(turn_id)));
+        let Ok(bytes) = std::fs::read(path) else {
+            return vec![];
+        };
+        let plain = if bytes.starts_with(MAGIC) {
+            match self.key.as_ref().and_then(|k| open_sealed(k, &bytes)) {
+                Some(p) => p,
+                None => return vec![],
+            }
+        } else {
+            bytes
+        };
+        serde_json::from_slice(&plain).unwrap_or_default()
+    }
+
     /// Deletes everything of a person (not the owner): their chats and
     /// their files. Nothing of it is kept, not even a tombstone.
     pub fn forget_person(&mut self, person: &str) {
@@ -562,6 +653,16 @@ impl TalkStore {
 /// Where other people's chats are kept.
 fn people_dir(dir: &Path) -> PathBuf {
     dir.join("people")
+}
+
+/// Where a chat's pictures are kept: a folder a chat, one file a message.
+fn pictures_dir(dir: &Path, person: &str, chat_id: &str) -> PathBuf {
+    let base = if person == OWNER {
+        dir.join("pictures")
+    } else {
+        people_dir(dir).join(file_name(person)).join("pictures")
+    };
+    base.join(file_name(chat_id))
 }
 
 /// A chat's file: the owner's in the folder itself, another person's in
@@ -637,6 +738,7 @@ mod tests {
             version,
             seq: 0,
             gone: false,
+            pictures: vec![],
         }
     }
 
@@ -834,6 +936,70 @@ mod tests {
         let all = s.since(0);
         assert_eq!(all.chats.iter().map(|c| c.turns.len()).sum::<usize>(), 2);
         let _ = std::fs::remove_dir_all(&d);
+    }
+
+    fn pic(n: usize) -> Picture {
+        Picture {
+            media_type: "image/jpeg".into(),
+            base64: "A".repeat(n),
+        }
+    }
+
+    #[test]
+    fn pictures_are_kept_per_person_and_chat_and_go_with_them() {
+        let d = tmp("pics");
+        let mut s = TalkStore::open(&d, &Keyring::Off);
+        s.put("c1", None, vec![t("a", true, "see", 1, 1)], false, 5)
+            .unwrap();
+        s.put_pictures(OWNER, "c1", "a", &[pic(10), pic(20)])
+            .unwrap();
+        assert_eq!(s.pictures_for(OWNER, "c1", "a").len(), 2);
+        // Ana, with the same chat and message ids, sees none of it.
+        assert!(s.pictures_for("ana", "c1", "a").is_empty());
+        // At most four a message.
+        s.put_pictures(OWNER, "c1", "b", &vec![pic(5); 6]).unwrap();
+        assert_eq!(s.pictures_for(OWNER, "c1", "b").len(), 4);
+        // A turn put with pictures keeps none in the chat's own file.
+        let mut with = t("c", true, "x", 2, 1);
+        with.pictures = vec![pic(5)];
+        s.put("c1", None, vec![with], false, 6).unwrap();
+        assert!(
+            s.get("c1")
+                .unwrap()
+                .turns
+                .iter()
+                .all(|t| t.pictures.is_empty())
+        );
+        // Deleting the chat deletes its pictures.
+        s.put("c1", None, vec![], true, 7).unwrap();
+        assert!(s.pictures_for(OWNER, "c1", "a").is_empty());
+        // A person who leaves takes theirs.
+        s.put_for("bo", "c9", None, vec![t("z", true, "bo", 3, 1)], false, 8)
+            .unwrap();
+        s.put_pictures("bo", "c9", "z", &[pic(7)]).unwrap();
+        assert_eq!(s.pictures_for("bo", "c9", "z").len(), 1);
+        s.flush().unwrap();
+        s.forget_person("bo");
+        assert!(s.pictures_for("bo", "c9", "z").is_empty());
+        assert!(!d.join("people/bo").exists());
+    }
+
+    #[test]
+    fn a_chats_pictures_stay_under_the_cap_oldest_first() {
+        let d = tmp("picscap");
+        let mut s = TalkStore::open(&d, &Keyring::Off);
+        let big = 300_000;
+        for i in 0..20 {
+            s.put_pictures(OWNER, "c1", &format!("t{i}"), &[pic(big)])
+                .unwrap();
+            std::thread::sleep(std::time::Duration::from_millis(3));
+        }
+        let kept = (0..20)
+            .filter(|i| !s.pictures_for(OWNER, "c1", &format!("t{i}")).is_empty())
+            .count();
+        assert!((2..20).contains(&kept), "kept {kept}");
+        assert!(!s.pictures_for(OWNER, "c1", "t19").is_empty());
+        assert!(s.pictures_for(OWNER, "c1", "t0").is_empty());
     }
 
     #[test]

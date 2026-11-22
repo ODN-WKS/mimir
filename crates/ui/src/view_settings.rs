@@ -554,6 +554,11 @@ impl App {
                      Mímir app.",
                 ),
                 (
+                    "Where do my pictures go?",
+                    "Pictures you send go to your PC (or to Anthropic when Online answers) \
+                     and are kept with that chat.",
+                ),
+                (
                     "Space on this PC",
                     "Settings › Storage lists what Mímir keeps, with Remove.",
                 ),

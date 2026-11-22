@@ -261,12 +261,17 @@ private fun Chip(text: String?, label: String, icon: androidx.compose.ui.graphic
     }
 }
 
+/** What the attach menu says when the PC answers and its model can't look at pictures. */
+const val PC_CANNOT_SEE = "Your PC's model can't look at pictures. Choose one that can in Settings › Models."
+
 /** Whether the model answering can see pictures. */
 sealed interface Sight {
     data object Sees : Sight
     /** It can once its vision part is downloaded (Update in Settings › Who answers). */
     data class NeedsUpdate(val model: String) : Sight
     data object Cannot : Sight
+    /** The PC answers and its model can't look at pictures (the phone's own model isn't offered then). */
+    data object PcCannot : Sight
 }
 
 /**
@@ -297,6 +302,10 @@ fun AttachButton(
                 }
                 is Sight.NeedsUpdate -> DropdownMenuItem(
                     { MenuIconLine(Glyphs.Models, "Photo, video or camera", "Update ${sight.model} in Settings › Who answers to let it see pictures") },
+                    { open = false; onModels() },
+                )
+                Sight.PcCannot -> DropdownMenuItem(
+                    { MenuIconLine(Glyphs.Models, "Photo, video or camera", PC_CANNOT_SEE) },
                     { open = false; onModels() },
                 )
                 Sight.Cannot -> DropdownMenuItem(

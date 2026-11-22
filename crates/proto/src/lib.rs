@@ -285,7 +285,10 @@ pub const PROTO: u32 = 2;
 /// `chat_models` in the `Models` reply) and "people" (the PC tells phones
 /// apart by person: `Event::Welcome`'s `person`, and what a person's phone
 /// is shown follows from it) and "models_changed" (`Event::ModelsChanged`: what
-/// a person may choose changed; the phone asks `Models` again). A client lists the
+/// a person may choose changed; the phone asks `Models` again) and
+/// "chat_pictures" (`ChatTurn::pictures`: a chat message can carry pictures
+/// for the PC's model, and the `Models` reply's `sees_pictures` says
+/// whether the PC's answerer can look at them). A client lists the
 /// ones it knows in `Hello`, and only gets the new events when it does.
 pub const FEATURES: &[&str] = &[
     "search",
@@ -299,6 +302,7 @@ pub const FEATURES: &[&str] = &[
     "chat_model",
     "people",
     "models_changed",
+    "chat_pictures",
 ];
 
 /// What `ConfirmPair.person` says for the owner's own phone. Anything else
@@ -371,6 +375,11 @@ pub struct ChatTurn {
     /// the old turn.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub gone: bool,
+    /// Pictures sent with a message ("chat_pictures"), already shrunk and
+    /// without location. Only in a `Talk` call: the PC keeps them apart
+    /// from the chat's turns and never sends them back.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub pictures: Vec<Picture>,
 }
 
 /// A general chat as the PC keeps it. In `ChatsSince` and `ChatChanged`,

@@ -263,6 +263,21 @@ pub fn version(base: &str) -> Option<String> {
         .map(str::to_string)
 }
 
+/// Whether `model` can look at pictures (`/api/show` lists "vision" among
+/// its capabilities). False when Ollama can't say.
+pub fn sees_pictures(base: &str, model: &str) -> bool {
+    post_stream_at(
+        base,
+        "/api/show",
+        &serde_json::json!({"model": model}),
+        Duration::from_secs(5),
+    )
+    .ok()
+    .and_then(|mut s| s.next_json().ok().flatten())
+    .and_then(|v| v["capabilities"].as_array().cloned())
+    .is_some_and(|c| c.iter().any(|x| x.as_str() == Some("vision")))
+}
+
 /// The loaded models (`/api/ps`): name, size, and how much of it is on the
 /// graphics card.
 pub fn loaded(base: &str) -> Vec<(String, u64, u64)> {

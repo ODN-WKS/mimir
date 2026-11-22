@@ -295,8 +295,12 @@ val HELP_TOPICS = listOf(
     HelpTopic("updates", "What are Updates?"),
     HelpTopic("needs", "What does \u201cNeeds you\u201d mean?"),
     HelpTopic("away", "Using $AI_NAME away from home"),
+    HelpTopic("pictures", "Where do my pictures go?"),
     HelpTopic("lost", "What if I lose this phone?"),
 )
+
+/** Where a picture sent from the chat goes (the same words on the PC). */
+const val HELP_PICTURES = "Pictures you send go to your PC (or to Anthropic when Online answers) and are kept with that chat."
 
 /** The short answer to a Help question. */
 fun helpAnswer(id: String, paired: Boolean): String = when (id) {
@@ -305,6 +309,7 @@ fun helpAnswer(id: String, paired: Boolean): String = when (id) {
     "updates" -> "Spoken updates that arrive when Mímir finishes something on your PC. Tap one to hear it; a new version of this app is also announced there; Settings \u203a Help and about \u203a App updates checks for one."
     "needs" -> "Mímir asks to change a file or run a command, or has a question, and waits until you answer. Needs you lists them; open one to say yes or no. Project work uses Claude Code on your PC."
     "away" -> "With \u201cLet this phone reach your PC from anywhere\u201d on (Settings \u203a Your PC), this phone reaches your PC away from home and stays private. Off, it works only on the same network. Chats on this phone's own model need neither."
+    "pictures" -> HELP_PICTURES
     "lost" -> "You remove it at your PC: $AI_NAME \u203a Settings \u203a Phones."
     else -> ""
 }

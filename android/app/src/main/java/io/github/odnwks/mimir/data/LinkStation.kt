@@ -432,6 +432,10 @@ class LinkStation(
 
     override fun canTalk(): Boolean = synchronized(lock) { connected && readyAt > 0 && data.pcId != null } && Wire.TALK in pcFeatures
 
+    override fun canSeePictures(): Boolean = canTalk() && Wire.CHAT_PICTURES in pcFeatures && synchronized(lock) { pcModels?.seesPictures == true }
+
+    override fun picturesRefused(): Boolean = canTalk() && Wire.CHAT_PICTURES in pcFeatures && synchronized(lock) { pcModels != null && pcModels?.seesPictures != true }
+
     override fun pcName(): String = Mapping.pcName(synchronized(lock) { pcName })
 
     override fun talk(request: io.github.odnwks.mimir.standalone.TalkRequest, listener: io.github.odnwks.mimir.standalone.TalkListener): Boolean {

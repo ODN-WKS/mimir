@@ -211,6 +211,10 @@ impl Client {
     }
 }
 
+/// Said when a picture is sent to a PC model that can't look at pictures.
+const NO_SIGHT: &str =
+    "Your PC's model can't look at pictures. Choose one that can in Settings › Models.";
+
 /// A `Call::Talk`'s parts.
 struct TalkArgs {
     /// Whose chat it is (the asking device's person).
@@ -240,6 +244,7 @@ const OFFERED: &[&str] = &[
     "chat_model",
     "people",
     "models_changed",
+    "chat_pictures",
 ];
 
 /// What a client was last told about a task.
@@ -1875,6 +1880,13 @@ impl Service {
                     "project_engine": if project_free { "free" } else { "claude" },
                     "chats_model": chats_model.unwrap_or("auto"),
                     "online_allowed": self.may_go_online(&who),
+                    // Whether what answers this person's chats can look at
+                    // pictures (feature "chat_pictures"): Claude can; the
+                    // free model only when it has sight.
+                    "sees_pictures": (chats_paid && self.may_go_online(&who))
+                        || crate::engine::chat_model().is_some_and(|p| {
+                            crate::ollama::sees_pictures(&crate::models::ollama_url(), &p.model)
+                        }),
                     // The Claude models chats can use (feature "chat_model").
                     "chat_models": crate::talk::CLAUDE_CHOICES
                         .iter()
@@ -3766,6 +3778,7 @@ impl Service {
             version: 1,
             seq: 0,
             gone: false,
+            pictures: vec![],
         };
         let _ = self.chat_put(
             &a.person.clone(),
@@ -3845,6 +3858,47 @@ impl Service {
                     .iter()
                     .any(|(n, _, _)| *n == p.model)
             });
+        // Pictures: the new message's (kept with the chat), and those of
+        // the user message before it, read back from the chat's own place.
+        let user_ids: Vec<String> = a
+            .turns
+            .iter()
+            .filter(|t| t.user && !t.gone)
+            .map(|t| t.id.clone())
+            .collect();
+        let mut pictures: Vec<Vec<mimir_proto::Picture>> = vec![];
+        let new_pics: Vec<mimir_proto::Picture> = a
+            .turns
+            .iter()
+            .find(|t| t.id == a.turn_id)
+            .map(|t| t.pictures.iter().take(4).cloned().collect())
+            .unwrap_or_default();
+        if !new_pics.is_empty() {
+            let _ = self
+                .chats()
+                .put_pictures(&a.person, &a.chat_id, &a.turn_id, &new_pics);
+        }
+        pictures.push(new_pics);
+        if let Some(prev) = user_ids.iter().rev().find(|id| **id != a.turn_id).cloned() {
+            let (person, chat) = (a.person.clone(), a.chat_id.clone());
+            let before = self.chats().pictures_for(&person, &chat, &prev);
+            if !before.is_empty() {
+                pictures.push(before);
+            }
+        }
+        if pictures.iter().all(|p| p.is_empty()) {
+            pictures.clear();
+        }
+        if !pictures.is_empty()
+            && !paid
+            && !pick.as_ref().is_some_and(|p| {
+                crate::ollama::sees_pictures(&crate::models::ollama_url(), &p.model)
+            })
+        {
+            return Filed::OnPhone {
+                why: NO_SIGHT.into(),
+            };
+        }
         let job = crate::talk::Job {
             person: a.person.clone(),
             chat_id: a.chat_id.clone(),
@@ -3861,6 +3915,7 @@ impl Service {
                 program: self.claude.clone(),
                 dir: crate::paths::data_dir().join("talk-paid"),
             }),
+            pictures,
         };
         // A chat counts as using the chat model, so nothing treats it as
         // unused.
@@ -3870,7 +3925,9 @@ impl Service {
         // The message is kept on the PC (the phone sends it too; it's
         // the same turn by its id).
         if let Some(t) = a.turns.iter().find(|t| t.id == a.turn_id && t.user) {
-            let _ = self.chat_put(&a.person.clone(), &a.chat_id, None, vec![t.clone()], false);
+            let mut t = t.clone();
+            t.pictures.clear();
+            let _ = self.chat_put(&a.person.clone(), &a.chat_id, None, vec![t], false);
         }
         self.answer_person
             .insert(answer.clone(), (a.person.clone(), None));

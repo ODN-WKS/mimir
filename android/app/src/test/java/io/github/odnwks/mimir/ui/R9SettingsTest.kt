@@ -160,7 +160,8 @@ class R9SettingsTest {
     }
 
     @Test fun helpAnswersNeverOfferRemovingAPhoneFromAPhoneAndHaveNoLostCard() {
-        assertEquals(6, HELP_TOPICS.size)
+        assertEquals(7, HELP_TOPICS.size)
+        assertEquals("Pictures you send go to your PC (or to Anthropic when Online answers) and are kept with that chat.", helpAnswer("pictures", true))
         assertEquals("You remove it at your PC: $AI_NAME › Settings › Phones.", helpAnswer("lost", true))
         assertFalse(HELP_TOPICS.any { helpAnswer(it.id, true).isEmpty() })
         start()

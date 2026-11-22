@@ -204,6 +204,20 @@ class Engine(
     // A phone that can't run a model always uses the PC ("This phone only" isn't offered there).
     fun pcAnswers(): Boolean = _state.value.let { (it.usePc || !it.supported) && it.usePcOnce && !it.whisper } && pc?.canTalk() == true && !onlineAnswers()
 
+    /**
+     * Pictures when the PC answers: true when its answerer can look at them (they go to the PC, so no
+     * phone model is needed), false when it can't, null when the PC isn't answering or is too old to say.
+     */
+    fun pcPictures(): Boolean? {
+        if (!pcAnswers()) return null
+        val p = pc ?: return null
+        return when {
+            p.canSeePictures() -> true
+            p.picturesRefused() -> false
+            else -> null
+        }
+    }
+
     /** Whether the next message goes to an online model the owner set up (never in a Whisper). */
     fun onlineAnswers(): Boolean = !_state.value.whisper && io.github.odnwks.mimir.online.OnlineModels.answering() != null
 
@@ -1725,8 +1739,10 @@ class Engine(
             override fun back() { q.put(FromPc.Back) }
             override fun nudge() { q.put(FromPc.Nudge) }
         }
+        // A PC whose model sees pictures gets them with this message (and only this one: it keeps the rest).
+        val pcSees = link.canSeePictures()
         val request = TalkRequest(
-            chatId, asked.id, s.chat.turns.map { it.wire() }, fetched,
+            chatId, asked.id, s.chat.turns.map { it.wire(pcSees, withPictures = pcSees && it.id == asked.id) }, fetched,
             sources.map { io.github.odnwks.mimir.link.LChatSource(it.site, it.url, it.words, it.results, it.via) },
             s.effort.wire, Prompt.rulesForPc(io.github.odnwks.mimir.data.GroundRules.current, s.chat.rules), if (chatOnly.get()) null else inTask(),
             chatOnly = chatOnly.getAndSet(false),

@@ -243,6 +243,7 @@ fn user(id: &str, text: &str) -> ChatTurn {
         version: 1,
         seq: 0,
         gone: false,
+        pictures: vec![],
     }
 }
 

@@ -238,17 +238,20 @@ data class Turn(
     val project: String? = null,
 ) {
     /** As the PC keeps it: pictures and files reduced to words, as the phone's model reads them. */
-    fun wire() = io.github.odnwks.mimir.link.LChatTurn(
-        id, user, forModel(), sources.map { io.github.odnwks.mimir.link.LChatSource(it.site, it.url, it.words, it.results, it.via) },
+    fun wire(pcSees: Boolean = false, withPictures: Boolean = false) = io.github.odnwks.mimir.link.LChatTurn(
+        id, user, forModel(pcPictures = pcSees), sources.map { io.github.odnwks.mimir.link.LChatSource(it.site, it.url, it.words, it.results, it.via) },
         ran, modelWords, at, version, seq,
+        pictures = if (withPictures) pictures.map { io.github.odnwks.mimir.link.LPicture("image/jpeg", java.util.Base64.getEncoder().encodeToString(it.jpeg)) } else emptyList(),
     )
 
     /**
      * What the model reads: each picture (where it goes, for a model that [sees]; otherwise a note
      * that one was there), the message, then each file's words.
      */
-    fun forModel(sees: Boolean = false): String = if (files.isEmpty() && pictures.isEmpty()) text.replace(PICTURE_MARKER, "") else buildString {
-        if (sees) pictures.forEach { append(PICTURE_MARKER).append('\n') }
+    fun forModel(sees: Boolean = false, pcPictures: Boolean = false): String = if (files.isEmpty() && pictures.isEmpty()) text.replace(PICTURE_MARKER, "") else buildString {
+        // The PC's model gets the pictures themselves with the message; the chat keeps just "[picture]".
+        if (pcPictures && pictures.isNotEmpty()) append(pictures.joinToString(" ") { "[picture]" }).append('\n')
+        else if (sees) pictures.forEach { append(PICTURE_MARKER).append('\n') }
         else if (pictures.isNotEmpty()) append("(").append(if (pictures.size == 1) "A picture was" else "${pictures.size} pictures were").append(" shared here.)\n")
         append(text.replace(PICTURE_MARKER, ""))
         files.forEach { f ->

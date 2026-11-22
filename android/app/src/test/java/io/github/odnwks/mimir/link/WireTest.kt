@@ -4,6 +4,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import org.json.JSONTokener
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -152,6 +153,7 @@ class WireTest {
                 lookup = "[Information the app fetched from open-meteo.com]", sources = listOf(LChatSource("open-meteo.com", "https://open-meteo.com/")), task = "1794-1-1",
             ),
             Wire.talk("c-1", "t-4", listOf(LChatTurn("t-4", true, "Is Recipes a good name for a recipe app?", at = 1794000000000)), chatOnly = true),
+            Wire.talk("c-1", "t-5", listOf(LChatTurn("t-5", true, "What does this show?", at = 1794000000000, pictures = listOf(LPicture("image/jpeg", "/9j/4AAQ")))), chatOnly = true),
             Wire.talkStop("c-1", "t-1"),
             Wire.talkTurn("c-1", "t-1"),
             Wire.chatPut("c-1", null, listOf(norway, oslo.copy(text = "Oslo.", ran = "phone", version = 2, seq = 0), LChatTurn("t-0", true, "", at = 1794000000000, version = 3, gone = true))),
@@ -252,6 +254,12 @@ class WireTest {
         val old = Wire.modelList(JSONObject("""{"free":[],"free_model":null,"switch_to_free":false,"ollama":""}"""))!!
         assertEquals(null, old.chatsEngine)
         assertEquals(null, old.projectEngine)
+    }
+
+    @Test fun theModelsReplyTellsWhetherThePcCanLookAtPicturesAndAnOlderPcSaysNo() {
+        assertTrue(Wire.modelList(org.json.JSONObject("""{"free":[],"sees_pictures":true}"""))!!.seesPictures)
+        assertFalse(Wire.modelList(org.json.JSONObject("""{"free":[],"sees_pictures":false}"""))!!.seesPictures)
+        assertFalse(Wire.modelList(org.json.JSONObject("""{"free":[]}"""))!!.seesPictures)
     }
 
     @Test fun theModelsReplyCarriesTheClaudeChoicesAndAnOlderPcSaysNone() {

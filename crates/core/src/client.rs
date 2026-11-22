@@ -1064,6 +1064,7 @@ impl Station {
             version: 1,
             seq: 0,
             gone: false,
+            pictures: vec![],
         };
         let mut turns: Vec<ChatTurn> = self
             .chats
@@ -1254,6 +1255,7 @@ impl Station {
                 version: t.version + 1,
                 seq: 0,
                 gone: true,
+                pictures: vec![],
             });
         }
         // The old answer to the message is cut too: its new one takes a higher version.
@@ -1271,6 +1273,7 @@ impl Station {
                 version: 2,
                 seq: 0,
                 gone: true,
+                pictures: vec![],
             });
         }
         for t in put.iter().filter(|t| t.gone) {
@@ -1969,6 +1972,7 @@ mod tests {
             version: 1,
             seq: 0,
             gone: false,
+            pictures: vec![],
         }
     }
 

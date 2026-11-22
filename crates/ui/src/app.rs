@@ -1553,6 +1553,7 @@ impl eframe::App for App {
                 version: 1,
                 seq: 0,
                 gone: false,
+                pictures: vec![],
             };
             let _ = r.call_wait(mimir_core::proto::Call::ChatPut {
                 chat_id: "shot".into(),

@@ -14,6 +14,12 @@ interface PcTalk {
     /** Paired, connected, and the PC answers chats. */
     fun canTalk(): Boolean
 
+    /** Whether the PC takes pictures with a message and its answerer can look at them ("chat_pictures"). */
+    fun canSeePictures(): Boolean = false
+
+    /** The PC takes pictures with a message (an older one doesn't know the word) but its answerer can't look at them. */
+    fun picturesRefused(): Boolean = false
+
     /** The PC's name as the owner sees it ("Your PC" or the name given to it). */
     fun pcName(): String
 

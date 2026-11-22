@@ -5,7 +5,7 @@
 //! turn, and one that would wait too long is left to the phone.
 
 use crate::ollama;
-use mimir_proto::{ChatSource, ChatTurn, Ran, TalkState};
+use mimir_proto::{ChatSource, ChatTurn, Picture, Ran, TalkState};
 use serde_json::{Value, json};
 use std::collections::{HashMap, VecDeque};
 use std::net::TcpStream;
@@ -63,6 +63,10 @@ pub struct Job {
     /// Answered by Claude (a paid model) instead, with the free model as
     /// its backup (`model` empty: no backup).
     pub paid: Option<Paid>,
+    /// Pictures for the newest user messages: `[0]` goes with the newest,
+    /// `[1]` with the one before it (at most two, as the brief keeps it
+    /// simple). Empty: none.
+    pub pictures: Vec<Vec<Picture>>,
 }
 
 /// How a chat reaches Claude: one Claude Code turn with every tool,
@@ -449,6 +453,7 @@ impl Talk {
             version: 1,
             seq: 0,
             gone: false,
+            pictures: vec![],
         }
     }
 
@@ -461,10 +466,28 @@ impl Talk {
         {
             return Err("Your PC's model isn't running.".into());
         }
+        let users: Vec<usize> = job
+            .messages
+            .iter()
+            .enumerate()
+            .filter(|(_, (r, _))| r == "user")
+            .map(|(i, _)| i)
+            .collect();
         let messages: Vec<Value> = job
             .messages
             .iter()
-            .map(|(r, c)| json!({"role": r, "content": c}))
+            .enumerate()
+            .map(|(i, (r, c))| {
+                let mut m = json!({"role": r, "content": c});
+                // The Nth user message from the end gets its pictures
+                // (Ollama's `images`: plain base64).
+                if let Some(back) = users.iter().rev().position(|u| *u == i)
+                    && let Some(p) = job.pictures.get(back).filter(|p| !p.is_empty())
+                {
+                    m["images"] = json!(p.iter().map(|p| p.base64.as_str()).collect::<Vec<_>>());
+                }
+                m
+            })
             .collect();
         let body = json!({
             "model": job.model,
@@ -678,6 +701,13 @@ impl Talk {
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null());
+        // With pictures, the message goes in as one stream-json line (as a
+        // project task's does), so Claude gets the pictures themselves:
+        // no files, nothing left on disk.
+        let pictures: &[Picture] = job.pictures.first().map(|p| p.as_slice()).unwrap_or(&[]);
+        if !pictures.is_empty() {
+            cmd.args(["--input-format", "stream-json"]);
+        }
         if let Some(sid) = &session {
             cmd.args(["--resume", sid]);
         }
@@ -689,7 +719,12 @@ impl Talk {
             .map_err(|_| "Project work isn't set up on this PC.".to_string())?;
         self.lock().child = Some(child.id());
         if let Some(mut i) = child.stdin.take() {
-            let _ = i.write_all(message.as_bytes());
+            if pictures.is_empty() {
+                let _ = i.write_all(message.as_bytes());
+            } else {
+                let line = crate::events::user_message_with(&message, pictures);
+                let _ = i.write_all(format!("{line}\n").as_bytes());
+            }
         }
         let mut said = String::new();
         let mut whole = String::new();
@@ -929,7 +964,11 @@ pub fn effort(e: Option<&str>) -> (bool, u32) {
 pub fn messages(system: String, turns: &[ChatTurn]) -> Vec<(String, String)> {
     let mut m = vec![("system".to_string(), system)];
     for t in turns {
+        if t.text.trim().is_empty() && t.pictures.is_empty() {
+            continue;
+        }
         if t.text.trim().is_empty() {
+            m.push(("user".to_string(), "[picture]".to_string()));
             continue;
         }
         let role = if t.user { "user" } else { "assistant" };
@@ -976,6 +1015,7 @@ mod tests {
             context: 16_384,
             sources: vec![],
             paid: None,
+            pictures: vec![],
         }
     }
 
@@ -1008,6 +1048,102 @@ mod tests {
                 Out::Done { result, .. } => return (said, thought, result),
             }
         }
+    }
+
+    fn pic(data: &str) -> Picture {
+        Picture {
+            media_type: "image/jpeg".into(),
+            base64: data.into(),
+        }
+    }
+
+    #[test]
+    fn a_picture_reaches_the_models_request_for_the_last_two_user_messages() {
+        let seen = Arc::new(Mutex::new(String::new()));
+        let s2 = seen.clone();
+        let base = crate::ollama::fake::start(move |path, body| {
+            if path == "/api/version" {
+                return vec![r#"{"version":"0.40.16"}"#.into()];
+            }
+            if path == "/api/chat" {
+                *s2.lock().unwrap() = body.to_string();
+            }
+            vec![
+                r#"{"message":{"content":"A cat."},"done":false}"#.into(),
+                r#"{"message":{"content":""},"done":true}"#.into(),
+            ]
+        });
+        let (tx, rx) = mpsc::channel();
+        let tx = Mutex::new(tx);
+        let t = Talk::start_at(Arc::new(move || base.clone()), move |o| {
+            let _ = tx.lock().unwrap().send(o);
+        });
+        let mut j = job("p1", "What does this show?");
+        j.messages = vec![
+            ("system".into(), "Be brief.".into()),
+            ("user".into(), "old one".into()),
+            ("assistant".into(), "ok".into()),
+            ("user".into(), "[picture]".into()),
+            ("assistant".into(), "A dog.".into()),
+            ("user".into(), "What does this show?".into()),
+        ];
+        j.pictures = vec![vec![pic("NEWPIC")], vec![pic("BEFOREPIC")]];
+        assert_eq!(t.submit(j), Ok(None));
+        let (said, _, result) = until_done(&rx);
+        assert_eq!(said, "A cat.");
+        assert!(result.is_ok());
+        let body: Value = serde_json::from_str(&seen.lock().unwrap()).unwrap();
+        let m = body["messages"].as_array().unwrap();
+        assert_eq!(m.len(), 6);
+        assert!(m[1].get("images").is_none());
+        assert_eq!(m[3]["images"][0], "BEFOREPIC");
+        assert_eq!(m[5]["images"][0], "NEWPIC");
+        assert!(m[5]["images"].as_array().unwrap().len() == 1);
+    }
+
+    #[test]
+    fn a_picture_goes_to_claude_as_one_stream_line_with_the_picture_in_it() {
+        use std::os::unix::fs::PermissionsExt;
+        let d = std::env::temp_dir().join(format!("talk-paid-pic-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        let prog = d.join("claude");
+        std::fs::write(
+            &prog,
+            format!(
+                "#!/bin/sh\necho \"$@\" > {0}/args\ncat > {0}/stdin\n\
+                 echo '{{\"type\":\"result\",\"session_id\":\"s1\",\"result\":\"A cat.\"}}'\n",
+                d.display()
+            ),
+        )
+        .unwrap();
+        std::fs::set_permissions(&prog, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let (t, rx) = engine(vec![]);
+        let mut j = job("p2", "What does this show?");
+        j.model = String::new();
+        j.pictures = vec![vec![pic("NEWPIC")]];
+        j.paid = Some(Paid {
+            model: None,
+            program: prog,
+            dir: d.join("run"),
+        });
+        assert_eq!(t.submit(j), Ok(None));
+        let (_, _, result) = until_done(&rx);
+        assert_eq!(result.unwrap().text, "A cat.");
+        let args = std::fs::read_to_string(d.join("args")).unwrap();
+        assert!(args.contains("--input-format stream-json"), "{args}");
+        let line = std::fs::read_to_string(d.join("stdin")).unwrap();
+        let v: Value = serde_json::from_str(line.trim()).unwrap();
+        let c = v["message"]["content"].as_array().unwrap();
+        assert_eq!(c[0]["type"], "image");
+        assert_eq!(c[0]["source"]["data"], "NEWPIC");
+        assert!(
+            c[1]["text"]
+                .as_str()
+                .unwrap()
+                .contains("What does this show?")
+        );
+        let _ = std::fs::remove_dir_all(&d);
     }
 
     #[test]
@@ -1145,6 +1281,7 @@ mod tests {
                 version: 1,
                 seq: 0,
                 gone: false,
+                pictures: vec![],
             });
         }
         turns.push(ChatTurn {
@@ -1158,6 +1295,7 @@ mod tests {
             version: 1,
             seq: 0,
             gone: false,
+            pictures: vec![],
         });
         let m = messages(
             system(Some(rules), Some("[Fetched: rain tomorrow]")),

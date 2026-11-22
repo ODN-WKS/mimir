@@ -11,10 +11,14 @@ import java.io.ByteArrayOutputStream
 
 /**
  * Pictures for a model that sees: photos and camera shots are made small (the longest side at
- * most [MAX_SIDE]) and kept as JPEGs; a video becomes a few still frames. All off the main thread.
+ * most [MAX_SIDE], or [PC_SIDE] for the PC's model) and kept as JPEGs, re-drawn from their pixels so
+ * no location or camera details travel with them; a video becomes a few still frames. All off the main thread.
  */
 object Pictures {
     const val MAX_SIDE = 768
+    /** For the PC's model: bigger, so a screenshot's small words stay readable. */
+    const val PC_SIDE = 1568
+    const val PC_FRAME_SIDE = 1024
     /** Frames taken from a video, spread over its length. */
     const val VIDEO_FRAMES = 4
     const val FRAME_SIDE = 512
@@ -22,21 +26,21 @@ object Pictures {
     const val MAX = 4
 
     /** A photo from the phone (or the camera's file), upright and made small; null if it can't be read. */
-    fun photo(context: Context, uri: Uri, name: String): TurnPicture? = runCatching {
+    fun photo(context: Context, uri: Uri, name: String, side: Int = MAX_SIDE): TurnPicture? = runCatching {
         val cr = context.contentResolver
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         cr.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
         if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
         var sample = 1
-        while (maxOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= MAX_SIDE) sample *= 2
+        while (maxOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= side) sample *= 2
         val raw = cr.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, BitmapFactory.Options().apply { inSampleSize = sample }) }
             ?: return null
         val turn = cr.openInputStream(uri)?.use { exifDegrees(ExifInterface(it)) } ?: 0
-        TurnPicture.of(name, jpeg(upright(small(raw, MAX_SIDE), turn)))
+        TurnPicture.of(name, jpeg(upright(small(raw, side), turn)))
     }.getOrNull()
 
     /** A few still frames of a video, or none if it can't be read. */
-    fun video(context: Context, uri: Uri, name: String): List<TurnPicture> = runCatching {
+    fun video(context: Context, uri: Uri, name: String, side: Int = FRAME_SIDE): List<TurnPicture> = runCatching {
         val r = MediaMetadataRetriever()
         try {
             r.setDataSource(context, uri)
@@ -44,7 +48,7 @@ object Pictures {
             (0 until VIDEO_FRAMES).mapNotNull { i ->
                 val us = ms * 1000 * (2 * i + 1) / (2 * VIDEO_FRAMES)
                 r.getFrameAtTime(us, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)?.let { f ->
-                    TurnPicture.of("$name · ${i + 1} of $VIDEO_FRAMES", jpeg(small(f, FRAME_SIDE)))
+                    TurnPicture.of("$name · ${i + 1} of $VIDEO_FRAMES", jpeg(small(f, side)))
                 }
             }.distinct()
         } finally {

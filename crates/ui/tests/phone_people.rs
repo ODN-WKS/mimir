@@ -66,6 +66,7 @@ fn fake_ollama(words: &'static [&'static str]) -> Arc<Mutex<Vec<serde_json::Valu
                     "/api/version" => vec![r#"{"version":"0.40.16"}"#.into()],
                     "/api/ps" => vec![r#"{"models":[]}"#.into()],
                     "/api/tags" => vec![r#"{"models":[]}"#.into()],
+                    "/api/show" => vec![r#"{"capabilities":["completion","vision"]}"#.into()],
                     _ => {
                         if let Ok(v) = serde_json::from_slice(&body) {
                             kept.lock().unwrap().push(v);
@@ -375,6 +376,7 @@ fn user(id: &str, text: &str) -> ChatTurn {
         version: 1,
         seq: 0,
         gone: false,
+        pictures: vec![],
     }
 }
 
@@ -1040,6 +1042,99 @@ fn sec17_another_persons_chat_never_resumes_the_owners_claude_conversation() {
         !runs[1].iter().any(|a| a == "--resume"),
         "another person's chat resumed the owner's Claude conversation: {:?}",
         runs[1]
+    );
+}
+
+/// R30: a picture sent with a chat message reaches the PC's model; the next
+/// message sends it again as words plus the picture of the last two user
+/// messages; another person with the same chat and message ids gets none of it.
+#[test]
+fn r30_pictures_reach_the_model_and_are_never_another_persons() {
+    let Some(home) = home() else { return };
+    let asked = fake_ollama(&["It is a cat."]);
+    picked(&home);
+    let mut st = home.service();
+    let mut mine = paired_as(&mut st, None);
+    let mut ana = paired_as(&mut st, Some("Ana"));
+    let pic = mimir_core::proto::Picture {
+        media_type: "image/jpeg".into(),
+        base64: "T1dORVJQSUM=".into(),
+    };
+    let with_pic = |id: &str, text: &str| {
+        let mut t = user(id, text);
+        t.pictures = vec![pic.clone()];
+        t
+    };
+    let ask = |who: &mut Phone, id: &str, turns: Vec<ChatTurn>| {
+        who.call(Call::Talk {
+            chat_id: "c-pic".into(),
+            turn_id: id.into(),
+            turns,
+            lookup: None,
+            sources: vec![],
+            effort: None,
+            ground_rules: None,
+            task: None,
+            chat_only: true,
+        })
+        .unwrap();
+        assert!(
+            who.seen
+                .until(&who.p, |s| s.done.contains_key(&format!("{id}.a"))),
+            "no answer"
+        );
+    };
+    ask(
+        &mut mine,
+        "p1",
+        vec![with_pic("p1", "What does this show?")],
+    );
+    // Ana asks in a chat with the same ids, naming the owner's earlier message
+    // in her turns: none of the owner's picture reaches her model.
+    ask(
+        &mut ana,
+        "p2",
+        vec![
+            user("p1", "[picture] What does this show?"),
+            user("p2", "And now?"),
+        ],
+    );
+    // The owner's next message: the old picture goes again, as the model's
+    // last two user messages' pictures.
+    ask(
+        &mut mine,
+        "p3",
+        vec![
+            user("p1", "[picture] What does this show?"),
+            user("p3", "What colour?"),
+        ],
+    );
+    let all = asked.lock().unwrap().clone();
+    let chats: Vec<&serde_json::Value> =
+        all.iter().filter(|v| v.get("messages").is_some()).collect();
+    assert_eq!(chats.len(), 3, "{all:?}");
+    let images = |v: &serde_json::Value| -> Vec<String> {
+        v["messages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .flat_map(|m| m["images"].as_array().cloned().unwrap_or_default())
+            .map(|i| i.as_str().unwrap().to_string())
+            .collect()
+    };
+    assert_eq!(images(chats[0]), ["T1dORVJQSUM="]);
+    assert!(
+        images(chats[1]).is_empty(),
+        "Ana's model got a picture of the owner's"
+    );
+    assert_eq!(images(chats[2]), ["T1dORVJQSUM="]);
+    // The pictures sit apart from the chat's turns: a phone never gets them back.
+    let page = mine.chats();
+    assert!(
+        page.iter()
+            .flat_map(|c| &c.turns)
+            .all(|t| t.pictures.is_empty()),
+        "a turn carried pictures back to a phone"
     );
 }
 
