@@ -520,7 +520,15 @@ pub fn real_hands(keep: Vec<String>) -> Hands<'static> {
 /// PC, first downloads the smallest that qualifies, so chat works within
 /// minutes), chooses (the runner-ups stay).
 pub fn run(hw: &Hardware, hands: &Hands, backend: &str) -> EngineFile {
-    let cands = candidates(hw, Role::Chat);
+    run_with(hw, hands, backend, None)
+}
+
+/// As `run`; with `only`, just that model is measured (nothing downloaded).
+pub fn run_with(hw: &Hardware, hands: &Hands, backend: &str, only: Option<&str>) -> EngineFile {
+    let mut cands = candidates(hw, Role::Chat);
+    if let Some(o) = only {
+        cands.retain(|(m, _)| m.name == o);
+    }
     let mut on_disk: Vec<String> = (hands.installed)();
     let mut note = None;
     if !cands
@@ -621,9 +629,22 @@ pub fn chat_model() -> Option<Pick> {
     if saved.is_some() {
         return saved;
     }
-    let installed = crate::models::installed().ok()?;
-    default_pick(&read_hardware(), &installed, &backend_from_log())
+    // Looking costs a hardware read and a call to Ollama: once in 30 s.
+    let mut cache = DEFAULT_CACHE.lock().unwrap();
+    if let Some((at, p)) = cache.as_ref()
+        && at.elapsed() < Duration::from_secs(30)
+    {
+        return p.clone();
+    }
+    let p = crate::models::installed()
+        .ok()
+        .and_then(|i| default_pick(&read_hardware(), &i, &backend_from_log()));
+    *cache = Some((Instant::now(), p.clone()));
+    p
 }
+
+static DEFAULT_CACHE: std::sync::Mutex<Option<(Instant, Option<Pick>)>> =
+    std::sync::Mutex::new(None);
 
 /// The stand-in pick while no test result exists: of the chat models on
 /// the PC that fit it, the smallest; else the smallest chat model on the
@@ -661,6 +682,31 @@ const PROBE_PATIENCE: Duration = Duration::from_secs(5 * 60);
 /// When the test first found the PC busy (this run of Mímir).
 static BUSY_SINCE: std::sync::Mutex<Option<Instant>> = std::sync::Mutex::new(None);
 
+/// What the model test does now.
+#[derive(Debug, PartialEq, Eq)]
+pub enum Gate {
+    /// The PC is calm: test everything.
+    Run,
+    /// Busy too long: test only the model chats already use.
+    RunOne,
+    /// Wait and look again.
+    Wait,
+}
+
+/// Decides from how the PC is: never while an answer is being written;
+/// when busy, only after the patience is used up.
+pub fn gate(calm: bool, answering: bool, since: Option<Instant>, now: Instant) -> Gate {
+    if answering {
+        Gate::Wait
+    } else if calm {
+        Gate::Run
+    } else if since.is_some_and(|s| waited_enough(s, now)) {
+        Gate::RunOne
+    } else {
+        Gate::Wait
+    }
+}
+
 /// Whether a PC that was busy since `since` has waited long enough.
 pub fn waited_enough(since: Instant, now: Instant) -> bool {
     now.saturating_duration_since(since) >= PROBE_PATIENCE
@@ -668,7 +714,7 @@ pub fn waited_enough(since: Instant, now: Instant) -> bool {
 
 /// Keeps the pick current: when the probe is needed and the PC is calm,
 /// runs it. Returns whether it ran. `keep` names the project model.
-pub fn keep_fresh(keep: Vec<String>) -> bool {
+pub fn keep_fresh(keep: Vec<String>, answering: &(dyn Fn() -> bool + Sync)) -> bool {
     // Only the Ollama Mímir installed (or one a check names): never a
     // stranger's on the same port.
     if !crate::models::unit_path().is_file() && std::env::var_os("MIMIR_OLLAMA").is_none() {
@@ -700,39 +746,39 @@ pub fn keep_fresh(keep: Vec<String>) -> bool {
         .filter(|m| candidates(&hw, Role::Chat).iter().any(|(c, _)| c.name == m))
         .collect();
     if !needs_probe(have.as_ref(), &print, &on_disk) {
+        *BUSY_SINCE.lock().unwrap() = None;
         return false;
     }
-    let mut low = false;
-    if !calm(&hw, Duration::from_secs(30)) {
-        let since = *BUSY_SINCE.lock().unwrap().get_or_insert_with(Instant::now);
-        if !waited_enough(since, Instant::now()) {
+    let calm_now = !answering() && calm(&hw, Duration::from_secs(30));
+    let since = if calm_now {
+        None
+    } else {
+        Some(*BUSY_SINCE.lock().unwrap().get_or_insert_with(Instant::now))
+    };
+    let only = match gate(calm_now, answering(), since, Instant::now()) {
+        Gate::Run => None,
+        Gate::Wait => {
             crate::log::write("engine", "probe waits", "the PC is busy");
             return false;
         }
-        crate::log::write(
-            "engine",
-            "probe runs anyway",
-            "the PC stayed busy for 5 minutes; testing at low priority",
-        );
-        low = true;
-    }
-    *BUSY_SINCE.lock().unwrap() = None;
-    let e = if low {
-        // Its own thread, so the lower priority goes away with it.
-        std::thread::scope(|s| {
-            s.spawn(|| {
-                // SAFETY: setpriority on the calling thread only.
-                unsafe {
-                    libc::setpriority(libc::PRIO_PROCESS, 0, 15);
-                }
-                run(&hw, &real_hands(keep), &backend)
-            })
-            .join()
-            .expect("the model test thread")
-        })
-    } else {
-        run(&hw, &real_hands(keep), &backend)
+        Gate::RunOne => {
+            let Some(p) = default_pick(
+                &hw,
+                &crate::models::installed().unwrap_or_default(),
+                &backend,
+            ) else {
+                return false;
+            };
+            crate::log::write(
+                "engine",
+                "probe runs anyway",
+                "the PC stayed busy for 5 minutes; testing one model",
+            );
+            Some(p.model)
+        }
     };
+    *BUSY_SINCE.lock().unwrap() = None;
+    let e = run_with(&hw, &real_hands(keep), &backend, only.as_deref());
     save(&e);
     crate::log::write("engine", "picked", &words(Some(&e)));
     true
@@ -762,7 +808,7 @@ pub fn command(args: &[String]) -> i32 {
         Some("probe") => {
             let keep = args[1..].to_vec();
             let _ = std::fs::remove_file(file());
-            if keep_fresh(keep) {
+            if keep_fresh(keep, &|| false) {
                 command(&[])
             } else {
                 eprintln!("The probe didn't run: Ollama isn't answering, or the PC is busy.");
@@ -972,6 +1018,63 @@ mod tests {
         assert_eq!(p.backend, "ROCm");
         let only = default_pick(&hw, &[c.name.to_string()], "").unwrap();
         assert_eq!(only.model, c.name);
+    }
+
+    #[test]
+    fn the_test_never_starts_while_an_answer_is_being_written() {
+        let t = Instant::now();
+        let late = t + Duration::from_secs(3600);
+        assert_eq!(gate(true, true, None, t), Gate::Wait);
+        assert_eq!(gate(false, true, Some(t), late), Gate::Wait);
+        assert_eq!(gate(true, false, None, t), Gate::Run);
+        assert_eq!(gate(false, false, Some(t), t), Gate::Wait);
+        assert_eq!(gate(false, false, Some(t), late), Gate::RunOne);
+    }
+
+    #[test]
+    fn a_run_anyway_measures_only_the_one_model() {
+        let base = crate::ollama::fake::start(|path, _| {
+            if path == "/api/ps" {
+                return vec![r#"{"models":[]}"#.into()];
+            }
+            if path == "/api/version" {
+                return vec![r#"{"version":"0.40.16"}"#.into()];
+            }
+            vec![
+                r#"{"message":{"role":"assistant","content":"Hi"},"done":false}"#.into(),
+                r#"{"message":{"role":"assistant","content":""},"done":true,"eval_count":600,"eval_duration":10000000000}"#.into(),
+            ]
+        });
+        let installed = || {
+            vec![
+                "huihui_ai/Qwen3.6-abliterated:35b-a3b".to_string(),
+                "huihui_ai/gpt-oss-abliterated:20b".to_string(),
+            ]
+        };
+        let hands = Hands {
+            base,
+            installed: &installed,
+            download: &|_| Err("no downloads".into()),
+            remove: &|_| true,
+            keep: vec![],
+        };
+        let hw = Hardware {
+            gpu: Some(Gpu {
+                vendor: "AMD".into(),
+                vram: 17 * GB,
+            }),
+            ram: 64 * GB,
+            threads: 32,
+            disk_free: Some(500 * GB),
+        };
+        let e = run_with(
+            &hw,
+            &hands,
+            "ROCm",
+            Some("huihui_ai/gpt-oss-abliterated:20b"),
+        );
+        assert_eq!(e.measures.len(), 1);
+        assert_eq!(e.measures[0].model, "huihui_ai/gpt-oss-abliterated:20b");
     }
 
     #[test]

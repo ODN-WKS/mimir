@@ -27,6 +27,11 @@ fn home() -> Option<TestHome> {
 /// A stand-in Ollama: `/api/chat` streams `words`, one piece each, `pause`
 /// apart.
 fn fake_ollama(words: &'static [&'static str], pause: Duration) {
+    fake_ollama_with(words, pause, r#"{"models":[]}"#);
+}
+
+/// As `fake_ollama`, with the models Ollama says it has (`/api/tags`).
+fn fake_ollama_with(words: &'static [&'static str], pause: Duration, tags: &'static str) {
     let l = TcpListener::bind("127.0.0.1:0").unwrap();
     set_env(
         "MIMIR_OLLAMA",
@@ -53,7 +58,8 @@ fn fake_ollama(words: &'static [&'static str], pause: Duration) {
                 let _ = r.read_exact(&mut body);
                 let (lines, slow): (Vec<String>, bool) = match path.as_str() {
                     "/api/version" => (vec![r#"{"version":"0.40.16"}"#.into()], false),
-                    "/api/ps" | "/api/tags" => (vec![r#"{"models":[]}"#.into()], false),
+                    "/api/ps" => (vec![r#"{"models":[]}"#.into()], false),
+                    "/api/tags" => (vec![tags.into()], false),
                     _ => {
                         let mut out: Vec<String> = words
                             .iter()
@@ -820,4 +826,26 @@ fn the_dim_note_shows_under_a_reply_that_has_one_and_not_without() {
         "a note without one\n{}",
         screen_text(&h)
     );
+}
+
+/// Q1: a PC with a chat model installed but no model-test result yet (the
+/// test waits while the PC is busy) still answers the first chat.
+#[test]
+fn the_first_chat_is_answered_before_the_model_test_has_run() {
+    let Some(home) = home() else { return };
+    fake_ollama_with(
+        &["Hello ", "there."],
+        Duration::from_millis(20),
+        r#"{"models":[{"name":"huihui_ai/gpt-oss-abliterated:20b"}]}"#,
+    );
+    let mut h = home.open();
+    click(&mut h, station_ui::labels::NEW_CHAT);
+    type_message(&mut h, "Say hello.");
+    click(&mut h, station_ui::labels::SEND);
+    assert!(
+        wait_for(&mut h, |h| shows(h, "Hello there.")),
+        "the first chat wasn't answered\n{}",
+        screen_text(&h)
+    );
+    close(h);
 }

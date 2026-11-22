@@ -3674,7 +3674,11 @@ impl Service {
         use std::sync::atomic::Ordering;
         let due = match self.engine_looked {
             None => self.started.elapsed() >= Duration::from_secs(60),
-            Some(t) => t.elapsed() >= Duration::from_secs(3600),
+            // With no result yet (a busy PC), look again every minute.
+            Some(t) => {
+                t.elapsed() >= Duration::from_secs(60)
+                    && (t.elapsed() >= Duration::from_secs(3600) || crate::engine::load().is_none())
+            }
         };
         if !due || self.engine_busy.swap(true, Ordering::SeqCst) {
             return;
@@ -3687,10 +3691,11 @@ impl Service {
             .filter_map(|m| crate::models::ollama_name(m).map(str::to_string))
             .collect();
         let busy = self.engine_busy.clone();
+        let talk = self.talk.clone();
         let spawned = std::thread::Builder::new()
             .name("engine".into())
             .spawn(move || {
-                crate::engine::keep_fresh(keep);
+                crate::engine::keep_fresh(keep, &|| talk.answering());
                 busy.store(false, Ordering::SeqCst);
             });
         if spawned.is_err() {
