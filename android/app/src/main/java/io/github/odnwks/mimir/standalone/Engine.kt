@@ -918,7 +918,8 @@ class Engine(
             if (first.voice != null && first.text.isBlank()) { hear(first, link); return }
             if (!canSend() || _state.value.chat.turns.lastOrNull()?.user == true) return
             _state.update { it.copy(chat = it.chat.copy(queued = it.chat.queued.drop(1))) }
-            if (!send(first.text, first.files, first.pictures, first.id, first.at, first.version)) {
+            // It is dated when it goes (same id), so its answer never lands before the answers of the ones sent earlier.
+            if (!send(first.text, first.files, first.pictures, first.id, maxOf(first.at, now()), first.version)) {
                 _state.update { it.copy(chat = it.chat.copy(queued = listOf(first) + it.chat.queued)) }
             }
         }

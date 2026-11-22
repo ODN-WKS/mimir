@@ -38,8 +38,18 @@ class N2NothingLostTest {
     @Test fun severalMessagesWaitAndGoInOrderOnceWhenThePcIsBack() {
         val e = engine()
         pc.reachable = false
+        // The PC stamps each answer with its own clock, when it has finished writing it.
+        pc.answer = { r, l ->
+            l.filed(io.github.odnwks.mimir.link.Filed.Talk("${r.turnId}.a", "pc", "Your PC"), null)
+            Thread.sleep(150)
+            val a = LChatTurn("${r.turnId}.a", false, "Answer to ${r.turns.last().text}", ran = "pc", modelWords = "Your PC", at = System.currentTimeMillis())
+            val kept = synchronized(pc) { pc.chatPut(r.chatId, null, listOf(r.turns.last(), a), false) {}; pc.seq }
+            l.done(a.copy(seq = kept), null)
+        }
         assertTrue(e.ask("First"))
+        Thread.sleep(5)
         assertTrue(e.ask("Second"))
+        Thread.sleep(5)
         assertTrue(e.ask("Third"))
         assertEquals(listOf("First", "Second", "Third"), e.state.value.chat.queued.map { it.text })
         assertTrue(pc.sent.isEmpty())
