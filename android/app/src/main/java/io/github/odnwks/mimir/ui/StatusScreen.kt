@@ -155,7 +155,7 @@ fun StatusScreen(state: StationState, station: io.github.odnwks.mimir.data.Stati
                 // Every task, with search and Archived, one tap from here.
                 LinkText("All tasks", { nav.open(Screen.AllTasks()) })
             }
-            val doing = state.tasks.filter { it.stateWords == "Working" || it.stateWords == "Starting" || it.stateWords == "Needs you" }
+            val doing = state.tasks.filter { it.stateWords == "Working" || it.stateWords == "Starting" || it.stateWords == "Needs you" || it.stateWords == "Waiting for you" }
             if (doing.isEmpty()) Text(
                 if (state.pcAway) "Nothing known (as of when your PC was last reached)." else "Nothing right now.",
                 style = Type.Label, color = Palette.TextDim, modifier = Modifier.padding(horizontal = 4.dp),
@@ -195,7 +195,7 @@ fun StatusScreen(state: StationState, station: io.github.odnwks.mimir.data.Stati
 /** A task the PC is on: its title and, under it, the project and what it's doing (waiting ones in amber). */
 @Composable
 private fun DoingRow(t: io.github.odnwks.mimir.data.Task, open: () -> Unit) {
-    val waiting = t.stateWords == "Needs you"
+    val waiting = t.stateWords == "Needs you" || t.stateWords == "Waiting for you"
     val doing = if (waiting) "waiting for you" else t.steps.lastOrNull()?.trimStart('✓', '✕', '…', ' ')?.replaceFirstChar { it.lowercase() }
         ?: if (t.stateWords == "Starting") "starting" else "working"
     Row(
@@ -293,7 +293,7 @@ fun AllTasksScreen(state: StationState, station: io.github.odnwks.mimir.data.Sta
     )
     val q = query.trim()
     val shown = sorted.filter {
-        (archived || only == "All" || it.stateWords == only || (only == "Working" && it.stateWords == "Starting")) &&
+        (archived || taskMatchesFilter(it.stateWords, only)) &&
             (q.isEmpty() || it.title.contains(q, true) || it.project.contains(q, true) || it.messages.any { m -> m.text.contains(q, true) })
     }
     Column(Modifier.fillMaxSize().background(Palette.Ground)) {
@@ -336,3 +336,7 @@ fun AllTasksScreen(state: StationState, station: io.github.odnwks.mimir.data.Sta
         }
     }
 }
+
+/** Whether a task in [words] (its state) shows under the All tasks filter [only]. */
+fun taskMatchesFilter(words: String, only: String): Boolean =
+    only == "All" || words == only || (only == "Working" && words == "Starting") || (only == "Needs you" && words == "Waiting for you")

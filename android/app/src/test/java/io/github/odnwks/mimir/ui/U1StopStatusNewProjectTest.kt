@@ -75,7 +75,7 @@ class U1StopStatusNewProjectTest {
         compose.waitForIdle()
         androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>().getSharedPreferences(MenuFold.PREFS, 0).edit().clear().commit()
         compose.openMenu()
-        compose.onNodeWithText(MENU_PROJECTS.uppercase()).performClick(); compose.waitForIdle()
+        // Projects is folded (the default) and the row is still there.
         compose.onNodeWithText("New project…").assertIsDisplayed()
         compose.onNodeWithText("New project…").performClick(); compose.waitForIdle()
         compose.onNodeWithText("Make the project").assertIsDisplayed()
@@ -84,5 +84,33 @@ class U1StopStatusNewProjectTest {
         compose.onNodeWithText("Make the project").performClick()
         compose.mainClock.advanceTimeBy(2_000); compose.waitForIdle()
         assertEquals(Screen.Project("Garden planner"), nav.current)
+    }
+
+    @Test fun stopIsThereDuringAPermissionPromptAndSaysTheTaskIsWorking() {
+        compose.setContent { MimirTheme(reduceMotion = true) { AppRoot(station, nav) } }
+        nav.open(Screen.Task(ExampleData.TASK_ALLOW)); compose.waitForIdle()
+        compose.onNodeWithContentDescription("Stop").assertIsDisplayed()
+        compose.onNode(androidx.compose.ui.test.SemanticsMatcher.expectValue(androidx.compose.ui.semantics.SemanticsProperties.StateDescription, "Task is working")).assertExists()
+    }
+
+    @Test fun onlyTheClosingWordsDecideIfATaskIsWaiting() {
+        assertEquals("Done", finished("Options parsing was fixed. All tests pass.").stateWords)
+        assertEquals("Done", finished("Next step: none. Everything is saved.").stateWords)
+        assertEquals("Done", finished("Fixed the bug. Let me know if you need anything else.").stateWords)
+        assertEquals("Done", finished("All saved.\n\nAnything else?").stateWords)
+        assertEquals("Done", finished("Fixed it.\n\n```\nwhy?\n```").stateWords)
+        assertEquals("Waiting for you", finished("Want me to go on? Let me know.").stateWords)
+        assertEquals("Waiting for you", finished("Soll ich weitermachen\u2753\u3000Was meinst du\uff1f").stateWords)
+        assertEquals("Waiting for you", finished("Continue now?!").stateWords)
+        assertEquals("Waiting for you", finished("\u0647\u0644 \u0623\u0643\u0645\u0644\u061f").stateWords)
+        assertEquals("Waiting for you", finished("Done with step one.\n\nNext steps:\n1. Fix the rest").stateWords)
+    }
+
+    @Test fun waitingForYouIsFoundUnderTheNeedsYouFilter() {
+        assertEquals(true, taskMatchesFilter("Waiting for you", "Needs you"))
+        assertEquals(true, taskMatchesFilter("Needs you", "Needs you"))
+        assertEquals(false, taskMatchesFilter("Waiting for you", "Done"))
+        assertEquals(true, taskMatchesFilter("Starting", "Working"))
+        assertEquals(true, taskMatchesFilter("Waiting for you", "All"))
     }
 }

@@ -367,6 +367,7 @@ class LinkStation(
                         flushRecordings()
                         flushReplies()
                         flushAnswers()
+                        flushStops()
                         refreshStatus()
                         refreshModels()
                         refreshPhoneSettings()
@@ -1065,8 +1066,23 @@ class LinkStation(
         }
     }
 
+    /** Stops that couldn't go out (the link was gone): sent again when the PC is back, until it answers. */
+    private val pendingStops = java.util.Collections.synchronizedSet(LinkedHashSet<String>())
+
     override fun stopTask(taskId: String) {
-        call(Wire.stop(taskId)) { _, err -> if (err != null) note(err) }
+        val sent = call(Wire.stop(taskId)) { _, err ->
+            if (err != null) { pendingStops += taskId; note(err) } else pendingStops -= taskId
+        }
+        if (!sent) {
+            pendingStops += taskId
+            note("Your PC is away: Stop goes out when it's back.")
+        }
+    }
+
+    private fun flushStops() {
+        synchronized(pendingStops) { pendingStops.toList() }.forEach { id ->
+            call(Wire.stop(id)) { _, err -> if (err == null) pendingStops -= id else note(err) }
+        }
     }
 
     override fun startTask(text: String, project: String, incognito: Boolean, plan: Boolean, model: String?): String {

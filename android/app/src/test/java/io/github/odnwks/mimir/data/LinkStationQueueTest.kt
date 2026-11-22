@@ -33,6 +33,8 @@ class LinkStationQueueTest {
         val calls = java.util.Collections.synchronizedList(ArrayList<Pair<Long, String>>())
         private val ids = AtomicLong(0)
         @Volatile var up = false
+        /** The link is gone for calls (the real one hands back no call id). */
+        @Volatile var dropped = false
         @Volatile var connects = 0
         private val seq = AtomicLong(100)
         private val held = listOf("{\"Chat\"", "{\"Send\"", "{\"Talk\"", "{\"Answer", "{\"NewTask\"", "{\"Listen\"")
@@ -43,6 +45,7 @@ class LinkStationQueueTest {
         override fun pairFinish(handle: Long, code: String, timeoutMs: Long) = "{}"
         override fun connect(handle: Long, pcId: String): String { connects++; up = true; return "" }
         override fun call(handle: Long, json: String): Long {
+            if (dropped) return -1L
             val id = ids.incrementAndGet()
             calls += id to json
             if (held.none { json.startsWith(it) }) reply(id, "{}")
@@ -163,6 +166,18 @@ class LinkStationQueueTest {
         codec.failSeal = false
         st.send("saves fine")
         assertTrue(until { outbox().contains("saves fine") })
+        st.close()
+    }
+
+    @Test fun aStopOnADroppedLinkSaysThePcIsAwayAndGoesOutAgainWhenItsBack() {
+        val link = FakeLink(); val st = paired(link)
+        link.dropped = true
+        st.stopTask("t1")
+        assertTrue("the owner is told", until { notes(st).any { it.contains("Your PC is away") } })
+        assertTrue("nothing went out", link.callsOf("{\"Stop\"").isEmpty())
+        link.dropped = false
+        link.ready()
+        assertTrue("Stop is sent again once the PC is back", until { link.callsOf("{\"Stop\"").size == 1 })
         st.close()
     }
 }

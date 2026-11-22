@@ -67,6 +67,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
@@ -439,13 +440,18 @@ fun RoundButton(
     enabled: Boolean = true,
     /** False: no ring (a small icon button, as on Mímir's message box). */
     outline: Boolean = true,
+    /** Read out by TalkBack, and announced when the button turns up (Stop: "Task is working"). */
+    stateText: String? = null,
 ) {
     Box(
         Modifier.size(size).alpha(if (enabled) 1f else 0.38f).clip(CircleShape)
             .background(if (filled) fill else surface)
             .then(if (!filled && outline) Modifier.border(1.dp, Palette.Outline, CircleShape) else Modifier)
             .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
-            .semantics { contentDescription = label },
+            .semantics {
+                contentDescription = label
+                if (stateText != null) { stateDescription = stateText; liveRegion = LiveRegionMode.Polite }
+            },
         contentAlignment = Alignment.Center,
     ) { Icon(icon, null, tint = if (filled) Palette.White else Palette.Text, modifier = Modifier.size(iconSize)) }
 }

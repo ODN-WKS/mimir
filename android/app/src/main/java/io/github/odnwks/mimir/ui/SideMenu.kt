@@ -252,7 +252,7 @@ fun SideMenu(
                     }
                 }
                 // The last row: a name, then the PC makes the folder, and the new project opens.
-                if (fold.projectsOpen) item("project-new") {
+                item("project-new") {
                     MenuRow(MENU_NEW_PROJECT) { go { nav.openSheet(Sheet.ProjectPicker("", newProject = true, open = true)) } }
                 }
             }

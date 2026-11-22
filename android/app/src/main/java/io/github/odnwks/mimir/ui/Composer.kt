@@ -127,10 +127,12 @@ fun Composer(
             // under a thumb that was about to press something else.
             var armed by remember { mutableStateOf(true) }
             var before by remember { mutableStateOf(showStop) }
+            val view = androidx.compose.ui.platform.LocalView.current
             LaunchedEffect(showStop) {
-                val changed = showStop != before
+                // Only Stop turning up from nothing holds a tap back (not a change in why it works).
+                val appeared = showStop && !before
                 before = showStop
-                if (!changed) return@LaunchedEffect
+                if (!appeared) return@LaunchedEffect
                 armed = false; kotlinx.coroutines.delay(BUTTON_SETTLE_MS); armed = true
             }
             val settled = { armed }
@@ -139,8 +141,12 @@ fun Composer(
                     if (settled()) {
                         haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
                         onStop?.invoke()
+                    } else {
+                        // Too soon after Stop turned up: say so rather than doing nothing.
+                        haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
+                        view.announceForAccessibility("Stop is getting ready. Tap again.")
                     }
-                }, filled = true, fill = Palette.Red)
+                }, filled = true, fill = Palette.Red, stateText = "Task is working")
                 androidx.compose.animation.Crossfade(kind, animationSpec = io.github.odnwks.mimir.ui.theme.motionSpec(io.github.odnwks.mimir.ui.theme.Motion.SCREEN_MS), label = "send") { k ->
                     when (k) {
                         ButtonKind.Empty -> RoundButton(Glyphs.Send, "Send", {}, filled = true, enabled = false)

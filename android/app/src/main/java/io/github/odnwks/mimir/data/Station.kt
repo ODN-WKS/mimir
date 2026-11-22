@@ -429,17 +429,30 @@ data class Task(
 }
 
 /**
- * Claude's last message hands the next move to the owner: it ends on a question, or offers next
- * steps ("Want me to…", "Shall I…", "Next steps:"). Only the closing paragraph counts, so a
- * question asked and answered earlier in a long reply doesn't hold a finished task back.
+ * Claude's last message hands the next move to the owner: its closing words are a question, or
+ * offer next steps ("Want me to…", "Shall I…", a "Next steps:" list). Only the closing paragraph
+ * counts (outside a trailing code block), and a polite closer after a finished summary ("Let me
+ * know if you need anything else", "Anything else?") is not a question.
  */
 fun endsWaiting(text: String?): Boolean {
-    val last = text?.trim()?.split(Regex("\\n\\s*\\n"))?.lastOrNull()?.trim().orEmpty()
+    var t = text?.trim().orEmpty()
+    // A code block at the very end is output, not words to the owner.
+    while (t.endsWith("```")) {
+        val open = t.dropLast(3).lastIndexOf("```")
+        if (open < 0) break
+        t = t.substring(0, open).trim()
+    }
+    val last = t.split(Regex("\\n\\s*\\n")).lastOrNull()?.trim().orEmpty()
     if (last.isEmpty()) return false
-    if (last.trimEnd('*', '_', '`', '"', '\'', '\u201d', ')', ' ', '.').endsWith("?")) return true
-    if (Regex("(?i)\\b(want me to|shall i|should i|would you like|do you want|which (one )?(do you|would you))\\b").containsMatchIn(last)) return true
-    // A list under "Next steps" (or "Options") is in the last few lines.
-    return text!!.trim().lines().takeLast(8).any { Regex("(?i)^\\W*(next steps?|options|what next|choose one)\\b.*").matches(it.trim()) }
+    if (Regex("(?i)^\\W*next steps?\\W*$").matches(last.lines().first().trim())) return true
+    val polite = Regex("(?i)^(let me know( if[^?？؟]*)?|anything else( i can[^?？؟]*)?|is there anything[^?？؟]*|feel free[^?？؟]*|happy to help[^?？؟]*|hope this helps)\\W*$")
+    val sentences = last.split(Regex("(?<=[.!?\\u061f\\uff1f\\u2753])\\s+|\\u3000")).map { it.trim() }.filter { it.isNotEmpty() }.toMutableList()
+    while (sentences.isNotEmpty() && polite.matches(sentences.last())) sentences.removeAt(sentences.lastIndex)
+    // The last two sentences: a question, then a short "Tell me." still hands the move over.
+    return sentences.takeLast(2).any { end ->
+        end.trimEnd('*', '_', '`', '"', '\'', '\u201d', ')', ' ', '.', '!', '\uff01').let { e -> e.endsWith("?") || e.endsWith("\uff1f") || e.endsWith("\u061f") || e.endsWith("\u2753") } ||
+            Regex("(?i)\\b(want me to|shall i|should i|would you like|do you want|which (one )?(do you|would you))\\b").containsMatchIn(end)
+    }
 }
 
 data class TaskMessage(
