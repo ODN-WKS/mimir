@@ -5,7 +5,7 @@ mod common;
 use common::*;
 use eframe::egui;
 use egui_kittest::Harness;
-use egui_kittest::kittest::Queryable;
+use egui_kittest::kittest::{NodeT, Queryable};
 use station_ui::{App, labels};
 use std::sync::Arc;
 
@@ -129,6 +129,47 @@ fn paste_in_the_right_click_menu_takes_a_picture_off_the_clipboard() {
         wait_for(&mut h, |h| shows(h, "pasted-")),
         "Paste did not attach the picture\n{}",
         screen_text(&h)
+    );
+    close(h);
+}
+
+#[test]
+fn paste_in_a_search_box_does_not_take_a_picture_for_the_message() {
+    let Some(home) = home() else { return };
+    let mut h = home.open();
+    click(&mut h, "Settings");
+    h.ctx.data_mut(|d| {
+        d.insert_temp(
+            egui::Id::unique("test-clipboard-image"),
+            Arc::new(egui::ColorImage::filled([40, 30], egui::Color32::GREEN)),
+        )
+    });
+    let at = h
+        .query_all_by_role(egui::accesskit::Role::TextInput)
+        .next()
+        .map(|n| n.rect().center())
+        .unwrap_or_else(|| panic!("no search box\n{}", screen_text(&h)));
+    for pressed in [true, false] {
+        h.hover_at(at);
+        h.step();
+        h.event(egui::Event::PointerButton {
+            pos: at,
+            button: egui::PointerButton::Secondary,
+            pressed,
+            modifiers: egui::Modifiers::NONE,
+        });
+        h.step();
+    }
+    for _ in 0..5 {
+        h.step();
+    }
+    let paste = h
+        .query_all_by_role_and_label(egui::accesskit::Role::Button, "Paste")
+        .next()
+        .unwrap_or_else(|| panic!("no Paste item\n{}", screen_text(&h)));
+    assert!(
+        paste.accesskit_node().is_disabled(),
+        "Paste is on in a search box with only a picture on the clipboard"
     );
     close(h);
 }

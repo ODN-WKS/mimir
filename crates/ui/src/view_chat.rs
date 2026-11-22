@@ -288,7 +288,7 @@ pub(crate) fn composer_card(
                     )
                 })
                 .inner;
-            crate::menus::edit_menu(&edit, salt);
+            crate::menus::message_edit_menu(&edit, salt);
             crate::menus::note_empty_box(&edit, draft);
             ui.add_space(4.0);
             let mut send = false;

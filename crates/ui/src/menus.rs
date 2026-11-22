@@ -338,6 +338,16 @@ fn queue(ctx: &egui::Context, slot: Id, what: Edit) {
 /// The menu of a typing box: Cut, Copy, Paste, Paste as plain text,
 /// Select all, Undo, Redo. `edit` is the box's response, `slot` its salt.
 pub fn edit_menu(edit: &Response, slot: &str) {
+    edit_menu_for(edit, slot, false);
+}
+
+/// The same menu for the message box: with only a picture on the
+/// clipboard, Paste attaches it to the message.
+pub fn message_edit_menu(edit: &Response, slot: &str) {
+    edit_menu_for(edit, slot, true);
+}
+
+fn edit_menu_for(edit: &Response, slot: &str, takes_pictures: bool) {
     let ctx = edit.ctx.clone();
     let id = edit.id;
     let slot = Id::unique(("edit-slot", slot));
@@ -360,7 +370,13 @@ pub fn edit_menu(edit: &Response, slot: &str) {
         let range = egui::TextEdit::load_state(&ctx, id).and_then(|s| s.cursor.char_range());
         let selected = range.is_some_and(|r| r.primary != r.secondary);
         let clip = clipboard_text(&ctx);
-        let pic = clipboard_image(&ctx);
+        // The picture is read only when there are no words, and only for
+        // the message box (it is the one that can hold a picture).
+        let pic = if takes_pictures && clip.is_none() {
+            clipboard_image(&ctx)
+        } else {
+            None
+        };
         ctx.data_mut(|d| {
             d.insert_temp(slot.with("range"), range);
             d.insert_temp(sel_id, selected);
@@ -642,7 +658,11 @@ pub fn empty_space(ui: &egui::Ui, area: &Response, actions: &mut Vec<Action>) {
     let clip_id = area.id.with("menu-clip");
     if area.container_secondary_clicked() && !claimed(&ctx) {
         let clip = clipboard_text(&ctx);
-        let pic = clipboard_image(&ctx);
+        let pic = if clip.is_none() {
+            clipboard_image(&ctx)
+        } else {
+            None
+        };
         ctx.data_mut(|d| {
             d.insert_temp(clip_id, clip);
             d.insert_temp(clip_id.with("pic"), pic);
