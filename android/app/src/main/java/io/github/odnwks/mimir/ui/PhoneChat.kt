@@ -440,7 +440,7 @@ fun PhoneChat(
                 LinkText("Dismiss", engine::dismissNote)
             }
         }
-        s.problem?.takeIf { it != Engine.PC_COULD_NOT_ANSWER }?.let { Text(it, style = Type.Small, color = Palette.Red, modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp)) }
+        s.problem?.takeIf { it != Engine.PC_COULD_NOT_ANSWER && (s.writing || s.chat.turns.lastOrNull()?.user != true) }?.let { Text(it, style = Type.Small, color = Palette.Red, modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp)) }
         if (s.whisperChoice) Row(Modifier.padding(horizontal = 20.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             if (s.supported) SmallButton("Use This phone", { engine.stopOnlineFor(false) }, description = "Use this phone's model, not the online one")
             if (paired) SmallButton("Use your PC", { engine.stopOnlineFor(true) }, description = "Use your PC, not the online model")

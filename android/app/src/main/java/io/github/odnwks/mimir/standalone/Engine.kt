@@ -997,6 +997,7 @@ class Engine(
         val turn = if (failed != null) failed.copy(at = failed.at) else Turn(true, t, files, pictures, id = id.ifEmpty { newId() }, at = if (at > 0) at else now(), version = version)
         _state.update { it.copy(chat = it.chat.copy(turns = (if (failed != null) it.chat.turns.dropLast(1) else it.chat.turns) + turn, model = model.id, at = now()), writing = true, partial = "", problem = null, speed = null, askPlace = false, askSearch = null, stoppedChat = null) }
         persist()
+        pcWhy = null
         stopReply.set(false)
         answerHere.set(false)
         busy(true)
@@ -1008,7 +1009,7 @@ class Engine(
                     if (_state.value.ready) write(model)
                     else _state.update {
                         // The PC answers pings but could not answer this message: say that, once, and let the owner send again (never "not reachable").
-                        if (pc?.canTalk() == true) it.copy(problem = PC_COULD_NOT_ANSWER, note = null)
+                        if (pc?.canTalk() == true) it.copy(problem = pcWhy ?: PC_COULD_NOT_ANSWER, note = null)
                         else {
                             // The PC went away on the way: the message goes back to waiting, and goes when the PC is back.
                             val last = it.chat.turns.lastOrNull()?.takeIf { t -> t.user && t.id == turn.id }
@@ -1066,6 +1067,8 @@ class Engine(
     private val roughPlace = java.util.concurrent.atomic.AtomicReference<io.github.odnwks.mimir.online.Place?>(null)
     /** "Not now" to the place question: the next answer goes without the weather. */
     private val skipLookup = AtomicBoolean(false)
+    /** What the PC said about why it could not answer, when it said it in its own plain words. */
+    @Volatile private var pcWhy: String? = null
 
     /** "Weather for where?" answered with a place's name: it's saved as the weather place. */
     fun answerPlace(name: String) {
@@ -1672,7 +1675,8 @@ class Engine(
                         persistQuietly()
                     }
                     // The PC tried and could not finish it: one card says so, with Try again (never a silent second try).
-                    st is io.github.odnwks.mimir.link.LTalkState.Failed -> _state.update { x -> x.copy(problem = PC_COULD_NOT_ANSWER) }
+                    // The PC says its own plain cause and next step ("Your PC's model isn't running, ...") when it has one.
+                    st is io.github.odnwks.mimir.link.LTalkState.Failed -> _state.update { x -> x.copy(problem = st.why.trim().ifEmpty { PC_COULD_NOT_ANSWER }) }
                     st is io.github.odnwks.mimir.link.LTalkState.Answering && tries < RECOVER_TRIES -> {
                         idler.schedule({ syncer.execute { recoverThenAnswer(tries + 1) } }, PC_ASK_MS, java.util.concurrent.TimeUnit.MILLISECONDS)
                         return@execute
@@ -2016,6 +2020,8 @@ class Engine(
                         val t = m.turn ?: run {
                             // Busy for a minute, or its model stopped: this phone answers, and says why.
                             _state.update { it.copy(note = plainPcWords(m.err)) }
+                            // The PC's own plain cause and next step ("Your PC's ..."), kept for the card if nothing else can answer.
+                            pcWhy = m.err?.trim()?.takeIf { it.startsWith("Your PC") }
                             return false
                         }
                         finish(fromPc(t))

@@ -499,8 +499,12 @@ impl Talk {
             "options": {"num_ctx": job.context, "num_predict": job.max_tokens},
         });
         let mut stream =
-            ollama::post_stream_at(&base, "/api/chat", &body, Duration::from_secs(180))
-                .map_err(|e| format!("Your PC's model couldn't answer ({e})."))?;
+            ollama::post_stream_at(&base, "/api/chat", &body, Duration::from_secs(180)).map_err(
+                |e| {
+                    crate::log::write("talk", "model couldn't answer", &e.to_string());
+                    "Your PC's model couldn't answer. Try again in a moment.".to_string()
+                },
+            )?;
         {
             let mut s = self.lock();
             let stopped = s.stopped.contains(&job.answer_id);

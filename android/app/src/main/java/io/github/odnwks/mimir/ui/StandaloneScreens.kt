@@ -279,7 +279,7 @@ LazyColumn(
         if (s.askSearch != null && !s.writing) item(key = "search") { searchQuestion(s.askSearch) }
         if (!s.writing && !s.askPlace && s.askSearch == null && s.chat.turns.lastOrNull()?.user == true) item(key = "interrupted") {
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(noAnswerWords(s.stoppedChat == s.chat.id, false), style = Type.Small, color = Palette.TextDim)
+                Text(s.problem?.takeIf { it != Engine.PC_COULD_NOT_ANSWER } ?: noAnswerWords(s.stoppedChat == s.chat.id, false), style = Type.Small, color = Palette.TextDim)
                 SmallButton("Try again", retry, description = "Ask the last message again")
             }
         }

@@ -350,6 +350,16 @@ class OneChatTest {
 
     // ---- QA2 #7, #15, #19 (F4) ----
 
+    /** N1: a PC that says why in its own plain words ("Your PC's ...") has that shown, with Try again; other texts stay hidden. */
+    @Test fun aPcThatSaysWhyItCouldNotAnswerShowsItsOwnPlainWords() {
+        val e = testEngine(tmp.newFolder(), ready = false, supported = false).also { it.pc = pc }
+        val why = "Your PC's model isn't running, and it didn't start by itself. Open Settings \u203a Models to set it up, then try again."
+        pc.answer = { _, l -> l.done(null, why) }
+        e.ask("Hello?")
+        waitUntil("the failed answer ends") { !e.state.value.writing && e.state.value.problem != null }
+        assertEquals(why, e.state.value.problem)
+    }
+
     /** A PC that is up but could not answer: one calm line (never "not reachable"), no "Claude Code", and the next send works. */
     @Test fun aFailedPcAnswerLeavesOneCalmLineAndSendStillWorks() {
         val e = testEngine(tmp.newFolder(), ready = false, supported = false).also { it.pc = pc }

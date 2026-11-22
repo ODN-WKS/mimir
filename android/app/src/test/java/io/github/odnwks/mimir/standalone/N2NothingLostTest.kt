@@ -180,10 +180,26 @@ class N2NothingLostTest {
         idle(e)
         // It failed on the PC: one line says so (the chat card has Try again), and nothing is sent by itself.
         pc.sent.clear()
-        pc.state = LTalkState.Failed("model stopped")
+        pc.state = LTalkState.Failed("")
         e.linkUp()
         waitUntil("the card is up") { e.state.value.problem == Engine.PC_COULD_NOT_ANSWER }
         assertEquals("Your PC didn't finish that answer.", Engine.PC_COULD_NOT_ANSWER)
+        assertEquals(0, pc.sent.size)
+    }
+
+    /** N1: when the PC says why it failed (plain cause and next step), the card says that, not a vague line. */
+    @Test fun aPcThatSaysWhyItFailedShowsItsOwnWordsOnTheCard() {
+        val e = engine()
+        pc.answer = { _, _ -> }
+        e.ask("Hello there")
+        waitUntil("it's with the PC") { e.state.value.writing }
+        e.stop()
+        idle(e)
+        pc.sent.clear()
+        val why = "Your PC's model isn't running, and it didn't start by itself. Open Settings \u203a Models to set it up, then try again."
+        pc.state = LTalkState.Failed(why)
+        e.linkUp()
+        waitUntil("the card is up") { e.state.value.problem == why }
         assertEquals(0, pc.sent.size)
     }
 }
