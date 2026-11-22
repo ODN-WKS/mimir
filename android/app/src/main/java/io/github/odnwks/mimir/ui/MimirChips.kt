@@ -308,7 +308,8 @@ fun AttachButton(
                 )
                 Sight.PcCannot -> DropdownMenuItem(
                     { MenuIconLine(Glyphs.Models, "Photo, video or camera", PC_CANNOT_SEE) },
-                    { open = false; onModels() },
+                    { open = false },
+                    enabled = false,
                 )
                 Sight.Cannot -> DropdownMenuItem(
                     { MenuIconLine(Glyphs.Models, "Photo, video or camera", "This model can't see pictures: switch to a model that sees photos in Settings › Who answers") },

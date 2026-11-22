@@ -1257,7 +1257,7 @@ class Engine(
         _state.update { it.copy(lookupFailed = true) }
         val why = if (e is io.github.odnwks.mimir.online.Net.Failed || e is io.github.odnwks.mimir.online.Net.PcAway) e.message
             else io.github.odnwks.mimir.online.Net.plain(e, !io.github.odnwks.mimir.online.Net.phoneOnline())
-        return "\n\n[The app tried to $what but couldn't: $why. Say so plainly in one sentence, with that reason, and that \"Try again\" under your answer asks again; don't guess.]" to emptyList()
+        return lookupFailedNote(what, why ?: "it gave no answer") to emptyList()
     }
 
     /** "Try again" under an answer whose lookup failed: that answer is replaced by a new one. */
@@ -1303,7 +1303,7 @@ class Engine(
         val named = need.place ?: typed
         val place = roughPlace.getAndSet(null) ?: if (named != null) {
             _state.update { it.copy(looking = "Looking up the weather for $named…") }
-            val found = try { io.github.odnwks.mimir.online.Weather.find(named, mode) } catch (e: Exception) { return failed("find the place \"$named\"", e) }
+            val found = try { io.github.odnwks.mimir.online.Weather.find(named, mode) } catch (e: Exception) { return failed("look up the weather for \"$named\"", e) }
                 ?: return "\n\n[The app couldn't find a place called \"$named\". Say so and ask which place they mean.]" to emptyList()
             // A place given in answer to "Weather for where?" is kept as the weather place.
             if (typed != null && need.place == null && mode == io.github.odnwks.mimir.online.ChatMode.Normal) io.github.odnwks.mimir.online.Online.let { o -> o.set(o.settings.value.copy(place = found)) }
@@ -1947,6 +1947,8 @@ class Engine(
         var lastHeard = wall()
         var askedAt = 0L
         fun finish(turn: Turn) {
+            // Another model answered because the usual one can't see pictures: what the PC sees may have changed, so ask again.
+            if (turn.switchNote != null) link.refreshSight()
             // The PC has the message too (it came with the Talk): it isn't sent again by the sync.
             _state.update { st ->
                 val turns = st.chat.turns.map { if (it.id == asked.id && it.seq == 0L && turn.seq > 0) it.copy(seq = turn.seq) else it }
@@ -2372,9 +2374,14 @@ class Engine(
         @Volatile var LOOKUP_WAIT_MS = io.github.odnwks.mimir.online.Net.BUDGET_MS + 1_500L
         /** A lookup's answer is short: a few lines about what was found. */
         const val LOOKUP_REPLY_TOKENS = 512
+        /** What Mímir is told when a lookup failed: the reason is the connection, never the place or the words. A button under the answer does the retrying. */
+        fun lookupFailedNote(what: String, why: String): String =
+            "\n\n[The app tried to $what but couldn't: $why. Say so plainly in one sentence, with that reason. " +
+                "The connection is the problem, not the place or the words, so don't blame them. " +
+                "Don't tell them what to do next (a button under your answer does that), and don't guess.]"
         /** What Mímir is told when a lookup didn't come back in time. */
         const val LATE = "\n\n[The app tried to look this up, but it didn't come back in time. Say so in one short sentence, " +
-            "then answer from what you know, saying it may be out of date. \"Try again\" under your answer asks again.]"
+            "then answer from what you know, saying it may be out of date. Don't tell them what to do next (a button under your answer does that).]"
         /** A reply stopped at its time limit before it wrote anything. */
         const val TOO_LONG = "The answer was taking too long on this phone, so it was stopped. Try again, or choose Quick for a shorter answer."
         /** A message naming a project, answered on the phone while the PC can't be reached. */

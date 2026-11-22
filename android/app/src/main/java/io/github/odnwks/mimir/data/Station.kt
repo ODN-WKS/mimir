@@ -603,6 +603,8 @@ data class Models(
     val chatModels: List<io.github.odnwks.mimir.link.LChoice> = emptyList(),
     /** What does project work, as set on the PC: "free" or "claude" (null: the PC has no "engines"). */
     val projectEngine: String? = null,
+    /** Whether any model on the PC can look at this person's pictures (null: not known yet, or an older PC). Kept here so a change redraws the attach menu. */
+    val seesPictures: Boolean? = null,
 ) {
     val selectedName: String get() = (claude + local).firstOrNull { it.id == selected }?.name ?: selected
 }

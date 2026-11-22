@@ -290,6 +290,6 @@ object Mapping {
     fun models(pc: io.github.odnwks.mimir.link.LModels?, chosen: String): Models {
         val free = pc?.free.orEmpty().map { Model(it.id, it.name, it.note, free = true, refusalsRemoved = it.refusalsRemoved) }
         val fallback = pc?.free?.firstOrNull { it.id == pc.freeModel }?.name ?: free.firstOrNull { !it.refusalsRemoved }?.name ?: "a free model"
-        return Models(CLAUDE, free, chosen, pc?.switchToFree ?: false, fallback, weeklyCheck = pc?.weeklyCheck ?: true, power = Power.of(pc?.power), chatsEngine = pc?.chatsEngine, projectEngine = pc?.projectEngine, chatsModel = pc?.chatsModel, chatModels = pc?.chatModels.orEmpty())
+        return Models(CLAUDE, free, chosen, pc?.switchToFree ?: false, fallback, weeklyCheck = pc?.weeklyCheck ?: true, power = Power.of(pc?.power), chatsEngine = pc?.chatsEngine, projectEngine = pc?.projectEngine, chatsModel = pc?.chatsModel, chatModels = pc?.chatModels.orEmpty(), seesPictures = pc?.seesPictures)
     }
 }

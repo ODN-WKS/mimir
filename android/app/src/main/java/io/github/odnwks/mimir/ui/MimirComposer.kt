@@ -71,16 +71,11 @@ fun MimirComposer(
     val hint = if (waiting && waitHint) "Answered when $AI_NAME is ready" else label
     // The microphone was refused: say so in plain words, with the way to allow it.
     var micDenied by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
-    val context = androidx.compose.ui.platform.LocalContext.current
     Column(
         modifier.fillMaxWidth().clip(shape).background(if (whisper) WhisperTint.Card else BoxFill).border(1.dp, if (whisper) Palette.Outline else BoxBorder, shape)
             .padding(start = 4.dp, end = 3.dp),
     ) {
-        if (micDenied) Row(Modifier.fillMaxWidth().padding(start = 8.dp, top = 8.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(MIC_REFUSED, style = Type.Small, color = Palette.AmberText, modifier = Modifier.weight(1f).semantics { liveRegion = LiveRegionMode.Polite })
-            SmallButton("Open settings", { openAppSettings(context) }, description = "Open $AI_NAME's permissions in Android Settings")
-            LinkText("OK", { micDenied = false })
-        }
+        if (micDenied) MicRefusedCard { micDenied = false }
         if (above != null) androidx.compose.animation.AnimatedVisibility(
             hasFiles,
             enter = androidx.compose.animation.expandVertically(motionSpec(Motion.NEEDS_YOU_BAR_MS)) + androidx.compose.animation.fadeIn(motionSpec(Motion.NEEDS_YOU_BAR_MS)),
@@ -119,6 +114,13 @@ fun MimirComposer(
             }
         }
     }
+}
+
+/** The microphone was refused: the words fill the width and the buttons sit under them, like the camera's card. */
+@Composable
+internal fun MicRefusedCard(onDismiss: () -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    AttachNote(MIC_REFUSED, "Open settings" to { openAppSettings(context) }, onDismiss)
 }
 
 /** What the box says when the owner refused the microphone. */

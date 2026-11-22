@@ -35,6 +35,15 @@ fun showsInstallButton(s: UpdateStatus, releaseSaved: Boolean): Boolean = releas
 fun installButtonWords(s: UpdateStatus): String =
     if (s is UpdateStatus.Failed && s.words != io.github.odnwks.mimir.update.AppUpdater.NEEDS_ALLOW) "Try again" else "Install now"
 
+/** The one line under a failed GitHub check that says what happened and what to do next (null: nothing more to say). */
+fun updateDetail(fallback: Boolean, pcResult: UpdateResult, paired: Boolean): String? = when {
+    pcResult is UpdateResult.Newest -> null
+    pcResult is UpdateResult.Couldnt && !paired -> "GitHub couldn't be reached. Try again later, or use the download page."
+    pcResult is UpdateResult.Couldnt -> "GitHub couldn't be reached and your PC is away. Try again later, or use the download page."
+    fallback -> "GitHub couldn't be reached, so your PC answered. Check again later."
+    else -> null
+}
+
 /** The status line under "Check now". */
 fun updateStatusWords(s: UpdateStatus, current: String): String = when (s) {
     UpdateStatus.None -> "You have version $current."
@@ -86,11 +95,7 @@ fun AppUpdatesSection(pc: io.github.odnwks.mimir.data.StationState, modifier: Mo
         }, height = 48.dp)
         Text(if (pcSpeaks) (if (fallback) updateFallbackWords(pcResult, pc.pcVersion) else updateResultWords(pcResult)) else updateStatusWords(status, BuildConfig.VERSION_NAME), style = Type.BodyTight.copy(fontWeight = FontWeight.SemiBold), color = Palette.Text, modifier = Modifier.testTag("updates-status"))
         if (pcSpeaks) {
-            if (fallback && pcResult !is UpdateResult.Newest) Text("GitHub couldn't be reached, so your PC answered. Try again later.", style = Type.Small, color = Palette.TextDim)
-            if (pcResult is UpdateResult.Couldnt) Text(
-                if (!pc.paired) "New versions come with $AI_NAME for your PC, and are on the download page." else "Your PC is away. When it's back, it says which version is newest.",
-                style = Type.Small, color = Palette.TextDim,
-            )
+            updateDetail(fallback, pcResult, pc.paired)?.let { Text(it, style = Type.Small, color = Palette.TextDim) }
             if (pcResult !is UpdateResult.Newest) BigButton(if (pcResult is UpdateResult.Ready) "Get it" else "Open the download page", Look.Primary, { uri.openUri(RELEASES_PAGE) }, height = 48.dp)
         } else if (answered && (status is UpdateStatus.Newest || status is UpdateStatus.Ready)) {
             Text("GitHub answered.", style = Type.Small, color = Palette.TextDim)

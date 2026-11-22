@@ -20,6 +20,9 @@ interface PcTalk {
     /** The PC takes pictures with a message (an older one doesn't know the word) but its answerer can't look at them. */
     fun picturesRefused(): Boolean = false
 
+    /** Asks the PC again what its models see (after an answer that switched models). */
+    fun refreshSight() {}
+
     /** The PC takes files with a message and reads them (PDFs, documents, sheets, recordings: "chat_files"). */
     fun canSendFiles(): Boolean = false
 

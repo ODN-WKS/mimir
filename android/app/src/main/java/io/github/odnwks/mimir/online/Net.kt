@@ -325,9 +325,9 @@ object Net {
 
     /** The answer's words when a lookup in the paired chat failed (with "Try again" under it). */
     fun sorry(e: Throwable): String = when (e) {
-        is Failed, is PcAway -> "Couldn't look that up just now (${said(e)}). Try again, or answer without looking it up."
+        is Failed, is PcAway -> "Couldn't look that up just now (${said(e)}). Use the buttons below to look again, or to answer without it."
         is Refused -> "That isn't looked up (${said(e)}). Answer without looking it up, or ask in another way."
-        else -> "Couldn't look that up just now (${plain(e, !phoneOnline())}). Try again, or answer without looking it up."
+        else -> "Couldn't look that up just now (${plain(e, !phoneOnline())}). Use the buttons below to look again, or to answer without it."
     }
 
     /** A lookup problem's own words: [Failed], [Refused] and [PcAway] carry plain sentences, never a system message. */

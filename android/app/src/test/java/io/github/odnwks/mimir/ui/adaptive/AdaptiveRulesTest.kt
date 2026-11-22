@@ -55,9 +55,9 @@ class AdaptiveRulesTest {
         // 840 wide leaves 509 beside the menu: too little for 400 + 480, so still one pane (in a centred lane).
         assertNull(WindowShape(840f, 900f).panes)
         assertNotNull(WindowShape(1250f, 900f).panes)
-        // The menu is a drawer on a phone and when a tablet is upright; always open on a tablet on its side.
+        // The menu is a drawer on a phone; open whenever there is room (720 dp wide), a tablet upright included (Q2).
         assertFalse(WindowShape(599f, 900f).permanentMenu)
-        assertFalse(WindowShape(800f, 1333f).permanentMenu)
+        assertTrue(WindowShape(800f, 1333f).permanentMenu)
         assertTrue(WindowShape(1000f, 600f).permanentMenu)
         assertTrue(WindowShape(1333f, 800f).permanentMenu)
         assertFalse(WindowShape(412f, 915f).permanentMenu)

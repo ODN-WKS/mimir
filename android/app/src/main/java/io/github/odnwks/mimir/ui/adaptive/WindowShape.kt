@@ -27,6 +27,8 @@ object PaneRules {
     const val RAIL_FROM = 600f
     const val TWO_PANES_FROM = 840f
     const val TWO_PANES_MIN_HEIGHT = 480f
+    /** From this width the side menu stays open on the left in either orientation (a tablet held upright too). */
+    const val PERMANENT_MENU_FROM = 720f
     const val LEFT_MIN = 400f
     const val LEFT_MAX = 540f
     const val LEFT_SHARE = 0.40f
@@ -51,10 +53,12 @@ data class WindowShape(val widthDp: Float, val heightDp: Float, val fontScale: F
     val rail: Boolean get() = widthDp >= PaneRules.RAIL_FROM
 
     /**
-     * The side menu stays open on the left (no menu button) on a tablet on its side: at least 600 dp wide,
-     * wider than tall, and tall enough that it is not a phone turned sideways. Upright (or on a phone) it is a drawer.
+     * The side menu stays open on the left (no menu button) wherever there is room: a window at least 720 dp wide,
+     * upright or on its side, or a tablet on its side from 600 dp. It must be tall enough not to be a phone turned
+     * sideways. On a phone it is a drawer.
      */
-    val permanentMenu: Boolean get() = widthDp >= PaneRules.RAIL_FROM && widthDp > heightDp && heightDp >= PaneRules.TWO_PANES_MIN_HEIGHT
+    val permanentMenu: Boolean get() = heightDp >= PaneRules.TWO_PANES_MIN_HEIGHT &&
+        (widthDp >= PaneRules.PERMANENT_MENU_FROM || (widthDp >= PaneRules.RAIL_FROM && widthDp > heightDp))
 
     /** The open menu's width. */
     val menuWidth: Float get() = PaneRules.MENU

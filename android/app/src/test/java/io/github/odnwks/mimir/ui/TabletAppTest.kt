@@ -70,10 +70,11 @@ class TabletAppTest {
     private fun menuButton() = compose.onNodeWithContentDescription(MENU_BUTTON, substring = true)
 
     @Config(qualifiers = "w800dp-h1333dp-port-hdpi")
-    @Test fun upright_has_a_menu_button_and_one_pane() {
+    @Test fun upright_keeps_the_menu_open_beside_one_pane() {
         start()
-        menuButton().assertIsDisplayed()
-        compose.onNodeWithText(MENU_SEARCH).assertDoesNotExist()
+        // Q2: the menu stays open on the left when there is room, upright too; the chat is beside it.
+        menuButton().assertDoesNotExist()
+        compose.onNodeWithText(MENU_SEARCH).assertIsDisplayed()
         assertEquals(false, nav.twoPanes)
         shot("portrait_chat")
         rail(MENU_PC)
@@ -85,7 +86,9 @@ class TabletAppTest {
     @Test fun upright_at_115_and_200_percent() {
         start(1.15f)
         shot("portrait_chat_115")
-        menuButton().assertIsDisplayed()
+        menuButton().assertDoesNotExist()
+        compose.onNodeWithText(MENU_SEARCH).assertIsDisplayed()
+        compose.onNodeWithText(MENU_NEW_CHAT).assertIsDisplayed()
     }
 
     @Config(qualifiers = "w1333dp-h800dp-land-hdpi")

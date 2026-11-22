@@ -100,8 +100,8 @@ class LookupRoutesTest {
         // The phone's own missing signal is the whole story, never "and your PC is away" too (QA I1).
         assertTrue(said, "this phone has no signal" in said && "your PC" !in said)
         assertFalse(said, "timed out" in said.lowercase())
-        // Every lookup problem says what to do next, never an error code or system text.
-        assertTrue(said, "Try again, or answer without looking it up." in said)
+        // The buttons under the answer say what to do next; the words never repeat "Try again" (Q2).
+        assertFalse(said, "try again" in said.lowercase())
 
         // In the paired chat: the answer says so, with "Try again", which asks again in its place.
         val station = FakeStation()

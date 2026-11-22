@@ -108,8 +108,20 @@ fun PhoneChat(
     var attachNote by remember { mutableStateOf<String?>(null) }
     // The one button under a note (Try again, Open settings), when there is a fix to offer.
     var attachFix by remember { mutableStateOf<Pair<String, () -> Unit>?>(null) }
+    // Each chat keeps its own box: another chat starts with its own words and pictures (Q2).
+    val drafts = remember { io.github.odnwks.mimir.standalone.ChatDrafts() }
+    var boxChat by remember { mutableStateOf(s.chat.id) }
+    if (boxChat != s.chat.id) {
+        val next = drafts.swap(boxChat, s.chat.id, io.github.odnwks.mimir.standalone.Draft(draft, files.toList(), pictures.toList()))
+        boxChat = s.chat.id
+        draft = next.text; files.clear(); files.addAll(next.files); pictures.clear(); pictures.addAll(next.pictures)
+        attachNote = null; attachFix = null
+    }
     // When the PC answers, pictures go to the PC: its model's sight counts, never this phone's (null: not the PC, or an older one).
-    val pcSight = if (pcReady) engine.pcPictures() else null
+    // The PC's own word is read from the link's state too, so a change on the PC (after a reconnect, or an answer from another model) redraws the Attach menu.
+    val link = remember { io.github.odnwks.mimir.data.Stations.current() }
+    val pcSees = link?.state?.collectAsStateWithLifecycle()?.value?.models?.seesPictures
+    val pcSight = if (pcReady) engine.pcPictures().also { pcSees } else null
     // When the PC answers, any file goes to the PC to be read (PDFs, documents, sheets, recordings), never limited by this phone's model.
     val pcFiles = pcReady && engine.pcFiles()
     val sight = when {
@@ -117,11 +129,12 @@ fun PhoneChat(
         pcSight == false -> Sight.PcCannot
         model.id in s.sees -> Sight.Sees
         model.vision != null -> Sight.NeedsUpdate(model.chipName)
+        // A paired PC answering: this phone's own model isn't asked, so Settings has nothing to offer (never a dead end).
+        pcReady -> Sight.PcCannot
         else -> Sight.Cannot
     }
     // A Whisper on the PC waits for its first words here; they start it there and the Whisper's own screen opens.
     var pcWhisper by rememberSaveable { mutableStateOf(false) }
-    val link = remember { io.github.odnwks.mimir.data.Stations.current() }
     val pcFree = pcWhisperFree ?: (link?.state?.collectAsStateWithLifecycle()?.value?.models?.local?.isNotEmpty() == true)
     val pcStart = startPcWhisper ?: remember(link) { link?.let { l -> { text: String -> l.startTask(text, "", incognito = true).isNotEmpty() } } }
     val pcWhisperGo = { text: String ->

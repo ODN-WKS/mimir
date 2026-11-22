@@ -57,6 +57,8 @@ class FakePc : PcTalk {
         return true
     }
     @Volatile var state: LTalkState? = null
+    val sightRefreshed = java.util.concurrent.atomic.AtomicInteger()
+    override fun refreshSight() { sightRefreshed.incrementAndGet() }
     override fun canTalk() = reachable
     /** Pictures ("chat_pictures"): null is an older PC that doesn't know them; true its model sees; false it can't. */
     @Volatile var seesPictures: Boolean? = null
