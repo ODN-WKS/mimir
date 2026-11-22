@@ -7,8 +7,8 @@ use std::io::Write;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
-/// The menu entry's icon, Mímir's round stone well, at each size the menus
-/// ask for (made from docs/designs/mimir/icon/mimir-app-icon-1024.png).
+/// The menu entry's icon, the glowing closed eye on a dark rounded square, at each size the menus
+/// ask for (made by tools/make-icons.sh from assets/icons/*.svg).
 pub const ICONS: [(u32, &[u8]); 8] = [
     (16, include_bytes!("../../../assets/icons/mimir-16.png")),
     (24, include_bytes!("../../../assets/icons/mimir-24.png")),
