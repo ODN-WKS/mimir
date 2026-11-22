@@ -4,7 +4,12 @@
 # unit with Delegate=yes, and the command line only talks to a service from "$HOME/.local/bin/mimir"
 # of the SAME home: this script sets both up.
 #
-#   tools/test-pc.sh start <name> [--ollama URL] [--env KEY=VALUE]...   start it (own unit mimir-test-pc-<name>)
+#   tools/test-pc.sh start <name> [--ollama URL] [--env KEY=VALUE]... [--real-claude]
+#                                                 start it (own unit mimir-test-pc-<name>). --real-claude: its tasks
+#                                                 run the real Claude Code with the real home and sign-in, on a small
+#                                                 model (ANTHROPIC_MODEL, default claude-haiku-5-5), through a wrapper
+#                                                 written into its folder (MIMIR_CLAUDE). To get a permission prompt
+#                                                 with the owner's settings, add an "ask Bash" rule in the test project.
 #   tools/test-pc.sh pair  <name> [mine|NAME]    make a pairing code and answer the PC's questions: the phone
 #                                                 types the printed code; "mine" (default) is the owner's own
 #                                                 phone, a first name is someone else's
@@ -20,7 +25,7 @@ set -euo pipefail
 REAL_HOME="${REAL_HOME:-$(getent passwd "$(id -un)" | cut -d: -f6)}"
 cmd="${1:-}"
 name="${2:-}"
-[ -n "$cmd" ] && [ -n "$name" ] || { sed -n 2,17p "$0" | sed 's/^# \{0,1\}//'; exit 2; }
+[ -n "$cmd" ] && [ -n "$name" ] || { sed -n 2,22p "$0" | sed 's/^# \{0,1\}//'; exit 2; }
 shift 2
 if ! [[ "$name" =~ ^[a-z0-9][a-z0-9-]{0,30}$ ]]; then
     echo "test-pc: the name may only hold lowercase letters, digits and dashes (got '$name')" >&2
@@ -44,10 +49,12 @@ dir) echo "$D" ;;
 start)
     ollama="${MIMIR_OLLAMA:-http://127.0.0.1:11434}"
     extra=()
+    real_claude=0
     while [ $# -gt 0 ]; do
         case "$1" in
         --ollama) ollama="$2"; shift 2 ;;
         --env) extra+=(--setenv="$2"); shift 2 ;;
+        --real-claude) real_claude=1; shift ;;
         *) echo "test-pc: unknown option $1" >&2; exit 2 ;;
         esac
     done
@@ -56,6 +63,22 @@ start)
     if systemctl --user is-active --quiet "$UNIT"; then echo "test-pc: $UNIT is already running"; exit 1; fi
     mkdir -p "$H/.config" "$H/.local/share" "$H/.local/state" "$H/.cache" "$H/.local/bin" "$D/run"
     chmod 700 "$D/run"
+    if [ "$real_claude" = 1 ]; then
+        real_claude_bin="$(command -v claude 2>/dev/null || true)"
+        [ -n "$real_claude_bin" ] || real_claude_bin="$REAL_HOME/.local/bin/claude"
+        [ -x "$real_claude_bin" ] || { echo "test-pc: no Claude Code found for --real-claude" >&2; exit 1; }
+        {
+            echo '#!/bin/bash'
+            echo '# Runs the real Claude Code (the real home and sign-in) on a small model, for this test PC only.'
+            echo 'unset XDG_CONFIG_HOME XDG_DATA_HOME XDG_STATE_HOME XDG_CACHE_HOME'
+            printf 'export HOME=%q XDG_RUNTIME_DIR=/run/user/%s\n' "$REAL_HOME" "$(id -u)"
+            printf 'export PATH=%q\n' "$REAL_HOME/.local/bin:/usr/local/bin:/usr/bin:/bin"
+            echo 'export ANTHROPIC_MODEL="${ANTHROPIC_MODEL:-claude-haiku-5-5}"'
+            printf 'exec %q "$@"\n' "$real_claude_bin"
+        } > "$D/claude-real"
+        chmod 700 "$D/claude-real"
+        extra+=(--setenv=MIMIR_CLAUDE="$D/claude-real")
+    fi
     cp "$bin" "$D/mimir-bin"
     cp "$bin" "$H/.local/bin/mimir"
     systemd-run --user --quiet --unit="$UNIT" -p Delegate=yes -p Nice=10 \
