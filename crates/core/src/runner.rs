@@ -82,8 +82,6 @@ pub struct Runner {
     /// Ground rules a phone sent with the request being handled: the next
     /// new task keeps them as its own.
     pub next_rules: Option<String>,
-    /// Files sent with the first message of the task being started.
-    pub next_files: Vec<mimir_proto::SentFile>,
     /// The 5-hour window, when Claude Code reports one.
     pub five_hour: Option<WeeklyUse>,
     /// When the figures last changed (unix seconds), for "updated N min ago".
@@ -190,7 +188,6 @@ impl Runner {
             weekly,
             ground_rules: None,
             next_rules: None,
-            next_files: vec![],
             five_hour: None,
             usage_at: None,
             usage_poller: None,
@@ -294,12 +291,47 @@ impl Runner {
         effort: Option<String>,
     ) -> String {
         let id = self.new_id();
+        self.make_task(&id, project, text, mode, model, effort);
+        self.send_with(&id, text, pictures);
+        id
+    }
+
+    /// Starts a new task whose first message carries pictures and files
+    /// (already checked and cleaned). They are kept first: if that fails, no
+    /// task is made.
+    pub fn new_task_attached(
+        &mut self,
+        project: &Path,
+        text: &str,
+        attached: &crate::task_files::Prepared,
+        mode: Mode,
+        model: Option<String>,
+        effort: Option<String>,
+    ) -> Result<String, String> {
+        let id = self.new_id();
+        let dir = crate::task_files::dir_for(&self.data_dir(), &id, false);
+        let kept = crate::task_files::write(&dir, attached)?;
+        self.make_task(&id, project, text, mode, model, effort);
+        let text = crate::task_files::named(text.trim(), &kept.paths);
+        self.send_with(&id, &text, &kept.pictures);
+        Ok(id)
+    }
+
+    fn make_task(
+        &mut self,
+        id: &str,
+        project: &Path,
+        text: &str,
+        mode: Mode,
+        model: Option<String>,
+        effort: Option<String>,
+    ) {
         let title = title_from(text);
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_secs() as i64)
             .unwrap_or(0);
-        let mut task = Task::new(id.clone(), title, project.display().to_string(), now);
+        let mut task = Task::new(id.to_string(), title, project.display().to_string(), now);
         task.mode = mode;
         task.model = model;
         task.effort = effort;
@@ -312,9 +344,6 @@ impl Runner {
             finished: 0,
             dirty: true,
         });
-        let files = std::mem::take(&mut self.next_files);
-        self.send_attached(&id, text, pictures, &files);
-        id
     }
 
     /// Sends a message: into the running turn if Claude is working,
@@ -324,25 +353,32 @@ impl Runner {
     }
 
     /// Sends a message whose pictures and files are kept for the task and
-    /// named in the message ("Attached: ..."). Too big or too many: the
-    /// message is not sent and the reason is returned.
+    /// named in the message ("Attached: ..."). If they can't be kept, nothing
+    /// is sent, nothing stays on disk and the reason is returned.
     pub fn send_attached(
         &mut self,
         id: &str,
         text: &str,
         pictures: &[Picture],
         files: &[mimir_proto::SentFile],
-    ) {
+    ) -> Result<(), String> {
         if pictures.is_empty() && files.is_empty() {
-            return self.send_with(id, text, pictures);
+            self.send_with(id, text, pictures);
+            return Ok(());
         }
-        match crate::task_files::save(&self.data_dir(), id, pictures, files) {
-            Ok(k) => {
-                let text = crate::task_files::named(text.trim(), &k.paths);
-                self.send_with(id, &text, &k.pictures);
-            }
-            Err(e) => self.note(id, &e),
-        }
+        let incognito = self.index(id).is_some_and(|i| self.tasks[i].task.incognito);
+        let prepared = crate::task_files::prepare(pictures, files)?;
+        let dir = crate::task_files::dir_for(&self.data_dir(), id, incognito);
+        let kept = crate::task_files::write(&dir, &prepared)?;
+        let text = crate::task_files::named(text.trim(), &kept.paths);
+        self.send_with(id, &text, &kept.pictures);
+        Ok(())
+    }
+
+    /// At start-up: deletes the attachments of tasks that no longer exist.
+    pub fn sweep_attachments(&self) {
+        let ids: Vec<String> = self.tasks.iter().map(|l| l.task.id.clone()).collect();
+        crate::task_files::sweep(&self.data_dir(), &ids);
     }
 
     /// Sends a message with pictures.
@@ -1214,6 +1250,7 @@ impl Runner {
         project: &Path,
         text: &str,
         pictures: &[Picture],
+        attached: &crate::task_files::Prepared,
         mode: Mode,
         model: Option<String>,
         effort: Option<String>,
@@ -1224,7 +1261,18 @@ impl Runner {
                 .map(|d| format!("-{}", d.as_secs() % 100_000))
                 .unwrap_or_default();
         let (copy, branch) = crate::copies::create(project, &self.data_dir(), &name)?;
-        let id = self.new_task_with(&copy, text, pictures, mode, model, effort);
+        let made = if attached.is_empty() {
+            Ok(self.new_task_with(&copy, text, pictures, mode, model, effort))
+        } else {
+            self.new_task_attached(&copy, text, attached, mode, model, effort)
+        };
+        let id = match made {
+            Ok(id) => id,
+            Err(e) => {
+                let _ = crate::copies::remove(project, &copy, &branch);
+                return Err(e);
+            }
+        };
         if let Some(i) = self.index(&id) {
             let t = &mut self.tasks[i].task;
             t.origin = Some(project.display().to_string());
@@ -1484,7 +1532,6 @@ impl Runner {
             s.kill();
         }
         crate::incognito::forget(id);
-        crate::task_files::remove(&self.data_dir(), id);
         true
     }
 

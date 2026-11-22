@@ -23,6 +23,8 @@ base64 = "0.22"
 lopdf = { version = "0.42", default-features = false }
 flate2 = "1"
 roxmltree = "0.21"
+# Cleans pictures (pictures.rs).
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp"] }
 # Takes private words out of a problem report (scrub.rs).
 regex = "1"
 

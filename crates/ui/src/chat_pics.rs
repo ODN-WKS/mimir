@@ -3,15 +3,16 @@
 
 use crate::app::Action;
 use eframe::egui;
-use image::{DynamicImage, ImageDecoder, ImageReader};
+use image::DynamicImage;
 use mimir_core::proto::Picture;
+#[cfg(test)]
 use std::io::Cursor;
 use std::path::{Path, PathBuf};
 
 /// At most this many pictures a message.
 pub const MAX_PICTURES: usize = 4;
 /// The longest side a picture is sent at.
-pub const MAX_SIDE: u32 = 1568;
+pub const MAX_SIDE: u32 = mimir_core::pictures::MAX_SIDE;
 /// A file bigger than this is not read.
 const MAX_FILE: u64 = 40 * 1024 * 1024;
 
@@ -34,18 +35,7 @@ pub struct Pending {
 /// most [`MAX_SIDE`], redrawn from its pixels as a JPEG (quality 85), so
 /// no location or camera details come along.
 pub fn shrink(bytes: &[u8]) -> Option<Picture> {
-    let mut decoder = ImageReader::new(Cursor::new(bytes))
-        .with_guessed_format()
-        .ok()?
-        .into_decoder()
-        .ok()?;
-    // A photo is turned the way it was taken before the details go.
-    let turn = decoder.orientation().ok();
-    let mut img = DynamicImage::from_decoder(decoder).ok()?;
-    if let Some(o) = turn {
-        img.apply_orientation(o);
-    }
-    redraw(img)
+    mimir_core::pictures::clean(bytes)
 }
 
 /// The same for pixels already in memory (a paste).
@@ -68,36 +58,7 @@ pub fn shrink_file(path: &Path) -> Option<Picture> {
 }
 
 fn redraw(img: DynamicImage) -> Option<Picture> {
-    let (w, h) = (img.width(), img.height());
-    if w == 0 || h == 0 {
-        return None;
-    }
-    let img = if w.max(h) > MAX_SIDE {
-        img.resize(MAX_SIDE, MAX_SIDE, image::imageops::FilterType::Lanczos3)
-    } else {
-        img
-    };
-    // See-through parts go on white (a JPEG has none).
-    let rgb = if img.color().has_alpha() {
-        let mut rgba = img.to_rgba8();
-        for p in rgba.pixels_mut() {
-            let a = p.0[3] as u32;
-            for c in &mut p.0[..3] {
-                *c = ((*c as u32 * a + 255 * (255 - a)) / 255) as u8;
-            }
-        }
-        DynamicImage::ImageRgba8(rgba).to_rgb8()
-    } else {
-        img.to_rgb8()
-    };
-    let mut out = Vec::new();
-    image::codecs::jpeg::JpegEncoder::new_with_quality(&mut out, 85)
-        .encode_image(&rgb)
-        .ok()?;
-    Some(Picture {
-        media_type: "image/jpeg".into(),
-        base64: mimir_core::events::base64(&out),
-    })
+    mimir_core::pictures::redraw(img)
 }
 
 /// The bytes of a picture as kept.

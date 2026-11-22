@@ -16,10 +16,11 @@ pub const MAX_FILE_BYTES: usize = 10 * 1024 * 1024;
 pub const MAX_PICTURES: usize = 4;
 pub const MAX_PICTURE_BYTES: usize = 5 * 1024 * 1024;
 
-/// The folder one task's attachments live in.
-pub fn dir_for(data_dir: &Path, task: &str) -> PathBuf {
-    let safe: String = task
-        .chars()
+const CANT_CLEAN: &str = "A picture's details (like where it was taken) couldn't be taken off, so it wasn't kept. Send it as a JPEG or PNG.";
+const KEEP_FAILED: &str = "Mímir couldn't keep the files. Try again.";
+
+fn safe_id(task: &str) -> String {
+    task.chars()
         .map(|c| {
             if c.is_ascii_alphanumeric() || c == '-' {
                 c
@@ -27,136 +28,147 @@ pub fn dir_for(data_dir: &Path, task: &str) -> PathBuf {
                 '_'
             }
         })
-        .collect();
-    data_dir.join("task-files").join(safe)
+        .collect()
+}
+
+/// The folder one task's attachments live in. A Whisper (incognito) task's
+/// are kept inside its own sealed folder (in memory, gone with the task or
+/// a crash), never in Mímir's data folder.
+pub fn dir_for(data_dir: &Path, task: &str, incognito: bool) -> PathBuf {
+    if incognito {
+        return crate::incognito::dir(task).join("files");
+    }
+    data_dir.join("task-files").join(safe_id(task))
 }
 
 /// Deletes a task's attachments (nothing sits unused).
 pub fn remove(data_dir: &Path, task: &str) {
-    let _ = std::fs::remove_dir_all(dir_for(data_dir, task));
+    let _ = std::fs::remove_dir_all(dir_for(data_dir, task, false));
 }
 
-/// A JPEG without its APP1 (camera details, location) and APP13 segments.
-/// Anything that isn't a well-formed JPEG comes back unchanged.
-pub fn strip_jpeg(bytes: &[u8]) -> Vec<u8> {
-    if bytes.len() < 4 || bytes[0] != 0xFF || bytes[1] != 0xD8 {
-        return bytes.to_vec();
+/// At start-up: deletes the attachments of every task that isn't kept (a
+/// crash or a missed delete leaves nothing behind).
+pub fn sweep(data_dir: &Path, keep: &[String]) {
+    let keep: std::collections::HashSet<String> = keep.iter().map(|k| safe_id(k)).collect();
+    let root = data_dir.join("task-files");
+    for e in std::fs::read_dir(&root).into_iter().flatten().flatten() {
+        let name = e.file_name().to_string_lossy().to_string();
+        if !keep.contains(&name) {
+            let p = e.path();
+            if p.is_dir() {
+                let _ = std::fs::remove_dir_all(p);
+            } else {
+                let _ = std::fs::remove_file(p);
+            }
+        }
     }
-    let mut out = vec![0xFF, 0xD8];
-    let mut i = 2;
-    while i + 4 <= bytes.len() {
-        if bytes[i] != 0xFF {
-            return bytes.to_vec();
-        }
-        let marker = bytes[i + 1];
-        if marker == 0xFF {
-            i += 1;
-            continue;
-        }
-        // Start of scan: the picture data follows to the end; keep it all.
-        if marker == 0xDA {
-            out.extend_from_slice(&bytes[i..]);
-            return out;
-        }
-        let len = u16::from_be_bytes([bytes[i + 2], bytes[i + 3]]) as usize;
-        if len < 2 || i + 2 + len > bytes.len() {
-            return bytes.to_vec();
-        }
-        if marker != 0xE1 && marker != 0xED {
-            out.extend_from_slice(&bytes[i..i + 2 + len]);
-        }
-        i += 2 + len;
-    }
-    bytes.to_vec()
+}
+
+/// Characters that hide or blur a name (Unicode "format" characters such as
+/// the right-to-left override, and separators), and the list separator.
+fn blurs(c: char) -> bool {
+    c.is_control()
+        || matches!(
+            c,
+            '"' | ':'
+                | '*'
+                | '?'
+                | '<'
+                | '>'
+                | '|'
+                | '\u{00AD}'
+                | '\u{061C}'
+                | '\u{06DD}'
+                | '\u{070F}'
+                | '\u{180E}'
+                | '\u{FEFF}'
+                | '\u{2028}'
+                | '\u{2029}'
+        )
+        || ('\u{0600}'..='\u{0605}').contains(&c)
+        || ('\u{200B}'..='\u{200F}').contains(&c)
+        || ('\u{202A}'..='\u{202E}').contains(&c)
+        || ('\u{2060}'..='\u{206F}').contains(&c)
+        || ('\u{FFF9}'..='\u{FFFB}').contains(&c)
+        || ('\u{E0000}'..='\u{E007F}').contains(&c)
+        || (c.is_whitespace() && c != ' ')
 }
 
 fn safe_name(n: &str) -> String {
     let base = n.rsplit(['/', '\\']).next().unwrap_or("file");
     let s: String = base
         .chars()
-        .filter(|c| !c.is_control() && !matches!(c, '"' | ':' | '*' | '?' | '<' | '>' | '|'))
-        .take(100)
+        .filter(|c| !blurs(*c))
+        .map(|c| if c == ',' { '_' } else { c })
         .collect();
     let s = s.trim().trim_start_matches('.').to_string();
-    if s.is_empty() { "file".into() } else { s }
+    if s.is_empty() {
+        return "file".into();
+    }
+    // At most 120 bytes, cut between characters, the ending kept.
+    const MAX: usize = 120;
+    if s.len() <= MAX {
+        return s;
+    }
+    let ext = match s.rsplit_once('.') {
+        Some((_, e)) if e.len() <= 12 && !e.is_empty() => format!(".{e}"),
+        _ => String::new(),
+    };
+    let mut out = String::new();
+    for c in s.chars() {
+        if out.len() + c.len_utf8() + ext.len() > MAX {
+            break;
+        }
+        out.push(c);
+    }
+    out + &ext
 }
 
-fn ext_of(media_type: &str) -> &'static str {
-    match media_type {
-        "image/png" => "png",
-        "image/jpeg" | "image/jpg" => "jpg",
-        "image/gif" => "gif",
-        "image/webp" => "webp",
-        _ => "bin",
+/// A message's pictures and files, checked and cleaned in memory: nothing
+/// is on disk yet, so a refusal leaves nothing behind.
+#[derive(Default)]
+pub struct Prepared {
+    /// (file name, bytes) of each thing to keep, pictures first.
+    items: Vec<(String, Vec<u8>)>,
+    /// The cleaned pictures to give Claude Code.
+    pictures: Vec<Picture>,
+}
+
+impl Prepared {
+    pub fn is_empty(&self) -> bool {
+        self.items.is_empty()
     }
 }
 
-/// What was kept: the pictures to give Claude Code (without location) and
-/// the saved paths to name in the message.
-pub struct Kept {
-    pub pictures: Vec<Picture>,
-    pub paths: Vec<PathBuf>,
-}
-
-/// Refuses too many or too big attachments before anything is started.
-pub fn check(pictures: &[Picture], files: &[SentFile]) -> Result<(), String> {
-    let size = |b64: &str| b64.len() / 4 * 3;
+/// Checks counts and sizes, and cleans every picture (also one sent as a
+/// file) so no location or camera details are kept. A picture that can't be
+/// cleaned is refused in one plain line.
+pub fn prepare(pictures: &[Picture], files: &[SentFile]) -> Result<Prepared, String> {
     if pictures.len() > MAX_PICTURES {
         return Err("Four pictures at most in one message.".into());
     }
     if files.len() > MAX_FILES {
         return Err("Three files at most in one message.".into());
     }
+    let size = |b64: &str| b64.len() / 4 * 3;
     if pictures.iter().any(|p| size(&p.base64) > MAX_PICTURE_BYTES) {
         return Err("A picture is over 5 MB. Send a smaller one.".into());
     }
     if files.iter().any(|f| size(&f.base64) > MAX_FILE_BYTES) {
         return Err("A file is over 10 MB. Send a smaller part of it.".into());
     }
-    Ok(())
-}
-
-/// Saves a message's pictures and files for a task. Errors are one plain line.
-pub fn save(
-    data_dir: &Path,
-    task: &str,
-    pictures: &[Picture],
-    files: &[SentFile],
-) -> Result<Kept, String> {
-    let mut kept = Kept {
-        pictures: vec![],
-        paths: vec![],
-    };
-    if pictures.is_empty() && files.is_empty() {
-        return Ok(kept);
-    }
-    if pictures.len() > MAX_PICTURES {
-        return Err("Four pictures at most in one message.".into());
-    }
-    if files.len() > MAX_FILES {
-        return Err("Three files at most in one message.".into());
-    }
     let b64 = base64::engine::general_purpose::STANDARD;
-    let dir = dir_for(data_dir, task);
-    std::fs::create_dir_all(&dir).map_err(|_| "Mímir couldn't keep the files. Try again.")?;
-    let stamp = std::fs::read_dir(&dir).map(|d| d.count()).unwrap_or(0);
-    let mut n = stamp;
-    for p in pictures {
+    let mut out = Prepared::default();
+    for (i, p) in pictures.iter().enumerate() {
         let bytes = b64
             .decode(p.base64.as_bytes())
             .map_err(|_| "A picture didn't arrive whole. Send it again.".to_string())?;
-        if bytes.len() > MAX_PICTURE_BYTES {
-            return Err("A picture is over 5 MB. Send a smaller one.".into());
-        }
-        let bytes = strip_jpeg(&bytes);
-        n += 1;
-        let path = dir.join(format!("picture-{n}.{}", ext_of(&p.media_type)));
-        std::fs::write(&path, &bytes).map_err(|_| "Mímir couldn't keep the files. Try again.")?;
-        kept.pictures.push(Picture {
-            media_type: p.media_type.clone(),
-            base64: b64.encode(&bytes),
-        });
-        kept.paths.push(path);
+        let clean = crate::pictures::clean(&bytes).ok_or(CANT_CLEAN)?;
+        let kept = b64
+            .decode(clean.base64.as_bytes())
+            .map_err(|_| CANT_CLEAN)?;
+        out.items.push((format!("picture-{}.jpg", i + 1), kept));
+        out.pictures.push(clean);
     }
     for f in files {
         let bytes = b64
@@ -168,10 +180,72 @@ pub fn save(
         if bytes.is_empty() {
             return Err("A file is empty. Pick another one.".into());
         }
-        n += 1;
-        let path = dir.join(format!("{n}-{}", safe_name(&f.name)));
-        std::fs::write(&path, &bytes).map_err(|_| "Mímir couldn't keep the files. Try again.")?;
+        let name = safe_name(&f.name);
+        if crate::pictures::looks_like_picture(&bytes, &name) {
+            let clean = crate::pictures::clean(&bytes).ok_or(CANT_CLEAN)?;
+            let kept = b64
+                .decode(clean.base64.as_bytes())
+                .map_err(|_| CANT_CLEAN)?;
+            let stem = name.rsplit_once('.').map_or(name.as_str(), |(s, _)| s);
+            out.items.push((format!("{}.jpg", safe_name(stem)), kept));
+            out.pictures.push(clean);
+        } else {
+            out.items.push((name, bytes));
+        }
+    }
+    Ok(out)
+}
+
+/// What was kept: the pictures to give Claude Code and the saved paths to
+/// name in the message.
+pub struct Kept {
+    pub pictures: Vec<Picture>,
+    pub paths: Vec<PathBuf>,
+}
+
+/// Writes what was prepared into `dir` (private to the owner). If any part
+/// fails, everything written for it is removed again.
+pub fn write(dir: &Path, p: &Prepared) -> Result<Kept, String> {
+    use std::io::Write as _;
+    use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt};
+    let mut kept = Kept {
+        pictures: p.pictures.clone(),
+        paths: vec![],
+    };
+    if p.items.is_empty() {
+        return Ok(kept);
+    }
+    let made = !dir.exists();
+    let undo = |paths: &[PathBuf]| {
+        for f in paths {
+            let _ = std::fs::remove_file(f);
+        }
+        if made {
+            let _ = std::fs::remove_dir(dir);
+        }
+    };
+    std::fs::DirBuilder::new()
+        .recursive(true)
+        .mode(0o700)
+        .create(dir)
+        .map_err(|_| KEEP_FAILED)?;
+    if let Some(root) = dir.parent() {
+        let _ = std::fs::set_permissions(root, std::fs::Permissions::from_mode(0o700));
+    }
+    let first = std::fs::read_dir(dir).map(|d| d.count()).unwrap_or(0);
+    for (i, (name, bytes)) in p.items.iter().enumerate() {
+        let path = dir.join(format!("{}-{name}", first + i + 1));
+        let r = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .open(&path)
+            .and_then(|mut f| f.write_all(bytes));
         kept.paths.push(path);
+        if r.is_err() {
+            undo(&kept.paths);
+            return Err(KEEP_FAILED.into());
+        }
     }
     Ok(kept)
 }
@@ -197,20 +271,32 @@ mod tests {
         d
     }
 
+    fn jpeg() -> Vec<u8> {
+        let mut out = Vec::new();
+        image::RgbImage::from_pixel(4, 4, image::Rgb([9, 9, 9]))
+            .write_to(
+                &mut std::io::Cursor::new(&mut out),
+                image::ImageFormat::Jpeg,
+            )
+            .unwrap();
+        out
+    }
+
     #[test]
     fn pictures_and_files_are_kept_named_and_removed() {
         let d = tmp("keep");
         let b64 = base64::engine::general_purpose::STANDARD;
         let pic = Picture {
-            media_type: "image/png".into(),
-            base64: b64.encode(b"\x89PNGdata"),
+            media_type: "image/jpeg".into(),
+            base64: b64.encode(jpeg()),
         };
         let file = SentFile {
             name: "../Lease.pdf".into(),
             media_type: "application/pdf".into(),
             base64: b64.encode(b"%PDF-1"),
         };
-        let k = save(&d, "t-1", &[pic], &[file]).unwrap();
+        let p = prepare(&[pic], &[file]).unwrap();
+        let k = write(&dir_for(&d, "t-1", false), &p).unwrap();
         assert_eq!(k.pictures.len(), 1);
         assert_eq!(k.paths.len(), 2);
         assert!(
@@ -221,36 +307,53 @@ mod tests {
         assert!(k.paths[1].to_string_lossy().ends_with("Lease.pdf"));
         assert!(named("Look", &k.paths).contains("Attached: "));
         remove(&d, "t-1");
-        assert!(!dir_for(&d, "t-1").exists());
+        assert!(!dir_for(&d, "t-1", false).exists());
         let _ = std::fs::remove_dir_all(&d);
     }
 
     #[test]
     fn too_many_or_too_big_is_refused_in_plain_words() {
-        let d = tmp("limits");
         let b64 = base64::engine::general_purpose::STANDARD;
         let f = |n: usize| SentFile {
             name: "a.txt".into(),
             media_type: String::new(),
             base64: b64.encode(vec![b'a'; n]),
         };
-        assert!(save(&d, "t", &[], &[f(1), f(1), f(1), f(1)]).is_err());
-        assert!(save(&d, "t", &[], &[f(MAX_FILE_BYTES + 1)]).is_err());
+        assert!(prepare(&[], &[f(1), f(1), f(1), f(1)]).is_err());
+        assert!(prepare(&[], &[f(MAX_FILE_BYTES + 1)]).is_err());
+    }
+
+    #[test]
+    fn sweep_keeps_only_stored_tasks() {
+        let d = tmp("sweep");
+        for t in ["keep-1", "gone-2"] {
+            let x = dir_for(&d, t, false);
+            std::fs::create_dir_all(&x).unwrap();
+            std::fs::write(x.join("a"), b"x").unwrap();
+        }
+        sweep(&d, &["keep-1".to_string()]);
+        assert!(dir_for(&d, "keep-1", false).exists());
+        assert!(!dir_for(&d, "gone-2", false).exists());
         let _ = std::fs::remove_dir_all(&d);
     }
 
     #[test]
-    fn a_photos_location_is_removed() {
-        // SOI, APP1 "Exif" with a pretend location, APP0, SOS, data, EOI.
-        let mut j = vec![0xFF, 0xD8, 0xFF, 0xE1, 0x00, 0x0A];
-        j.extend_from_slice(b"Exif\0GPS");
-        j.extend_from_slice(&[0xFF, 0xE0, 0x00, 0x04, 1, 2]);
-        j.extend_from_slice(&[0xFF, 0xDA, 0x00, 0x02, 9, 9, 0xFF, 0xD9]);
-        let out = strip_jpeg(&j);
-        assert!(!out.windows(4).any(|w| w == b"Exif"));
-        assert!(out.windows(2).any(|w| w == [0xFF, 0xE0]));
-        assert!(out.ends_with(&[0xFF, 0xD9]));
-        // Not a JPEG: unchanged.
-        assert_eq!(strip_jpeg(b"hello"), b"hello");
+    fn a_whispers_files_go_inside_its_sealed_folder() {
+        let d = tmp("whisper");
+        let p = dir_for(&d, "w-1", true);
+        assert!(p.starts_with(crate::incognito::dir("w-1")));
+        assert!(!p.starts_with(&d));
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn names_are_cut_by_bytes_and_blur_nothing() {
+        let n = safe_name(&format!("{}.txt", "é".repeat(200)));
+        assert!(n.len() <= 120 && n.ends_with(".txt"), "{n}");
+        let n = safe_name("a\u{202E}txt.exe, b\u{2028}.txt");
+        assert!(
+            !n.contains('\u{202E}') && !n.contains(',') && !n.contains('\u{2028}'),
+            "{n}"
+        );
     }
 }

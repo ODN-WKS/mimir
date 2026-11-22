@@ -31,6 +31,7 @@ pub mod notify;
 pub mod ollama;
 pub mod paths;
 pub mod people;
+pub mod pictures;
 pub mod placement;
 pub mod process;
 pub mod queue;
