@@ -81,7 +81,7 @@ object Stations {
 
             override fun onLost(network: Network) {
                 if (network == current) current = null
-                onChange("network lost")
+                onChange("network lost") // lint:log-only
             }
         })
         true

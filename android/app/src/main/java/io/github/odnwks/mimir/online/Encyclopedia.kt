@@ -85,7 +85,7 @@ object Encyclopedia {
             val g = Net.await(grokWay)
             Found(wiki ?: if (g == null) wikipedia(title, words, mode) else null, g, if (g == null) "Grokipedia has no page titled \"$title\"" else null)
         } catch (e: Exception) {
-            val why = if (e is Net.Refused) e.message ?: "refused" else "Grokipedia didn't answer (${e.message ?: "no answer"})"
+            val why = if (e is Net.Refused) e.message ?: "refused" else "Grokipedia isn't answering just now, so Wikipedia was used instead"
             Found(wiki ?: wikipedia(title, words, mode), null, why)
         }
     }

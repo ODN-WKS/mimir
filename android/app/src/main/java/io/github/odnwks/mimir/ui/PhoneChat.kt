@@ -106,6 +106,8 @@ fun PhoneChat(
     val files = remember { androidx.compose.runtime.mutableStateListOf<io.github.odnwks.mimir.standalone.TurnFile>() }
     val pictures = remember { androidx.compose.runtime.mutableStateListOf<io.github.odnwks.mimir.standalone.TurnPicture>() }
     var attachNote by remember { mutableStateOf<String?>(null) }
+    // The one button under a note (Try again, Open settings), when there is a fix to offer.
+    var attachFix by remember { mutableStateOf<Pair<String, () -> Unit>?>(null) }
     // When the PC answers, pictures go to the PC: its model's sight counts, never this phone's (null: not the PC, or an older one).
     val pcSight = if (pcReady) engine.pcPictures() else null
     val sight = when {
@@ -174,18 +176,20 @@ fun PhoneChat(
             if (ok) addPictures(listOfNotNull(got))
         }
     }
+    val openCameraRef = remember { arrayOf<() -> Unit>({}) }
     val openCamera = {
         runCatching {
             shot.parentFile?.mkdirs()
             takePhoto.launch(androidx.core.content.FileProvider.getUriForFile(ctx, ctx.packageName + ".camera", shot))
-        }.onFailure { attachNote = "The camera couldn't be opened." }
+        }.onFailure { attachNote = CAMERA_FAILED; attachFix = "Try again" to { attachNote = null; attachFix = null; openCameraRef[0]() } }
         Unit
     }
+    openCameraRef[0] = openCamera
     val askCamera = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) { ok ->
-        if (ok) openCamera() else attachNote = "The camera isn't allowed for this app."
+        if (ok) openCamera() else { attachNote = CAMERA_REFUSED; attachFix = "Open settings" to { openAppSettings(ctx) } }
     }
     // A note about a file that wasn't added shows for a few seconds only.
-    LaunchedEffect(attachNote) { if (attachNote != null) { kotlinx.coroutines.delay(6000); attachNote = null } }
+    LaunchedEffect(attachNote) { if (attachNote != null) { kotlinx.coroutines.delay(if (attachFix != null) 12000 else 6000); attachNote = null; attachFix = null } }
 
     // A Whisper turns the whole chat teal (the colour fades, nothing jumps).
     val ground by androidx.compose.animation.animateColorAsState(if (s.whisper || pcWhisper) WhisperTint.Ground else Palette.Ground, motionSpec(Motion.SCREEN_MS), label = "ground")
@@ -455,7 +459,8 @@ fun PhoneChat(
             Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 12.dp, top = 4.dp).semantics { liveRegion = androidx.compose.ui.semantics.LiveRegionMode.Polite },
                 verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(noteShown[0], style = Type.Small, color = Palette.AmberText, modifier = Modifier.weight(1f))
-                LinkText("Dismiss", { attachNote = null })
+                attachFix?.let { (label, run) -> SmallButton(label, { run() }) }
+                LinkText("Dismiss", { attachNote = null; attachFix = null })
             }
         }
         // While the chat is in a project (its last card's task isn't done), a follow-up goes there; ✕ leaves it.
@@ -601,7 +606,7 @@ private const val FILED_NOTE_MS = 10_000L
 private fun NothingAnswers(phoneCan: Boolean, pcOnline: Boolean, pcName: String, usePc: () -> Unit) {
     Panel(border = Palette.BlueBorder, background = Palette.BlueCard, radius = 16.dp, spacing = 10.dp, modifier = Modifier.semantics { liveRegion = androidx.compose.ui.semantics.LiveRegionMode.Polite }) {
         Text(
-            if (phoneCan) "There's no model on this phone yet, so \"This phone only\" can't answer." else "This phone can't run a model.",
+            if (phoneCan) "There's no model on this phone yet, so \"This phone only\" has nothing to answer with." else "This phone can't run a model.",
             style = Type.BodyTight.copy(fontWeight = FontWeight.SemiBold), color = Palette.Text,
         )
         Text(
@@ -653,3 +658,7 @@ fun chatOptions(s: io.github.odnwks.mimir.standalone.LocalState, pc: Boolean = f
 
 /** What a message waiting for the PC says under itself. */
 const val QUEUED_WORDS = "Sends when your PC is back"
+
+/** Said when the camera won't open (with "Try again") or isn't allowed (with "Open settings"). */
+private const val CAMERA_FAILED = "The camera couldn't be opened. Close other apps that use it, then try again."
+private const val CAMERA_REFUSED = "The camera isn't allowed for this app. Allow it in Android settings, or pick a photo instead."

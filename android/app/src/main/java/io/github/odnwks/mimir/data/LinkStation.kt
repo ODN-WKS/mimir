@@ -672,8 +672,8 @@ class LinkStation(
         publish()
     }
 
-    private fun note(text: String, problem: Boolean = true) {
-        synchronized(lock) { chat += ChatEntry.Note("n-${UUID.randomUUID()}", text, problem) }
+    private fun note(text: String, problem: Boolean = true, action: NoteAction? = null) {
+        synchronized(lock) { chat += ChatEntry.Note("n-${UUID.randomUUID()}", text, problem, action) }
         publish()
     }
 
@@ -967,10 +967,10 @@ class LinkStation(
         if (taskId != null && !Expiry.mayWait(synchronized(lock) { tasks[taskId] })) {
             return note("Your PC is away: this Whisper can't wait. Say it again when your PC is back.")
         }
-        val dir = recordDir ?: return note("The recording couldn't be kept on this phone.")
+        val dir = recordDir ?: return note("The recording couldn't be saved on this phone. Free up some space, then say it again.")
         val id = (if (taskId == null) "m-" else "s-") + UUID.randomUUID()
         val ok = runCatching { dir.mkdirs(); java.io.File(dir, "$id.wav").writeBytes(wav) }.isSuccess
-        if (!ok) return note("The recording couldn't be kept on this phone.")
+        if (!ok) return note("The recording couldn't be saved on this phone. Free up some space, then say it again.")
         val now = synchronized(lock) {
             data = data.copy(recordings = data.recordings + Triple(id, taskId.orEmpty(), seconds))
             saveData()
@@ -1011,7 +1011,7 @@ class LinkStation(
                 when {
                     // A PC error may be temporary (its speech model busy): the recording stays and is tried again at the next connect (it expires after a day).
                     err != null -> note("A recording couldn't be turned into words yet. It will be tried again when your PC connects.")
-                    text.isEmpty() -> { note("Nothing was heard in a recording, so it wasn't sent."); done(null) }
+                    text.isEmpty() -> { note("Nothing was heard in a recording, so it wasn't sent. Say it again a little closer."); done(null) }
                     else -> done(text)
                 }
                 if (err == null) Thread({ if (task.isEmpty()) flush() else flushReplies(); publish() }, "mimir-recording").start()
@@ -1319,7 +1319,7 @@ class LinkStation(
         val entry = messageId.substringAfterLast('-').toIntOrNull() ?: return
         call(Wire.speak(taskId, entry)) { ok, err ->
             val name = ok as? String
-            if (err != null || name == null) { note(err ?: "That message can't be read aloud."); return@call }
+            if (err != null || name == null) { note(err ?: "That message can't be read aloud just now. Try again.", action = NoteAction("Try again") { playMessage(taskId, messageId) }); return@call }
             val f = audioFile(name)
             val go = {
                 if (f != null && f.isFile) {
@@ -1618,11 +1618,13 @@ interface ProjectStore {
  * has moved on (answered on the PC, or Claude went on) or that doesn't take that kind of answer.
  */
 fun answerProblem(err: String): String = when {
-    err.contains("doesn't fit", ignoreCase = true) || err.contains("isn't there", ignoreCase = true) ||
-        err.contains("no longer", ignoreCase = true) || err.contains("not found", ignoreCase = true) ->
-        "Your answer wasn't used: that question has moved on (it may have been answered on the PC)."
-    else -> "Your answer wasn't used: $err"
+    MOVED_ON.any { err.contains(it, ignoreCase = true) } ->
+        "Your answer wasn't used: that question has moved on (it may have been answered on the PC). Look at Needs you for what's open."
+    else -> "Your answer wasn't used. Open the question again and answer once more."
 }
+
+// What the PC says when a question has moved on; matched against its reply, never shown. lint:log-only
+private val MOVED_ON = listOf("doesn't fit", "isn't there", "no longer", "not found")
 
 /**
  * Whether the PC now names another person than this phone's chats belong to. A phone that never

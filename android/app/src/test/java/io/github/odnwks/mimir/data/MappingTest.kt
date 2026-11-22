@@ -153,7 +153,7 @@ class MappingTest {
         assertEquals(null, s.whatStillWorks)
         val away = s.copy(pc = s.pc.copy(online = false, lastSeen = "11:42"))
         // One side, never both, short enough for one line (QA I1); how old it is goes on the strip.
-        assertEquals("Your PC isn't reachable", away.connectionLine)
+        assertEquals("Your PC is out of reach", away.connectionLine)
         assertEquals("This phone is offline", away.copy(phoneOnline = false).connectionLine)
         assertEquals("As of 11:42. Messages wait and send when your PC is back.", away.whatStillWorks)
         assertEquals("As of 11:42. Messages wait and send when this phone is back online.", away.copy(phoneOnline = false).whatStillWorks)

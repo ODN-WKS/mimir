@@ -258,7 +258,7 @@ fn missing_claude_is_explained() {
             .task
             .entries
             .iter()
-            .any(|e| matches!(e, Entry::Note(n) if n.contains("could not start")))
+            .any(|e| matches!(e, Entry::Note(n) if n.contains("didn't start")))
     );
     r.remove(&id);
     assert!(r.tasks.is_empty());

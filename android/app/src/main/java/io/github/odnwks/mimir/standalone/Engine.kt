@@ -1257,6 +1257,17 @@ class Engine(
         retry()
     }
 
+    /** "Answer without looking it up" under an answer whose lookup failed: asked again, with no lookup this time. */
+    fun answerWithoutLookup() {
+        val s = _state.value
+        if (s.writing || !s.lookupFailed) return
+        val turns = s.chat.turns
+        if (turns.size < 2 || turns.last().user || !turns[turns.size - 2].user) return
+        skipLookup.set(true)
+        _state.update { it.copy(lookupFailed = false, chat = it.chat.copy(turns = it.chat.turns.dropLast(1))) }
+        retry()
+    }
+
     /** The answer whose failed lookup was already asked again by itself (chat id and turn count). */
     private var retriedLookup: String? = null
 

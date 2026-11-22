@@ -478,7 +478,7 @@ private fun YoloSheet(title: String, taskId: String, state: StationState, statio
 }
 
 /** Said in the YOLO sheet while the PC doesn't allow YOLO from the phone. */
-const val YOLO_OFF_ON_PC = "YOLO from this phone is off on your PC, so it can't be turned on from here. " +
+const val YOLO_OFF_ON_PC = "YOLO from this phone is off on your PC, so it stays off here. " +
     "To allow it: on your PC, open Mímir › Settings › Phones and switch on \u201cAllow YOLO from my phone\u201d."
 
 @Composable

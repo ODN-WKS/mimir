@@ -254,7 +254,7 @@ fun PairDoneScreen(state: StationState, nav: Navigator) {
 }
 
 private val problems = listOf(
-    "Can't reach the PC" to "Check the PC is awake and $AI_NAME is open. The phone keeps trying for a minute.",
+    "The PC is out of reach" to "Check the PC is awake and $AI_NAME is open. The phone keeps trying for a minute.",
     "The words didn't match" to "Pairing was stopped to keep you safe. Start again on the PC. If it happens twice, check both screens carefully.",
     "Camera not allowed" to "Allow the camera in the phone’s settings, or type the code instead.",
 )
@@ -275,7 +275,7 @@ fun PairErrorScreen(state: StationState, nav: Navigator) {
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Icon(Glyphs.Clock, null, tint = Palette.RedTitle, modifier = Modifier.size(22.dp))
-                    SectionTitle("What went wrong", color = Palette.RedTitle, style = Type.Section.copy(fontSize = 17.sp))
+                    SectionTitle("Here's what to try", color = Palette.RedTitle, style = Type.Section.copy(fontSize = 17.sp))
                 }
                 Text(why ?: "Codes last 10 minutes. On the PC, click \"Pair a phone\" again for a new one, then scan it.", style = Type.Body, color = Palette.RedBody)
             }

@@ -67,7 +67,7 @@ object Net {
                 url = URL(url, r.location)
                 continue
             }
-            if (r.status !in 200..299) throw Failed(if (r.status >= 500) "the site is down (it answered ${r.status})" else "the site answered ${r.status}")
+            if (r.status !in 200..299) throw Failed(if (r.status >= 500) "the site is having trouble just now" else "the site wouldn't show that page")
             val type = r.type.substringBefore(';').trim().lowercase()
             if (type !in accept) throw Refused("not a page that can be read ($type)")
             val text = String(r.body, Charsets.UTF_8)
@@ -87,6 +87,9 @@ object Net {
     const val CONNECT_MS = 2_500
     const val READ_MS = 6_000
     const val BUDGET_MS = 6_000L
+
+    /** The message of a timeout inside the app (never shown: [plain] words it). */
+    private const val SLOW = "slow"
 
     /** A lookup that couldn't be done, with the cause in plain words ("this phone has no signal"). */
     class Failed(why: String) : java.io.IOException(why)
@@ -198,7 +201,7 @@ object Net {
         try {
             return if (left > 0) f.get(left, java.util.concurrent.TimeUnit.MILLISECONDS) else throw java.util.concurrent.TimeoutException()
         } catch (e: java.util.concurrent.TimeoutException) {
-            throw java.net.SocketTimeoutException("timed out")
+            throw java.net.SocketTimeoutException(SLOW)
         } catch (e: java.util.concurrent.ExecutionException) {
             throw e.cause ?: e
         }
@@ -221,7 +224,7 @@ object Net {
             val left = end - now()
             val r = (if (left > 0) answers.poll(left, java.util.concurrent.TimeUnit.MILLISECONDS) else null)
             if (r == null) {
-                problems += java.net.SocketTimeoutException("timed out")
+                problems += java.net.SocketTimeoutException(SLOW)
                 break
             }
             waiting--
@@ -258,7 +261,7 @@ object Net {
         /** What this request may still take, from now. */
         fun room(): Request {
             val left = end - now()
-            if (left <= 0) throw java.net.SocketTimeoutException("timed out")
+            if (left <= 0) throw java.net.SocketTimeoutException(SLOW)
             return req.copy(timeoutMs = minOf(req.timeoutMs.toLong(), left).toInt())
         }
         fun start(way: LookupLog.Route) {
@@ -293,7 +296,7 @@ object Net {
             val got = if (left > 0) answers.poll(left, java.util.concurrent.TimeUnit.MILLISECONDS) else null
             if (got == null) {
                 // Out of time: the ways still out are counted as too slow.
-                ways.filter { it !in problems }.forEach { problems[it] = java.net.SocketTimeoutException("timed out") }
+                ways.filter { it !in problems }.forEach { problems[it] = java.net.SocketTimeoutException(SLOW) }
                 break
             }
             waiting--
@@ -304,7 +307,7 @@ object Net {
             // A site that's down on one way may answer on the other.
             if (reply != null && reply.status < 500) return Triple(reply, way, ways)
             if (reply != null) badAnswer = reply to way
-            problems[way] = result.exceptionOrNull() ?: Failed("the site is down (it answered ${reply!!.status})")
+            problems[way] = result.exceptionOrNull() ?: Failed("the site is having trouble just now")
             // Every way failed: this phone tries once more, if there's time for it.
             if (waiting == 0 && !retried && end - now() > 2_000 && problems[LookupLog.Route.Phone] != null && badAnswer == null) {
                 retried = true
@@ -322,10 +325,13 @@ object Net {
 
     /** The answer's words when a lookup in the paired chat failed (with "Try again" under it). */
     fun sorry(e: Throwable): String = when (e) {
-        is Failed, is PcAway -> "Couldn't look that up just now: ${e.message}."
-        is Refused -> "That can't be looked up: ${e.message}."
-        else -> "Couldn't look that up just now: ${plain(e, !phoneOnline())}."
+        is Failed, is PcAway -> "Couldn't look that up just now (${said(e)}). Try again, or answer without looking it up."
+        is Refused -> "That isn't looked up (${said(e)}). Answer without looking it up, or ask in another way."
+        else -> "Couldn't look that up just now (${plain(e, !phoneOnline())}). Try again, or answer without looking it up."
     }
+
+    /** A lookup problem's own words: [Failed], [Refused] and [PcAway] carry plain sentences, never a system message. */
+    private fun said(e: Throwable): String = e.message?.takeIf { it.isNotBlank() } ?: "it gave no answer"
 
     /** What went wrong, in plain words: "this phone has no signal, and your PC is away". */
     fun why(problems: Map<LookupLog.Route, Throwable>): String {
@@ -338,7 +344,7 @@ object Net {
                 way == LookupLog.Route.Pc -> when {
                     e is PcAway -> e.message ?: "your PC is away"
                     e is java.net.SocketTimeoutException -> "your PC didn't get an answer in time either"
-                    else -> "your PC couldn't get it either (${plain(e, false)})"
+                    else -> "your PC had no luck either (${plain(e, false)})"
                 }
                 else -> plain(e, noSignal)
             }
@@ -349,16 +355,16 @@ object Net {
     /** One way's problem in plain words. */
     fun plain(e: Throwable, noSignal: Boolean): String = when {
         noSignal -> "this phone has no signal"
-        e is Failed || e is PcAway || e is Refused -> e.message ?: "it didn't work"
-        e is java.net.UnknownHostException -> "this phone couldn't reach the internet (no signal, or the site's name couldn't be looked up)"
-        e is java.net.SocketTimeoutException || e.message?.contains("timed out", true) == true -> "the connection is too slow just now (a weak signal?)"
-        e is java.net.ConnectException || e is java.net.NoRouteToHostException -> "the site couldn't be reached"
-        e is javax.net.ssl.SSLException -> "the secure connection to the site failed (a Wi-Fi sign-in page?)"
-        else -> e.message?.takeIf { it.isNotBlank() } ?: "it didn't answer"
+        e is Failed || e is PcAway || e is Refused -> e.message ?: "it gave no answer"
+        e is java.net.UnknownHostException -> "this phone has no internet just now (a weak signal, or no site by that name)"
+        e is java.net.SocketTimeoutException || e.message?.contains("timeout", true) == true -> "the connection is too slow just now (a weak signal?)"
+        e is java.net.ConnectException || e is java.net.NoRouteToHostException -> "the site is out of reach just now"
+        e is javax.net.ssl.SSLException -> "the site's secure link broke (a Wi-Fi sign-in page may be in the way)"
+        else -> "it gave no answer"
     }
 
     /** Through Tor (set by the app; checks swap it). It throws when Tor can't be reached. */
-    var torTransport: (Request) -> Reply = { throw Refused("Tor isn't running") }
+    var torTransport: (Request) -> Reply = { throw Refused("the hidden route is off just now") }
 
     /**
      * Through Tor the site's name is looked up by Tor, never by the phone (that would tell the
@@ -389,7 +395,7 @@ object Net {
      */
     private fun checkAddress(url: URL) {
         val host = url.host
-        val all = runCatching { resolve(host) }.getOrElse { throw java.net.UnknownHostException("couldn't find $host") }
+        val all = runCatching { resolve(host) }.getOrElse { throw java.net.UnknownHostException("no site by the name $host") }
         if (all.isEmpty() || all.any { private(it) }) throw Refused("that address is on this phone or the home network")
     }
 

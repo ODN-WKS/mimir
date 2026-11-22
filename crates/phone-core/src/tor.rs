@@ -61,8 +61,8 @@ impl Tor {
             tokio::select! {
                 r = tokio::time::timeout(timeout, self.client.bootstrap()) => match r {
                     Ok(Ok(())) => Ok(()),
-                    Ok(Err(e)) => Err(format!("Couldn't reach Tor: {e}")),
-                    Err(_) => Err("Couldn't reach Tor in time".into()),
+                    Ok(Err(_e)) => Err("The hidden route is out of reach. Try again in a moment.".into()),
+                    Err(_) => Err("The hidden route took too long. Try again in a moment.".into()),
                 },
                 _ = cancel.notified() => Err("Cancelled".into()),
             }

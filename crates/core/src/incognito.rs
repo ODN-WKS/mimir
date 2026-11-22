@@ -225,6 +225,7 @@ fn hide(path: &Path) -> Result<(), String> {
     if r == 0 {
         Ok(())
     } else {
+        // Only the developer log sees this: the caller says it in plain words. lint:log-only
         Err(format!("couldn't hide {}", path.display()))
     }
 }

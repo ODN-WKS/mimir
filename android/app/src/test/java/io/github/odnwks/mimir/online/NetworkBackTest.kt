@@ -59,4 +59,26 @@ class NetworkBackTest {
         e.lookupAgain(); settle(e)
         assertFalse(e.state.value.lookupFailed)
     }
+
+    @Test fun answerWithoutLookingItUpAsksAgainWithNoLookup() {
+        val e = testEngine(tmp.newFolder(), ready = true)
+        web.fail = true
+        e.send("What's the weather in Leeds?"); settle(e)
+        assertTrue(e.state.value.lookupFailed)
+        val asked = web.asked.size
+        // The button's action: the same question is answered again, and the internet is not asked.
+        e.answerWithoutLookup(); settle(e)
+        assertFalse(e.state.value.lookupFailed)
+        assertEquals("nothing was looked up this time", asked, web.asked.size)
+        assertEquals(2, e.state.value.chat.turns.size)
+        assertFalse(e.state.value.chat.turns.last().user)
+    }
+
+    @Test fun answerWithoutLookingItUpDoesNothingWhenNothingFailed() {
+        val e = testEngine(tmp.newFolder(), ready = true)
+        e.send("hello"); settle(e)
+        val turns = e.state.value.chat.turns.size
+        e.answerWithoutLookup(); settle(e)
+        assertEquals(turns, e.state.value.chat.turns.size)
+    }
 }

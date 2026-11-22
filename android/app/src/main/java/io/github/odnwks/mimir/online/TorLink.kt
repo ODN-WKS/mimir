@@ -121,7 +121,7 @@ object TorLink {
     /** One read through Tor, for [Net.get]. */
     fun transport(r: Net.Request): Net.Reply {
         val h = synchronized(lock) { handle.takeIf { ready } } ?: if (await(CONNECT_MS)) synchronized(lock) { handle } else 0L
-        if (h == 0L) throw Net.Refused("couldn't reach Tor")
+        if (h == 0L) throw Net.Refused("the hidden route is out of reach just now")
         val o = JSONObject(core.get(h, r.url.toString(), JSONObject(r.headers as Map<*, *>).toString(), r.timeoutMs.toLong(), r.maxBytes.toLong()))
         if (o.has("error")) throw java.io.IOException(o.getString("error"))
         val body = o.optString("body").toByteArray()

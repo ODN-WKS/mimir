@@ -107,7 +107,7 @@ private fun OwnCard(e: OwnEntry, s: LocalState, phoneBytes: Long, busy: Boolean,
     ) {
         Text(e.file, style = Type.BodyTight.copy(fontWeight = FontWeight.SemiBold), color = Palette.Text)
         Text(if (e.format == null) e.sizeText else "${e.kind} · ${e.sizeText}", style = Type.Small, color = Palette.TextSoft)
-        if (e.vision != null) Text("Can see photos (${e.vision.name})", style = Type.Small, color = Palette.TextDim)
+        e.vision?.let { Text("Can see photos (${it.name})", style = Type.Small, color = Palette.TextDim) }
         if (problem != null) Text(problem, style = Type.Small, color = Palette.AmberText)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             if (inUse) Tag("In use", Palette.BlueText, Palette.BlueIcon)

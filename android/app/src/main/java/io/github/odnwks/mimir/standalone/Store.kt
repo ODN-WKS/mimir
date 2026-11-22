@@ -234,7 +234,7 @@ class Store(private val file: File, private val codec: Codec = KeystoreCodec()) 
     fun save(s: Saved) = writeLock.withLock { saveNow(s) }
 
     private fun saveNow(s: Saved) {
-        if (readOnly) throw java.io.IOException("the chat file couldn't be read, so nothing is saved over it")
+        if (readOnly) throw java.io.IOException("the chat file is unreadable, so nothing is saved over it") // lint:log-only
         val o = JSONObject().put("model", s.model).put("think", s.think).put("effort", s.effort ?: JSONObject.NULL).put("use_pc", s.usePc)
             .put("last_seq", s.lastSeq).put("pending_deletes", JSONArray(s.pendingDeletes)).put("synced", s.synced)
             .put("last_used", JSONObject(s.lastUsed as Map<*, *>)).put("files", JSONObject(s.files as Map<*, *>)).put(

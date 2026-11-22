@@ -256,7 +256,7 @@ data class StationState(
         // One side, never both, in a few words that fit one line (QA I1).
         !phoneOnline -> "This phone is offline"
         pc.lastSeen == "not connected" -> "Reaching your PC…"
-        else -> "Your PC isn't reachable"
+        else -> "Your PC is out of reach"
     }
     /** What still works while the PC can't be reached (null while it can). */
     val whatStillWorks: String? get() = when {
@@ -300,8 +300,11 @@ sealed interface ChatEntry {
     /** The note that an Incognito task is running; its messages aren't kept in the chat. */
     data class IncognitoRunning(override val id: String, val project: String) : ChatEntry
     /** A small centred note (e.g. that an answer was sent), or a [problem]: red-outlined, with why. */
-    data class Note(override val id: String, val text: String, val problem: Boolean = false) : ChatEntry
+    data class Note(override val id: String, val text: String, val problem: Boolean = false, val action: NoteAction? = null) : ChatEntry
 }
+
+/** The one button on a problem card: what it says, and what it does (the card goes after it). */
+class NoteAction(val label: String, val run: () -> Unit)
 
 /** What happened to a message from the general chat. */
 data class Filing(
@@ -317,7 +320,7 @@ data class Filing(
         FilingKind.Idea -> "Filed in $where, Ideas"
         FilingKind.Waiting -> "Waiting · sends when your PC is back"
         FilingKind.Inbox -> "Which project?"
-        FilingKind.Failed -> "Your PC couldn't take this"
+        FilingKind.Failed -> "Your PC couldn't take this. Try again, or delete it."
     }
     val action: String get() = when (kind) {
         FilingKind.NewTask, FilingKind.SameTask -> "Move it"

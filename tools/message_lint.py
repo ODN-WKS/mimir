@@ -36,6 +36,10 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BASELINE = os.path.join(ROOT, "tools", "message_lint_baseline.txt")
 ALLOW = os.path.join(ROOT, "tools", "message_lint_allow.txt")
+# Never baselined: a message that says something went wrong must say what to
+# do (no-next-step), and none may show a raw error (raw-error). Fix it, or mark
+# a line that only reaches the developer log with "lint:log-only".
+STRICT = {"no-next-step", "raw-error"}
 
 KOTLIN_DIR = "android/app/src/main/java"
 # Files with no owner-facing text: prompts for the models, the protocol,
@@ -47,6 +51,8 @@ KOTLIN_SKIP = {
     "Native.kt",
     "Wire.kt",
     "LinkLog.kt",
+    # Search keywords for the settings search, not sentences.
+    "SettingsSearch.kt",
 }
 RUST_UI = ["crates/ui/src"]
 RUST_CORE = ["crates/core/src", "crates/phone-core/src"]
@@ -208,6 +214,17 @@ CORE_SHOWN = re.compile(
 )
 
 
+# A line (or the one above it) carrying this marker never reaches a person:
+# it is for the developer log only. Write it as a comment: // lint:log-only
+LOG_ONLY = "lint:log-only"
+
+
+def log_only(lines, ln):
+    here = lines[ln - 1] if 0 < ln <= len(lines) else ""
+    above = lines[ln - 2] if 1 < ln <= len(lines) + 1 else ""
+    return LOG_ONLY in here or LOG_ONLY in above
+
+
 def files(top, ext):
     base = os.path.join(ROOT, top)
     for d, subdirs, names in os.walk(base):
@@ -229,7 +246,7 @@ def collect():
             for ln, text in rust_literals(src):
                 here = lines[ln - 1] if ln - 1 < len(lines) else ""
                 before = "\n".join(lines[max(0, ln - 4):ln])
-                if NOT_SHOWN.search(here):
+                if NOT_SHOWN.search(here) or log_only(lines, ln):
                     continue
                 if core and not CORE_SHOWN.search(before):
                     continue
@@ -241,7 +258,7 @@ def collect():
         lines = src.split("\n")
         for ln, text in kotlin_literals(src):
             here = lines[ln - 1] if ln - 1 < len(lines) else ""
-            if NOT_SHOWN.search(here):
+            if NOT_SHOWN.search(here) or log_only(lines, ln):
                 continue
             lits.append(Lit(os.path.relpath(path, ROOT), ln, text, here))
     return lits
@@ -340,7 +357,8 @@ def judge(lit, allow):
         found.append("claude-name")
     if HOSTNAME_DEFAULT.search(text):
         found.append("default-hostname")
-    if PROBLEM.search(plain) and not NEXT_STEP.search(plain):
+    # A question ("Lost a phone?") is a label or a choice, not a failure.
+    if PROBLEM.search(plain) and not NEXT_STEP.search(plain) and not plain.rstrip().endswith("?"):
         found.append("no-next-step")
     return found
 
@@ -383,10 +401,13 @@ def main(argv):
                 "# tools/check-all.sh. Fix one, then: python3 -I tools/message_lint.py --update\n"
             )
             for k in sorted(keys.elements()):
-                f.write(k + "\n")
+                if k.split("\t", 1)[0] not in STRICT:
+                    f.write(k + "\n")
         print(f"baseline written: {sum(keys.values())} known findings")
         return 0
     base = read_baseline()
+    # The strict kinds ignore the baseline: any of them is new.
+    base = collections.Counter({k: v for k, v in base.items() if k.split("\t", 1)[0] not in STRICT})
     new = keys - base
     gone = base - keys
     by_rule = collections.Counter(r for r, _ in found)
@@ -419,7 +440,8 @@ def main(argv):
         print(
             "Say what happened and what the owner can do, in plain words "
             "(see docs/designs/qa/quality_plan.md, A3). If the text is right as "
-            "it is, add it with: python3 -I tools/message_lint.py --update"
+            "it is, add it with: python3 -I tools/message_lint.py --update (never for no-next-step "
+            "or raw-error: fix those, or mark developer-log-only text with lint:log-only)"
         )
         return 1
     return 0

@@ -93,7 +93,7 @@ class VoiceInput(
         onPhone = false
         val r = Recorder()
         if (!r.start()) {
-            state = Speaking.Failed("The microphone couldn't be opened.")
+            state = Speaking.Failed("The microphone couldn't be opened. Close other apps that use it, then try again.")
             return false
         }
         recorder = r

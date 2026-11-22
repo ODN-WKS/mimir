@@ -270,9 +270,13 @@ LazyColumn(
                         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             Icon(Glyphs.Warning, null, tint = Palette.Red, modifier = Modifier.size(20.dp))
                             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                Text("That didn't work", style = Type.Label.copy(fontWeight = FontWeight.SemiBold), color = Palette.Text)
+                                Text("This needs a look", style = Type.Label.copy(fontWeight = FontWeight.SemiBold), color = Palette.Text)
                                 Text(entry.text, style = Type.Label, color = Palette.TextSoft)
-                                LinkText("OK", { station.dismissNote(entry.id) }, bold = true)
+                                val act = entry.action
+                                if (act != null) Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    SmallButton(act.label, { station.dismissNote(entry.id); act.run() })
+                                    LinkText("Dismiss", { station.dismissNote(entry.id) })
+                                } else LinkText("OK", { station.dismissNote(entry.id) }, bold = true)
                             }
                         }
                     } else Row(

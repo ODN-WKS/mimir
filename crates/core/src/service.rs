@@ -1850,7 +1850,8 @@ impl Service {
                 let why = match &names {
                     Ok(_) => String::new(),
                     Err(e) if crate::models::unit_path().is_file() => {
-                        format!("{e}; it starts when a free model is used")
+                        eprintln!("mimir: model runner: {e}");
+                        "Your PC's model runner isn't answering yet. It starts by itself when a free model is used.".to_string()
                     }
                     Err(e) => e.clone(),
                 };
@@ -2831,8 +2832,11 @@ impl Service {
         // before anything moves.
         for id in &ids {
             let Some(l) = self.task(id) else { continue };
-            if let Err(e) = self.runner.can_move(id, into) {
-                return Err(format!("\"{}\": {e} Nothing was moved.", l.task.title));
+            if let Err(reason) = self.runner.can_move(id, into) {
+                return Err(format!(
+                    "\"{}\": {reason} Nothing was moved. Finish or stop that task, then try again.",
+                    l.task.title
+                ));
             }
         }
         let from_name = crate::paths::display_name(&self.settings, from);
@@ -2864,7 +2868,7 @@ impl Service {
         if !failed.is_empty() {
             return Err(format!(
                 "{moved} task(s) moved to {into_name}; {from_name} stays on the list because \
-                 these couldn't: {}",
+                 these couldn't move: {}. Try them again when they are free.",
                 failed.join(" ")
             ));
         }
@@ -3237,8 +3241,11 @@ impl Service {
             if self.tidy_waits(&r) {
                 still.push(r);
             } else if let Err(e) = self.tidy_one(&r) {
-                self.runner
-                    .problem(&format!("Tidy projects: \"{}\": {e}", r.title));
+                eprintln!("mimir: tidy projects: \"{}\": {e}", r.title);
+                self.runner.problem(&format!(
+                    "Tidying \"{}\" didn't finish. It is tried again the next time Mímir tidies.",
+                    r.title
+                ));
             }
         }
         *self.tidy_waiting_mut() = still;
@@ -3476,7 +3483,7 @@ impl Service {
                     self.publish();
                     r
                 } else {
-                    Err("A phone can't do that.".into())
+                    Err("A phone can't do that. Use the Mímir window on your PC instead.".into())
                 };
                 self.log_call_result(client, call_id, &name, task, t0.elapsed(), &result);
                 self.send_to(
@@ -5093,7 +5100,7 @@ pub fn run_main_opening(version: &str, open_window: bool) -> i32 {
     }
     let dir = crate::sockets::runtime_dir();
     if let Err(e) = crate::sockets::private_dir(&dir) {
-        return ends(1, &format!("{} can't be used: {e}", dir.display()));
+        return ends(1, &format!("{} can't be used: {e}", dir.display())); // lint:log-only
     }
     // One service at a time.
     let lock = match std::fs::OpenOptions::new()
@@ -5103,7 +5110,7 @@ pub fn run_main_opening(version: &str, open_window: bool) -> i32 {
         .open(crate::sockets::lock_path())
     {
         Ok(f) => f,
-        Err(e) => return ends(1, &format!("the lock can't be opened: {e}")),
+        Err(e) => return ends(1, &format!("the lock can't be opened: {e}")), // lint:log-only
     };
     let take_lock = |lock: &std::fs::File| {
         // SAFETY: flock on an open file we own.
@@ -5131,9 +5138,9 @@ pub fn run_main_opening(version: &str, open_window: bool) -> i32 {
             .as_ref()
             .map_or(-1, std::os::fd::AsRawFd::as_raw_fd);
         match hand_over_socket(fd) {
-            Ok(()) => say("another service is running: systemd's socket was handed to it"),
+            Ok(()) => say("another service is running: systemd's socket was handed to it"), // lint:log-only
             Err(e) => say(&format!(
-                "another service is running and couldn't take systemd's socket: {e}"
+                "another service is running and couldn't take systemd's socket: {e}" // lint:log-only
             )),
         }
         // This one stays (systemd sees it running, never "failed") until
@@ -5162,7 +5169,7 @@ pub fn run_main_opening(version: &str, open_window: bool) -> i32 {
         && let Err(e) = crate::groups::setup()
     {
         if cfg!(debug_assertions) {
-            say(&format!("{e} (a debug build goes on without task groups)"));
+            say(&format!("{e} (a debug build goes on without task groups)")); // lint:log-only
         } else {
             return ends(1, &e);
         }
@@ -5173,7 +5180,7 @@ pub fn run_main_opening(version: &str, open_window: bool) -> i32 {
         Some(l) => l,
         None => match crate::sockets::bind_private(&crate::sockets::control_socket()) {
             Ok(l) => l,
-            Err(e) => return ends(1, &format!("the window's socket can't be opened: {e}")),
+            Err(e) => return ends(1, &format!("the window's socket can't be opened: {e}")), // lint:log-only
         },
     };
     // The path this service bound itself (systemd's socket unit may later
@@ -5182,7 +5189,7 @@ pub fn run_main_opening(version: &str, open_window: bool) -> i32 {
         .then(|| path_id(&crate::sockets::control_socket()))
         .flatten();
     if let Err(e) = crate::sockets::guard_old_path(&old) {
-        say(&format!("the old approvals path can't be guarded: {e}"));
+        say(&format!("the old approvals path can't be guarded: {e}")); // lint:log-only
     }
     crate::log::prune();
     crate::log::write("service", "started", &format!("version {version}"));
@@ -5212,7 +5219,7 @@ pub fn run_main_opening(version: &str, open_window: bool) -> i32 {
         }
     });
     if let Err(e) = crate::sockets::serve_session(&crate::sockets::session_socket(), handler) {
-        say(&format!("the session socket can't be opened: {e}"));
+        say(&format!("the session socket can't be opened: {e}")); // lint:log-only
     }
     let runner = match Runner::new(cfg.runner, wake.clone()) {
         Ok(mut r) => {
@@ -5223,7 +5230,7 @@ pub fn run_main_opening(version: &str, open_window: bool) -> i32 {
         }
         Err(e) => {
             let _ = std::fs::remove_file(&pid_file);
-            return ends(1, &format!("could not start: {e}"));
+            return ends(1, &format!("could not start: {e}")); // lint:log-only
         }
     };
     // Signals end the service cleanly.
@@ -5253,7 +5260,7 @@ pub fn run_main_opening(version: &str, open_window: bool) -> i32 {
         && let Some(c) = &cap
         && let Err(e) = crate::sockets::start_window(c, &crate::sockets::display_env())
     {
-        say(&format!("the window can't start: {e}"));
+        say(&format!("the window can't start: {e}")); // lint:log-only
     }
     // A service systemd starts while this one runs hands its socket over.
     match crate::sockets::bind_private(&crate::sockets::handover_socket()) {
@@ -5299,7 +5306,7 @@ pub fn run_main_opening(version: &str, open_window: bool) -> i32 {
                 }
             });
         }
-        Err(e) => say(&format!("the handover socket can't be opened: {e}")),
+        Err(e) => say(&format!("the handover socket can't be opened: {e}")), // lint:log-only
     }
     let mut s = Service::new(runner, cfg.claude, cfg.version, wake, rx, tx.clone());
     s.pid_file = Some(pid_file.clone());
@@ -5325,7 +5332,7 @@ pub fn run_main_opening(version: &str, open_window: bool) -> i32 {
                     }
                 });
             }
-            Err(e) => say(&format!("{e} (phones can't connect)")),
+            Err(e) => say(&format!("{e} (phones can't connect)")), // lint:log-only
         }
     }
     // The tidy the weekly timer used to do: once a day from here.

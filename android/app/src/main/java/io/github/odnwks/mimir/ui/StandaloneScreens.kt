@@ -197,6 +197,7 @@ fun StandaloneScreen(engine: Engine, nav: Navigator) {
                     readLink = { turn, i -> readLinkFor(s, engine, turn, i) },
                     tor = { TorLines(s, engine) },
                     lookupAgain = engine::lookupAgain,
+                    answerWithoutLookup = engine::answerWithoutLookup,
                     askAgain = { engine.tryAgain() },
                 )
             }
@@ -238,6 +239,7 @@ private fun Conversation(
     tor: @Composable () -> Unit = {},
     /** "Try again" under an answer whose lookup failed. */
     lookupAgain: () -> Unit = {},
+    answerWithoutLookup: () -> Unit = {},
     /** "Try again" under an answer: its question is sent again. */
     askAgain: (io.github.odnwks.mimir.standalone.Turn) -> Unit = {},
 ) {
@@ -283,7 +285,10 @@ LazyColumn(
         }
         // The last answer's lookup failed (no signal, the PC away, the site down): ask again.
         if (!s.writing && s.lookupFailed && s.chat.turns.lastOrNull()?.user == false) item(key = "lookup-again") {
-            SmallButton("Try again", lookupAgain, description = "Look it up again")
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                SmallButton("Try again", lookupAgain, description = "Look it up again")
+                SmallButton("Answer without looking it up", answerWithoutLookup, description = "Answer this without the internet")
+            }
         }
         if (!s.writing) s.speed?.let { speed ->
             item(key = "speed") { Text(speed, style = Type.Small, color = Palette.TextDim) }

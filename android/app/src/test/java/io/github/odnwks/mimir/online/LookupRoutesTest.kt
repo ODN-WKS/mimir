@@ -100,6 +100,8 @@ class LookupRoutesTest {
         // The phone's own missing signal is the whole story, never "and your PC is away" too (QA I1).
         assertTrue(said, "this phone has no signal" in said && "your PC" !in said)
         assertFalse(said, "timed out" in said.lowercase())
+        // Every lookup problem says what to do next, never an error code or system text.
+        assertTrue(said, "Try again, or answer without looking it up." in said)
 
         // In the paired chat: the answer says so, with "Try again", which asks again in its place.
         val station = FakeStation()
@@ -108,7 +110,7 @@ class LookupRoutesTest {
             if (tries.incrementAndGet() == 1) weatherWords("Portland", null) else listOf("Weather for Portland: sunny.")
         }
         val failed = waitFor(station) { it.retry }
-        assertTrue(failed.paragraphs.single(), failed.paragraphs.single().startsWith("Couldn't look that up just now: this phone has no signal"))
+        assertTrue(failed.paragraphs.single(), failed.paragraphs.single().startsWith("Couldn't look that up just now (this phone has no signal)"))
         station.retryAnswer(failed.id)
         val again = waitFor(station) { !it.retry && it.playLabel.isNotEmpty() }
         assertEquals(listOf("Weather for Portland: sunny."), again.paragraphs)

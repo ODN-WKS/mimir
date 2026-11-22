@@ -121,7 +121,7 @@ class MainActivity : FragmentActivity() {
                 confirmed = null
                 // Backing out is the owner's choice; anything else is said, never silent.
                 if (errorCode != BiometricPrompt.ERROR_USER_CANCELED && errorCode != BiometricPrompt.ERROR_NEGATIVE_BUTTON && errorCode != BiometricPrompt.ERROR_CANCELED)
-                    android.widget.Toast.makeText(this@MainActivity, "Couldn't confirm it's you: $errString", android.widget.Toast.LENGTH_LONG).show()
+                    android.widget.Toast.makeText(this@MainActivity, "Couldn't confirm it's you. Try again.", android.widget.Toast.LENGTH_LONG).show()
             }
         })
         // Lock Mímir: decided before the first frame, so no chat flashes before the lock appears.

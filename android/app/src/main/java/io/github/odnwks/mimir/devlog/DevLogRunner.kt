@@ -148,6 +148,7 @@ object DevLogRunner {
         handlerSet = true
         val before = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { t, e ->
+            // lint:log-only
             runCatching { log?.writeNow("CRASH in thread ${t.name}:\n" + android.util.Log.getStackTraceString(e)) }
             runCatching { log?.flush() }
             before?.uncaughtException(t, e)

@@ -389,6 +389,6 @@ fun FileChip(file: io.github.odnwks.mimir.standalone.TurnFile, onRemove: (() -> 
 /** Why a picked file wasn't added, in plain words. */
 fun attachProblem(p: io.github.odnwks.mimir.standalone.Attach.Problem): String = when (p) {
     io.github.odnwks.mimir.standalone.Attach.Problem.Picture -> "Pictures go through Photo or video in the + menu, not File."
-    io.github.odnwks.mimir.standalone.Attach.Problem.NotText -> "$AI_NAME can read only text files for now (notes, lists, code), so it wasn't added."
-    io.github.odnwks.mimir.standalone.Attach.Problem.Unreadable -> "That file couldn't be opened."
+    io.github.odnwks.mimir.standalone.Attach.Problem.NotText -> "$AI_NAME can read only text files for now (notes, lists, code), so it wasn't added. Pick a text file instead."
+    io.github.odnwks.mimir.standalone.Attach.Problem.Unreadable -> "That file couldn't be opened. Pick it again, or try another file."
 }

@@ -181,7 +181,7 @@ class FastLookupTest {
         assertTrue("took $took ms", took < Net.BUDGET_MS + 500)
         assertTrue(e.toString(), e is Net.Failed)
         val said = Net.sorry(e!!)
-        assertEquals("Couldn't look that up just now: the site couldn't be reached.", said)
+        assertEquals("Couldn't look that up just now (the site is out of reach just now). Try again, or answer without looking it up.", said)
     }
 
     @Test fun aPlaceIsFoundFromOpenStreetMapWhenOpenMeteosPlaceSearchHangs() {

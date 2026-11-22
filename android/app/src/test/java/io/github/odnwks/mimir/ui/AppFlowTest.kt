@@ -632,6 +632,19 @@ class AppFlowTest {
         compose.onNodeWithContentDescription("Reply to this task").assertIsDisplayed()
     }
 
+    /** N1: a problem card with one action: the button does what it says, then the card goes. */
+    @Test fun aProblemCardsButtonDoesItsActionAndTheCardGoes() {
+        var ran = 0
+        station.set { s -> s.copy(chat = s.chat + io.github.odnwks.mimir.data.ChatEntry.Note("n-y", "That message can't be read aloud just now. Try again.", problem = true, action = io.github.odnwks.mimir.data.NoteAction("Do it again") { ran++ })) }
+        start()
+        compose.onNodeWithText("That message can't be read aloud just now. Try again.").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Dismiss").assertExists()
+        compose.onNodeWithText("Do it again").performScrollTo().performClick()
+        compose.waitForIdle()
+        assertEquals(1, ran)
+        assertTrue(station.state.value.chat.none { it.id == "n-y" })
+    }
+
     /** QA B2: a "That didn't work" note can be dismissed, and goes. */
     @Test fun aProblemNoteHasOkAndGoes() {
         station.set { s -> s.copy(chat = s.chat + io.github.odnwks.mimir.data.ChatEntry.Note("n-x", "Your answer wasn't used.", problem = true)) }
@@ -716,7 +729,7 @@ class AppFlowTest {
     @Test fun everyScreenSaysThePcIsAsleepInTheSameWords() {
         val asleep = FakeStation(io.github.odnwks.mimir.data.ExampleData.asleep())
         val line = asleep.state.value.connectionLine
-        assertEquals("Your PC isn't reachable", line)
+        assertEquals("Your PC is out of reach", line)
         compose.setContent { MimirTheme { AppRoot(asleep, nav) } }
         for (go in listOf<Navigator.() -> Unit>(
             { selectTab(Tab.Chat) }, { selectTab(Tab.Status) }, { selectTab(Tab.Updates) },

@@ -391,7 +391,7 @@ pub(crate) fn open_engine(root: &Path) -> Result<*mut c_void, String> {
         // SAFETY: dlopen with a full path inside Mímir's own folder.
         let h = unsafe { libc::dlopen(c.as_ptr(), flags) };
         if h.is_null() {
-            Err("The speech engine could not be loaded.".into())
+            Err("The speech engine could not be loaded. Restart Mímir, or download the voice again in Settings.".into())
         } else {
             Ok(h)
         }
@@ -446,7 +446,10 @@ fn load(root: &Path) -> Result<Engine, String> {
     // SAFETY: a valid config; the strings live until create returns.
     let tts = unsafe { create(cfg) };
     if tts.is_null() {
-        return Err("The voice could not be started.".into());
+        return Err(
+            "The voice could not be started. Restart Mímir, or pick another voice in Settings."
+                .into(),
+        );
     }
     Ok(Engine {
         tts,

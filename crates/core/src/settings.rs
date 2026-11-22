@@ -299,6 +299,9 @@ pub struct Defaults {
     pub effort: Option<String>,
 }
 
+/// Said when the settings file is damaged: `load` sets it aside and starts fresh.
+const SETTINGS_UNREADABLE: &str = "Your settings couldn't be read. Restart Mímir: it sets the damaged file aside and starts fresh (your tasks are safe).";
+
 impl Settings {
     fn path() -> PathBuf {
         settings_path()
@@ -314,9 +317,15 @@ impl Settings {
                     s.migrate_engines(&serde_json::from_slice(&bytes).unwrap_or_default());
                     s
                 })
-                .map_err(|e| format!("{} can't be read: {e}", path.display())),
+                .map_err(|e| {
+                    eprintln!("mimir: {} can't be read: {e}", path.display());
+                    SETTINGS_UNREADABLE.to_string()
+                }),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Self::default()),
-            Err(e) => Err(format!("{} can't be read: {e}", path.display())),
+            Err(e) => {
+                eprintln!("mimir: {} can't be read: {e}", path.display());
+                Err(SETTINGS_UNREADABLE.to_string())
+            }
         }
     }
 

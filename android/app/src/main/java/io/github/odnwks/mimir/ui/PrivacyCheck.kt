@@ -161,7 +161,7 @@ fun PrivacyCheckScreen(state: StationState, nav: Navigator) {
                 style = Type.Label.copy(lineHeight = Type.Label.fontSize * 1.45f), color = Palette.TextSoft,
             )
             EndWhispersOnLeave()
-            if (!u.counted) Panel { Text("This phone doesn't report how much an app sends, so it can't be shown here.".forDevice(), style = Type.Label, color = Palette.TextSoft) }
+            if (!u.counted) Panel { Text("This phone doesn't report how much an app sends, so the numbers aren't shown. Check Android's own data usage screen instead.".forDevice(), style = Type.Label, color = Palette.TextSoft) }
             else {
                 val date = { ms: Long -> java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.MEDIUM, java.text.DateFormat.SHORT).format(java.util.Date(ms)) }
                 val same = u.resetAt == 0L || u.sinceReset == u.sinceInstall

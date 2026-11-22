@@ -528,7 +528,13 @@ impl Runner {
                     self.fail(i, "Project work would not take the message.");
                 }
             }
-            Err(e) => self.fail(i, &format!("Project work could not start: {e}")),
+            Err(e) => {
+                eprintln!("mimir: project work could not start: {e}");
+                self.fail(
+                    i,
+                    "Project work didn't start. Try again in a moment; if it keeps happening, restart Mímir.",
+                )
+            }
         }
         self.save_dirty();
     }

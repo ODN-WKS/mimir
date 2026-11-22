@@ -56,7 +56,9 @@ class BreakFixesTest {
         val old = """[{"id":"n2","kind":"note","text":"That answer doesn't fit this item.","problem":true}]"""
         assertTrue(ChatLog.read(old).first.isEmpty())
         // A refused answer is said in plain words.
-        assertEquals("Your answer wasn't used: that question has moved on (it may have been answered on the PC).",
+        assertEquals("Your answer wasn't used: that question has moved on (it may have been answered on the PC). Look at Needs you for what's open.",
             answerProblem("That answer doesn't fit this item."))
+        // Anything else is never pasted in: a plain line with what to do.
+        assertEquals("Your answer wasn't used. Open the question again and answer once more.", answerProblem("socket 7 closed"))
     }
 }
