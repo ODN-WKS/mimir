@@ -23,7 +23,7 @@ cleanup() {
 trap cleanup EXIT
 cp android/local.properties "$clone/android/" 2>/dev/null || true
 echo "PC: release build of $(git -C "$clone" log --oneline -1)"
-(cd "$clone" && CARGO_TARGET_DIR="/tmp/mimir-build/headcheck-$name" tools/cargo.sh build -q --release -p mimir-ui --bin mimir)
+(cd "$clone" && CARGO_TARGET_DIR=/tmp/mimir-build/target tools/cargo.sh build -q --release -p mimir-ui --bin mimir)
 echo "PC: built"
 echo "Phone: dev debug build"
 distrobox enter dev -- bash -lc "cd '$clone/android' && export ANDROID_HOME=\$HOME/Android/Sdk && ./gradlew -q -g \$HOME/.cache/mimir/android-build --max-workers=8 assembleDevDebug; s=\$?; out=\$(readlink -f app/build)/..; touch \"\$out/.headcheck-$name\" 2>/dev/null; exit \$s"
