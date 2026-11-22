@@ -779,7 +779,11 @@ class Engine(
         val s0 = _state.value
         val c = s0.chat
         val pos = c.turns.indexOfFirst { it.id == turnId && it.user }
-        if (t.isEmpty() || pos < 0 || s0.writing || !canEdit(c, pos) || !canSend()) return null
+        if (t.isEmpty() || pos < 0 || s0.writing || !canEdit(c, pos)) return null
+        if (!canSend()) {
+            if (s0.testing == null) _state.update { it.copy(problem = "Nothing can answer right now, so this can't be edited yet. Try again when your PC is back.") }
+            return null
+        }
         val removed = c.turns.drop(pos)
         val orig = removed[0]
         val answerId = "${orig.id}.a"
@@ -836,6 +840,9 @@ class Engine(
     }
 
     /** Whether [send] would take a message now; a model test running is told to the owner. */
+    /** True when something could answer a message right now (used to hide Edit when it would go nowhere). */
+    fun canReplyNow(): Boolean = _state.value.let { !it.writing && (it.ready || pcAnswers() || onlineAnswers()) }
+
     private fun canSend(): Boolean {
         val s = _state.value
         if (s.writing || !(s.ready || pcAnswers() || onlineAnswers())) return false

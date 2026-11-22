@@ -133,8 +133,11 @@ fun PhoneChat(
     val send = { text: String ->
         if (pcWhisper) pcWhisperGo(text)
         else if (!waiting && (text.isNotBlank() || files.isNotEmpty() || pictures.isNotEmpty())) {
+            // Pictures the answerer can't see stay in the box with a note; they are never dropped quietly.
+            val held = picturesHeldNote(sight, pictures.size)
+            if (held != null) attachNote = held
             // The box clears only when the message was taken; refused, it stays to try again.
-            if (engine.ask(text, files.toList(), if (sight == Sight.Sees) pictures.toList() else emptyList())) { draft = ""; files.clear(); pictures.clear(); markChatted() }
+            else if (engine.ask(text, files.toList(), pictures.toList())) { draft = ""; files.clear(); pictures.clear(); markChatted() }
         }
     }
     val scope = androidx.compose.runtime.rememberCoroutineScope()
@@ -409,7 +412,7 @@ fun PhoneChat(
                     turn.text.ifBlank { (turn.files.map { it.name } + listOfNotNull(turn.pictures.size.takeIf { it > 0 }?.let { if (it == 1) "A picture" else "$it pictures" })).joinToString() },
                     m, bubble = if (s.whisper) WhisperTint.Bubble else Palette.BlueBubble,
                     id = turn.id.ifEmpty { "mine-${turn.text.hashCode()}" },
-                    onEdit = if (!s.writing && turn.text.isNotBlank() && engine.canEdit(s.chat, i)) ({ words -> engine.editMessage(turn.id, words)?.let { edited = it } }) else null,
+                    onEdit = if (!s.writing && turn.text.isNotBlank() && engine.canEdit(s.chat, i) && engine.canReplyNow()) ({ words -> engine.editMessage(turn.id, words)?.let { edited = it } }) else null,
                     under = readLinkFor(s, engine, turn, i).let { read ->
                         if (turn.pictures.isNotEmpty() || (turn.files.isNotEmpty() && turn.text.isNotBlank()) || turn.files.any { it.note.isNotEmpty() } || read != null) ({
                             turn.pictures.forEach { PictureChip(it) }
@@ -688,3 +691,9 @@ internal fun AttachNote(words: String, fix: Pair<String, () -> Unit>?, onDismiss
         }
     }
 }
+
+
+/** The note shown when pictures are in the box but the answerer can't look at them now; null when they can go. */
+internal fun picturesHeldNote(sight: Sight, count: Int): String? =
+    if (count == 0 || sight == Sight.Sees) null
+    else "Your pictures are kept here. The answerer can't look at pictures right now. Remove them to send just the words, or try again in a moment."

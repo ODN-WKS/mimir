@@ -234,4 +234,19 @@ class EditMessageTest {
         assertEquals("Name one vegetable", engine.state.value.chat.turns[0].text)
         assertTrue("the box is empty after Send", typed().isNullOrEmpty())
     }
+
+    @Test fun editWithNothingToAnswerSaysWhyAndChangesNothing() {
+        engine = testEngine(tmp.newFolder(), ready = false, turns = three())
+        assertFalse(engine.canReplyNow())
+        assertNull(engine.editMessage("m1", "Changed"))
+        assertTrue(engine.state.value.problem.orEmpty().contains("can't be edited yet"))
+        assertEquals("First question", engine.state.value.chat.turns[0].text)
+    }
+
+    @Test fun picturesStayWithANoteWhenTheAnswererCannotSeeThem() {
+        assertNull(picturesHeldNote(Sight.Sees, 2))
+        assertNull(picturesHeldNote(Sight.PcCannot, 0))
+        assertTrue(picturesHeldNote(Sight.PcCannot, 1).orEmpty().contains("kept here"))
+        assertTrue(picturesHeldNote(Sight.Cannot, 1) != null)
+    }
 }
