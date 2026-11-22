@@ -6,6 +6,14 @@
 //!   {"t": 0.0, "in": "..."}     wait for one input line from the window
 //!   {"t": 5.1, "signal": "INT"} wait for SIGINT (Stop / Pause)
 //!   {"t": 9.0, "exit": 0}       exit with this code (null = by signal)
+//!   {"t": 3.0, "spawn": ["sleep", "3"]}
+//!                               start a program of its own (a new
+//!                               session, as Claude Code's background
+//!                               commands run) and carry on; its process id
+//!                               is appended to FAKE_CLAUDE_CHILDREN
+//!   {"t": 3.5, "wait_children": true}
+//!                               stay alive (Stop's interrupt is ignored)
+//!                               until everything it spawned has ended
 //!   {"t": 2.0, "hook": {...}, "expect": "allow"}
 //!                               run the PermissionRequest hook from
 //!                               --settings with this input; exit 4 if its
@@ -180,6 +188,7 @@ fn main() {
     let mut out = std::io::stdout().lock();
     let mut last_t = 0.0;
     let mut printed: u64 = 0;
+    let mut children: Vec<std::process::Child> = vec![];
     let mut i = 0;
     while i < entries.len() {
         let e = &entries[i];
@@ -264,6 +273,38 @@ fn main() {
             if !expect.is_empty() && got != expect {
                 eprintln!("fake-claude: hook answered {got}, recording expects {expect}");
                 std::process::exit(4);
+            }
+        } else if let Some(cmd) = e.get("spawn").and_then(Value::as_array) {
+            let words: Vec<&str> = cmd.iter().filter_map(Value::as_str).collect();
+            if let Some((prog, rest)) = words.split_first() {
+                use std::os::unix::process::CommandExt;
+                let mut c = Command::new(prog);
+                c.args(rest).stdin(Stdio::null()).stdout(Stdio::null());
+                // SAFETY: setsid in the child before exec, nothing else.
+                unsafe {
+                    c.pre_exec(|| {
+                        libc::setsid();
+                        Ok(())
+                    });
+                }
+                if let Ok(child) = c.spawn() {
+                    if let Some(log) = std::env::var_os("FAKE_CLAUDE_CHILDREN") {
+                        let mut f = std::fs::OpenOptions::new()
+                            .create(true)
+                            .append(true)
+                            .open(log)
+                            .expect("children log");
+                        writeln!(f, "{}", child.id()).unwrap();
+                    }
+                    children.push(child);
+                }
+            }
+        } else if e.get("wait_children").is_some() {
+            while children
+                .iter_mut()
+                .any(|c| matches!(c.try_wait(), Ok(None)))
+            {
+                std::thread::sleep(Duration::from_millis(20));
             }
         } else if let Some(code) = e.get("exit") {
             std::process::exit(code.as_i64().map(|c| c as i32).unwrap_or(130));

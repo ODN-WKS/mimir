@@ -711,7 +711,7 @@ impl Service {
                 || !self.outside.is_empty()
                 || !self.summary_pending.is_empty()
                 || self.runner.tasks.iter().any(|l| {
-                    l.busy() || matches!(l.task.status, Status::Working | Status::NeedsYou)
+                    l.running() || matches!(l.task.status, Status::Working | Status::NeedsYou)
                 });
         if busy { TICK } else { IDLE_WAIT }
     }

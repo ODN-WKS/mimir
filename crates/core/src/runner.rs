@@ -38,6 +38,13 @@ pub struct Live {
     sent: u32,
     finished: u32,
     pub(crate) dirty: bool,
+    /// Its turn ended but Claude Code is still alive with something it
+    /// started (a command run in the background): still working.
+    background: bool,
+    /// What Claude Code already had running when it started (helpers of
+    /// its own): not the task's work.
+    baseline: Vec<u32>,
+    bg_checked: Option<Instant>,
 }
 
 impl Live {
@@ -47,7 +54,8 @@ impl Live {
 
     /// Claude is working on this task right now (not just finishing up).
     pub fn busy(&self) -> bool {
-        self.session.is_some() && matches!(self.task.status, Status::Working | Status::NeedsYou)
+        self.session.is_some()
+            && (self.background || matches!(self.task.status, Status::Working | Status::NeedsYou))
     }
 
     /// Claude works on it right now, here or in a session followed from
@@ -108,6 +116,13 @@ pub struct Runner {
 }
 
 /// How long a stopped task's Claude Code has to leave after the interrupt.
+/// How often an idle task's Claude Code is looked at for work it left
+/// running (a read of a few `/proc` files).
+const BACKGROUND_LOOK: std::time::Duration = std::time::Duration::from_millis(200);
+
+/// Said once in the task when its turn ended with work still going.
+const BACKGROUND_NOTE: &str = "Still running something it started in the background.";
+
 const STOP_GRACE: std::time::Duration = std::time::Duration::from_secs(5);
 
 const HOST_LOST: &str =
@@ -148,6 +163,7 @@ impl Runner {
                             sent: 0,
                             finished: 0,
                             dirty,
+                            background: false, baseline: Vec::new(), bg_checked: None,
                         });
                         continue;
                     }
@@ -176,6 +192,7 @@ impl Runner {
                 sent: 0,
                 finished: 0,
                 dirty,
+                background: false, baseline: Vec::new(), bg_checked: None,
             });
         }
         let weekly = tasks.iter().rev().find_map(|l| l.task.weekly.clone());
@@ -350,6 +367,7 @@ impl Runner {
             sent: 0,
             finished: 0,
             dirty: true,
+            background: false, baseline: Vec::new(), bg_checked: None,
         });
     }
 
@@ -732,8 +750,14 @@ impl Runner {
         }
         l.task.add_note(note);
         l.dirty = true;
+        let had_background = std::mem::take(&mut l.background);
         if let Some(s) = &mut l.session {
-            s.interrupt();
+            if had_background {
+                // Nothing of a turn is left to wind down: end it all now.
+                s.kill_tree();
+            } else {
+                s.interrupt();
+            }
             self.kill_after.retain(|(t, _)| t != id);
             self.kill_after
                 .push((id.to_string(), Instant::now() + STOP_GRACE));
@@ -1257,6 +1281,7 @@ impl Runner {
             sent: 0,
             finished: 0,
             dirty: true,
+            background: false, baseline: Vec::new(), bg_checked: None,
         });
         self.save_dirty();
         Ok(id)
@@ -1549,6 +1574,7 @@ impl Runner {
             sent: 0,
             finished: 0,
             dirty: false,
+            background: false, baseline: Vec::new(), bg_checked: None,
         });
         self.send_with(&id, text, &[]);
         Ok(id)
@@ -1657,6 +1683,7 @@ impl Runner {
                                 });
                             }
                             if let Event::Init(init) = e {
+                                l.baseline = s.descendants();
                                 self.slash_commands = init.slash_commands.clone();
                                 self.mcp_servers = init.mcp_servers.clone();
                             }
@@ -1720,6 +1747,29 @@ impl Runner {
             if l.finished >= l.sent && l.sent > 0 {
                 s.close_input();
             }
+            // The turn ended but Claude Code stays up for what it started
+            // in the background: the task is still working, and says so.
+            let idle = !exited
+                && l.finished >= l.sent
+                && l.sent > 0
+                && l.asks.is_empty()
+                && !matches!(
+                    l.task.status,
+                    Status::Working | Status::NeedsYou | Status::Paused | Status::Stopped
+                );
+            if !idle {
+                l.background = false;
+            } else if l.bg_checked.is_none_or(|at| at.elapsed() >= BACKGROUND_LOOK) {
+                l.bg_checked = Some(Instant::now());
+                let now_bg = s.descendants().iter().any(|p| !l.baseline.contains(p));
+                if now_bg != l.background {
+                    l.background = now_bg;
+                    if now_bg {
+                        l.task.add_note(BACKGROUND_NOTE);
+                    }
+                    l.dirty = true;
+                }
+            }
             // A question may arrive before the step it is about; the
             // owner's answer is still needed either way.
             match (l.asks.is_empty(), l.task.status) {
@@ -1730,6 +1780,7 @@ impl Runner {
             if exited {
                 let ended_early = l.finished < l.sent;
                 l.session = None;
+                l.background = false;
                 l.task.host = None;
                 if ended_early && matches!(l.task.status, Status::Working | Status::NeedsYou) {
                     l.task.status = Status::Stopped;

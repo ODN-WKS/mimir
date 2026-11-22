@@ -596,6 +596,12 @@ impl Session {
         }
     }
 
+    /// Everything Claude Code started that still runs (its children, their
+    /// children and so on), whatever session or group they moved to.
+    pub fn descendants(&self) -> Vec<u32> {
+        descendants(self.pid())
+    }
+
     /// Ends the current turn the documented way (SIGINT). Claude Code
     /// writes a final result and exits; the task continues with `--resume`.
     pub fn interrupt(&mut self) {
@@ -646,6 +652,19 @@ impl Session {
         }
     }
 
+    /// Ends Claude Code and everything it started, also what moved to a
+    /// group of its own (Claude Code's background commands do).
+    pub fn kill_tree(&mut self) {
+        let kids = self.descendants();
+        self.kill();
+        for pid in kids {
+            // SAFETY: plain kill(2); the id was a descendant a moment ago.
+            unsafe {
+                libc::kill(pid as libc::pid_t, libc::SIGKILL);
+            }
+        }
+    }
+
     /// Ends Claude Code and everything it started.
     pub fn kill(&mut self) {
         // Once it has exited and been reaped, its id may belong to
@@ -688,6 +707,30 @@ impl Session {
         let _ = child.kill();
         let _ = child.wait();
     }
+}
+
+/// The processes below `root` (children, their children, and so on),
+/// read from `/proc`. Empty when `root` is gone.
+pub fn descendants(root: u32) -> Vec<u32> {
+    let mut out = vec![];
+    let mut todo = vec![root];
+    while let Some(pid) = todo.pop() {
+        let Ok(tasks) = std::fs::read_dir(format!("/proc/{pid}/task")) else {
+            continue;
+        };
+        for t in tasks.flatten() {
+            let Ok(kids) = std::fs::read_to_string(t.path().join("children")) else {
+                continue;
+            };
+            for k in kids.split_whitespace().filter_map(|k| k.parse::<u32>().ok()) {
+                if !out.contains(&k) {
+                    out.push(k);
+                    todo.push(k);
+                }
+            }
+        }
+    }
+    out
 }
 
 impl Drop for Session {
