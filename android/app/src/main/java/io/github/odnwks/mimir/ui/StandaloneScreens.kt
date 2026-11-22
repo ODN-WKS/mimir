@@ -299,7 +299,7 @@ LazyColumn(
                 val before = s.chat.turns.getOrNull(i - 1)?.takeIf { it.user }
                 Reply(
                     turn.text, dim = false, sources = turn.sources, note = turn.switchNote, lookUp = lookUp.takeIf { i == s.chat.turns.lastIndex }, openSources = !s.whisper,
-                    onTryAgain = if (s.whisper || i != s.chat.turns.lastIndex) null else before?.let { q -> { askAgain(q) } },
+                    onTryAgain = if (s.whisper || i != s.chat.turns.lastIndex || s.lookupFailed) null else before?.let { q -> { askAgain(q) } },
                 )
             }
         }

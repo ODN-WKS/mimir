@@ -137,9 +137,9 @@ class AppFlowTest {
         start()
         nav.open(Screen.Settings)
         nav.open(Screen.PhonePc)
-        // Another phone pairs from the PC's code: this phone only explains how.
-        compose.onNodeWithText("Pair another phone").performClick()
-        compose.onNodeWithText("Pair a phone", substring = true).assertIsDisplayed()
+        // Pairing starts at the PC: this phone offers no way to pair another.
+        compose.onNodeWithText("Pair another phone").assertDoesNotExist()
+        compose.onNodeWithText("New phones are paired from Mímir on the PC.").assertIsDisplayed()
         assertEquals(Screen.PhonePc, nav.current)
         nav.open(Screen.Pair)
         compose.onNodeWithText(CONNECT_TYPE_INSTEAD).performClick()

@@ -429,7 +429,7 @@ fun PhoneChat(
                     val before = s.chat.turns.getOrNull(i - 1)?.takeIf { it.user }
                     Reply(
                         turn.text, dim = false, sources = turn.sources, note = turn.switchNote, lookUp = lookUp.takeIf { i == s.chat.turns.lastIndex }, openSources = !s.whisper,
-                        onTryAgain = if (s.writing || s.whisper || i != s.chat.turns.lastIndex) null else before?.let { { engine.tryAgain() } },
+                        onTryAgain = if (s.writing || s.whisper || i != s.chat.turns.lastIndex || s.lookupFailed) null else before?.let { { engine.tryAgain() } },
                     )
                 }
             }
@@ -468,12 +468,7 @@ fun PhoneChat(
             enter = androidx.compose.animation.expandVertically(motionSpec(Motion.NEEDS_YOU_BAR_MS)) + androidx.compose.animation.fadeIn(motionSpec(Motion.NEEDS_YOU_BAR_MS)),
             exit = androidx.compose.animation.shrinkVertically(motionSpec(Motion.NEEDS_YOU_BAR_MS)) + androidx.compose.animation.fadeOut(motionSpec(Motion.NEEDS_YOU_BAR_MS)),
         ) {
-            Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 12.dp, top = 4.dp).semantics { liveRegion = androidx.compose.ui.semantics.LiveRegionMode.Polite },
-                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(noteShown[0], style = Type.Small, color = Palette.AmberText, modifier = Modifier.weight(1f))
-                attachFix?.let { (label, run) -> SmallButton(label, { run() }) }
-                LinkText("Dismiss", { attachNote = null; attachFix = null })
-            }
+            AttachNote(noteShown[0], attachFix) { attachNote = null; attachFix = null }
         }
         // While the chat is in a project (its last card's task isn't done), a follow-up goes there; ✕ leaves it.
         val card = s.chat.projectCard?.takeIf { !s.whisper && it.task?.let(task)?.stateWords != "Done" }
@@ -675,3 +670,21 @@ const val QUEUED_WORDS = "Sends when your PC is back"
 /** Said when the camera won't open (with "Try again") or isn't allowed (with "Open settings"). */
 private const val CAMERA_FAILED = "The camera couldn't be opened. Close other apps that use it, then try again."
 private const val CAMERA_REFUSED = "The camera isn't allowed for this app. Allow it in Android settings, or pick a photo instead."
+
+/** The line under the chat when a photo, the camera or a file can't be used: the words fill the width, the buttons wrap under them when they don't fit beside each other. */
+@Composable
+internal fun AttachNote(words: String, fix: Pair<String, () -> Unit>?, onDismiss: () -> Unit) {
+    Column(
+        Modifier.fillMaxWidth().padding(start = 20.dp, end = 12.dp, top = 4.dp).semantics { liveRegion = androidx.compose.ui.semantics.LiveRegionMode.Polite },
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Text(words, style = Type.Small, color = Palette.AmberText, modifier = Modifier.fillMaxWidth())
+        androidx.compose.foundation.layout.FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp),
+            itemVerticalAlignment = Alignment.CenterVertically,
+        ) {
+            fix?.let { (label, run) -> SmallButton(label, { run() }) }
+            LinkText("Dismiss", onDismiss)
+        }
+    }
+}

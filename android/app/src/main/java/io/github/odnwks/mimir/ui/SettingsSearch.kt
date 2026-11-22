@@ -30,7 +30,7 @@ val FINDABLE = listOf(
     Findable("Looking things up", "Privacy", listOf("weather", "internet", "online", "look up", "lookup", "lookups", "web", "search the web", "duckduckgo", "encyclopedia", "wikipedia", "grokipedia", "location", "place", "city", "forecast", "hidden route", "offline"), Screen.PrivacyCheck),
     Findable("Notifications", "Settings", listOf("alerts", "battery", "every 5 minutes", "notify", "notifications", "instant alerts"), Screen.Notifications, pairedOnly = true),
     Findable("Look and size", "Settings", listOf("text size", "bigger text", "bigger", "smaller", "zoom", "font", "size", "dark", "light", "colors", "colours", "theme", "startup animation", "startup", "eye", "animation", "opens", "intro"), Screen.General),
-    Findable("Your PC", "Settings", listOf("pair", "pair another phone", "pc", "computer", "connect", "connection", "link", "code", "relay", "unpair", "disconnect", "phones", "name", "from anywhere"), Screen.PhonePc, pairedOnly = true),
+    Findable("Your PC", "Settings", listOf("pair", "pc", "computer", "connect", "connection", "link", "code", "relay", "unpair", "disconnect", "phones", "name", "from anywhere"), Screen.PhonePc, pairedOnly = true),
     Findable("Connect your PC", "Your PC", listOf("pair", "pc", "computer", "connect", "link", "code"), Screen.Pair),
     Findable("Storage", "Settings", listOf("space", "delete chats", "delete all chats", "delete all", "storage", "memory", "chats", "free up space"), Screen.Storage),
     Findable("Help and about", "Settings", listOf("help", "how", "questions", "away from home", "what is a whisper", "needs you"), Screen.Help),

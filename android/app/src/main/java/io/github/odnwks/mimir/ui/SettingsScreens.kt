@@ -137,7 +137,7 @@ fun SettingsScreen(state: StationState, nav: Navigator) {
 const val SETTINGS_VOICE_LINE = "Ingrid, speed, talk to type"
 const val SETTINGS_WHO_LINE = "This phone, your PC, online"
 const val SETTINGS_NOTIFICATIONS_LINE = "Battery saver or every 5 minutes, instant alerts"
-const val SETTINGS_PC_LINE = "Connection, pair another phone"
+const val SETTINGS_PC_LINE = "Connection, phones that can reach it"
 const val SETTINGS_LOOK_LINE = "Text size, startup animation"
 const val SETTINGS_STORAGE_LINE = "What's kept on this phone, delete chats"
 const val SETTINGS_HELP_LINE = "Questions, app updates, Labs"
@@ -155,7 +155,7 @@ fun SettingsFooter(version: String) {
     }
 }
 
-/** Settings › Your PC: the connection, how to pair another phone, the phones that can reach it, its name, and Disconnect this phone. */
+/** Settings › Your PC: the connection, the phones that can reach it, its name, and Disconnect this phone. */
 @Composable
 fun PhonePcScreen(state: StationState, station: Station, nav: Navigator) {
     val standIn = LocalStandIn.current
@@ -175,14 +175,8 @@ fun PhonePcScreen(state: StationState, station: Station, nav: Navigator) {
                 Spacer(Modifier.size(2.dp))
                 LineButton("What it's doing now") { nav.selectTab(Tab.Status) }
             }
-            // Another phone pairs from the PC's code; this phone can only explain how.
-            Panel(spacing = 4.dp) {
-                SectionTitle("Pair another phone")
-                Text(
-                    "On your PC: $AI_NAME › Settings › Phones › Pair a phone. Then, on the other phone, install this app and scan the code it shows.",
-                    style = Type.Small, color = Palette.TextSoft,
-                )
-            }
+            // Pairing starts at the PC only: this phone offers no way to pair another.
+            Text("New phones are paired from $AI_NAME on the PC.", style = Type.Small, color = Palette.TextSoft, modifier = Modifier.padding(horizontal = 4.dp))
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 SectionTitle("Phones that can reach it", Modifier.padding(horizontal = 4.dp))
                 state.phones.forEach { ph ->
