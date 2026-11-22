@@ -123,7 +123,7 @@ pub fn known(base: &str, model: &str) -> Option<bool> {
 pub fn is_sight_error(text: &str) -> bool {
     let t = text.to_lowercase();
     if [
-        "timed out",
+        "timed",
         "timeout",
         "deadline",
         "memory",
