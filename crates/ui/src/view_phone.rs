@@ -587,7 +587,10 @@ mod pair_failure_tests {
 
     #[test]
     fn a_stalled_service_keeps_the_card_and_a_refusal_closes_it() {
-        assert_eq!(pair_failure("Mímir's service didn't answer."), (false, true));
+        assert_eq!(
+            pair_failure("Mímir's service didn't answer."),
+            (false, true)
+        );
         assert_eq!(pair_failure("Mímir's service stopped."), (false, true));
         assert_eq!(pair_failure("No pairing waits."), (true, false));
     }
