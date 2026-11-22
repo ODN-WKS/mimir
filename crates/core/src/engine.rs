@@ -613,9 +613,57 @@ pub fn words(e: Option<&EngineFile>) -> String {
     }
 }
 
-/// The model chats use now, if any.
+/// The model chats use now, if any. With no test result yet (a new PC, or
+/// the PC was busy), the first chat still gets an answer: the smallest
+/// chat model already on the PC, until the test picks a better one.
 pub fn chat_model() -> Option<Pick> {
-    load()?.chat
+    let saved = load().and_then(|e| e.chat);
+    if saved.is_some() {
+        return saved;
+    }
+    let installed = crate::models::installed().ok()?;
+    default_pick(&read_hardware(), &installed, &backend_from_log())
+}
+
+/// The stand-in pick while no test result exists: of the chat models on
+/// the PC that fit it, the smallest; else the smallest chat model on the
+/// PC at all (it may be slow, but it answers).
+pub fn default_pick(hw: &Hardware, installed: &[String], backend: &str) -> Option<Pick> {
+    let on_disk = |m: &StorePick| installed.iter().any(|d| d == m.name);
+    let fitting = candidates(hw, Role::Chat)
+        .into_iter()
+        .filter(|(m, _)| on_disk(m))
+        .min_by_key(|(m, _)| m.bytes);
+    let (m, f) = match fitting {
+        Some(x) => x,
+        None => {
+            let m = STORE
+                .iter()
+                .filter(|m| m.role == Role::Chat && m.uncensored && on_disk(m))
+                .min_by_key(|m| m.bytes)?;
+            (m, Fit::Processor)
+        }
+    };
+    Some(Pick {
+        model: m.name.to_string(),
+        title: m.title.to_string(),
+        fit: f,
+        tokens_per_s: 0.0,
+        first_token_ms: 0,
+        cold_ms: 0,
+        backend: backend.to_string(),
+    })
+}
+
+/// How long a busy PC may keep the model test waiting before it runs anyway.
+const PROBE_PATIENCE: Duration = Duration::from_secs(5 * 60);
+
+/// When the test first found the PC busy (this run of Mímir).
+static BUSY_SINCE: std::sync::Mutex<Option<Instant>> = std::sync::Mutex::new(None);
+
+/// Whether a PC that was busy since `since` has waited long enough.
+pub fn waited_enough(since: Instant, now: Instant) -> bool {
+    now.saturating_duration_since(since) >= PROBE_PATIENCE
 }
 
 /// Keeps the pick current: when the probe is needed and the PC is calm,
@@ -654,11 +702,40 @@ pub fn keep_fresh(keep: Vec<String>) -> bool {
     if !needs_probe(have.as_ref(), &print, &on_disk) {
         return false;
     }
+    let mut low = false;
     if !calm(&hw, Duration::from_secs(30)) {
-        crate::log::write("engine", "probe waits", "the PC is busy");
-        return false;
+        let since = *BUSY_SINCE
+            .lock()
+            .unwrap()
+            .get_or_insert_with(Instant::now);
+        if !waited_enough(since, Instant::now()) {
+            crate::log::write("engine", "probe waits", "the PC is busy");
+            return false;
+        }
+        crate::log::write(
+            "engine",
+            "probe runs anyway",
+            "the PC stayed busy for 5 minutes; testing at low priority",
+        );
+        low = true;
     }
-    let e = run(&hw, &real_hands(keep), &backend);
+    *BUSY_SINCE.lock().unwrap() = None;
+    let e = if low {
+        // Its own thread, so the lower priority goes away with it.
+        std::thread::scope(|s| {
+            s.spawn(|| {
+                // SAFETY: setpriority on the calling thread only.
+                unsafe {
+                    libc::setpriority(libc::PRIO_PROCESS, 0, 15);
+                }
+                run(&hw, &real_hands(keep), &backend)
+            })
+            .join()
+            .expect("the model test thread")
+        })
+    } else {
+        run(&hw, &real_hands(keep), &backend)
+    };
     save(&e);
     crate::log::write("engine", "picked", &words(Some(&e)));
     true
@@ -867,6 +944,44 @@ mod tests {
             "Vulkan"
         );
         assert_eq!(backend_in("nothing"), "");
+    }
+
+    #[test]
+    fn a_fresh_pc_answers_its_first_chat_without_a_probe_result() {
+        let hw = Hardware {
+            gpu: Some(Gpu {
+                vendor: "AMD".into(),
+                vram: 17 * GB,
+            }),
+            ram: 64 * GB,
+            threads: 32,
+            disk_free: Some(500 * GB),
+        };
+        // Nothing installed: nothing to answer with.
+        assert!(default_pick(&hw, &[], "").is_none());
+        // Two chat models installed, no test result: the smallest answers.
+        let (c, _) = candidates(&hw, Role::Chat).remove(0);
+        let all: Vec<String> = candidates(&hw, Role::Chat)
+            .iter()
+            .map(|(m, _)| m.name.to_string())
+            .collect();
+        let small = candidates(&hw, Role::Chat)
+            .into_iter()
+            .min_by_key(|(m, _)| m.bytes)
+            .unwrap()
+            .0;
+        let p = default_pick(&hw, &all, "ROCm").expect("a model answers");
+        assert_eq!(p.model, small.name);
+        assert_eq!(p.backend, "ROCm");
+        let only = default_pick(&hw, &[c.name.to_string()], "").unwrap();
+        assert_eq!(only.model, c.name);
+    }
+
+    #[test]
+    fn a_busy_pc_makes_the_test_wait_five_minutes_at_most() {
+        let t = Instant::now();
+        assert!(!waited_enough(t, t + Duration::from_secs(299)));
+        assert!(waited_enough(t, t + Duration::from_secs(300)));
     }
 
     #[test]
