@@ -296,7 +296,7 @@ fun TaskScreen(taskId: String, state: StationState, station: Station, nav: Navig
                         label = "Reply to this task", voice = voice, micLabel = "Talk (voice typing): speak a reply",
                         onSend = { station.reply(task.id, draft.trim()); draft = "" },
                         // While Claude works, an empty box's button is Stop.
-                        working = task.stateWords == "Working" || task.stateWords == "Starting" || task.permission != null || task.question != null,
+                        working = task.showsStop,
                         onStop = { cutOff = task.steps.lastOrNull()?.startsWith("…") == true; station.stopTask(task.id) },
                         modifier = Modifier.windowInsetsPadding(WindowInsets.navigationBars.union(WindowInsets.ime))
                             .padding(start = 12.dp, end = 12.dp, top = 10.dp, bottom = 16.dp),

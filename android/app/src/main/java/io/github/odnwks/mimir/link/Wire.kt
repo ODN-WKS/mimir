@@ -425,6 +425,7 @@ object Wire {
             project = h.getString("project"),
             status = h.optString("status", "Done"),
             busy = h.optBoolean("busy"),
+            running = h.optBoolean("running"),
             model = if (h.isNull("model")) null else h.optString("model"),
             createdUnix = h.optLong("created_unix"),
             asks = (0 until asks.length()).map { i ->
@@ -708,6 +709,8 @@ data class LinkTask(
     val activeUnix: Long = 0,
     /** Its conversation is going on outside Mímir right now (a terminal, the Claude app). */
     val liveElsewhere: Boolean = false,
+    /** A Claude Code process of the task runs on the PC: something there can be stopped. */
+    val running: Boolean = false,
 )
 
 /** A permission request waiting: the tool and what it would do. */

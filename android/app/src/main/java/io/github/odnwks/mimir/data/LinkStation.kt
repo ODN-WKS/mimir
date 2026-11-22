@@ -1514,6 +1514,7 @@ class LinkStation(
                 ?: if (liveAt[t.id]?.let { System.currentTimeMillis() - it < 4_000L } == true) "Answering…"
                 else Mapping.taskWords(t, asks = perm != null || question != null, connected = connected),
             busy = said?.let { it.state == "Working" } ?: (Mapping.working(t) && connected),
+            running = t.running && connected,
             createdUnix = t.createdUnix,
             activeUnix = t.activeUnix,
             liveElsewhere = t.liveElsewhere,

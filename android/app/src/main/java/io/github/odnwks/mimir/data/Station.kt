@@ -380,6 +380,8 @@ data class Task(
     /** "Working", "Paused", "Done", "Stopped" or "Needs you". */
     val status: String = "",
     val busy: Boolean = false,
+    /** Something of the task runs on the PC right now (a Claude Code process is alive). */
+    val running: Boolean = true,
     /** When it was started (for the tasks list, newest first). */
     val createdUnix: Long = 0,
     /** When its conversation last changed, wherever it went on (0: not known). */
@@ -416,6 +418,16 @@ data class Task(
         // Its turn ended, but Claude is asking or proposing what comes next: not finished.
         endsWaiting(messages.lastOrNull()?.takeIf { it.fromClaude }?.text) -> "Waiting for you"
         else -> "Done"
+    }
+    /**
+     * Stop shows only while something of the task runs on the PC: it works (also on something it
+     * started in the background), or a question or permission prompt is held by a live session.
+     * A question nobody is waiting on any more has nothing to stop.
+     */
+    val showsStop: Boolean get() = when (stateWords) {
+        "Working", "Starting" -> true
+        "Needs you" -> running || permission != null
+        else -> false
     }
     /** The line under a task's title: what is happening now, in a sentence. */
     val stateLine: String get() = when (stateWords) {
