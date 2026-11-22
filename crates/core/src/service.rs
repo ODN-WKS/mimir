@@ -211,9 +211,9 @@ impl Client {
     }
 }
 
-/// Said when a picture is sent to a PC model that can't look at pictures.
-const NO_SIGHT: &str =
-    "Your PC's model can't look at pictures. Choose one that can in Settings › Models.";
+/// Said when a picture is sent and no PC model (and no Online answer) can
+/// look at it.
+const NO_SIGHT_PC: &str = "None of the models on your PC can look at pictures right now, so this one wasn't read. Try again without the picture.";
 
 /// A `Call::Talk`'s parts.
 struct TalkArgs {
@@ -1882,13 +1882,19 @@ impl Service {
                     "project_engine": if project_free { "free" } else { "claude" },
                     "chats_model": chats_model.unwrap_or("auto"),
                     "online_allowed": self.may_go_online(&who),
-                    // Whether what answers this person's chats can look at
-                    // pictures (feature "chat_pictures"): Claude can; the
-                    // free model only when it has sight.
-                    "sees_pictures": (chats_paid && self.may_go_online(&who))
-                        || crate::engine::chat_model().is_some_and(|p| {
-                            crate::ollama::sees_pictures(&crate::models::ollama_url(), &p.model)
-                        }),
+                    // Whether a picture can be answered for this person
+                    // (feature "chat_pictures"): Online where they may use it,
+                    // else any model on the PC that has sight (a picture
+                    // goes to one that can look).
+                    "sees_pictures": self.may_go_online(&who) || {
+                        let base = crate::models::ollama_url();
+                        crate::engine::chat_model()
+                            .is_some_and(|p| crate::ollama::sees_pictures(&base, &p.model))
+                            || crate::models::installed()
+                                .unwrap_or_default()
+                                .iter()
+                                .any(|m| crate::ollama::sees_pictures(&base, m))
+                    },
                     // The Claude models chats can use (feature "chat_model").
                     "chat_models": crate::talk::CLAUDE_CHOICES
                         .iter()
@@ -3792,6 +3798,7 @@ impl Service {
             version: 1,
             seq: 0,
             gone: false,
+            switch_note: None,
             pictures: vec![],
             files: vec![],
         };
@@ -3898,15 +3905,24 @@ impl Service {
         (turns, notes, pics)
     }
 
+    /// Which PC model looks at a picture (the usual one when it can), and
+    /// whether Online may take it when none can.
+    fn seeing(&self, usual: Option<&str>, online: bool) -> (crate::sight::Choice, bool) {
+        let base = crate::models::ollama_url();
+        let installed = crate::models::installed().unwrap_or_default();
+        (crate::sight::choose(&base, usual, &installed), online)
+    }
+
     /// Queues a chat answer on the chat engine.
     fn talk_answer(&mut self, a: TalkArgs) -> Filed {
-        let pick = crate::engine::chat_model();
+        let mut pick = crate::engine::chat_model();
+        let usual = pick.clone();
         let owner = a.person == crate::people::OWNER;
         // Online answers (the owner's plan): the owner's choice for the
         // owner; for anyone else their own choice, and only while the
         // owner allows it for them.
         let prefs = self.people_book.get(&a.person);
-        let paid = if owner {
+        let mut paid = if owner {
             self.settings.chats_paid()
         } else {
             prefs.chats_paid() && self.may_go_online(&a.person)
@@ -3947,7 +3963,7 @@ impl Service {
         let system = crate::talk::system(rules.as_deref(), a.lookup.as_deref());
         let (think, max_tokens) = crate::talk::effort(a.effort.as_deref());
         let answer = crate::talk::answer_id(&a.turn_id);
-        let (ran, model_words) = if paid {
+        let (mut ran, mut model_words) = if paid {
             (mimir_proto::Ran::Paid, "Online · paid".to_string())
         } else {
             let title = pick.as_ref().map(|p| p.title.as_str()).unwrap_or("");
@@ -3960,13 +3976,6 @@ impl Service {
                 ),
             )
         };
-        // A model that isn't loaded yet takes a few seconds to wake.
-        let cold = !paid
-            && pick.as_ref().is_some_and(|p| {
-                !crate::ollama::loaded(&crate::models::ollama_url())
-                    .iter()
-                    .any(|(n, _, _)| *n == p.model)
-            });
         // Pictures: the new message's (kept with the chat), and those of
         // the user message before it, read back from the chat's own place.
         let user_ids: Vec<String> = a
@@ -3994,11 +4003,15 @@ impl Service {
             .turns
             .iter()
             .any(|t| t.id == a.turn_id && !t.files.is_empty());
+        let mut sight: Option<(crate::sight::Choice, bool)> = None;
         let sees = has_files
-            && (paid
-                || pick.as_ref().is_some_and(|p| {
-                    crate::ollama::sees_pictures(&crate::models::ollama_url(), &p.model)
-                }));
+            && (paid || {
+                let online = self.may_go_online(&a.person);
+                let c = self.seeing(usual.as_ref().map(|p| p.model.as_str()), online);
+                let any = c.0.model.is_some() || c.1;
+                sight = Some(c);
+                any
+            });
         let (turns, files_read, scan_pics) = self.file_words(&a, paid, sees);
         let mut new_pics = new_pics;
         for p in scan_pics {
@@ -4017,16 +4030,86 @@ impl Service {
         if pictures.iter().all(|p| p.is_empty()) {
             pictures.clear();
         }
-        if !pictures.is_empty()
-            && !paid
-            && !pick.as_ref().is_some_and(|p| {
-                crate::ollama::sees_pictures(&crate::models::ollama_url(), &p.model)
-            })
-        {
-            return Filed::OnPhone {
-                why: NO_SIGHT.into(),
+        // Pictures to a model that can't see: another PC model that does,
+        // else Online (where this person may), else plain words.
+        let mut switch_note = None;
+        let mut backups: Vec<crate::talk::Backup> = vec![];
+        let online_ok = self.may_go_online(&a.person);
+        let paid_job = |model: Option<String>, this: &Self| crate::talk::Paid {
+            model,
+            program: this.claude.clone(),
+            dir: crate::paths::data_dir().join("talk-paid"),
+        };
+        if !pictures.is_empty() && !paid {
+            let (c, online) = sight.take().unwrap_or_else(|| {
+                self.seeing(usual.as_ref().map(|p| p.model.as_str()), online_ok)
+            });
+            let usual_name = usual.as_ref().map(|p| p.model.as_str());
+            let reason = "your usual model can't look at pictures";
+            let pc = shown_pc_name(&self.settings);
+            let pc_words = |m: &str| format!("{} · {pc}", crate::models::plain_name(m));
+            let note_for = |m: &str| {
+                format!(
+                    "Answered by {} because {reason}.",
+                    crate::models::plain_name(m)
+                )
             };
+            match c.model {
+                Some(m) => {
+                    if Some(m.as_str()) != usual_name {
+                        switch_note = Some(note_for(&m));
+                        model_words = pc_words(&m);
+                        pick = Some(crate::engine::Pick {
+                            model: m.clone(),
+                            title: crate::models::plain_name(&m),
+                            ..usual.clone().unwrap_or_else(|| crate::engine::Pick {
+                                model: m.clone(),
+                                title: String::new(),
+                                fit: crate::engine::Fit::Card,
+                                tokens_per_s: 0.0,
+                                first_token_ms: 0,
+                                cold_ms: 0,
+                                backend: String::new(),
+                            })
+                        });
+                    }
+                    for n in &c.next {
+                        backups.push(crate::talk::Backup {
+                            model: n.clone(),
+                            model_words: pc_words(n),
+                            note: note_for(n),
+                            paid: None,
+                        });
+                    }
+                    if online {
+                        backups.push(crate::talk::Backup {
+                            model: String::new(),
+                            model_words: "Online · paid".into(),
+                            note: format!("Answered online because {reason}."),
+                            paid: Some(paid_job(claude_model.clone(), self)),
+                        });
+                    }
+                }
+                None if online => {
+                    paid = true;
+                    ran = mimir_proto::Ran::Paid;
+                    model_words = "Online · paid".into();
+                    switch_note = Some(format!("Answered online because {reason}."));
+                }
+                None => {
+                    return Filed::OnPhone {
+                        why: NO_SIGHT_PC.into(),
+                    };
+                }
+            }
         }
+        // A model that isn't loaded yet takes a few seconds to wake.
+        let cold = !paid
+            && pick.as_ref().is_some_and(|p| {
+                !crate::ollama::loaded(&crate::models::ollama_url())
+                    .iter()
+                    .any(|(n, _, _)| *n == p.model)
+            });
         let job = crate::talk::Job {
             person: a.person.clone(),
             chat_id: a.chat_id.clone(),
@@ -4038,12 +4121,10 @@ impl Service {
             max_tokens,
             context: crate::engine::CHAT_CONTEXT,
             sources: a.sources.clone(),
-            paid: paid.then(|| crate::talk::Paid {
-                model: claude_model,
-                program: self.claude.clone(),
-                dir: crate::paths::data_dir().join("talk-paid"),
-            }),
+            paid: paid.then(|| paid_job(claude_model.clone(), self)),
             pictures,
+            switch_note,
+            backups,
         };
         // A chat counts as using the chat model, so nothing treats it as
         // unused.

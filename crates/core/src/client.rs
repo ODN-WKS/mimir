@@ -1072,6 +1072,7 @@ impl Station {
             version: 1,
             seq: 0,
             gone: false,
+            switch_note: None,
             pictures,
             files: vec![],
         };
@@ -1268,6 +1269,7 @@ impl Station {
                 version: t.version + 1,
                 seq: 0,
                 gone: true,
+                switch_note: None,
                 pictures: vec![],
                 files: vec![],
             });
@@ -1287,6 +1289,7 @@ impl Station {
                 version: 2,
                 seq: 0,
                 gone: true,
+                switch_note: None,
                 pictures: vec![],
                 files: vec![],
             });
@@ -1987,6 +1990,7 @@ mod tests {
             version: 1,
             seq: 0,
             gone: false,
+            switch_note: None,
             pictures: vec![],
             files: vec![],
         }

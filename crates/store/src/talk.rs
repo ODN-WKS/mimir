@@ -790,6 +790,7 @@ mod tests {
             version,
             seq: 0,
             gone: false,
+            switch_note: None,
             pictures: vec![],
             files: vec![],
         }

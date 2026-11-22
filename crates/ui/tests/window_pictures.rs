@@ -11,7 +11,6 @@ use egui_kittest::kittest::Queryable;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpListener;
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
 
 fn home() -> Option<TestHome> {
     let home = TestHome::new()?;
@@ -175,7 +174,9 @@ fn a_pasted_picture_is_shown_small_removable_sent_shrunk_and_shown_in_the_messag
 }
 
 #[test]
-fn a_model_that_cannot_look_says_so_instead_of_taking_the_picture() {
+fn a_picture_is_taken_even_when_the_usual_model_cannot_look() {
+    // N3: the owner can go online, so a picture is never turned away; it
+    // goes to a model (or Online) that can look, and the answer says so.
     let Some(home) = home() else { return };
     let _asked = fake_ollama(false);
     picked(&home);
@@ -183,15 +184,11 @@ fn a_model_that_cannot_look_says_so_instead_of_taking_the_picture() {
     click(&mut h, station_ui::labels::NEW_CHAT);
     h.event(egui::Event::PasteImage(Arc::new(big_green())));
     assert!(
-        wait_for(&mut h, |h| shows(h, station_ui::chat_pics::CANT_SEE)),
-        "no plain line\n{}",
+        wait_for(&mut h, |h| has_role(h, Role::Image, "Attached picture")),
+        "the picture was turned away\n{}",
         screen_text(&h)
     );
-    assert!(!has_role(&h, Role::Image, "Attached picture"));
-    // The attach button explains too, and opens no picker.
-    click(&mut h, station_ui::labels::ATTACH_FILES);
-    assert!(shows(&h, station_ui::chat_pics::CANT_SEE));
-    std::thread::sleep(Duration::from_millis(10));
+    assert!(!shows(&h, station_ui::chat_pics::CANT_SEE));
     close(h);
 }
 

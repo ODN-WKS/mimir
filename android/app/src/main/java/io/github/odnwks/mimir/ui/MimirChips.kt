@@ -262,7 +262,7 @@ private fun Chip(text: String?, label: String, icon: androidx.compose.ui.graphic
 }
 
 /** What the attach menu says when the PC answers and its model can't look at pictures. */
-const val PC_CANNOT_SEE = "Your PC's model can't look at pictures. Choose one that can in Settings › Models."
+const val PC_CANNOT_SEE = "None of your PC's models can look at pictures right now. Send words only."
 
 /** Whether the model answering can see pictures. */
 sealed interface Sight {

@@ -38,6 +38,7 @@ fn turn(id: &str, user: bool, text: &str) -> ChatTurn {
         version: 1,
         seq: 0,
         gone: false,
+        switch_note: None,
         pictures: vec![],
         files: vec![],
     }

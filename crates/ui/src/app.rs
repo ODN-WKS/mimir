@@ -1706,6 +1706,7 @@ impl eframe::App for App {
                 version: 1,
                 seq: 0,
                 gone: false,
+                switch_note: None,
                 pictures: vec![],
                 files: vec![],
             };

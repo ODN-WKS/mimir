@@ -44,6 +44,7 @@ pub mod service;
 pub mod sessions;
 pub mod settings;
 pub mod setup;
+pub mod sight;
 pub mod snapshot;
 pub mod sockets;
 pub mod speech_text;

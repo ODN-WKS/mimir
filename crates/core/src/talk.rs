@@ -67,6 +67,21 @@ pub struct Job {
     /// `[1]` with the one before it (at most two, as the brief keeps it
     /// simple). Empty: none.
     pub pictures: Vec<Vec<Picture>>,
+    /// The short plain note shown under the answer when a different model
+    /// than the usual one answers.
+    pub switch_note: Option<String>,
+    /// Who tries next when this model fails on a picture (once each).
+    pub backups: Vec<Backup>,
+}
+
+/// Another way to answer a picture message when the first one fails.
+#[derive(Debug, Clone)]
+pub struct Backup {
+    /// The PC model (empty with `paid`).
+    pub model: String,
+    pub model_words: String,
+    pub note: String,
+    pub paid: Option<Paid>,
 }
 
 /// How a chat reaches Claude: one Claude Code turn with every tool,
@@ -375,6 +390,7 @@ impl Talk {
                     Err(why) => Err(why),
                 },
             };
+            let result = self.retry_on_blind(&job, result);
             let mut s = self.lock();
             let stopped = s.stopped.contains(&job.answer_id);
             s.stopped.retain(|i| i != &job.answer_id);
@@ -437,6 +453,73 @@ impl Talk {
         }
     }
 
+    /// A picture answer that failed on a PC model (a model or graphics card
+    /// error, nothing written yet): that model can't see here. The same
+    /// message goes once to each backup, in order; the last failure stands.
+    fn retry_on_blind(
+        &self,
+        job: &Job,
+        result: Result<(ChatTurn, Option<f32>), String>,
+    ) -> Result<(ChatTurn, Option<f32>), String> {
+        let base = (self.base)();
+        let pictures = job.pictures.iter().any(|p| !p.is_empty());
+        let failed = |r: &Result<(ChatTurn, Option<f32>), String>, j: &Job| {
+            matches!(r, Err(why) if why != "Stopped.")
+                && ollama::get_at(&base, "/api/version").is_ok()
+                && !self.lock().stopped.contains(&j.answer_id)
+                && self
+                    .lock()
+                    .current
+                    .as_ref()
+                    .is_none_or(|c| c.1.trim().is_empty())
+        };
+        if !pictures || job.paid.is_some() || job.model.is_empty() || !failed(&result, job) {
+            if let Ok(_) = &result
+                && pictures
+                && job.paid.is_none()
+                && !job.model.is_empty()
+            {
+                crate::sight::mark_sees(&base, &job.model);
+            }
+            return result;
+        }
+        crate::log::write(
+            "talk",
+            "a model failed on a picture",
+            result.as_ref().err().map(String::as_str).unwrap_or(""),
+        );
+        crate::sight::mark_blind(&base, &job.model);
+        let mut result = result;
+        for b in &job.backups {
+            let mut next = job.clone();
+            next.model = b.model.clone();
+            next.model_words = b.model_words.clone();
+            next.switch_note = Some(b.note.clone());
+            next.paid = b.paid.clone();
+            next.backups = vec![];
+            if let Some(c) = &mut self.lock().current {
+                c.1.clear();
+            }
+            result = match &b.paid {
+                Some(p) => self.answer_paid(&next, p).map(|t| (t, None)),
+                None => self.answer(&next),
+            };
+            if result.is_ok() {
+                if b.paid.is_none() {
+                    crate::sight::mark_sees(&base, &b.model);
+                }
+                break;
+            }
+            if !failed(&result, &next) {
+                break;
+            }
+            if b.paid.is_none() {
+                crate::sight::mark_blind(&base, &b.model);
+            }
+        }
+        result
+    }
+
     fn turn(&self, job: &Job, text: &str) -> ChatTurn {
         ChatTurn {
             id: job.answer_id.clone(),
@@ -453,6 +536,7 @@ impl Talk {
             version: 1,
             seq: 0,
             gone: false,
+            switch_note: job.switch_note.clone(),
             pictures: vec![],
             files: vec![],
         }
@@ -1021,6 +1105,8 @@ mod tests {
             sources: vec![],
             paid: None,
             pictures: vec![],
+            switch_note: None,
+            backups: vec![],
         }
     }
 
@@ -1060,6 +1146,93 @@ mod tests {
             media_type: "image/jpeg".into(),
             base64: data.into(),
         }
+    }
+
+    /// A fake Ollama: model "blind" fails every picture with a graphics card
+    /// error, model "eyes" answers; versions and vision claims are listed.
+    fn two_models() -> (Talk, mpsc::Receiver<Out>, Arc<Mutex<Vec<String>>>) {
+        let asked = Arc::new(Mutex::new(vec![]));
+        let a2 = asked.clone();
+        let base = crate::ollama::fake::start(move |path, body| {
+            let v: serde_json::Value = serde_json::from_str(body).unwrap_or_default();
+            let model = v["model"].as_str().unwrap_or("").to_string();
+            match path {
+                "/api/version" => vec![r#"{"version":"0.40.16"}"#.into()],
+                "/api/chat" => {
+                    a2.lock().unwrap().push(model.clone());
+                    if model == "tt-blind" {
+                        vec![r#"{"error":"ROCm error: invalid device function"}"#.into()]
+                    } else {
+                        vec![
+                            r#"{"message":{"content":"A red square."},"done":false}"#.into(),
+                            r#"{"message":{"content":""},"done":true}"#.into(),
+                        ]
+                    }
+                }
+                _ => vec![],
+            }
+        });
+        let (tx, rx) = mpsc::channel();
+        let tx = Mutex::new(tx);
+        let t = Talk::start_at(Arc::new(move || base.clone()), move |o| {
+            let _ = tx.lock().unwrap().send(o);
+        });
+        (t, rx, asked)
+    }
+
+    fn backup_eyes() -> Backup {
+        Backup {
+            model: "tt-eyes".into(),
+            model_words: "Eyes · Your PC".into(),
+            note: "Answered by Eyes because your usual model can't look at pictures.".into(),
+            paid: None,
+        }
+    }
+
+    #[test]
+    fn a_picture_that_fails_on_the_model_is_tried_once_on_the_next_one_with_a_note() {
+        let (t, rx, asked) = two_models();
+        let mut j = job("n1", "What is this?");
+        j.model = "tt-blind".into();
+        j.pictures = vec![vec![pic("PIC")]];
+        j.backups = vec![backup_eyes()];
+        t.submit(j).unwrap();
+        let (said, _, result) = until_done(&rx);
+        let turn = result.unwrap();
+        assert_eq!(said, "A red square.");
+        assert_eq!(
+            turn.switch_note.as_deref(),
+            Some("Answered by Eyes because your usual model can't look at pictures.")
+        );
+        assert_eq!(turn.model_words.as_deref(), Some("Eyes · Your PC"));
+        assert_eq!(*asked.lock().unwrap(), vec!["tt-blind", "tt-eyes"]);
+    }
+
+    #[test]
+    fn a_text_message_that_fails_is_not_retried_elsewhere() {
+        let (t, rx, asked) = two_models();
+        let mut j = job("n2", "Hello");
+        j.model = "tt-blind".into();
+        j.backups = vec![backup_eyes()];
+        t.submit(j).unwrap();
+        let (_, _, result) = until_done(&rx);
+        assert!(result.is_err());
+        assert_eq!(*asked.lock().unwrap(), vec!["tt-blind"]);
+    }
+
+    #[test]
+    fn when_every_model_fails_the_last_failure_stands_and_nobody_is_asked_twice() {
+        let (t, rx, asked) = two_models();
+        let mut j = job("n3", "What is this?");
+        j.model = "tt-blind".into();
+        j.pictures = vec![vec![pic("PIC")]];
+        let mut also = backup_eyes();
+        also.model = "tt-blind".into();
+        j.backups = vec![also];
+        t.submit(j).unwrap();
+        let (_, _, result) = until_done(&rx);
+        assert!(result.is_err());
+        assert_eq!(asked.lock().unwrap().len(), 2);
     }
 
     #[test]
@@ -1286,6 +1459,7 @@ mod tests {
                 version: 1,
                 seq: 0,
                 gone: false,
+                switch_note: None,
                 pictures: vec![],
                 files: vec![],
             });
@@ -1301,6 +1475,7 @@ mod tests {
             version: 1,
             seq: 0,
             gone: false,
+            switch_note: None,
             pictures: vec![],
             files: vec![],
         });

@@ -174,6 +174,15 @@ class WireTest {
         ran = "pc", modelWords = "Qwen 3.6 · Your PC", at = 1794000000000, version = 1, seq = 41,
     )
 
+    /** N3: the PC's note under an answer a different model wrote; an older PC sends none. */
+    @Test
+    fun the_switch_note_is_read_when_it_is_there_and_absent_when_not() {
+        val withNote = Wire.chatTurn(org.json.JSONObject(oslo.json().put("switch_note", "Answered by Qwen 3.5 because your usual model can't look at pictures.").toString()))
+        assertEquals("Answered by Qwen 3.5 because your usual model can't look at pictures.", withNote.switchNote)
+        assertEquals(null, Wire.chatTurn(org.json.JSONObject(oslo.json().toString())).switchNote)
+        assertEquals(false, oslo.json().has("switch_note"))
+    }
+
     /** Stage 1 (H1): the one chat, its history and the truth, as the PC sends them. */
     @Test
     fun the_phone_reads_the_pcs_chat_answers_history_and_truth() {

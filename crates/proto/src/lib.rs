@@ -408,6 +408,11 @@ pub struct ChatTurn {
     /// the chat's turns, with the person's chat) and never sends them back.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub files: Vec<SentFile>,
+    /// A short plain note under an answer that a different model than the
+    /// usual one wrote ("Answered by Qwen 3.5 because your usual model
+    /// can't look at pictures."). Older apps ignore it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub switch_note: Option<String>,
 }
 
 /// A general chat as the PC keeps it. In `ChatsSince` and `ChatChanged`,

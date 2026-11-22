@@ -22,7 +22,7 @@ object ChatSync {
     fun fromWire(t: LChatTurn): Turn = Turn(
         t.user, t.text,
         sources = t.sources.map { io.github.odnwks.mimir.online.Source(it.site, it.url, it.words, it.results, it.via) },
-        id = t.id, at = t.at, ran = t.ran, modelWords = t.modelWords, version = t.version, seq = t.seq,
+        id = t.id, at = t.at, ran = t.ran, modelWords = t.modelWords, version = t.version, seq = t.seq, switchNote = t.switchNote,
     )
 
     /** The PC's [r] (only its changed turns) merged into the phone's copy ([local]; null: a chat new to this phone). */

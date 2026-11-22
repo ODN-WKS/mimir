@@ -75,6 +75,7 @@ fn turn(id: &str, user: bool, text: &str, ran: Option<Ran>, version: u32, seq: u
         version,
         seq,
         gone: false,
+        switch_note: None,
         pictures: vec![],
         files: vec![],
     }
@@ -719,6 +720,7 @@ fn write_the_examples() {
                 // Cut away by an edit of an earlier message: a tombstone.
                 ChatTurn {
                     gone: true,
+                    switch_note: None,
                     pictures: vec![],
                     ..turn("t-0", true, "", None, 3, 0)
                 },

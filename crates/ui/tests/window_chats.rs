@@ -186,6 +186,7 @@ fn turn(id: &str, user: bool, text: &str, ran: Option<Ran>, words: Option<&str>)
         version: 1,
         seq: 0,
         gone: false,
+        switch_note: None,
         pictures: vec![],
         files: vec![],
     }

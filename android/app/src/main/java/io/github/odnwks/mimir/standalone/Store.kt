@@ -202,6 +202,7 @@ class Store(private val file: File, private val codec: Codec = KeystoreCodec()) 
             at = t.optLong("at"),
             ran = t.optString("ran").ifEmpty { null },
             modelWords = t.optString("model_words").ifEmpty { null },
+            switchNote = t.optString("switch_note").ifEmpty { null },
             version = t.optInt("version", 1),
             seq = t.optLong("seq"),
             task = t.optString("task").ifEmpty { null },
@@ -219,6 +220,7 @@ class Store(private val file: File, private val codec: Codec = KeystoreCodec()) 
             if (t.at != 0L) put("at", t.at)
             t.ran?.let { put("ran", it) }
             t.modelWords?.let { put("model_words", it) }
+            t.switchNote?.let { put("switch_note", it) }
             if (t.version != 1) put("version", t.version)
             if (t.seq != 0L) put("seq", t.seq)
             t.task?.let { put("task", it) }

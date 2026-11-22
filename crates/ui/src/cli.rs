@@ -196,6 +196,7 @@ fn chat(args: &[String], version: &str) -> i32 {
         version: 1,
         seq: 0,
         gone: false,
+        switch_note: None,
         pictures: vec![],
         files: vec![],
     };

@@ -17,7 +17,7 @@ const MAX_FILE: u64 = 40 * 1024 * 1024;
 
 /// Said when the answerer can't look at pictures.
 pub const CANT_SEE: &str =
-    "Your PC's model can't look at pictures. Choose one that can in Settings › Models.";
+    "None of your PC's models can look at pictures right now. Send words only.";
 /// Said when a file can't be read as a picture.
 pub const NOT_A_PICTURE: &str = "That isn't a picture Mímir can read. Try a photo or a screenshot.";
 /// Said when there are already four.

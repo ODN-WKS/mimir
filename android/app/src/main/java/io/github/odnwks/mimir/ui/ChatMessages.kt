@@ -188,6 +188,8 @@ fun Answer(
     lookUp: (() -> Unit)? = null,
     onTryAgain: (() -> Unit)? = null,
     pc: (() -> Unit)? = null,
+    /** Who answered and why, when it was not the usual model: one dim line (null: none). */
+    note: String? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -201,6 +203,7 @@ fun Answer(
         }
         if (!dim) {
             if (sources.isNotEmpty()) SourcesLine(sources, openSources)
+            if (!note.isNullOrBlank()) Text(note, style = Type.Small, color = Palette.TextDim, modifier = Modifier.testTag("switch-note"))
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), itemVerticalAlignment = Alignment.CenterVertically) {
                 ListenButton(id, plain, pc)
                 CopyButton(plain)

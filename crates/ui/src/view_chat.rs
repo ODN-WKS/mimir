@@ -843,6 +843,10 @@ impl App {
                                 ran_glyph(ui, t.ran);
                                 ui.label(RichText::new(ran_words(t)).color(MUTED).size(12.0));
                             });
+                            // A different model than the usual one answered: one dim line says so.
+                            if let Some(note) = t.switch_note.as_deref().filter(|n| !n.is_empty()) {
+                                ui.label(RichText::new(note).color(MUTED).size(12.0));
+                            }
                         }
                         ui.add_space(12.0);
                     }

@@ -88,6 +88,7 @@ object Wire {
         version = o.optInt("version", 1),
         seq = o.optLong("seq"),
         gone = o.optBoolean("gone", false),
+        switchNote = opt(o, "switch_note"),
     )
 
     private fun chatSource(o: JSONObject) = LChatSource(o.optString("site"), o.optString("url"), o.optString("words"), o.optBoolean("results"), o.optString("via"))
@@ -591,11 +592,14 @@ data class LChatTurn(
     val pictures: List<LPicture> = emptyList(),
     /** Files for the PC to read ("chat_files"): only in a Talk, never kept in the chat's turns. */
     val files: List<LFile> = emptyList(),
+    /** A short plain note when a different model than the usual one answered (older PCs never send it). */
+    val switchNote: String? = null,
 ) {
     fun json(): JSONObject = JSONObject().put("id", id).put("user", user).put("text", text)
         .put("sources", JSONArray(sources.map { it.json() })).put("ran", ran ?: JSONObject.NULL)
         .put("model_words", modelWords ?: JSONObject.NULL).put("at", at).put("version", version).put("seq", seq)
         .also { if (gone) it.put("gone", true) }
+        .also { if (switchNote != null) it.put("switch_note", switchNote) }
         .also { if (pictures.isNotEmpty()) it.put("pictures", JSONArray(pictures.map { p -> JSONObject().put("media_type", p.mediaType).put("base64", p.base64) })) }
         .also { if (files.isNotEmpty()) it.put("files", JSONArray(files.map { f -> JSONObject().put("name", f.name).put("media_type", f.mediaType).put("base64", f.base64) })) }
 }

@@ -376,6 +376,7 @@ fn user(id: &str, text: &str) -> ChatTurn {
         version: 1,
         seq: 0,
         gone: false,
+        switch_note: None,
         pictures: vec![],
         files: vec![],
     }
@@ -1111,8 +1112,13 @@ fn r30_pictures_reach_the_model_and_are_never_another_persons() {
         ],
     );
     let all = asked.lock().unwrap().clone();
-    let chats: Vec<&serde_json::Value> =
-        all.iter().filter(|v| v.get("messages").is_some()).collect();
+    let chats: Vec<&serde_json::Value> = all
+        .iter()
+        .filter(|v| v.get("messages").is_some())
+        // Not the one tiny picture each model is shown the first time
+        // (to learn whether it really sees).
+        .filter(|v| v["options"]["num_predict"] != 8)
+        .collect();
     assert_eq!(chats.len(), 3, "{all:?}");
     let images = |v: &serde_json::Value| -> Vec<String> {
         v["messages"]
@@ -1492,8 +1498,13 @@ fn d1_files_are_read_on_the_pc_and_are_never_another_persons() {
         vec![user("f1", "What is this about?"), user("f3", "Which plot?")],
     );
     let all = asked.lock().unwrap().clone();
-    let chats: Vec<&serde_json::Value> =
-        all.iter().filter(|v| v.get("messages").is_some()).collect();
+    let chats: Vec<&serde_json::Value> = all
+        .iter()
+        .filter(|v| v.get("messages").is_some())
+        // Not the one tiny picture each model is shown the first time
+        // (to learn whether it really sees).
+        .filter(|v| v["options"]["num_predict"] != 8)
+        .collect();
     assert_eq!(chats.len(), 3, "{all:?}");
     let said = |v: &serde_json::Value| -> String {
         v["messages"]
@@ -1525,4 +1536,209 @@ fn d1_files_are_read_on_the_pc_and_are_never_another_persons() {
             .all(|t| t.files.is_empty()),
         "a turn carried a file back to a phone"
     );
+}
+
+/// N3: a stand-in Ollama with several models. `sees` claim vision, `works`
+/// answer a picture (the others fail it with a graphics card error), and
+/// `installed` are the models it lists. Each model that answers is kept.
+fn switch_ollama(
+    sees: &'static [&'static str],
+    works: &'static [&'static str],
+    installed: &'static [&'static str],
+) -> Arc<Mutex<Vec<String>>> {
+    let asked = Arc::new(Mutex::new(vec![]));
+    let l = TcpListener::bind("127.0.0.1:0").unwrap();
+    set_env(
+        "MIMIR_OLLAMA",
+        format!("http://{}", l.local_addr().unwrap()),
+    );
+    let kept = asked.clone();
+    std::thread::spawn(move || {
+        for c in l.incoming().flatten() {
+            let kept = kept.clone();
+            std::thread::spawn(move || {
+                let mut r = BufReader::new(c.try_clone().unwrap());
+                let mut first = String::new();
+                r.read_line(&mut first).unwrap_or(0);
+                let path = first.split_whitespace().nth(1).unwrap_or("").to_string();
+                let mut len = 0;
+                loop {
+                    let mut l = String::new();
+                    if r.read_line(&mut l).unwrap_or(0) == 0 || l.trim().is_empty() {
+                        break;
+                    }
+                    if let Some(n) = l.to_ascii_lowercase().strip_prefix("content-length:") {
+                        len = n.trim().parse().unwrap_or(0);
+                    }
+                }
+                let mut body = vec![0; len];
+                let _ = r.read_exact(&mut body);
+                let v: serde_json::Value = serde_json::from_slice(&body).unwrap_or_default();
+                let model = v["model"].as_str().unwrap_or("").to_string();
+                let lines: Vec<String> = match path.as_str() {
+                    "/api/version" => vec![r#"{"version":"0.40.16"}"#.into()],
+                    "/api/ps" => vec![r#"{"models":[]}"#.into()],
+                    "/api/tags" => {
+                        let m: Vec<_> = installed
+                            .iter()
+                            .map(|n| serde_json::json!({"name": n}))
+                            .collect();
+                        vec![serde_json::json!({"models": m}).to_string()]
+                    }
+                    "/api/show" => {
+                        if sees.contains(&model.as_str()) {
+                            vec![r#"{"capabilities":["completion","vision"]}"#.into()]
+                        } else {
+                            vec![r#"{"capabilities":["completion"]}"#.into()]
+                        }
+                    }
+                    _ => {
+                        let pics = v["messages"]
+                            .as_array()
+                            .is_some_and(|m| m.iter().any(|x| x.get("images").is_some()));
+                        if pics && !works.contains(&model.as_str()) {
+                            vec![r#"{"error":"ROCm error: invalid device function"}"#.into()]
+                        } else {
+                            if v["options"]["num_predict"] != 8 {
+                                kept.lock().unwrap().push(model.clone());
+                            }
+                            vec![
+                                r#"{"message":{"content":"A cat."},"done":false}"#.into(),
+                                r#"{"message":{"content":""},"done":true}"#.into(),
+                            ]
+                        }
+                    }
+                };
+                let mut w = c;
+                let _ = w.write_all(
+                    b"HTTP/1.1 200 OK\r\nContent-Type: application/x-ndjson\r\nTransfer-Encoding: chunked\r\n\r\n",
+                );
+                for line in lines {
+                    let data = format!("{line}\n");
+                    let _ = w.write_all(format!("{:x}\r\n{data}\r\n", data.len()).as_bytes());
+                    let _ = w.flush();
+                }
+                let _ = w.write_all(b"0\r\n\r\n");
+            });
+        }
+    });
+    asked
+}
+
+const USUAL: &str = "huihui_ai/Qwen3.6-abliterated:35b-a3b";
+
+fn picture_talk(who: &mut Phone, id: &str) -> Filed {
+    let mut t = user(id, "What is this?");
+    t.pictures = vec![mimir_core::proto::Picture {
+        media_type: "image/jpeg".into(),
+        base64: "T1dORVJQSUM=".into(),
+    }];
+    serde_json::from_value(
+        who.call(Call::Talk {
+            chat_id: "c-sw".into(),
+            turn_id: id.into(),
+            turns: vec![t],
+            lookup: None,
+            sources: vec![],
+            effort: None,
+            ground_rules: None,
+            task: None,
+            chat_only: true,
+        })
+        .unwrap(),
+    )
+    .unwrap()
+}
+
+/// N3: the usual model says it sees but fails; another installed model that
+/// does see answers, and the answer says so.
+#[test]
+fn n3_a_picture_goes_to_a_model_that_can_see_and_the_answer_says_so() {
+    let Some(home) = home() else { return };
+    let asked = switch_ollama(
+        &[USUAL, "qwen3.5:9b"],
+        &["qwen3.5:9b"],
+        &[USUAL, "qwen3.5:9b"],
+    );
+    picked(&home);
+    let mut st = home.service();
+    let mut mine = paired_as(&mut st, None);
+    let f = picture_talk(&mut mine, "s1");
+    let Filed::Talk {
+        model_words, ran, ..
+    } = f
+    else {
+        panic!("not answered on the PC: {f:?}")
+    };
+    assert_eq!(ran, mimir_core::proto::Ran::Pc);
+    assert!(model_words.starts_with("Qwen 3.5 · "), "{model_words}");
+    assert!(mine.seen.until(&mine.p, |s| s.done.contains_key("s1.a")));
+    let t = mine.seen.done["s1.a"].clone().unwrap();
+    assert_eq!(t.text, "A cat.");
+    assert_eq!(
+        t.switch_note.as_deref(),
+        Some("Answered by Qwen 3.5 because your usual model can't look at pictures.")
+    );
+    assert_eq!(*asked.lock().unwrap(), vec!["qwen3.5:9b"]);
+    // The next picture is answered at once, no second test of the usual model.
+    let _ = picture_talk(&mut mine, "s2");
+    assert!(mine.seen.until(&mine.p, |s| s.done.contains_key("s2.a")));
+    assert_eq!(*asked.lock().unwrap(), vec!["qwen3.5:9b", "qwen3.5:9b"]);
+}
+
+/// N3: nothing on the PC sees, and this person may not go online: plain
+/// words, no pointing at Settings.
+#[test]
+fn n3_nobody_sees_and_no_online_gives_plain_words() {
+    let Some(home) = home() else { return };
+    let _ = switch_ollama(&[], &[], &[USUAL]);
+    picked(&home);
+    let mut st = home.service();
+    let mut ana = paired_as(&mut st, Some("Ana"));
+    let f = picture_talk(&mut ana, "n1");
+    let Filed::OnPhone { why } = f else {
+        panic!("a picture went to a model that can't see: {f:?}")
+    };
+    assert!(why.contains("can look at pictures"), "{why}");
+    assert!(!why.contains("Settings"), "{why}");
+}
+
+/// N3: nothing on the PC sees, and the owner may go online: Online answers,
+/// with a note.
+#[test]
+fn n3_nobody_sees_and_online_allowed_goes_online() {
+    let Some(home) = home() else { return };
+    let _ = switch_ollama(&[], &[], &[USUAL]);
+    picked(&home);
+    let mut st = home.service();
+    let mut mine = paired_as(&mut st, None);
+    let f = picture_talk(&mut mine, "o1");
+    assert!(
+        matches!(&f, Filed::Talk { ran: mimir_core::proto::Ran::Paid, model_words, .. } if model_words == "Online · paid"),
+        "{f:?}"
+    );
+}
+
+/// N3: a message with no picture is never switched.
+#[test]
+fn n3_a_text_message_stays_on_the_usual_model() {
+    let Some(home) = home() else { return };
+    let asked = switch_ollama(&[], &[], &[USUAL, "qwen3.5:9b"]);
+    picked(&home);
+    let mut st = home.service();
+    let mut mine = paired_as(&mut st, None);
+    let f = mine.talk("c-t", "x1", "Hello", true);
+    assert!(
+        matches!(&f, Filed::Talk { model_words, .. } if model_words.starts_with("Qwen 3.6")),
+        "{f:?}"
+    );
+    assert!(mine.seen.until(&mine.p, |s| s.done.contains_key("x1.a")));
+    assert!(
+        mine.seen.done["x1.a"]
+            .clone()
+            .unwrap()
+            .switch_note
+            .is_none()
+    );
+    assert_eq!(*asked.lock().unwrap(), vec![USUAL]);
 }

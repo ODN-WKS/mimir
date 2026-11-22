@@ -238,11 +238,14 @@ data class Turn(
     val project: String? = null,
     /** A recording kept while the PC was away (its file's name): turned into words when the PC is back (waiting messages only). */
     val voice: String? = null,
+    /** Under an answer a different model than the usual one wrote: one dim line saying who and why. */
+    val switchNote: String? = null,
 ) {
     /** As the PC keeps it: pictures and files reduced to words, as the phone's model reads them. */
     fun wire(pcSees: Boolean = false, withPictures: Boolean = false, withFiles: Boolean = false) = io.github.odnwks.mimir.link.LChatTurn(
         id, user, forModel(pcPictures = pcSees), sources.map { io.github.odnwks.mimir.link.LChatSource(it.site, it.url, it.words, it.results, it.via) },
         ran, modelWords, at, version, seq,
+        switchNote = switchNote,
         pictures = if (withPictures) pictures.map { io.github.odnwks.mimir.link.LPicture("image/jpeg", java.util.Base64.getEncoder().encodeToString(it.jpeg)) } else emptyList(),
         files = if (withFiles) files.mapNotNull { f -> f.bytes?.let { io.github.odnwks.mimir.link.LFile(f.name, f.mime, java.util.Base64.getEncoder().encodeToString(it)) } } else emptyList(),
     )

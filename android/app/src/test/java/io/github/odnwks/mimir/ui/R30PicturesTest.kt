@@ -77,7 +77,7 @@ class R30PicturesTest {
         pc.seesPictures = false
         show(engine(ready = true))
         compose.onNodeWithContentDescription("Attach").assertIsDisplayed().performClick()
-        compose.onNodeWithText("Your PC's model can't look at pictures. Choose one that can in Settings › Models.").assertIsDisplayed()
+        compose.onNodeWithText("None of your PC's models can look at pictures right now. Send words only.").assertIsDisplayed()
         compose.onNodeWithText("Photo or video").assertDoesNotExist()
         compose.onNodeWithText("Take a photo").assertDoesNotExist()
     }

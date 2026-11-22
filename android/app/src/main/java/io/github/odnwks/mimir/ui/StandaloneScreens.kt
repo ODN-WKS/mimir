@@ -298,7 +298,7 @@ LazyColumn(
             if (turn.user) OwnMessage(turn.text, m, under = readLink?.invoke(turn, i)) else Box(m) {
                 val before = s.chat.turns.getOrNull(i - 1)?.takeIf { it.user }
                 Reply(
-                    turn.text, dim = false, sources = turn.sources, lookUp = lookUp.takeIf { i == s.chat.turns.lastIndex }, openSources = !s.whisper,
+                    turn.text, dim = false, sources = turn.sources, note = turn.switchNote, lookUp = lookUp.takeIf { i == s.chat.turns.lastIndex }, openSources = !s.whisper,
                     onTryAgain = if (s.whisper || i != s.chat.turns.lastIndex) null else before?.let { q -> { askAgain(q) } },
                 )
             }
@@ -329,12 +329,14 @@ internal fun Reply(
     openSources: Boolean = true,
     /** "Try again": the question before this answer is asked again (null: not offered). */
     onTryAgain: (() -> Unit)? = null,
+    /** "Answered by … because …" when another model than the usual one wrote it. */
+    note: String? = null,
 ) {
     // Mímir's replies are read by the phone's own voice: nothing leaves the phone.
     val id = "mimir-${text.hashCode()}"
     // Listen and Copy get the words without the Markdown marks.
     val plain = androidx.compose.runtime.remember(text) { markdownPlain(text) }
-    Answer(plain, id, dim = dim, sources = sources, openSources = openSources, lookUp = lookUp, onTryAgain = onTryAgain) {
+    Answer(plain, id, dim = dim, sources = sources, openSources = openSources, lookUp = lookUp, onTryAgain = onTryAgain, note = note) {
         MarkdownText(text, style = ChatLook.MessageText, color = if (dim) Palette.TextDim else Palette.Text, linksOpen = openSources)
     }
 }

@@ -1949,7 +1949,7 @@ class Engine(
         fun fromPc(t: io.github.odnwks.mimir.link.LChatTurn) = Turn(
             false, Thought.split(t.text).second.trim(),
             sources = t.sources.map { io.github.odnwks.mimir.online.Source(it.site, it.url, it.words, it.results, it.via) },
-            id = t.id.ifEmpty { answerId }, at = t.at.takeIf { it > 0 } ?: now(), ran = t.ran ?: "pc", modelWords = t.modelWords, version = t.version, seq = t.seq,
+            id = t.id.ifEmpty { answerId }, at = t.at.takeIf { it > 0 } ?: now(), ran = t.ran ?: "pc", modelWords = t.modelWords, version = t.version, seq = t.seq, switchNote = t.switchNote,
         )
         try {
             while (true) {
