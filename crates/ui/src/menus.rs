@@ -200,6 +200,36 @@ pub fn clipboard_text(ctx: &egui::Context) -> Option<String> {
         .filter(|t| !t.is_empty())
 }
 
+/// A picture on the clipboard (a made-up one stands in while testing).
+pub fn clipboard_image(ctx: &egui::Context) -> Option<std::sync::Arc<egui::ColorImage>> {
+    if let Some(i) = ctx.data(|d| {
+        d.get_temp::<std::sync::Arc<egui::ColorImage>>(Id::unique("test-clipboard-image"))
+    }) {
+        return Some(i);
+    }
+    let img = arboard::Clipboard::new().ok()?.get_image().ok()?;
+    if img.width == 0 || img.height == 0 {
+        return None;
+    }
+    Some(std::sync::Arc::new(
+        egui::ColorImage::from_rgba_unmultiplied([img.width, img.height], &img.bytes),
+    ))
+}
+
+/// Hand a clipboard picture to the window, which attaches it the way
+/// Ctrl V does.
+fn paste_image(ctx: &egui::Context, img: std::sync::Arc<egui::ColorImage>) {
+    ctx.data_mut(|d| d.insert_temp(Id::unique("pending-paste-image"), img));
+    ctx.request_repaint();
+}
+
+/// A picture the menu's Paste handed over, if any (taken once).
+pub fn take_pasted_image(ctx: &egui::Context) -> Option<std::sync::Arc<egui::ColorImage>> {
+    ctx.data_mut(|d| {
+        d.remove_temp::<std::sync::Arc<egui::ColorImage>>(Id::unique("pending-paste-image"))
+    })
+}
+
 // ---------------------------------------------------------------------
 // The typing box
 // ---------------------------------------------------------------------
@@ -330,10 +360,12 @@ pub fn edit_menu(edit: &Response, slot: &str) {
         let range = egui::TextEdit::load_state(&ctx, id).and_then(|s| s.cursor.char_range());
         let selected = range.is_some_and(|r| r.primary != r.secondary);
         let clip = clipboard_text(&ctx);
+        let pic = clipboard_image(&ctx);
         ctx.data_mut(|d| {
             d.insert_temp(slot.with("range"), range);
             d.insert_temp(sel_id, selected);
             d.insert_temp(clip_id, clip);
+            d.insert_temp(slot.with("menu-pic"), pic);
         });
     }
     open(edit, |ui| {
@@ -345,8 +377,15 @@ pub fn edit_menu(edit: &Response, slot: &str) {
         if item_if(ui, selected, "Copy", "Ctrl C") {
             queue(&ctx, slot, Edit::Copy);
         }
-        if item_if(ui, clip.is_some(), "Paste", "Ctrl V") {
-            queue(&ctx, slot, Edit::Paste(clip.clone().unwrap_or_default()));
+        let pic: Option<std::sync::Arc<egui::ColorImage>> = ui
+            .data(|d| d.get_temp::<Option<std::sync::Arc<egui::ColorImage>>>(slot.with("menu-pic")))
+            .flatten();
+        if item_if(ui, clip.is_some() || pic.is_some(), "Paste", "Ctrl V") {
+            match (&clip, pic) {
+                (Some(t), _) => queue(&ctx, slot, Edit::Paste(t.clone())),
+                (None, Some(img)) => paste_image(&ctx, img),
+                (None, None) => {}
+            }
         }
         if item_if(ui, clip.is_some(), "Paste as plain text", "") {
             // Words only: no formatting marks, and one kind of line end.
@@ -603,7 +642,11 @@ pub fn empty_space(ui: &egui::Ui, area: &Response, actions: &mut Vec<Action>) {
     let clip_id = area.id.with("menu-clip");
     if area.container_secondary_clicked() && !claimed(&ctx) {
         let clip = clipboard_text(&ctx);
-        ctx.data_mut(|d| d.insert_temp(clip_id, clip));
+        let pic = clipboard_image(&ctx);
+        ctx.data_mut(|d| {
+            d.insert_temp(clip_id, clip);
+            d.insert_temp(clip_id.with("pic"), pic);
+        });
     }
     open_area(area, false, |ui| {
         let clip: Option<String> = ui.data(|d| d.get_temp::<Option<String>>(clip_id)).flatten();
@@ -617,8 +660,20 @@ pub fn empty_space(ui: &egui::Ui, area: &Response, actions: &mut Vec<Action>) {
             ctx.memory_mut(|m| m.request_focus(crate::view_left::search_id()));
         }
         sep(ui);
-        if item_if(ui, clip.is_some(), "Paste into the message box", "") {
-            actions.push(Action::Insert(clip.clone().unwrap_or_default()));
+        let pic: Option<std::sync::Arc<egui::ColorImage>> = ui
+            .data(|d| d.get_temp::<Option<std::sync::Arc<egui::ColorImage>>>(clip_id.with("pic")))
+            .flatten();
+        if item_if(
+            ui,
+            clip.is_some() || pic.is_some(),
+            "Paste into the message box",
+            "",
+        ) {
+            match (&clip, pic) {
+                (Some(t), _) => actions.push(Action::Insert(t.clone())),
+                (None, Some(img)) => paste_image(&ctx, img),
+                (None, None) => {}
+            }
         }
     });
 }

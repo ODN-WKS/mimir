@@ -1884,13 +1884,14 @@ impl eframe::App for App {
                 .filter(|p| !p.as_os_str().is_empty())
                 .collect()
         });
+        // Only where a message is written; elsewhere (Settings) they are ignored.
         if self.view == View::Chat {
             self.add_chat_pictures(&ctx, dropped.into_iter().map(PicSource::File).collect());
-        } else {
+        } else if matches!(self.view, View::Task | View::NewTask) {
             self.attachments.extend(dropped);
         }
         // Ctrl+V with a picture on the clipboard attaches it.
-        let pasted: Vec<std::sync::Arc<egui::ColorImage>> = ctx.input(|i| {
+        let mut pasted: Vec<std::sync::Arc<egui::ColorImage>> = ctx.input(|i| {
             i.events
                 .iter()
                 .filter_map(|e| match e {
@@ -1899,6 +1900,8 @@ impl eframe::App for App {
                 })
                 .collect()
         });
+        // A picture pasted from the right-click menu.
+        pasted.extend(crate::menus::take_pasted_image(&ctx));
         if matches!(self.view, View::Task | View::NewTask) {
             for img in pasted {
                 if let Some(p) = places::save_pasted(&img) {
