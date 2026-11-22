@@ -29,6 +29,8 @@
 //!                       this file holds a number of at least n (the check
 //!                       raises it to let the reply go on)
 //!   FAKE_CLAUDE_SPEED   1.0 = recorded pace, 0 = instant (default 0)
+//!   FAKE_CLAUDE_IGNORE_INT  set: ignores SIGINT (a stuck Claude Code)
+//!   FAKE_CLAUDE_PIDFILE  file to write its process id to
 //!   FAKE_CLAUDE_ARGS    file to append the received arguments to
 //!   FAKE_CLAUDE_CWDS    file to append, per run, the folder it ran in
 //!   FAKE_CLAUDE_ENV     file to append, per run, the systemd-only
@@ -79,7 +81,17 @@ const REMOTE_LIFETIME: Duration = Duration::from_secs(600);
 fn main() {
     // SAFETY: installs a handler that only stores to an atomic.
     unsafe {
-        libc::signal(libc::SIGINT, on_int as *const () as libc::sighandler_t);
+        // FAKE_CLAUDE_IGNORE_INT: a Claude Code stuck so hard that it never
+        // heeds Stop's interrupt (only a kill ends it).
+        let h = if std::env::var_os("FAKE_CLAUDE_IGNORE_INT").is_some() {
+            libc::SIG_IGN
+        } else {
+            on_int as *const () as libc::sighandler_t
+        };
+        libc::signal(libc::SIGINT, h);
+    }
+    if let Some(f) = std::env::var_os("FAKE_CLAUDE_PIDFILE") {
+        let _ = std::fs::write(f, std::process::id().to_string());
     }
     let args: Vec<String> = std::env::args().skip(1).collect();
     if let Some(log) = std::env::var_os("FAKE_CLAUDE_ARGS") {

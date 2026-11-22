@@ -89,6 +89,9 @@ pub struct Runner {
     /// Messages for a run that just ended: they go once it is collected
     /// (task id, the input line, since when), never by waiting.
     resend: Vec<(String, String, Instant)>,
+    /// Tasks told to stop or pause: when their Claude Code is ended if it
+    /// has not left by itself (it may ignore the interrupt).
+    kill_after: Vec<(String, Instant)>,
     /// Keeps the figures fresh between tasks; None in tests.
     pub usage_poller: Option<crate::usage::Poller>,
     /// Plain-word problems for the window to show once.
@@ -103,6 +106,9 @@ pub struct Runner {
     clock: Instant,
     next_id: u32,
 }
+
+/// How long a stopped task's Claude Code has to leave after the interrupt.
+const STOP_GRACE: std::time::Duration = std::time::Duration::from_secs(5);
 
 const HOST_LOST: &str =
     "Mímir's helper for this task stopped unexpectedly. Press Continue to carry on.";
@@ -192,6 +198,7 @@ impl Runner {
             usage_at: None,
             usage_poller: None,
             resend: vec![],
+            kill_after: vec![],
             problems,
             notices: vec![],
             slash_commands: vec![],
@@ -727,8 +734,41 @@ impl Runner {
         l.dirty = true;
         if let Some(s) = &mut l.session {
             s.interrupt();
+            self.kill_after.retain(|(t, _)| t != id);
+            self.kill_after
+                .push((id.to_string(), Instant::now() + STOP_GRACE));
+        } else if let Some((key, _)) = l.task.host.clone() {
+            // Its run is in a host the service has not (or not yet) joined.
+            crate::host::kill_run(&key);
         }
+        // A message that waited for a run to end must not start one now.
+        self.resend.retain(|(t, _, _)| t != id);
         self.save_dirty();
+    }
+
+    /// Ends the Claude Code of a stopped or paused task that ignored the
+    /// interrupt for [`STOP_GRACE`].
+    fn end_stuck_runs(&mut self) {
+        if self.kill_after.is_empty() {
+            return;
+        }
+        let now = Instant::now();
+        let due: Vec<String> = self
+            .kill_after
+            .iter()
+            .filter(|(_, at)| *at <= now)
+            .map(|(t, _)| t.clone())
+            .collect();
+        self.kill_after.retain(|(_, at)| *at > now);
+        for id in due {
+            let Some(i) = self.index(&id) else { continue };
+            if matches!(self.tasks[i].task.status, Status::Stopped | Status::Paused)
+                && let Some(s) = self.tasks[i].session.as_mut()
+                && s.poll_exit().is_none()
+            {
+                s.kill();
+            }
+        }
     }
 
     /// The mode applies at once: a running Claude Code is told directly.
@@ -1556,6 +1596,7 @@ impl Runner {
     /// Takes in everything that happened since the last call. Call it every
     /// frame; it never blocks.
     pub fn tick(&mut self) {
+        self.end_stuck_runs();
         self.tick_inner();
         self.send_resends();
     }

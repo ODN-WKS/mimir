@@ -136,6 +136,23 @@ fn mode() -> String {
     std::env::var("MIMIR_HOSTS").unwrap_or_else(|_| default.into())
 }
 
+/// Ends the run in a host this service is not joined to (Stop): its
+/// process group, if the host still runs.
+pub fn kill_run(key: &str) {
+    if let Some(r) = read_record(key)
+        && host_alive(&r)
+        && let Some(p) = r.child_pid
+        && p > 1
+    {
+        // SAFETY: plain kill(2) on the group of a run whose host is alive
+        // (so the id is still that run's).
+        unsafe {
+            libc::kill(-p, libc::SIGKILL);
+            libc::kill(p, libc::SIGKILL);
+        }
+    }
+}
+
 /// Whether jobs run in hosts.
 pub fn enabled() -> bool {
     mode() != "off"
