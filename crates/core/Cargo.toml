@@ -20,7 +20,7 @@ sha2.workspace = true
 ring = "0.17"
 base64 = "0.22"
 # Reads the text of PDFs, and the zip and XML inside Word, Excel and other documents (readfile.rs).
-lopdf = { version = "0.36", default-features = false }
+lopdf = { version = "0.42", default-features = false }
 flate2 = "1"
 roxmltree = "0.21"
 # Takes private words out of a problem report (scrub.rs).
