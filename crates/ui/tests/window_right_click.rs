@@ -39,6 +39,7 @@ fn turn(id: &str, user: bool, text: &str) -> ChatTurn {
         seq: 0,
         gone: false,
         pictures: vec![],
+        files: vec![],
     }
 }
 

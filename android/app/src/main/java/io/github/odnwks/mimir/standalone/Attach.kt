@@ -20,7 +20,10 @@ object Attach {
     /** The most files on one message. */
     const val MAX_FILES = 3
 
-    enum class Problem { Picture, NotText, Unreadable }
+    /** The most of one file sent to the PC to read (bigger ones aren't sent). */
+    const val MAX_PC_BYTES = 10 * 1024 * 1024
+
+    enum class Problem { Picture, NotText, Unreadable, TooBig }
 
     sealed interface Result {
         data class Read(val file: TurnFile) : Result
@@ -40,6 +43,33 @@ object Attach {
         val cut = !whole || clean.length > MAX_CHARS
         return Result.Read(TurnFile(name, clean.take(MAX_CHARS).trimEnd(), cut))
     }
+
+    /**
+     * A file for the PC to read (PDF, document, sheet, zip, recording, text): its bytes go as they are, the PC
+     * says how much it read. Pictures still go through Photo or video.
+     */
+    fun forPc(name: String, mime: String?, bytes: ByteArray): Result {
+        val type = mime.orEmpty().lowercase()
+        if (type.startsWith("image/") || type.startsWith("video/")) return Result.No(Problem.Picture)
+        if (bytes.size > MAX_PC_BYTES) return Result.No(Problem.TooBig)
+        if (bytes.isEmpty()) return Result.No(Problem.Unreadable)
+        return Result.Read(TurnFile(name, "", false, bytes = bytes, mime = type.takeIf { it != "application/octet-stream" }.orEmpty()))
+    }
+
+    /** Reads a file the owner picked for the PC. Call off the main thread. */
+    fun readForPc(context: Context, uri: Uri): Result = runCatching {
+        val cr = context.contentResolver
+        val name = nameOf(context, uri) ?: uri.lastPathSegment?.substringAfterLast('/') ?: "file"
+        val mime = cr.getType(uri)
+        if (mime.orEmpty().let { it.startsWith("image/") || it.startsWith("video/") }) return Result.No(Problem.Picture)
+        val bytes = cr.openInputStream(uri)?.use { input ->
+            val buf = java.io.ByteArrayOutputStream()
+            val chunk = ByteArray(64 * 1024)
+            while (buf.size() <= MAX_PC_BYTES) { val r = input.read(chunk); if (r < 0) break; buf.write(chunk, 0, r) }
+            buf.toByteArray()
+        } ?: return Result.No(Problem.Unreadable)
+        forPc(name, mime, bytes)
+    }.getOrElse { Result.No(Problem.Unreadable) }
 
     /** A picked file's name as the phone shows it. */
     fun nameOf(context: Context, uri: Uri): String? = runCatching {

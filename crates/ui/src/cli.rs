@@ -197,6 +197,7 @@ fn chat(args: &[String], version: &str) -> i32 {
         seq: 0,
         gone: false,
         pictures: vec![],
+        files: vec![],
     };
     if let Err(e) = st.call_wait(Call::Talk {
         chat_id: chat_id.clone(),

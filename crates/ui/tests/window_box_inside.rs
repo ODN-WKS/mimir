@@ -91,6 +91,7 @@ fn turn(id: &str, user: bool, text: &str, ran: Option<Ran>, words: Option<&str>)
         seq: 0,
         gone: false,
         pictures: vec![],
+        files: vec![],
     }
 }
 

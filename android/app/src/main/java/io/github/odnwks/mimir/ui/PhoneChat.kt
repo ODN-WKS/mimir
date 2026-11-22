@@ -110,6 +110,8 @@ fun PhoneChat(
     var attachFix by remember { mutableStateOf<Pair<String, () -> Unit>?>(null) }
     // When the PC answers, pictures go to the PC: its model's sight counts, never this phone's (null: not the PC, or an older one).
     val pcSight = if (pcReady) engine.pcPictures() else null
+    // When the PC answers, any file goes to the PC to be read (PDFs, documents, sheets, recordings), never limited by this phone's model.
+    val pcFiles = pcReady && engine.pcFiles()
     val sight = when {
         pcSight == true -> Sight.Sees
         pcSight == false -> Sight.PcCannot
@@ -138,7 +140,9 @@ fun PhoneChat(
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     val pick = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) scope.launch {
-            when (val r = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { io.github.odnwks.mimir.standalone.Attach.read(ctx, uri) }) {
+            when (val r = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                if (pcFiles) io.github.odnwks.mimir.standalone.Attach.readForPc(ctx, uri) else io.github.odnwks.mimir.standalone.Attach.read(ctx, uri)
+            }) {
                 is io.github.odnwks.mimir.standalone.Attach.Result.Read -> if (files.size < io.github.odnwks.mimir.standalone.Attach.MAX_FILES) files += r.file
                 is io.github.odnwks.mimir.standalone.Attach.Result.No -> attachNote = attachProblem(r.problem)
             }
@@ -400,9 +404,10 @@ fun PhoneChat(
                     id = turn.id.ifEmpty { "mine-${turn.text.hashCode()}" },
                     onEdit = if (!s.writing && turn.text.isNotBlank() && engine.canEdit(s.chat, i)) ({ words -> engine.editMessage(turn.id, words)?.let { edited = it } }) else null,
                     under = readLinkFor(s, engine, turn, i).let { read ->
-                        if (turn.pictures.isNotEmpty() || (turn.files.isNotEmpty() && turn.text.isNotBlank()) || read != null) ({
+                        if (turn.pictures.isNotEmpty() || (turn.files.isNotEmpty() && turn.text.isNotBlank()) || turn.files.any { it.note.isNotEmpty() } || read != null) ({
                             turn.pictures.forEach { PictureChip(it) }
-                            if (turn.text.isNotBlank()) turn.files.forEach { FileChip(it) }
+                            // With no words of its own, the message shows the file names; what the PC read still shows under them.
+                            if (turn.text.isNotBlank()) turn.files.forEach { FileChip(it) } else turn.files.forEach { FileNoteLine(it) }
                             read?.invoke()
                         }) else null
                     },
@@ -512,6 +517,7 @@ fun PhoneChat(
                 },
                 onModels = { nav.open(Screen.Models) },
                 model = model,
+                pcFiles = pcFiles,
             )
             },
         ) { fit ->

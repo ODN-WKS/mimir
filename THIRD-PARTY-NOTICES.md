@@ -22,6 +22,10 @@ Models that people download themselves keep the licence their authors gave them.
 
 ## Libraries
 
+The PC program reads PDFs with `lopdf` (MIT) and reads Word, Excel, PowerPoint, OpenDocument and
+epub files with `roxmltree` (MIT or Apache 2.0) and `flate2` (MIT or Apache 2.0); the zip reading
+itself is Mímir's own. These are in `crates/core/Cargo.toml`.
+
 The PC program's Rust crates (listed in `Cargo.lock`) and the phone app's Android
 and Kotlin libraries (listed in `android/app/build.gradle.kts`) are each under
 their own licences, shown in their own packages.

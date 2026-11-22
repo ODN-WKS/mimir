@@ -185,7 +185,13 @@ class Store(private val file: File, private val codec: Codec = KeystoreCodec()) 
         val files = t.optJSONArray("files") ?: JSONArray()
         val pictures = t.optJSONArray("pictures") ?: JSONArray()
         return Turn(user, t.getString("text"), (0 until files.length()).map { k ->
-            files.getJSONObject(k).let { TurnFile(it.getString("name"), it.getString("text"), it.optBoolean("cut")) }
+            files.getJSONObject(k).let { f ->
+                TurnFile(
+                    f.getString("name"), f.getString("text"), f.optBoolean("cut"),
+                    bytes = f.optString("bytes").takeIf { it.isNotEmpty() }?.let { java.util.Base64.getDecoder().decode(it) },
+                    mime = f.optString("mime"), note = f.optString("note"),
+                )
+            }
         }, (0 until pictures.length()).map { k ->
             pictures.getJSONObject(k).let { TurnPicture(it.getString("id"), it.getString("name"), java.util.Base64.getDecoder().decode(it.getString("jpeg"))) }
         }, (t.optJSONArray("sources") ?: JSONArray()).let { a ->
@@ -204,7 +210,10 @@ class Store(private val file: File, private val codec: Codec = KeystoreCodec()) 
         )
     }
 
-    private fun turnJson(t: Turn): JSONObject =
+    /** A waiting message keeps the bytes of files for the PC (they go when it is back); a sent one never does. */
+    private fun queuedJson(t: Turn): JSONObject = turnJson(t, keepBytes = true)
+
+    private fun turnJson(t: Turn, keepBytes: Boolean = false): JSONObject =
         JSONObject().put("user", t.user).put("text", t.text).apply {
             if (t.id.isNotEmpty()) put("id", t.id)
             if (t.at != 0L) put("at", t.at)
@@ -215,7 +224,13 @@ class Store(private val file: File, private val codec: Codec = KeystoreCodec()) 
             t.task?.let { put("task", it) }
             t.project?.let { put("project", it) }
             t.voice?.let { put("voice", it) }
-            if (t.files.isNotEmpty()) put("files", JSONArray(t.files.map { JSONObject().put("name", it.name).put("text", it.text).put("cut", it.cut) }))
+            if (t.files.isNotEmpty()) put("files", JSONArray(t.files.map { f ->
+                JSONObject().put("name", f.name).put("text", f.text).put("cut", f.cut).apply {
+                    if (f.note.isNotEmpty()) put("note", f.note)
+                    if (f.mime.isNotEmpty()) put("mime", f.mime)
+                    if (keepBytes && f.bytes != null) put("bytes", java.util.Base64.getEncoder().encodeToString(f.bytes))
+                }
+            }))
             if (t.sources.isNotEmpty()) put("sources", JSONArray(t.sources.map { JSONObject().put("site", it.site).put("url", it.url).put("words", it.words).put("results", it.results).put("via", it.via) }))
             if (t.pictures.isNotEmpty()) put("pictures", JSONArray(t.pictures.map {
                 JSONObject().put("id", it.id).put("name", it.name).put("jpeg", java.util.Base64.getEncoder().encodeToString(it.jpeg))
@@ -243,7 +258,7 @@ class Store(private val file: File, private val codec: Codec = KeystoreCodec()) 
                 JSONObject().put("id", c.id).put("model", c.model).put("at", c.at).apply { c.name?.let { put("name", it) }; if (c.pendingName) put("pending_name", true); c.leftTask?.let { put("left_task", it) }; if (c.rules.isNotEmpty()) put("rules", c.rules); if (c.sentToPc != 0L) put("sent_to_pc", c.sentToPc)
                     if (c.cuts.isNotEmpty()) put("cuts", JSONArray(c.cuts.map { JSONObject().put("id", it.id).put("user", it.user).put("at", it.at).put("version", it.version).put("sent", it.sent) })) }
                     .put("turns", JSONArray(c.turns.map(::turnJson)))
-                    .apply { if (c.queued.isNotEmpty()) put("queued", JSONArray(c.queued.map(::turnJson))) }
+                    .apply { if (c.queued.isNotEmpty()) put("queued", JSONArray(c.queued.map(::queuedJson))) }
             }),
         )
         io.github.odnwks.mimir.link.SafeFile.write(file, codec.seal(o.toString()))

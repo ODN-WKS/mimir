@@ -244,6 +244,7 @@ fn user(id: &str, text: &str) -> ChatTurn {
         seq: 0,
         gone: false,
         pictures: vec![],
+        files: vec![],
     }
 }
 

@@ -62,6 +62,9 @@ class FakePc : PcTalk {
     @Volatile var seesPictures: Boolean? = null
     override fun canSeePictures() = reachable && seesPictures == true
     override fun picturesRefused() = reachable && seesPictures == false
+    /** Files ("chat_files"): true when this PC reads PDFs, documents and the like; false is an older PC. */
+    @Volatile var takesFiles = false
+    override fun canSendFiles() = reachable && takesFiles
     override fun pcName() = "Your PC"
     override fun talk(request: TalkRequest, listener: TalkListener): Boolean {
         if (!reachable) return false

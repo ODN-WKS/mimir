@@ -454,6 +454,7 @@ impl Talk {
             seq: 0,
             gone: false,
             pictures: vec![],
+            files: vec![],
         }
     }
 
@@ -1282,6 +1283,7 @@ mod tests {
                 seq: 0,
                 gone: false,
                 pictures: vec![],
+                files: vec![],
             });
         }
         turns.push(ChatTurn {
@@ -1296,6 +1298,7 @@ mod tests {
             seq: 0,
             gone: false,
             pictures: vec![],
+            files: vec![],
         });
         let m = messages(
             system(Some(rules), Some("[Fetched: rain tomorrow]")),

@@ -33,6 +33,8 @@ object Wire {
     const val CHAT_MODEL = "chat_model"
     /** A chat message can carry pictures for the PC's model ([LChatTurn.pictures]); the Models reply says whether it can look at them. */
     const val CHAT_PICTURES = "chat_pictures"
+    /** A chat message can carry files for the PC to read ([LChatTurn.files]); the reply says how much of each was read ([Filed.Talk.filesRead]). */
+    const val CHAT_FILES = "chat_files"
 
     fun hello(appVersion: String, phoneName: String, @Suppress("UNUSED_PARAMETER") pushToken: String? = null, features: List<String> = FEATURES): String = obj("Hello") {
         put("proto", PROTO); put("app_version", appVersion); put("client_name", phoneName)
@@ -364,7 +366,10 @@ object Wire {
             "Idea" -> Filed.Idea(b.getString("project"), b.getString("idea"))
             "Status" -> Filed.Status(strings(b.getJSONArray("reply")))
             "Inbox" -> Filed.Inbox(b.getString("inbox_id"), strings(b.optJSONArray("candidates")))
-            "Talk" -> Filed.Talk(b.getString("answer"), b.optString("ran", "pc"), b.optString("model_words"), opt(b, "waiting"))
+            "Talk" -> Filed.Talk(
+                b.getString("answer"), b.optString("ran", "pc"), b.optString("model_words"), opt(b, "waiting"),
+                b.optJSONArray("files_read").let { a -> (0 until (a?.length() ?: 0)).map { i -> a!!.getJSONObject(i).let { LFileNote(it.getString("name"), it.optString("note")) } } },
+            )
             "OnPhone" -> Filed.OnPhone(b.optString("why"))
             else -> null
         }
@@ -552,7 +557,7 @@ sealed interface Filed {
     data class Status(val reply: List<String>) : Filed
     data class Inbox(val inboxId: String, val candidates: List<String>) : Filed
     /** The PC answers it: [answer] is the answer's id, [ran] "pc" or "paid", [waiting] a line to show meanwhile. */
-    data class Talk(val answer: String, val ran: String, val modelWords: String, val waiting: String? = null) : Filed
+    data class Talk(val answer: String, val ran: String, val modelWords: String, val waiting: String? = null, val filesRead: List<LFileNote> = emptyList()) : Filed
     /** The PC can't answer this one (busy, no model that fits): the phone answers it itself. */
     data class OnPhone(val why: String) : Filed
 }
@@ -584,13 +589,22 @@ data class LChatTurn(
     val gone: Boolean = false,
     /** Pictures for the PC's model ("chat_pictures"): only in a Talk, never kept in the chat's turns. */
     val pictures: List<LPicture> = emptyList(),
+    /** Files for the PC to read ("chat_files"): only in a Talk, never kept in the chat's turns. */
+    val files: List<LFile> = emptyList(),
 ) {
     fun json(): JSONObject = JSONObject().put("id", id).put("user", user).put("text", text)
         .put("sources", JSONArray(sources.map { it.json() })).put("ran", ran ?: JSONObject.NULL)
         .put("model_words", modelWords ?: JSONObject.NULL).put("at", at).put("version", version).put("seq", seq)
         .also { if (gone) it.put("gone", true) }
         .also { if (pictures.isNotEmpty()) it.put("pictures", JSONArray(pictures.map { p -> JSONObject().put("media_type", p.mediaType).put("base64", p.base64) })) }
+        .also { if (files.isNotEmpty()) it.put("files", JSONArray(files.map { f -> JSONObject().put("name", f.name).put("media_type", f.mediaType).put("base64", f.base64) })) }
 }
+
+/** A file sent to the PC to be read: its name, type ("application/pdf", may be empty) and bytes as base64. */
+data class LFile(val name: String, val mediaType: String, val base64: String)
+
+/** How much of a file the PC read, in its words ("Read all of it"). */
+data class LFileNote(val name: String, val note: String)
 
 /** A picture sent to the PC: its type ("image/jpeg") and its bytes as base64. */
 data class LPicture(val mediaType: String, val base64: String)

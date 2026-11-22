@@ -28,6 +28,15 @@ const PICTURES_CAP: u64 = if cfg!(test) {
 pub const PICTURES_PER_TURN: usize = 4;
 const PICTURE_BYTES: usize = 3 * 1024 * 1024;
 
+/// What the PC read from one file sent with a message: kept with the chat
+/// (per person) so a follow-up question can still use it.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct KeptFile {
+    pub name: String,
+    pub text: String,
+    pub note: String,
+}
+
 /// The one line Settings shows when chats are kept without encryption
 /// (PCE-07).
 pub const UNENCRYPTED: &str = "Chats kept unencrypted";
@@ -405,6 +414,7 @@ impl TalkStore {
             // Pictures are kept apart (`put_pictures`), never in the turn
             // a phone is sent.
             t.pictures.clear();
+            t.files.clear();
             match k.chat.turns.iter_mut().find(|x| x.id == t.id) {
                 Some(old) if t.version > old.version => {
                     t.seq = self.next(person);
@@ -570,14 +580,28 @@ impl TalkStore {
             return Ok(());
         }
         let plain = serde_json::to_vec(&pictures).map_err(|e| e.to_string())?;
+        self.put_blob(person, chat_id, turn_id, "pics", &plain)
+    }
+
+    /// Writes one message's kept pictures or files in the chat's own place
+    /// (sealed like the chat), then trims the chat's place to its cap, the
+    /// oldest first.
+    fn put_blob(
+        &mut self,
+        person: &str,
+        chat_id: &str,
+        turn_id: &str,
+        ext: &str,
+        plain: &[u8],
+    ) -> Result<(), String> {
         let bytes = match &self.key {
-            Some(key) => seal(key, &plain)?,
-            None => plain,
+            Some(key) => seal(key, plain)?,
+            None => plain.to_vec(),
         };
         let dir = pictures_dir(&self.dir, person, chat_id);
-        crate::atomic::write(&dir.join(format!("{}.pics", file_name(turn_id))), &bytes)
+        crate::atomic::write(&dir.join(format!("{}.{ext}", file_name(turn_id))), &bytes)
             .map_err(|e| e.to_string())?;
-        // Over the cap: the oldest pictures of this chat go first.
+        // Over the cap: the oldest pictures and files of this chat go first.
         let mut files: Vec<(std::time::SystemTime, u64, PathBuf)> = std::fs::read_dir(&dir)
             .into_iter()
             .flatten()
@@ -602,26 +626,54 @@ impl TalkStore {
         Ok(())
     }
 
+    /// Keeps what the PC read from the files sent with a message (never the
+    /// files themselves), with the chat, apart from its turns.
+    pub fn put_files(
+        &mut self,
+        person: &str,
+        chat_id: &str,
+        turn_id: &str,
+        files: &[KeptFile],
+    ) -> Result<(), String> {
+        if self.locked {
+            return Err("Your PC's chat history is locked: unlock the desktop's wallet.".into());
+        }
+        if files.is_empty() || chat_id.is_empty() || chat_id.len() > 200 {
+            return Ok(());
+        }
+        let plain = serde_json::to_vec(files).map_err(|e| e.to_string())?;
+        self.put_blob(person, chat_id, turn_id, "files", &plain)
+    }
+
+    /// What was read from the files of one message of `person`'s chat (none
+    /// when there are none, or the message is another person's).
+    pub fn files_for(&self, person: &str, chat_id: &str, turn_id: &str) -> Vec<KeptFile> {
+        self.blob(person, chat_id, turn_id, "files")
+            .and_then(|b| serde_json::from_slice(&b).ok())
+            .unwrap_or_default()
+    }
+
     /// The pictures kept for one message of `person`'s chat (none when
     /// there are none, or the message is another person's).
     pub fn pictures_for(&self, person: &str, chat_id: &str, turn_id: &str) -> Vec<Picture> {
+        self.blob(person, chat_id, turn_id, "pics")
+            .and_then(|b| serde_json::from_slice(&b).ok())
+            .unwrap_or_default()
+    }
+
+    /// One kept blob, opened (None: not there, locked, or not this person's).
+    fn blob(&self, person: &str, chat_id: &str, turn_id: &str, ext: &str) -> Option<Vec<u8>> {
         if self.locked || chat_id.is_empty() || chat_id.len() > 200 {
-            return vec![];
+            return None;
         }
         let path =
-            pictures_dir(&self.dir, person, chat_id).join(format!("{}.pics", file_name(turn_id)));
-        let Ok(bytes) = std::fs::read(path) else {
-            return vec![];
-        };
-        let plain = if bytes.starts_with(MAGIC) {
-            match self.key.as_ref().and_then(|k| open_sealed(k, &bytes)) {
-                Some(p) => p,
-                None => return vec![],
-            }
+            pictures_dir(&self.dir, person, chat_id).join(format!("{}.{ext}", file_name(turn_id)));
+        let bytes = std::fs::read(path).ok()?;
+        if bytes.starts_with(MAGIC) {
+            self.key.as_ref().and_then(|k| open_sealed(k, &bytes))
         } else {
-            bytes
-        };
-        serde_json::from_slice(&plain).unwrap_or_default()
+            Some(bytes)
+        }
     }
 
     /// Deletes everything of a person (not the owner): their chats and
@@ -739,6 +791,7 @@ mod tests {
             seq: 0,
             gone: false,
             pictures: vec![],
+            files: vec![],
         }
     }
 
@@ -982,6 +1035,110 @@ mod tests {
         s.forget_person("bo");
         assert!(s.pictures_for("bo", "c9", "z").is_empty());
         assert!(!d.join("people/bo").exists());
+    }
+
+    fn kept(name: &str, n: usize) -> KeptFile {
+        KeptFile {
+            name: name.into(),
+            text: "w".repeat(n),
+            note: "Read all of it".into(),
+        }
+    }
+
+    #[test]
+    fn words_read_from_files_are_kept_per_person_and_chat_and_go_with_them() {
+        let d = tmp("files");
+        let mut s = TalkStore::open(&d, &Keyring::Off);
+        s.put("c1", None, vec![t("a", true, "see", 1, 1)], false, 5)
+            .unwrap();
+        s.put_files(OWNER, "c1", "a", &[kept("Lease.pdf", 20)])
+            .unwrap();
+        assert_eq!(s.files_for(OWNER, "c1", "a")[0].name, "Lease.pdf");
+        // Ana, with the same chat and message ids, sees none of it.
+        assert!(s.files_for("ana", "c1", "a").is_empty());
+        assert!(s.files_for(OWNER, "c1", "other").is_empty());
+        // A turn put with files keeps none in the chat's own file.
+        let mut with = t("c", true, "x", 2, 1);
+        with.files = vec![mimir_proto::SentFile {
+            name: "x.pdf".into(),
+            media_type: String::new(),
+            base64: "AAAA".into(),
+        }];
+        s.put("c1", None, vec![with], false, 6).unwrap();
+        assert!(
+            s.get("c1")
+                .unwrap()
+                .turns
+                .iter()
+                .all(|t| t.files.is_empty())
+        );
+        // Sealed with the chat's key when there is one: nothing readable on disk.
+        let dk = tmp("files-sealed");
+        let mut k = TalkStore::open(&dk, &Keyring::File(dk.join("key")));
+        k.put_files(OWNER, "c1", "a", &[kept("Secret.pdf", 30)])
+            .unwrap();
+        let raw: Vec<u8> = walk(&dk)
+            .into_iter()
+            .flat_map(|p| std::fs::read(p).unwrap_or_default())
+            .collect();
+        assert!(
+            !String::from_utf8_lossy(&raw).contains("Secret.pdf"),
+            "a kept file's words sit on disk in plain"
+        );
+        assert_eq!(k.files_for(OWNER, "c1", "a").len(), 1);
+        // Deleting the chat deletes its files.
+        s.put("c1", None, vec![], true, 7).unwrap();
+        assert!(s.files_for(OWNER, "c1", "a").is_empty());
+        // A person who leaves takes theirs.
+        s.put_for("bo", "c9", None, vec![t("z", true, "bo", 3, 1)], false, 8)
+            .unwrap();
+        s.put_files("bo", "c9", "z", &[kept("Bo.pdf", 7)]).unwrap();
+        assert_eq!(s.files_for("bo", "c9", "z").len(), 1);
+        s.flush().unwrap();
+        s.forget_person("bo");
+        assert!(s.files_for("bo", "c9", "z").is_empty());
+        let _ = std::fs::remove_dir_all(&d);
+        let _ = std::fs::remove_dir_all(&dk);
+    }
+
+    fn walk(d: &Path) -> Vec<PathBuf> {
+        let mut out = vec![];
+        for e in std::fs::read_dir(d).into_iter().flatten().flatten() {
+            let p = e.path();
+            if p.is_dir() {
+                out.extend(walk(&p));
+            } else {
+                out.push(p);
+            }
+        }
+        out
+    }
+
+    #[test]
+    fn a_chats_files_count_toward_the_same_cap_as_its_pictures() {
+        let d = tmp("files-cap");
+        let mut s = TalkStore::open(&d, &Keyring::Off);
+        s.put("c1", None, vec![t("a", true, "see", 1, 1)], false, 5)
+            .unwrap();
+        for i in 0..6 {
+            s.put_files(
+                OWNER,
+                "c1",
+                &format!("f{i}"),
+                &[kept("Big.pdf", 400 * 1024)],
+            )
+            .unwrap();
+            std::thread::sleep(std::time::Duration::from_millis(15));
+        }
+        let left = (0..6)
+            .filter(|i| !s.files_for(OWNER, "c1", &format!("f{i}")).is_empty())
+            .count();
+        assert!((1..6).contains(&left), "{left} kept");
+        assert!(
+            !s.files_for(OWNER, "c1", "f5").is_empty(),
+            "the newest went first"
+        );
+        let _ = std::fs::remove_dir_all(&d);
     }
 
     #[test]

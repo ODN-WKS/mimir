@@ -76,6 +76,7 @@ fn turn(id: &str, user: bool, text: &str, ran: Option<Ran>, version: u32, seq: u
         seq,
         gone: false,
         pictures: vec![],
+        files: vec![],
     }
 }
 
@@ -389,6 +390,10 @@ fn write_the_examples() {
                 ran: Ran::Pc,
                 model_words: "Qwen 3.6 · Your PC".into(),
                 waiting: Some("Waking your PC's model…".into()),
+                files_read: vec![FileNote {
+                    name: "Lease.pdf".into(),
+                    note: "Read pages 1 to 40 of 120".into(),
+                }],
             })
             .unwrap()),
         },
@@ -668,6 +673,25 @@ fn write_the_examples() {
                 t.pictures = vec![Picture {
                     media_type: "image/jpeg".into(),
                     base64: "/9j/4AAQ".into(),
+                }];
+                t
+            }],
+            lookup: None,
+            sources: vec![],
+            effort: None,
+            ground_rules: None,
+            task: None,
+            chat_only: true,
+        },
+        Call::Talk {
+            chat_id: "c-1".into(),
+            turn_id: "t-6".into(),
+            turns: vec![{
+                let mut t = turn("t-6", true, "What is this about?", None, 1, 0);
+                t.files = vec![SentFile {
+                    name: "Lease.pdf".into(),
+                    media_type: "application/pdf".into(),
+                    base64: "JVBERi0x".into(),
                 }];
                 t
             }],

@@ -283,6 +283,8 @@ fun AttachButton(
     sight: Sight, filesFull: Boolean, picturesFull: Boolean, onFile: () -> Unit, onPhotos: () -> Unit, onCamera: () -> Unit, onModels: () -> Unit,
     /** With the least room on the box, the effort is chosen here (null: it has its own chip). */
     effort: Effort? = null, model: LocalModel? = null, onEffort: (Effort) -> Unit = {},
+    /** Your PC reads the files (PDFs, documents, sheets, recordings), not this phone. */
+    pcFiles: Boolean = false,
 ) {
     var open by remember { mutableStateOf(false) }
     Box {
@@ -314,7 +316,7 @@ fun AttachButton(
                 )
             }
             DropdownMenuItem(
-                { MenuIconLine(Glyphs.Document, "File", if (filesFull) "Up to ${io.github.odnwks.mimir.standalone.Attach.MAX_FILES} files on one message" else "Text files: notes, lists, code") },
+                { MenuIconLine(Glyphs.Document, "File", if (filesFull) "Up to ${io.github.odnwks.mimir.standalone.Attach.MAX_FILES} files on one message" else if (pcFiles) "Your PC reads PDFs, documents and more" else "Text files: notes, lists, code") },
                 { open = false; onFile() },
                 enabled = !filesFull,
             )
@@ -367,6 +369,22 @@ private fun MenuIconLine(icon: androidx.compose.ui.graphics.vector.ImageVector, 
 /** A file on a message: its name (and "start only" when it was too long), with × while unsent. */
 @Composable
 fun FileChip(file: io.github.odnwks.mimir.standalone.TurnFile, onRemove: (() -> Unit)? = null) {
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        FileChipBody(file, onRemove)
+        FileNoteLine(file)
+    }
+}
+
+/** What the PC read of a file, dim under it ("Read all of it", "Read pages 1 to 40 of 120"); nothing until it has said. */
+@Composable
+fun FileNoteLine(file: io.github.odnwks.mimir.standalone.TurnFile) {
+    if (file.note.isNotEmpty()) Text(
+        file.note, style = Type.Small, color = Palette.TextDim, modifier = Modifier.padding(horizontal = 4.dp).semantics { contentDescription = "${file.name}: ${file.note}" },
+    )
+}
+
+@Composable
+private fun FileChipBody(file: io.github.odnwks.mimir.standalone.TurnFile, onRemove: (() -> Unit)?) {
     val shape = RoundedCornerShape(12.dp)
     Row(
         Modifier.clip(shape).background(Palette.Card).border(1.dp, Palette.Outline, shape)
@@ -389,6 +407,7 @@ fun FileChip(file: io.github.odnwks.mimir.standalone.TurnFile, onRemove: (() -> 
 /** Why a picked file wasn't added, in plain words. */
 fun attachProblem(p: io.github.odnwks.mimir.standalone.Attach.Problem): String = when (p) {
     io.github.odnwks.mimir.standalone.Attach.Problem.Picture -> "Pictures go through Photo or video in the + menu, not File."
-    io.github.odnwks.mimir.standalone.Attach.Problem.NotText -> "$AI_NAME can read only text files for now (notes, lists, code), so it wasn't added. Pick a text file instead."
+    io.github.odnwks.mimir.standalone.Attach.Problem.NotText -> "This phone reads only text files (notes, lists, code). Connect your PC to read PDFs, documents and recordings, or pick a text file."
+    io.github.odnwks.mimir.standalone.Attach.Problem.TooBig -> "That file is over 10 MB. Pick a smaller one, or send part of it."
     io.github.odnwks.mimir.standalone.Attach.Problem.Unreadable -> "That file couldn't be opened. Pick it again, or try another file."
 }

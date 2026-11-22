@@ -191,6 +191,7 @@ fn make_the_picture_home() {
                 seq: 0,
                 gone: false,
                 pictures: vec![],
+                files: vec![],
             }],
             deleted: false,
         })

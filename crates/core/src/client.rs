@@ -1073,6 +1073,7 @@ impl Station {
             seq: 0,
             gone: false,
             pictures,
+            files: vec![],
         };
         let mut turns: Vec<ChatTurn> = self
             .chats
@@ -1268,6 +1269,7 @@ impl Station {
                 seq: 0,
                 gone: true,
                 pictures: vec![],
+                files: vec![],
             });
         }
         // The old answer to the message is cut too: its new one takes a higher version.
@@ -1286,6 +1288,7 @@ impl Station {
                 seq: 0,
                 gone: true,
                 pictures: vec![],
+                files: vec![],
             });
         }
         for t in put.iter().filter(|t| t.gone) {
@@ -1985,6 +1988,7 @@ mod tests {
             seq: 0,
             gone: false,
             pictures: vec![],
+            files: vec![],
         }
     }
 
@@ -2059,6 +2063,7 @@ mod tests {
                 ran: mimir_proto::Ran::Pc,
                 model_words: "x".into(),
                 waiting: None,
+                files_read: vec![],
             })),
         );
         assert!(s.chat_busy("c"));

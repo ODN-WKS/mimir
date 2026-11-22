@@ -377,6 +377,7 @@ fn user(id: &str, text: &str) -> ChatTurn {
         seq: 0,
         gone: false,
         pictures: vec![],
+        files: vec![],
     }
 }
 
@@ -1370,4 +1371,158 @@ fn a_pairing_nobody_answers_ends_as_a_timeout_not_a_no() {
         "an unanswered pairing was reported as a No: {e}"
     );
     assert!(e.contains("in time"), "not reported as a timeout: {e}");
+}
+
+/// A tiny zip (members stored, not packed) for the sample Word file below.
+fn small_zip(members: &[(&str, &[u8])]) -> Vec<u8> {
+    let (mut out, mut central) = (vec![], vec![]);
+    for (name, data) in members {
+        let at = out.len() as u32;
+        out.extend(b"PK\x03\x04");
+        for v in [20u16, 0, 0, 0, 0] {
+            out.extend(v.to_le_bytes());
+        }
+        out.extend(0u32.to_le_bytes());
+        out.extend((data.len() as u32).to_le_bytes());
+        out.extend((data.len() as u32).to_le_bytes());
+        out.extend((name.len() as u16).to_le_bytes());
+        out.extend(0u16.to_le_bytes());
+        out.extend(name.as_bytes());
+        out.extend(*data);
+        central.extend(b"PK\x01\x02");
+        for v in [20u16, 20, 0, 0, 0, 0] {
+            central.extend(v.to_le_bytes());
+        }
+        central.extend(0u32.to_le_bytes());
+        central.extend((data.len() as u32).to_le_bytes());
+        central.extend((data.len() as u32).to_le_bytes());
+        central.extend((name.len() as u16).to_le_bytes());
+        for v in [0u16, 0, 0, 0] {
+            central.extend(v.to_le_bytes());
+        }
+        central.extend(0u32.to_le_bytes());
+        central.extend(at.to_le_bytes());
+        central.extend(name.as_bytes());
+    }
+    let start = out.len() as u32;
+    out.extend(&central);
+    out.extend(b"PK\x05\x06");
+    for v in [0u16, 0, members.len() as u16, members.len() as u16] {
+        out.extend(v.to_le_bytes());
+    }
+    out.extend((central.len() as u32).to_le_bytes());
+    out.extend(start.to_le_bytes());
+    out.extend(0u16.to_le_bytes());
+    out
+}
+
+/// D1: a file sent with a message is read on the PC and its words reach the
+/// model with one line saying how much was read; the phone is told that line;
+/// a follow-up still has the words; another person with the same chat and
+/// message ids never gets them; and no turn carries a file back to a phone.
+#[test]
+fn d1_files_are_read_on_the_pc_and_are_never_another_persons() {
+    use base64::Engine as _;
+    let Some(home) = home() else { return };
+    let asked = fake_ollama(&["It is a garden plan."]);
+    picked(&home);
+    let mut st = home.service();
+    let mut mine = paired_as(&mut st, None);
+    let mut ana = paired_as(&mut st, Some("Ana"));
+    let doc = small_zip(&[(
+        "word/document.xml",
+        br#"<w:document xmlns:w="w"><w:body><w:p><w:r><w:t>Garden planner for the north plot</w:t></w:r></w:p></w:body></w:document>"#,
+    )]);
+    let with_file = |id: &str, text: &str| {
+        let mut t = user(id, text);
+        t.files = vec![mimir_core::proto::SentFile {
+            name: "Plan.docx".into(),
+            media_type: String::new(),
+            base64: base64::engine::general_purpose::STANDARD.encode(&doc),
+        }];
+        t
+    };
+    let ask = |who: &mut Phone, id: &str, turns: Vec<ChatTurn>| -> Filed {
+        let f = who
+            .call(Call::Talk {
+                chat_id: "c-file".into(),
+                turn_id: id.into(),
+                turns,
+                lookup: None,
+                sources: vec![],
+                effort: None,
+                ground_rules: None,
+                task: None,
+                // Not "just chat": a file always makes it one anyway.
+                chat_only: false,
+            })
+            .unwrap();
+        assert!(
+            who.seen
+                .until(&who.p, |s| s.done.contains_key(&format!("{id}.a"))),
+            "no answer"
+        );
+        serde_json::from_value(f).unwrap()
+    };
+    let f = ask(
+        &mut mine,
+        "f1",
+        vec![with_file("f1", "What is this about?")],
+    );
+    let Filed::Talk { files_read, .. } = f else {
+        panic!("not answered as a chat: {f:?}")
+    };
+    assert_eq!(
+        files_read,
+        vec![mimir_core::proto::FileNote {
+            name: "Plan.docx".into(),
+            note: "Read all of it".into()
+        }]
+    );
+    // Ana asks in a chat with the same ids and the owner's message in her turns.
+    ask(
+        &mut ana,
+        "f2",
+        vec![user("f1", "What is this about?"), user("f2", "And now?")],
+    );
+    // The owner's follow-up still has the words of the earlier file.
+    ask(
+        &mut mine,
+        "f3",
+        vec![user("f1", "What is this about?"), user("f3", "Which plot?")],
+    );
+    let all = asked.lock().unwrap().clone();
+    let chats: Vec<&serde_json::Value> =
+        all.iter().filter(|v| v.get("messages").is_some()).collect();
+    assert_eq!(chats.len(), 3, "{all:?}");
+    let said = |v: &serde_json::Value| -> String {
+        v["messages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|m| m["content"].as_str().unwrap_or("").to_string())
+            .collect::<Vec<_>>()
+            .join("\n---\n")
+    };
+    let first = said(chats[0]);
+    assert!(
+        first.contains("File \"Plan.docx\" (read all of it):\nGarden planner for the north plot"),
+        "the model didn't get the file's words: {first}"
+    );
+    assert!(
+        !said(chats[1]).contains("Garden planner"),
+        "Ana's model got the owner's file"
+    );
+    assert!(
+        said(chats[2]).contains("Garden planner for the north plot"),
+        "the follow-up lost the file's words: {}",
+        said(chats[2])
+    );
+    let page = mine.chats();
+    assert!(
+        page.iter()
+            .flat_map(|c| &c.turns)
+            .all(|t| t.files.is_empty()),
+        "a turn carried a file back to a phone"
+    );
 }

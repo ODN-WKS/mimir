@@ -34,6 +34,7 @@ pub mod people;
 pub mod placement;
 pub mod process;
 pub mod queue;
+pub mod readfile;
 pub mod restart;
 pub mod route;
 pub mod runner;

@@ -245,6 +245,7 @@ const OFFERED: &[&str] = &[
     "people",
     "models_changed",
     "chat_pictures",
+    "chat_files",
 ];
 
 /// What a client was last told about a task.
@@ -3697,7 +3698,13 @@ impl Service {
     /// when chosen), or left to the phone when the PC can't.
     fn talk_call(&mut self, a: TalkArgs) -> Filed {
         use crate::route::{How, Kind};
-        if a.chat_only {
+        // A message with files is always answered as a chat: the files are
+        // read for the answer, never turned into a project's task.
+        let has_files = a
+            .turns
+            .iter()
+            .any(|t| t.id == a.turn_id && !t.files.is_empty());
+        if a.chat_only || has_files {
             return self.talk_answer(a);
         }
         let text = a
@@ -3786,6 +3793,7 @@ impl Service {
             seq: 0,
             gone: false,
             pictures: vec![],
+            files: vec![],
         };
         let _ = self.chat_put(
             &a.person.clone(),
@@ -3794,6 +3802,100 @@ impl Service {
             vec![user, reply],
             false,
         );
+    }
+
+    /// The chat's turns for the model with the words read from files put
+    /// in: the new message's files are read now (and what was read is kept
+    /// with the chat), earlier messages' files are added from what was kept
+    /// (a short part, so a follow-up question still has them). Also what the
+    /// phone is told was read of each file, and pictures of a scan.
+    fn file_words(
+        &mut self,
+        a: &TalkArgs,
+        paid: bool,
+        sees: bool,
+    ) -> (
+        Vec<mimir_proto::ChatTurn>,
+        Vec<mimir_proto::FileNote>,
+        Vec<mimir_proto::Picture>,
+    ) {
+        use crate::readfile as rf;
+        let mut turns = a.turns.clone();
+        let (mut notes, mut pics) = (vec![], vec![]);
+        // Earlier messages: a share of what was read, newest first.
+        let mut left = 12_000usize;
+        let earlier: Vec<usize> = turns
+            .iter()
+            .enumerate()
+            .filter(|(_, t)| t.user && !t.gone && t.id != a.turn_id)
+            .map(|(i, _)| i)
+            .rev()
+            .take(8)
+            .collect();
+        for i in earlier {
+            if left == 0 {
+                break;
+            }
+            for k in self
+                .chats()
+                .files_for(&a.person, &a.chat_id, &turns[i].id.clone())
+            {
+                if k.text.trim().is_empty() || left == 0 {
+                    continue;
+                }
+                let part: String = k.text.chars().take(left.min(6_000)).collect();
+                left -= part.chars().count();
+                let cut = part.chars().count() < k.text.chars().count();
+                turns[i].text.push_str(&format!(
+                    "\n\nFile \"{}\" ({}{}):\n{}",
+                    k.name,
+                    k.note.trim_end_matches('.').to_lowercase(),
+                    if cut {
+                        "; only its start is shown here"
+                    } else {
+                        ""
+                    },
+                    part
+                ));
+            }
+        }
+        if let Some(t) = turns.iter_mut().find(|t| t.id == a.turn_id) {
+            let sent: Vec<mimir_proto::SentFile> =
+                t.files.iter().take(rf::MAX_FILES).cloned().collect();
+            if !sent.is_empty() {
+                let read: Vec<rf::Extracted> = sent.iter().map(|f| rf::extract(f, sees)).collect();
+                let fitted = rf::fit(&read, if paid { rf::PAID_CHARS } else { rf::FREE_CHARS });
+                for e in &read {
+                    pics.extend(e.pictures.iter().cloned());
+                }
+                let kept: Vec<mimir_store::talk::KeptFile> = fitted
+                    .iter()
+                    .map(|f| mimir_store::talk::KeptFile {
+                        name: f.name.clone(),
+                        text: f.text.clone(),
+                        note: f.note.clone(),
+                    })
+                    .collect();
+                let _ = self
+                    .chats()
+                    .put_files(&a.person, &a.chat_id, &a.turn_id, &kept);
+                for f in &fitted {
+                    if !t.text.trim().is_empty() {
+                        t.text.push_str("\n\n");
+                    }
+                    t.text.push_str(&f.for_model());
+                    notes.push(f.file_note());
+                }
+            }
+            for f in t.files.iter().skip(rf::MAX_FILES) {
+                notes.push(mimir_proto::FileNote {
+                    name: f.name.clone(),
+                    note: "Only 3 files go with one message, so this one wasn't read.".into(),
+                });
+            }
+            t.files.clear();
+        }
+        (turns, notes, pics)
     }
 
     /// Queues a chat answer on the chat engine.
@@ -3885,6 +3987,25 @@ impl Service {
                 .chats()
                 .put_pictures(&a.person, &a.chat_id, &a.turn_id, &new_pics);
         }
+        // Files sent with the message ("chat_files"): read here, only the
+        // words kept, and the model told how much was read.
+        // (Only asked of the model when a file came: nothing else needs it here.)
+        let has_files = a
+            .turns
+            .iter()
+            .any(|t| t.id == a.turn_id && !t.files.is_empty());
+        let sees = has_files
+            && (paid
+                || pick.as_ref().is_some_and(|p| {
+                    crate::ollama::sees_pictures(&crate::models::ollama_url(), &p.model)
+                }));
+        let (turns, files_read, scan_pics) = self.file_words(&a, paid, sees);
+        let mut new_pics = new_pics;
+        for p in scan_pics {
+            if new_pics.len() < mimir_store::talk::PICTURES_PER_TURN {
+                new_pics.push(p);
+            }
+        }
         pictures.push(new_pics);
         if let Some(prev) = user_ids.iter().rev().find(|id| **id != a.turn_id).cloned() {
             let (person, chat) = (a.person.clone(), a.chat_id.clone());
@@ -3912,7 +4033,7 @@ impl Service {
             answer_id: answer.clone(),
             model: pick.as_ref().map(|p| p.model.clone()).unwrap_or_default(),
             model_words: model_words.clone(),
-            messages: crate::talk::messages(system, &a.turns),
+            messages: crate::talk::messages(system, &turns),
             think,
             max_tokens,
             context: crate::engine::CHAT_CONTEXT,
@@ -3934,6 +4055,7 @@ impl Service {
         if let Some(t) = a.turns.iter().find(|t| t.id == a.turn_id && t.user) {
             let mut t = t.clone();
             t.pictures.clear();
+            t.files.clear();
             let _ = self.chat_put(&a.person.clone(), &a.chat_id, None, vec![t], false);
         }
         self.answer_person
@@ -3944,6 +4066,7 @@ impl Service {
                 ran,
                 model_words,
                 waiting: waiting.or_else(|| cold.then(|| crate::talk::WAKING.to_string())),
+                files_read,
             },
             Err(why) => Filed::OnPhone { why },
         }

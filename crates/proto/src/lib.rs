@@ -237,6 +237,26 @@ pub struct Picture {
     pub base64: String,
 }
 
+/// A file to send with a chat message ("chat_files"): the PC reads what it
+/// can of it (a PDF, a document, a sheet, a zip, a sound recording, plain text).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SentFile {
+    /// The name as the person knows it, e.g. "Lease.pdf".
+    pub name: String,
+    /// e.g. "application/pdf" (may be empty: the PC goes by the name).
+    #[serde(default)]
+    pub media_type: String,
+    pub base64: String,
+}
+
+/// How much of a file the PC read, in plain words for the phone to show
+/// under the file ("Read all of it", "Read pages 1 to 40 of 120").
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct FileNote {
+    pub name: String,
+    pub note: String,
+}
+
 /// A change git sees in a project.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct GitChange {
@@ -288,7 +308,9 @@ pub const PROTO: u32 = 2;
 /// a person may choose changed; the phone asks `Models` again) and
 /// "chat_pictures" (`ChatTurn::pictures`: a chat message can carry pictures
 /// for the PC's model, and the `Models` reply's `sees_pictures` says
-/// whether the PC's answerer can look at them). A client lists the
+/// whether the PC's answerer can look at them) and "chat_files"
+/// (`ChatTurn::files`: a chat message can carry files for the PC to read, and
+/// `Filed::Talk::files_read` says how much of each was read). A client lists the
 /// ones it knows in `Hello`, and only gets the new events when it does.
 pub const FEATURES: &[&str] = &[
     "search",
@@ -303,6 +325,7 @@ pub const FEATURES: &[&str] = &[
     "people",
     "models_changed",
     "chat_pictures",
+    "chat_files",
 ];
 
 /// What `ConfirmPair.person` says for the owner's own phone. Anything else
@@ -380,6 +403,11 @@ pub struct ChatTurn {
     /// from the chat's turns and never sends them back.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub pictures: Vec<Picture>,
+    /// Files sent with a message ("chat_files"), at most 3 of 10 MB. Only in
+    /// a `Talk` call: the PC reads them, keeps only what it read (apart from
+    /// the chat's turns, with the person's chat) and never sends them back.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub files: Vec<SentFile>,
 }
 
 /// A general chat as the PC keeps it. In `ChatsSince` and `ChatChanged`,
@@ -912,6 +940,9 @@ pub enum Filed {
         model_words: String,
         #[serde(default)]
         waiting: Option<String>,
+        /// What was read of each file sent with the message ("chat_files").
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        files_read: Vec<FileNote>,
     },
     /// The PC can't answer this one (busy, no model that fits): the phone
     /// answers it itself.

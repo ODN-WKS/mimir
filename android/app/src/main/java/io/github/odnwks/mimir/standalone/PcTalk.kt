@@ -20,6 +20,9 @@ interface PcTalk {
     /** The PC takes pictures with a message (an older one doesn't know the word) but its answerer can't look at them. */
     fun picturesRefused(): Boolean = false
 
+    /** The PC takes files with a message and reads them (PDFs, documents, sheets, recordings: "chat_files"). */
+    fun canSendFiles(): Boolean = false
+
     /** The PC's name as the owner sees it ("Your PC" or the name given to it). */
     fun pcName(): String
 

@@ -218,6 +218,9 @@ class Engine(
         }
     }
 
+    /** Files go to the PC to be read when it answers and takes them (null-safe: false for an older PC). */
+    fun pcFiles(): Boolean = pcAnswers() && pc?.canSendFiles() == true
+
     /** Whether the next message goes to an online model the owner set up (never in a Whisper). */
     fun onlineAnswers(): Boolean = !_state.value.whisper && io.github.odnwks.mimir.online.OnlineModels.answering() != null
 
@@ -1851,6 +1854,20 @@ class Engine(
         }
     }
 
+    /**
+     * The PC said how much it read of each file sent with message [turnId]: it is shown under the file,
+     * and the file's bytes are let go (the PC has what it read; nothing sits unused here).
+     */
+    private fun tellFilesRead(turnId: String, notes: List<io.github.odnwks.mimir.link.LFileNote>) {
+        _state.update { st ->
+            st.copy(chat = st.chat.copy(turns = st.chat.turns.map { t ->
+                if (t.id != turnId) t
+                else t.copy(files = t.files.map { f -> notes.firstOrNull { it.name == f.name }?.let { f.copy(bytes = null, note = it.note) } ?: f })
+            }))
+        }
+        persist()
+    }
+
     /** "Answer on this phone" while waiting for the PC: the phone answers, and its answer replaces the PC's everywhere. */
     fun answerOnPhone() {
         if (_state.value.onPc) answerHere.set(true)
@@ -1898,8 +1915,10 @@ class Engine(
         }
         // A PC whose model sees pictures gets them with this message (and only this one: it keeps the rest).
         val pcSees = link.canSeePictures()
+        // Files go as they are for the PC to read, with this message only.
+        val filesGo = link.canSendFiles()
         val request = TalkRequest(
-            chatId, asked.id, s.chat.turns.map { it.wire(pcSees, withPictures = pcSees && it.id == asked.id) }, fetched,
+            chatId, asked.id, s.chat.turns.map { it.wire(pcSees, withPictures = pcSees && it.id == asked.id, withFiles = filesGo && it.id == asked.id) }, fetched,
             sources.map { io.github.odnwks.mimir.link.LChatSource(it.site, it.url, it.words, it.results, it.via) },
             s.effort.wire, Prompt.rulesForPc(io.github.odnwks.mimir.data.GroundRules.current, s.chat.rules), if (chatOnly.get()) null else inTask(),
             chatOnly = chatOnly.getAndSet(false),
@@ -1957,7 +1976,10 @@ class Engine(
                 when (m) {
                     is FromPc.Filed -> when (val f = m.f) {
                         null -> return false
-                        is io.github.odnwks.mimir.link.Filed.Talk -> _state.update { it.copy(pcLine = f.waiting) }
+                        is io.github.odnwks.mimir.link.Filed.Talk -> {
+                            _state.update { it.copy(pcLine = f.waiting) }
+                            if (f.filesRead.isNotEmpty()) tellFilesRead(asked.id, f.filesRead)
+                        }
                         is io.github.odnwks.mimir.link.Filed.OnPhone -> {
                             _state.update { it.copy(note = plainPcWords(f.why)) }
                             return false

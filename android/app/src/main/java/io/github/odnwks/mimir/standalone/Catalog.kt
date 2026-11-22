@@ -240,10 +240,11 @@ data class Turn(
     val voice: String? = null,
 ) {
     /** As the PC keeps it: pictures and files reduced to words, as the phone's model reads them. */
-    fun wire(pcSees: Boolean = false, withPictures: Boolean = false) = io.github.odnwks.mimir.link.LChatTurn(
+    fun wire(pcSees: Boolean = false, withPictures: Boolean = false, withFiles: Boolean = false) = io.github.odnwks.mimir.link.LChatTurn(
         id, user, forModel(pcPictures = pcSees), sources.map { io.github.odnwks.mimir.link.LChatSource(it.site, it.url, it.words, it.results, it.via) },
         ran, modelWords, at, version, seq,
         pictures = if (withPictures) pictures.map { io.github.odnwks.mimir.link.LPicture("image/jpeg", java.util.Base64.getEncoder().encodeToString(it.jpeg)) } else emptyList(),
+        files = if (withFiles) files.mapNotNull { f -> f.bytes?.let { io.github.odnwks.mimir.link.LFile(f.name, f.mime, java.util.Base64.getEncoder().encodeToString(it)) } } else emptyList(),
     )
 
     /**
@@ -258,6 +259,8 @@ data class Turn(
         append(text.replace(PICTURE_MARKER, ""))
         files.forEach { f ->
             if (isNotEmpty() && !endsWith("\n")) append("\n\n")
+            // The PC reads these: the chat keeps only that they were attached.
+            if (f.onPc) { append("(File \"").append(f.name).append("\" was attached.)"); return@forEach }
             append("File \"").append(f.name).append(if (f.cut) "\" (only its start):\n" else "\":\n").append(f.text.replace(PICTURE_MARKER, ""))
         }
     }
@@ -282,7 +285,18 @@ class TurnPicture(val id: String, val name: String, val jpeg: ByteArray) {
 }
 
 /** A text file attached to a message: its name and the words read from it. */
-data class TurnFile(val name: String, val text: String, val cut: Boolean = false)
+data class TurnFile(
+    val name: String, val text: String, val cut: Boolean = false,
+    /** For the PC to read: the file's bytes (kept only until the PC has them), its type, and what the PC said it read ("Read all of it"). */
+    val bytes: ByteArray? = null, val mime: String = "", val note: String = "",
+) {
+    /** The PC reads this file (it is sent as it is, or the PC already read it): no words of it are kept here. */
+    val onPc: Boolean get() = bytes != null || (text.isEmpty() && note.isNotEmpty())
+
+    override fun equals(other: Any?) = other is TurnFile && other.name == name && other.text == text && other.cut == cut &&
+        other.mime == mime && other.note == note && other.bytes.contentEquals(bytes)
+    override fun hashCode() = name.hashCode() * 31 + (bytes?.size ?: 0)
+}
 
 /** Writes a conversation the way each model family expects, ending where its reply starts. */
 object Prompt {

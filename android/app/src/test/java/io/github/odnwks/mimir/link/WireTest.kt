@@ -154,6 +154,7 @@ class WireTest {
             ),
             Wire.talk("c-1", "t-4", listOf(LChatTurn("t-4", true, "Is Recipes a good name for a recipe app?", at = 1794000000000)), chatOnly = true),
             Wire.talk("c-1", "t-5", listOf(LChatTurn("t-5", true, "What does this show?", at = 1794000000000, pictures = listOf(LPicture("image/jpeg", "/9j/4AAQ")))), chatOnly = true),
+            Wire.talk("c-1", "t-6", listOf(LChatTurn("t-6", true, "What is this about?", at = 1794000000000, files = listOf(LFile("Lease.pdf", "application/pdf", "JVBERi0x")))), chatOnly = true),
             Wire.talkStop("c-1", "t-1"),
             Wire.talkTurn("c-1", "t-1"),
             Wire.chatPut("c-1", null, listOf(norway, oslo.copy(text = "Oslo.", ran = "phone", version = 2, seq = 0), LChatTurn("t-0", true, "", at = 1794000000000, version = 3, gone = true))),
@@ -205,7 +206,7 @@ class WireTest {
         assertTrue(!truth.copy(rev = 6).newerThan(truth))
 
         val replies = evs.filterIsInstance<Ev.Reply>().associateBy { it.callId }
-        assertEquals(Filed.Talk("t-1.a", "pc", "Qwen 3.6 · Your PC", "Waking your PC's model…"), Wire.filed(replies[20]!!.ok))
+        assertEquals(Filed.Talk("t-1.a", "pc", "Qwen 3.6 · Your PC", "Waking your PC's model…", listOf(LFileNote("Lease.pdf", "Read pages 1 to 40 of 120"))), Wire.filed(replies[20]!!.ok))
         assertEquals(Filed.OnPhone("Your PC is busy; this phone answers instead."), Wire.filed(replies[21]!!.ok))
         assertEquals(LTalkState.Answering("Oslo"), Wire.talkState(replies[22]!!.ok))
         assertEquals(LTalkState.Done(oslo), Wire.talkState(replies[23]!!.ok))
