@@ -625,11 +625,13 @@ fn rename_and_try_again_in_the_window() {
     close(h);
 }
 
-/// With no model picked, the PC can't answer a chat: the window says so and
-/// Send comes back (the chat is not left "answering" with a Stop button).
+/// With no model on the PC at all, it can't answer a chat: the window says
+/// so and Send comes back (the chat is not left "answering" with a Stop
+/// button). (A PC with a model but no test result yet does answer: Q1.)
 #[test]
 fn a_chat_the_pc_cannot_answer_gets_send_back() {
     let Some(home) = home() else { return };
+    fake_ollama(&[], Duration::ZERO);
     let mut h = home.open();
     click(&mut h, station_ui::labels::NEW_CHAT);
     type_message(&mut h, "What is the capital of Norway?");
