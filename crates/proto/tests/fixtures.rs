@@ -507,6 +507,7 @@ fn write_the_examples() {
             project: "/home/me/p".into(),
             text: "Fix it".into(),
             pictures: vec![],
+            files: vec![],
             mode: Mode::Ask,
             model: None,
             effort: None,
@@ -517,6 +518,7 @@ fn write_the_examples() {
             task: "t".into(),
             text: "And this".into(),
             pictures: vec![],
+            files: vec![],
             msg_id: Some("m-2".into()),
         },
         Call::Stop { task: "t".into() },
@@ -757,4 +759,49 @@ fn write_the_examples() {
         })
         .collect();
     std::fs::write(dir.join("calls.jsonl"), lines.join("\n") + "\n").unwrap();
+    // A task's messages with pictures and files ("task_files"): kept apart
+    // so the phone's older call list stays as it was.
+    let with_files: Vec<String> = vec![
+        Call::NewTask {
+            ground_rules: None,
+            project: "/home/me/p".into(),
+            text: "Use these".into(),
+            pictures: vec![Picture {
+                media_type: "image/jpeg".into(),
+                base64: "/9j/4AAQ".into(),
+            }],
+            files: vec![SentFile {
+                name: "Notes.pdf".into(),
+                media_type: "application/pdf".into(),
+                base64: "JVBERi0x".into(),
+            }],
+            mode: Mode::Ask,
+            model: None,
+            effort: None,
+            separate_copy: false,
+            msg_id: Some("m-4".into()),
+        },
+        Call::Send {
+            task: "t".into(),
+            text: "See the picture and the file".into(),
+            pictures: vec![Picture {
+                media_type: "image/png".into(),
+                base64: "iVBORw0K".into(),
+            }],
+            files: vec![SentFile {
+                name: "Budget.xlsx".into(),
+                media_type: String::new(),
+                base64: "UEsDBBQ=".into(),
+            }],
+            msg_id: Some("m-5".into()),
+        },
+    ]
+    .iter()
+    .map(|c: &Call| serde_json::to_string(c).unwrap())
+    .collect();
+    std::fs::write(
+        dir.join("task_files_calls.jsonl"),
+        with_files.join("\n") + "\n",
+    )
+    .unwrap();
 }

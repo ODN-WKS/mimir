@@ -1,0 +1,2 @@
+{"NewTask":{"project":"/home/me/p","text":"Use these","pictures":[{"media_type":"image/jpeg","base64":"/9j/4AAQ"}],"files":[{"name":"Notes.pdf","media_type":"application/pdf","base64":"JVBERi0x"}],"mode":"Ask","model":null,"effort":null,"separate_copy":false,"msg_id":"m-4"}}
+{"Send":{"task":"t","text":"See the picture and the file","pictures":[{"media_type":"image/png","base64":"iVBORw0K"}],"files":[{"name":"Budget.xlsx","media_type":"","base64":"UEsDBBQ="}],"msg_id":"m-5"}}

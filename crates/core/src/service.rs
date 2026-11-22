@@ -246,6 +246,7 @@ const OFFERED: &[&str] = &[
     "models_changed",
     "chat_pictures",
     "chat_files",
+    "task_files",
 ];
 
 /// What a client was last told about a task.
@@ -1143,6 +1144,7 @@ impl Service {
                 project,
                 text,
                 pictures,
+                files,
                 mode,
                 model,
                 effort,
@@ -1150,6 +1152,7 @@ impl Service {
                 ground_rules,
                 ..
             } => {
+                crate::task_files::check(&pictures, &files)?;
                 // A phone starts tasks only in a project on the PC's list (or
                 // a chat the PC files itself), as with MoveTo.
                 if self.clients.get(&client).is_some_and(|c| c.phone.is_some())
@@ -1195,6 +1198,7 @@ impl Service {
                     on_free = Some(f.name.clone());
                     model = Some(f.id);
                 }
+                self.runner.next_files = files;
                 let id = if separate_copy {
                     let made = self.runner.new_task_in_copy(
                         Path::new(&project),
@@ -1258,9 +1262,11 @@ impl Service {
                 task,
                 text,
                 pictures,
+                files,
                 ..
             } => {
-                self.runner.send_with(&task, &text, &pictures);
+                crate::task_files::check(&pictures, &files)?;
+                self.runner.send_attached(&task, &text, &pictures, &files);
                 // Carrying on after a sure filing: the "Filed under" line has
                 // done its work.
                 if self

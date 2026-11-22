@@ -310,7 +310,9 @@ pub const PROTO: u32 = 2;
 /// for the PC's model, and the `Models` reply's `sees_pictures` says
 /// whether the PC's answerer can look at them) and "chat_files"
 /// (`ChatTurn::files`: a chat message can carry files for the PC to read, and
-/// `Filed::Talk::files_read` says how much of each was read). A client lists the
+/// `Filed::Talk::files_read` says how much of each was read) and "task_files"
+/// (`Call::NewTask::files` and `Call::Send::files`: a project task's message
+/// can carry files, and its `pictures` are kept for the task too). A client lists the
 /// ones it knows in `Hello`, and only gets the new events when it does.
 pub const FEATURES: &[&str] = &[
     "search",
@@ -326,6 +328,7 @@ pub const FEATURES: &[&str] = &[
     "models_changed",
     "chat_pictures",
     "chat_files",
+    "task_files",
 ];
 
 /// What `ConfirmPair.person` says for the owner's own phone. Anything else
@@ -1056,7 +1059,12 @@ pub enum Call {
     NewTask {
         project: String,
         text: String,
+        #[serde(default)]
         pictures: Vec<Picture>,
+        /// Files sent with the first message ("task_files"), at most 3 of
+        /// 10 MB; kept for the task and named in the message to Claude Code.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        files: Vec<SentFile>,
         mode: Mode,
         model: Option<String>,
         effort: Option<String>,
@@ -1072,7 +1080,11 @@ pub enum Call {
     Send {
         task: String,
         text: String,
+        #[serde(default)]
         pictures: Vec<Picture>,
+        /// Files sent with the message ("task_files"), at most 3 of 10 MB.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        files: Vec<SentFile>,
         #[serde(default)]
         msg_id: Option<String>,
     },

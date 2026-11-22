@@ -184,6 +184,7 @@ fn new_task(
         .call(
             p,
             Call::NewTask {
+                files: vec![],
                 ground_rules: None,
                 project: project.into(),
                 text: text.into(),
@@ -314,6 +315,7 @@ fn p4_always_allow_this_file_holds_on_the_next_turn() {
     seen.call(
         &p,
         Call::Send {
+            files: vec![],
             task: task.clone(),
             text: "And again.".into(),
             pictures: vec![],
@@ -383,6 +385,7 @@ fn p4b_the_phone_sees_what_it_always_allowed_and_can_take_it_back() {
     seen.call(
         &p,
         Call::Send {
+            files: vec![],
             task: task.clone(),
             text: "And again.".into(),
             pictures: vec![],
@@ -877,6 +880,7 @@ fn p2_a_phone_moves_a_task_only_to_a_listed_project_and_it_asks_first_there() {
     let recipe = other_project(&home);
     let task = st
         .call_wait(Call::NewTask {
+            files: vec![],
             project: project.clone(),
             text: "Tidy up notes.txt.".into(),
             pictures: vec![],
@@ -941,6 +945,7 @@ fn n3_a_phone_starts_a_task_only_in_a_listed_project() {
     let mut st = home.service();
     let (p, mut seen, _) = paired(&mut st, None);
     let new = |project: String| Call::NewTask {
+        files: vec![],
         project,
         text: "Tidy up notes.txt.".into(),
         pictures: vec![],
@@ -976,6 +981,7 @@ fn yolo_from_a_phone_only_when_the_pc_allows_it() {
     let mut st = home.service();
     let task = st
         .call_wait(Call::NewTask {
+            files: vec![],
             project: home.project.display().to_string(),
             text: "Tidy up notes.txt.".into(),
             pictures: vec![],

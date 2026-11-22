@@ -52,6 +52,7 @@ pub mod store;
 pub mod talk;
 pub mod talk_store;
 pub mod task;
+pub mod task_files;
 pub mod tidy;
 pub mod truth;
 pub mod update;

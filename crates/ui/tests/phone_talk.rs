@@ -653,6 +653,7 @@ fn p6_the_truth_says_working_then_done_everywhere() {
         .call(
             &p,
             Call::NewTask {
+                files: vec![],
                 ground_rules: None,
                 project: project.clone(),
                 text: "Run sleep 60 in bash, then say done.".into(),

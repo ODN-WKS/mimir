@@ -1445,6 +1445,7 @@ impl Station {
             project: project.to_string(),
             text: text.to_string(),
             pictures: pictures.to_vec(),
+            files: vec![],
             mode,
             model,
             effort,
@@ -1461,6 +1462,7 @@ impl Station {
             task: id.into(),
             text: text.into(),
             pictures: pictures.to_vec(),
+            files: vec![],
             msg_id: None,
         });
     }

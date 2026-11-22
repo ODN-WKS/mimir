@@ -82,6 +82,8 @@ pub struct Runner {
     /// Ground rules a phone sent with the request being handled: the next
     /// new task keeps them as its own.
     pub next_rules: Option<String>,
+    /// Files sent with the first message of the task being started.
+    pub next_files: Vec<mimir_proto::SentFile>,
     /// The 5-hour window, when Claude Code reports one.
     pub five_hour: Option<WeeklyUse>,
     /// When the figures last changed (unix seconds), for "updated N min ago".
@@ -188,6 +190,7 @@ impl Runner {
             weekly,
             ground_rules: None,
             next_rules: None,
+            next_files: vec![],
             five_hour: None,
             usage_at: None,
             usage_poller: None,
@@ -309,7 +312,8 @@ impl Runner {
             finished: 0,
             dirty: true,
         });
-        self.send_with(&id, text, pictures);
+        let files = std::mem::take(&mut self.next_files);
+        self.send_attached(&id, text, pictures, &files);
         id
     }
 
@@ -317,6 +321,28 @@ impl Runner {
     /// otherwise by resuming the task's Claude Code session.
     pub fn send(&mut self, id: &str, text: &str) {
         self.send_with(id, text, &[]);
+    }
+
+    /// Sends a message whose pictures and files are kept for the task and
+    /// named in the message ("Attached: ..."). Too big or too many: the
+    /// message is not sent and the reason is returned.
+    pub fn send_attached(
+        &mut self,
+        id: &str,
+        text: &str,
+        pictures: &[Picture],
+        files: &[mimir_proto::SentFile],
+    ) {
+        if pictures.is_empty() && files.is_empty() {
+            return self.send_with(id, text, pictures);
+        }
+        match crate::task_files::save(&self.data_dir(), id, pictures, files) {
+            Ok(k) => {
+                let text = crate::task_files::named(text.trim(), &k.paths);
+                self.send_with(id, &text, &k.pictures);
+            }
+            Err(e) => self.note(id, &e),
+        }
     }
 
     /// Sends a message with pictures.
@@ -1458,6 +1484,7 @@ impl Runner {
             s.kill();
         }
         crate::incognito::forget(id);
+        crate::task_files::remove(&self.data_dir(), id);
         true
     }
 
@@ -1475,6 +1502,7 @@ impl Runner {
                 s.kill();
             }
             let _ = self.store.remove(id);
+            crate::task_files::remove(&self.data_dir(), id);
         }
     }
 

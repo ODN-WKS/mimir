@@ -232,6 +232,7 @@ fn a_stop_cancels_a_message_still_waiting_for_the_pcs_model() {
     let mut st = home.service();
     let id = st
         .call_wait(Call::NewTask {
+            files: vec![],
             project: home.project.display().to_string(),
             text: "Hello".into(),
             pictures: vec![],
@@ -259,6 +260,7 @@ fn a_stop_cancels_a_message_still_waiting_for_the_pcs_model() {
     let task = id.clone();
     let waiting = std::thread::spawn(move || {
         st.call_wait(Call::Send {
+            files: vec![],
             task,
             text: "and one more thing".into(),
             pictures: vec![],
@@ -287,6 +289,7 @@ fn the_developer_log_tells_what_happened() {
     // A task.
     let id = st
         .call_wait(Call::NewTask {
+            files: vec![],
             project: home.project.display().to_string(),
             text: "Hello".into(),
             pictures: vec![],

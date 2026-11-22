@@ -557,6 +557,7 @@ fn sec10_another_person_cannot_start_tasks_or_read_the_owners_work() {
     let mut ana = paired_as(&mut st, Some("Ana"));
     let project = home.project.display().to_string();
     let new_task = |project: &str| Call::NewTask {
+        files: vec![],
         project: project.into(),
         text: "Tidy the notes".into(),
         pictures: vec![],
@@ -571,6 +572,7 @@ fn sec10_another_person_cannot_start_tasks_or_read_the_owners_work() {
     assert!(r.is_err(), "Ana started a task: {r:?}");
     for call in [
         Call::Send {
+            files: vec![],
             task: "x".into(),
             text: "hi".into(),
             pictures: vec![],
