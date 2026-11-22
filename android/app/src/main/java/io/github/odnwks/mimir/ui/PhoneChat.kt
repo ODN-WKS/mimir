@@ -392,6 +392,13 @@ fun PhoneChat(
                     SmallButton("Try again", engine::retry, description = "Ask the last message again")
                 }
             }
+            // The last answer's lookup failed (no signal, the PC away, the site down): ask again, or answer without it.
+            if (!s.writing && s.lookupFailed && s.chat.turns.lastOrNull()?.user == false) item(key = "lookup-again") {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    SmallButton("Try again", engine::lookupAgain, description = "Look it up again")
+                    SmallButton("Answer without looking it up", engine::answerWithoutLookup, description = "Answer this without the internet")
+                }
+            }
             // A kept part of an answer the owner stopped: said once, under it.
             if (!s.writing && stoppedHere && s.chat.turns.lastOrNull()?.user == false) item(key = "stopped") {
                 Text(YOU_STOPPED, style = Type.Small, color = Palette.TextDim)
