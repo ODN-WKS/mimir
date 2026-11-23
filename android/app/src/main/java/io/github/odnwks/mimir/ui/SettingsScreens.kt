@@ -137,7 +137,7 @@ fun SettingsScreen(state: StationState, nav: Navigator) {
 
 const val SETTINGS_VOICE_LINE = "Ingrid's voice, read-aloud speed, talk to type"
 const val SETTINGS_WHO_LINE = "This phone, your PC, online"
-const val SETTINGS_NOTIFICATIONS_LINE = "Battery saver or every 5 minutes, instant alerts"
+const val SETTINGS_NOTIFICATIONS_LINE = "What to tell me, staying in touch"
 const val SETTINGS_PC_LINE = "Connection, phones that can reach it"
 const val SETTINGS_LOOK_LINE = "Text size, startup animation"
 const val SETTINGS_STORAGE_LINE = "What's kept on this phone, delete chats"
