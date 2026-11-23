@@ -520,6 +520,8 @@ data class TaskMessage(
     val playLabel: String = "",
     /** Typed while the PC was away: kept on this phone and sent when it's back. */
     val waiting: Boolean = false,
+    /** A short line from the PC (not said by you or Claude): drawn small and dim. */
+    val note: Boolean = false,
 )
 
 data class Question(

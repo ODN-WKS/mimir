@@ -205,7 +205,8 @@ fun TaskScreen(taskId: String, state: StationState, station: Station, nav: Navig
                 val lastAnswer = task.messages.lastOrNull { it.fromClaude }
                 val lastOwn = task.messages.lastOrNull { !it.fromClaude && !it.waiting }
                 messages.forEach { m ->
-                    if (m.fromClaude) {
+                    if (m.note) Text(m.text, style = Type.Small, color = Palette.TextDim)
+                    else if (m.fromClaude) {
                         val writing = m.playLabel.isEmpty()
                         val again = lastOwn?.takeIf { quiet && nothingWaiting && tried != m.id && !writing && m.id == lastAnswer?.id && task.messages.indexOf(it) < task.messages.indexOf(m) }
                         Answer(

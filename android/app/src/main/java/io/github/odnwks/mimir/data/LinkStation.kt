@@ -1619,13 +1619,7 @@ class LinkStation(
         val es = entries[t.id].orEmpty()
         // PHD-29(c): disable Play while the task is live-streaming; enable once the message is complete.
         val streaming = live[t.id]?.isNotBlank() == true
-        val messages = es.mapIndexedNotNull { i, e ->
-            when (e) {
-                is LEntry.You -> TaskMessage("${t.id}-$i", false, e.text)
-                is LEntry.Claude -> TaskMessage("${t.id}-$i", true, e.text, if (streaming && i == es.lastIndex) "" else "Play the reply")
-                else -> null
-            }
-        } + listOfNotNull(live[t.id]?.takeIf { it.isNotBlank() }?.let { TaskMessage("${t.id}-live", true, it) }) +
+        val messages = es.mapIndexedNotNull { i, e -> taskMessageOf(t.id, i, e, streaming && i == es.lastIndex) } + listOfNotNull(live[t.id]?.takeIf { it.isNotBlank() }?.let { TaskMessage("${t.id}-live", true, it) }) +
             data.replies.filter { it.second == t.id }.map { (id, _, text) -> TaskMessage(id, false, text, waiting = true) } +
             data.recordings.filter { it.second == t.id }.map { (id, _, secs) -> TaskMessage(id, false, recordingWords(secs), waiting = true) }
         val ask = t.asks.firstOrNull()
@@ -1810,3 +1804,12 @@ internal fun onlineWithdrawn(before: String?, now: String?, owner: Boolean): Boo
     !owner && before == "paid" && now != "paid"
 
 private const val STOP_TAG = "stop-"
+
+/** One chat entry as a task message; null for steps, and for the "ran out of room" note (its own panel says it). */
+internal fun taskMessageOf(taskId: String, i: Int, e: LEntry, streamingLast: Boolean): TaskMessage? = when (e) {
+    is LEntry.You -> TaskMessage("$taskId-$i", false, e.text)
+    is LEntry.Claude -> TaskMessage("$taskId-$i", true, e.text, if (streamingLast) "" else "Play the reply")
+    is LEntry.Note -> if (e.text.isBlank() || e.text.startsWith("This free model ran out of room")) null
+        else TaskMessage("$taskId-$i", false, e.text, note = true)
+    else -> null
+}
