@@ -42,6 +42,8 @@ object Stations {
                 projectStore = PrefsProjectStore(context.applicationContext),
                 deviceName = deviceName ?: io.github.odnwks.mimir.data.DeviceName.of(context.applicationContext),
                 recordDir = File(context.filesDir, "recordings"),
+                // Pictures and files waiting to go with a reply or a new task (0.08: without it nothing could be attached).
+                attachDir = File(context.filesDir, "attachments"),
                 lockStore = PrefsLockStore(context.applicationContext),
                 onScreen = { io.github.odnwks.mimir.alerts.Notifier.foreground },
             ).also { s ->

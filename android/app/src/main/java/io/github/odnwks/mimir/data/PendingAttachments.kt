@@ -17,6 +17,8 @@ import java.util.Base64
  * wipes hidden details from each one when it receives it.
  */
 class PendingAttachments(private val dir: File?, private val codec: Vault.Codec) {
+    /** True when pictures and files can be kept for sending (the real app always gives a folder). */
+    val ready: Boolean get() = dir != null
     class Held(val pictures: List<LPicture>, val files: List<LFile>) {
         val isEmpty: Boolean get() = pictures.isEmpty() && files.isEmpty()
     }

@@ -68,6 +68,8 @@ class LinkStation(
 ) : Station, io.github.odnwks.mimir.standalone.PcTalk {
     private val lock = Any()
     private val attachments = PendingAttachments(attachDir, vault.codec)
+    /** For tests: the app's own link can keep pictures and files for sending. */
+    internal val attachmentsReady: Boolean get() = attachments.ready
     /** PHD-15: wakes the loop when network state or pairing state changes so it doesn't poll at 200 ms. */
     private val loopWake = java.util.concurrent.locks.ReentrantLock()
     private val loopReady = loopWake.newCondition()
