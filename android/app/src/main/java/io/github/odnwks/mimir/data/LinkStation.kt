@@ -388,6 +388,8 @@ class LinkStation(
                     l.addAll(ev.entries)
                     live.remove(ev.task)
                 }
+                // Finished alerts are the notification work's (N4b step 2); parsed so nothing breaks meanwhile.
+                is Ev.Finished, is Ev.RecentFinished -> {}
                 is Ev.Live -> { live[ev.task] = ev.text; liveAt[ev.task] = System.currentTimeMillis() }
                 is Ev.Problem -> if (ev.text !in dismissed) problem = ev.text
                 is Ev.NeedsYou -> {

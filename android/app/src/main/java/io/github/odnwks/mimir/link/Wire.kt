@@ -17,7 +17,7 @@ object Wire {
      * The PC sends the new events (talk pieces, chat changes, the truth) only to a phone that lists
      * them; the phone sends the new calls only to a PC whose Welcome lists them.
      */
-    val FEATURES = listOf("search", "lookup", TALK, CHAT_SYNC, TRUTH, MODELS_CHANGED)
+    val FEATURES = listOf("search", "lookup", TALK, CHAT_SYNC, TRUTH, MODELS_CHANGED, FINISHED_EVENTS)
     const val TALK = "talk"
     const val CHAT_SYNC = "chat_sync"
     /** The PC understands a cut-away turn ([LChatTurn.gone]); an older one would keep it as an empty message. */
@@ -25,6 +25,7 @@ object Wire {
     const val TRUTH = "truth"
     /** The PC tells this phone when what its person may choose changed (online allowed or taken away): it asks Models again. */
     const val MODELS_CHANGED = "models_changed"
+    const val FINISHED_EVENTS = "finished_events"
     /** The PC takes "answer this as a chat, not a project" (Talk.chat_only; Stage 1, 2.3). */
     const val CHAT_ONLY = "chat_only"
     /** The PC has Settings › Who answers' two lines: what answers chats, and what does project work (SetEngines). */
@@ -130,6 +131,8 @@ object Wire {
     }
 
     /** The PC's one truth about its work (`Event::Truth`). */
+    fun finishedItem(o: JSONObject): LFinished = LFinished(o.getString("id"), o.getString("task"), o.optString("how", "Ok"), o.optLong("at"))
+
     fun truth(o: JSONObject): LTruth {
         val pc = o.optJSONObject("pc") ?: JSONObject()
         val counts = o.optJSONObject("counts") ?: JSONObject()
@@ -306,6 +309,8 @@ object Wire {
             "Live" -> (v as JSONObject).let { Ev.Live(it.getString("task"), it.getString("text")) }
             "Problem" -> Ev.Problem((v as JSONObject).getString("text"))
             "NeedsYou" -> (v as JSONObject).getJSONArray("items").let { a -> Ev.NeedsYou((0 until a.length()).map { item(a.getJSONObject(it)) }) }
+            "Finished" -> Ev.Finished(finishedItem((v as JSONObject).getJSONObject("item")))
+            "RecentFinished" -> (v as JSONObject).getJSONArray("items").let { a -> Ev.RecentFinished((0 until a.length()).map { finishedItem(a.getJSONObject(it)) }) }
             "Usage" -> Ev.Other(name)
             "TestNotice" -> (v as JSONObject).let { Ev.TestNotice(it.getString("name"), it.optString("what"), it.optString("until")) }
             "TalkPiece" -> (v as JSONObject).let { Ev.TalkPiece(it.getString("chat_id"), it.getString("turn_id"), it.optInt("n"), it.optString("text"), it.optBoolean("thinking")) }
@@ -483,8 +488,15 @@ sealed interface Ev {
     data class ChatChanged(val chat: LChatRecord) : Ev
     /** The PC's one truth about its work. */
     data class Truth(val truth: LTruth) : Ev
+    /** A task's work ended (feature "finished_events"). */
+    data class Finished(val item: LFinished) : Ev
+    /** The PC's last few finished items, sent with a snapshot (a phone shows each id once). */
+    data class RecentFinished(val items: List<LFinished>) : Ev
     data class Other(val name: String) : Ev
 }
+
+/** How a task's work ended: [how] is "Ok", "Stopped" or "Failed". No words from the task. */
+data class LFinished(val id: String, val task: String, val how: String, val at: Long)
 
 /** One needs-you item from the PC (crates/proto's `NeedsYouItem`); `kind` is its name, e.g. "Permission". */
 /** One Claude model chats can use, as the PC lists it. */
