@@ -57,6 +57,9 @@ fun updateStatusWords(s: UpdateStatus, current: String): String = when (s) {
 }
 
 /** Settings › Help and about › App updates: the Updates section (on/off, Check now, mobile data, status, what's new). */
+/** The switch that keeps the app up to date: not "Updates", which is the menu's news feed (R19). */
+const val APP_UPDATES_SWITCH = "Keep the app up to date"
+
 @Composable
 fun AppUpdatesSection(pc: io.github.odnwks.mimir.data.StationState, modifier: Modifier = Modifier) {
     val uri = androidx.compose.ui.platform.LocalUriHandler.current
@@ -74,11 +77,11 @@ fun AppUpdatesSection(pc: io.github.odnwks.mimir.data.StationState, modifier: Mo
     androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_RESUME) { resumes++ }
     val allowed = remember(status, resumes) { AppUpdater.installAllowed(ctx) }
     val saved = remember(status, resumes) { AppUpdater.foundRelease(ctx) != null }
-    CapsLabel("UPDATES", modifier)
+    CapsLabel("APP UPDATES", modifier)
     Panel(spacing = 6.dp) {
         SwitchRow(on, { on = it; AppUpdater.setEnabled(ctx, it) }, Modifier.heightIn(min = 48.dp)) {
             Column(Modifier.weight(1f)) {
-                Text("Updates", style = Type.BodyTight.copy(fontWeight = FontWeight.SemiBold), color = Palette.Text)
+                Text(APP_UPDATES_SWITCH, style = Type.BodyTight.copy(fontWeight = FontWeight.SemiBold), color = Palette.Text)
                 Text(if (on) "On" else "Off", style = Type.Small, color = Palette.TextDim)
             }
         }

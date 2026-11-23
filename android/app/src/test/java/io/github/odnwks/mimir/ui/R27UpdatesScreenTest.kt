@@ -31,7 +31,7 @@ class R27UpdatesScreenTest {
         val engine = testEngine(tmp.newFolder(), ready = true)
         compose.setContent { CompositionLocalProvider(LocalPhoneEngine provides engine) { MimirTheme { AppRoot(FakeStation(ExampleData.awake()), nav) } } }
         nav.open(Screen.Settings); nav.open(Screen.Help); nav.open(Screen.About); compose.waitForIdle()
-        for (t in listOf("Updates", "Also on mobile data", "Check now", UPDATES_PRIVACY, UPDATES_TEST_BUILD)) {
+        for (t in listOf(APP_UPDATES_SWITCH, "Also on mobile data", "Check now", UPDATES_PRIVACY, UPDATES_TEST_BUILD)) {
             compose.onNodeWithText(t).performScrollTo().assertIsDisplayed()
         }
     }

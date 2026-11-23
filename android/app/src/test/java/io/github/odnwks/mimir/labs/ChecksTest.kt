@@ -30,7 +30,7 @@ class ChecksTest {
         val l = Checks.run(f)
         assertEquals(6, l.size)
         assertTrue(l.all { it.result == Result.Good })
-        assertEquals("Reached in 120 ms", by(l, "Your PC").line)
+        assertEquals("Reached in under a second", by(l, "Your PC").line)
         assertEquals(1, f.asked)
     }
 
@@ -70,8 +70,8 @@ class ChecksTest {
     }
 
     @Test fun timesInPlainWords() {
-        assertEquals("80 ms", Checks.words(80))
-        assertEquals("1.5 s", Checks.words(1500))
+        assertEquals("under a second", Checks.words(80))
+        assertEquals("2 s", Checks.words(1500))
     }
 
     @Test fun searchFindsLabs() {

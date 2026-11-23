@@ -377,20 +377,13 @@ fun PhoneChat(
             if (s.writing) item(key = "writing") {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Reply(
-                        when {
-                            s.looking != null -> s.looking!!
-                            s.loading -> "$AI_NAME is getting ready…"
-                            s.onPc && s.partial.isEmpty() && s.pcLine != null -> s.pcLine!!
-                            s.thinking -> "Thinking it through…"
-                            // Before the first word it is reading, not thinking (only real thinking says so).
-                            s.partial.isEmpty() -> when { s.onPc -> "Writing…"; s.readingFound -> "Reading it…"; else -> "Reading your message…" }
-                            else -> s.partial
-                        },
-                        dim = s.loading || s.thinking || s.partial.isEmpty(), openSources = !s.whisper,
+                        writingWords(s),
+                        dim = s.loading || s.thinking || s.partial.isEmpty(), openSources = !s.whisper, buttons = false,
                     )
                     // The link dropped mid-answer: the PC finishes anyway; or this phone answers now.
-                    if (s.onPc && s.pcWaiting) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("Waiting for $pcName…", style = Type.Small, color = Palette.TextDim, modifier = Modifier.weight(1f).semantics { liveRegion = androidx.compose.ui.semantics.LiveRegionMode.Polite })
+                    if (s.onPc && s.pcWaiting) {
+                        // With no words yet the reply line says it; with some, it sits under them. Said once.
+                        if (s.partial.isNotEmpty()) Text(PC_AWAY_WORDS, style = Type.Small, color = Palette.TextDim, modifier = Modifier.semantics { liveRegion = androidx.compose.ui.semantics.LiveRegionMode.Polite })
                         // Only a phone with a model ready can answer instead.
                         if (s.ready) SmallButton("Answer on this phone", engine::answerOnPhone, description = "Answer on this phone instead")
                     }
@@ -561,7 +554,7 @@ fun PhoneChat(
     WhoAnswersSheet(
         open = whoOpen && !s.whisper,
         chosen = when { claudeAnswers && pcAnswers -> Answerer.Claude; pcAnswers -> Answerer.Pc; else -> Answerer.Phone },
-        phoneCan = s.supported, paired = paired, claudeOffered = claudeOffered,
+        phoneCan = s.supported, paired = paired, claudeOffered = claudeOffered, pcOnline = pcOnline,
         onChoose = { who ->
             whoOpen = false
             when (who) {
@@ -677,6 +670,21 @@ fun chatOptions(s: io.github.odnwks.mimir.standalone.LocalState, pc: Boolean = f
     sentToPc = s.chat.sentToPc,
     lookups = s.chat.turns.sumOf { it.sources.size },
 )
+
+/** Said once when the PC went away while it was answering (R1): no "Waking…" or "Waiting for…" beside it. */
+const val PC_AWAY_WORDS = "Your PC is away. Your message is kept and sends when it's back."
+
+/** The line of the reply being written: one true story (R1: a PC that dropped says so, not what it said before). */
+internal fun writingWords(s: io.github.odnwks.mimir.standalone.LocalState): String = when {
+    s.looking != null -> s.looking!!
+    s.loading -> "$AI_NAME is getting ready…"
+    s.onPc && s.partial.isEmpty() && s.pcWaiting -> PC_AWAY_WORDS
+    s.onPc && s.partial.isEmpty() && s.pcLine != null -> s.pcLine!!
+    s.thinking -> "Thinking it through…"
+    // Before the first word it is reading, not thinking (only real thinking says so).
+    s.partial.isEmpty() -> when { s.onPc -> "Writing…"; s.readingFound -> "Reading it…"; else -> "Reading your message…" }
+    else -> s.partial
+}
 
 /** What a message waiting for the PC says under itself. */
 const val QUEUED_WORDS = "Sends when your PC is back"

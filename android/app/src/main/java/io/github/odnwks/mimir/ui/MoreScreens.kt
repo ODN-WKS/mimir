@@ -72,6 +72,10 @@ fun chatsKeptWords(paired: Boolean, onlineAnswers: Boolean): String = when {
     else -> "Kept on this phone only."
 }
 
+/** Storage: the line about a model that isn't downloaded, only for a phone that can run one (R5: never beside "can't run a model"). */
+fun noModelWords(phoneCan: Boolean, noneHere: Boolean): String? =
+    if (phoneCan && noneHere) "No model is downloaded. This phone gets one when you first chat with it here." else null
+
 /** One thing the app keeps on the phone: what it is, what it is for, how big, and how to free it. */
 private data class Kept(val title: String, val why: String, val bytes: Long, val needed: Boolean = false, val remove: (@Composable () -> Unit)? = null)
 
@@ -143,7 +147,7 @@ fun StorageScreen(engine: Engine?, nav: Navigator, paired: Boolean = false) {
                 k.remove?.invoke()
             }
         }
-        if (have.isEmpty()) Body("No model is downloaded. This phone gets one when you first chat with it here.", Palette.TextDim)
+        noModelWords(s?.supported != false, have.isEmpty())?.let { Body(it, Palette.TextDim) }
         Body("$AI_NAME cleans up after itself: a model unused for ${Engine.UNUSED_DAYS} days is removed by itself, and it downloads again when you use it.", Palette.TextDim)
         Body("Your projects and tasks stay on your PC; the phone keeps only what it needs to show them.", Palette.TextDim)
     }
@@ -181,7 +185,7 @@ fun VoiceScreen(state: StationState, station: Station, nav: Navigator) {
             Text(ingrid.name, style = Type.BodyTight.copy(fontWeight = FontWeight.SemiBold), color = Palette.Text)
             Text("A natural voice, built into the app", style = Type.Small, color = Palette.TextDim)
             BigButton(
-                if (playing) "Stop" else "Hear her", Look.Outline, { voices.actions.sample(ingrid.id) }, height = 44.dp,
+                if (playing) "Stop" else "Play a sample", Look.Outline, { voices.actions.sample(ingrid.id) }, height = 44.dp,
                 description = if (playing) "Stop the sample" else "Play a sample of ${ingrid.name}", icon = if (playing) Glyphs.Stop else Glyphs.Play,
             )
         }
@@ -204,28 +208,28 @@ fun VoiceScreen(state: StationState, station: Station, nav: Navigator) {
                     stateDescription = io.github.odnwks.mimir.audio.ReadSpeed.percent(pending)
                 },
             )
+            Row(Modifier.fillMaxWidth()) {
+                Text("Slower", style = Type.Small, color = Palette.TextDim, modifier = Modifier.weight(1f))
+                Text("Faster", style = Type.Small, color = Palette.TextDim)
+            }
             val read = rememberReadAloud()
             val reading by read.reading.collectAsStateWithLifecycle()
             val readying by read.gettingReady.collectAsStateWithLifecycle()
             val hearing = reading == SPEED_SAMPLE_ID
             val waiting = hearing && readying == SPEED_SAMPLE_ID
             SmallButton(
-                when { waiting -> "Getting ${read.voiceName ?: "the voice"} ready…"; hearing -> "Stop"; else -> "Hear it" },
+                when { waiting -> "Getting ${read.voiceName ?: "the voice"} ready…"; hearing -> "Stop"; else -> "Play at this speed" },
                 { read.speed = pending; read.toggle(SPEED_SAMPLE_ID, SPEED_SAMPLE) },
                 description = when { waiting -> "Getting the voice ready. Tap to stop"; hearing -> "Stop the sample"; else -> "Hear a sample at ${io.github.odnwks.mimir.audio.ReadSpeed.percent(pending)}" },
                 animate = true,
             )
-            Row(Modifier.fillMaxWidth()) {
-                Text("Slower", style = Type.Small, color = Palette.TextDim, modifier = Modifier.weight(1f))
-                Text("Faster", style = Type.Small, color = Palette.TextDim)
-            }
         }
         ListRow("Other voices", "The phone's own voice, and which one reads", { nav.open(Screen.Voices) })
         val natural = vs.active
         val phoneVoice = natural?.name ?: rememberReadAloud().voiceName
         val here = if (natural != null) "$phoneVoice, on this phone" else "this phone's own voice${phoneVoice?.let { " ($it)" } ?: ""}"
         Body(
-            if (state.paired && state.pc.online) "Online replies are read by your PC's voice. $AI_NAME's chats, Whispers, and anything while your PC is away are read by $here, so nothing leaves the phone."
+            if (state.paired && state.pc.online) "Online replies are read by your PC's voice. $AI_NAME's chats and Whispers, and anything while your PC is away, are read by $here, so nothing leaves the phone."
             else "Messages are read by $here: nothing leaves the phone. Tap the speaker beside a reply, or long-press the reply and choose Read aloud; tap again to stop.",
             Palette.TextDim,
         )
@@ -344,7 +348,7 @@ fun HelpAnswerScreen(id: String, state: StationState, nav: Navigator) {
 /**
  * The read-aloud speed: a slider from 50% to 150% in 5% steps (the same speed everywhere: Settings ›
  * Voice, every chat's and task's sheet, the Updates player), on top of each voice's own pace. It
- * takes the new speed when the finger lifts; "Hear it" reads a short line at that speed, and only
+ * takes the new speed when the finger lifts; "Play at this speed" reads a short line at that speed, and only
  * when tapped.
  */
 @Composable
@@ -380,7 +384,7 @@ fun SpeedRow(state: StationState, station: Station, icon: Boolean = false) {
                 },
             )
             SmallButton(
-                when { waiting -> "Getting ${voice.voiceName ?: "the voice"} ready…"; hearing -> "Stop"; else -> "Hear it" },
+                when { waiting -> "Getting ${voice.voiceName ?: "the voice"} ready…"; hearing -> "Stop"; else -> "Play at this speed" },
                 { voice.speed = pending; voice.toggle(SPEED_SAMPLE_ID, SPEED_SAMPLE) },
                 description = when { waiting -> "Getting the voice ready. Tap to stop"; hearing -> "Stop the sample"; else -> "Hear a sample at ${io.github.odnwks.mimir.audio.ReadSpeed.percent(pending)}" },
                 animate = true,

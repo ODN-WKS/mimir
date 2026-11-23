@@ -126,7 +126,7 @@ internal fun OnlineStore(canRun: Boolean, ramBytes: Long, nav: Navigator, paired
     remember { OnlineModels.ensure(ctx.applicationContext.filesDir) }
     val st = OnlineModels.state.collectAsStateWithLifecycle().value
     var setting by rememberSaveable { mutableStateOf<String?>(null) }
-    if (!canRun) {
+    if (!canRun && !paired) {
         Panel(background = Palette.Bar, radius = 16.dp, padding = PaddingValues(horizontal = 14.dp, vertical = 12.dp), spacing = 6.dp) {
             Text(tooLittleMemory(ramBytes).forDevice(), style = Type.Label.copy(fontWeight = FontWeight.SemiBold), color = Palette.Text)
         }

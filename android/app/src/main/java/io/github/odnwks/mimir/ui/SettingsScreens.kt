@@ -6,6 +6,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -134,7 +135,7 @@ fun SettingsScreen(state: StationState, nav: Navigator) {
     }
 }
 
-const val SETTINGS_VOICE_LINE = "Ingrid, speed, talk to type"
+const val SETTINGS_VOICE_LINE = "Ingrid's voice, read-aloud speed, talk to type"
 const val SETTINGS_WHO_LINE = "This phone, your PC, online"
 const val SETTINGS_NOTIFICATIONS_LINE = "Battery saver or every 5 minutes, instant alerts"
 const val SETTINGS_PC_LINE = "Connection, phones that can reach it"
@@ -146,7 +147,7 @@ const val SETTINGS_HELP_LINE = "Questions, app updates, Labs"
 @Composable
 fun SettingsFooter(version: String) {
     Column(
-        Modifier.fillMaxWidth().padding(top = 28.dp, bottom = 12.dp),
+        Modifier.fillMaxWidth().padding(top = 28.dp, bottom = 12.dp).navigationBarsPadding(),
         horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         MimirEye(EyeMode.Normal, Modifier.size(width = 40.dp, height = 25.dp))

@@ -200,6 +200,8 @@ fun Answer(
     note: String? = null,
     /** Show Share under the answer too (tasks do; chats keep it in the hold menu). */
     share: Boolean = false,
+    /** False while the answer is still being written: no Listen or Copy under half an answer (R20). */
+    buttons: Boolean = true,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -211,7 +213,7 @@ fun Answer(
                 )
             }
         }
-        if (!dim) {
+        if (!dim && buttons) {
             if (sources.isNotEmpty()) SourcesLine(sources, openSources)
             if (!note.isNullOrBlank()) Text(note, style = Type.Small, color = Palette.TextDim, modifier = Modifier.testTag("switch-note"))
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), itemVerticalAlignment = Alignment.CenterVertically) {

@@ -81,6 +81,14 @@ val CONNECT_STEPS = listOf(
     "Click Pair a phone. A square code appears.",
     "Point this phone's camera at it.",
 )
+/** The same steps when the code is pasted: nothing about a camera or a square (R6). */
+val CONNECT_STEPS_PASTE = listOf(
+    "On your PC, open $AI_NAME and go to Settings › Phones.",
+    "Click Pair a phone. A code appears.",
+    "Copy the code, then paste it below.",
+)
+/** Said when Pair is tapped with nothing in the box (R7). */
+const val CODE_FIRST = "Paste the code from your PC first, then tap Pair."
 const val CONNECT_SCAN = "Scan the code"
 const val CONNECT_TYPE_INSTEAD = "Can't scan? Paste the code instead"
 const val CONNECT_SCAN_INSTEAD = "Scan instead"
@@ -135,6 +143,7 @@ fun PairScreen(station: Station, nav: Navigator, screenLock: Boolean = true) {
     androidx.compose.runtime.LaunchedEffect(Unit) { nav.pastePairCode = false }
     var typed by remember { mutableStateOf("") }
     var nothingToPaste by remember { mutableStateOf(false) }
+    var boxEmpty by remember { mutableStateOf(false) }
     val clip = androidx.compose.ui.platform.LocalClipboardManager.current
     // Replaced, not stacked: Scan, Paste, Couldn't pair and back never pile up behind each other.
     val pairNow = { code: String -> station.pair(code); nav.replace(Screen.PairDone) }
@@ -165,14 +174,16 @@ fun PairScreen(station: Station, nav: Navigator, screenLock: Boolean = true) {
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             Text(CONNECT_INTRO.forDevice(), style = Type.Body, color = Palette.TextSoft)
-            NumberedSteps(CONNECT_STEPS)
+            NumberedSteps(if (typing) CONNECT_STEPS_PASTE else CONNECT_STEPS)
             if (typing) {
-                MessageBox(typed, { typed = it }, "Pairing code", "Paste the code from the PC", Modifier.fillMaxWidth(), minLines = 3, shape = RoundedCornerShape(16.dp), keyboardOptions = PAIR_CODE_KEYBOARD)
+                MessageBox(typed, { typed = it; if (it.isNotBlank()) { nothingToPaste = false; boxEmpty = false } }, "Pairing code", "The code from your PC", Modifier.fillMaxWidth(), minLines = 3, shape = RoundedCornerShape(16.dp), keyboardOptions = PAIR_CODE_KEYBOARD)
                 BigButton("Paste the code", Look.Outline, {
                     val got = pastedCode(clip.getText()?.text)
                     nothingToPaste = got == null
-                    if (got != null) typed = got
+                    if (got != null) { typed = got; boxEmpty = false }
                 }, radius = 16.dp)
+                if (boxEmpty) Text(CODE_FIRST, style = Type.Label, color = Palette.AmberText,
+                    modifier = Modifier.semantics { liveRegion = androidx.compose.ui.semantics.LiveRegionMode.Polite })
                 if (nothingToPaste) Text(NOTHING_TO_PASTE, style = Type.Label, color = Palette.AmberText,
                     modifier = Modifier.semantics { liveRegion = androidx.compose.ui.semantics.LiveRegionMode.Polite })
             } else {
@@ -191,7 +202,7 @@ fun PairScreen(station: Station, nav: Navigator, screenLock: Boolean = true) {
         }
         PinnedBar(top = 10.dp) {
             if (typing) {
-                BigButton("Pair", Look.Primary, { if (typed.isNotBlank()) go(cleanPairCode(typed)) }, radius = 16.dp, bold = true)
+                BigButton("Pair", Look.Primary, { if (typed.isNotBlank()) go(cleanPairCode(typed)) else { boxEmpty = true; nothingToPaste = false } }, radius = 16.dp, bold = true)
                 Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { LinkText(CONNECT_SCAN_INSTEAD, { typing = false }) }
             } else {
                 BigButton(CONNECT_SCAN, Look.Primary, { startScan() }, radius = 16.dp, bold = true)
@@ -284,10 +295,17 @@ private val problems = listOf(
     "Camera not allowed" to "Allow the camera in the phone’s settings, or type the code instead.",
 )
 
-/** Couldn't pair (board 17): what went wrong and how to fix it. */
+/** A typed or pasted text that isn't a pairing code: the other causes don't apply to it (R8). */
+fun badCodeTyped(why: String?): Boolean = why?.contains("isn't a Mímir pairing code") == true
+
+/** The cards under the red one: only what could still be the cause. */
+fun otherProblems(why: String?): List<Pair<String, String>> = if (badCodeTyped(why)) emptyList() else problems
+
+/** Couldn't pair (board 17): what went wrong, then what to do. */
 @Composable
 fun PairErrorScreen(state: StationState, nav: Navigator) {
     val why = (state.pairing as? PairProgress.Failed)?.why
+    val others = otherProblems(why)
     Column(Modifier.fillMaxSize().background(Palette.Ground)) {
         BackHeader("Couldn't pair", { nav.replace(Screen.Pair) })
         Column(
@@ -300,12 +318,13 @@ fun PairErrorScreen(state: StationState, nav: Navigator) {
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Icon(Glyphs.Clock, null, tint = Palette.RedTitle, modifier = Modifier.size(22.dp))
-                    SectionTitle("Here's what to try", color = Palette.RedTitle, style = Type.Section.copy(fontSize = 17.sp))
+                    // The page's own title says it couldn't pair; the card says why, and the line under it what to do.
+                    Text(why ?: "The code didn't work. Try a new one.", style = Type.Body, color = Palette.RedBody, modifier = Modifier.weight(1f))
                 }
-                Text(why ?: "Codes last 10 minutes. On the PC, click \"Pair a phone\" again for a new one, then scan it.", style = Type.Body, color = Palette.RedBody)
             }
-            SectionTitle("Other things that can go wrong", Modifier.padding(start = 4.dp, end = 4.dp, top = 4.dp))
-            problems.forEach { (title, fix) ->
+            Text("Codes last 10 minutes. On the PC, click \"Pair a phone\" for a new one.", style = Type.Body, color = Palette.TextSoft)
+            if (others.isNotEmpty()) SectionTitle("Other things that can go wrong", Modifier.padding(start = 4.dp, end = 4.dp, top = 4.dp))
+            others.forEach { (title, fix) ->
                 Panel(radius = 16.dp, spacing = 4.dp) {
                     Text(title, style = Type.BodyTight.copy(fontWeight = FontWeight.SemiBold), color = Palette.Text)
                     Text(fix, style = Type.Label.copy(lineHeight = Type.Label.fontSize * 1.45f), color = Palette.TextSoft)
@@ -313,8 +332,11 @@ fun PairErrorScreen(state: StationState, nav: Navigator) {
             }
         }
         PinnedBar(top = 10.dp) {
-            BigButton("Scan the new code", Look.Primary, { nav.replace(Screen.Pair) }, radius = 16.dp)
-            BigButton(CONNECT_TYPE_INSTEAD_SHORT, Look.Outline, { nav.pastePairCode = true; nav.replace(Screen.Pair) }, radius = 16.dp)
+            if (badCodeTyped(why)) BigButton("Try again", Look.Primary, { nav.pastePairCode = true; nav.replace(Screen.Pair) }, radius = 16.dp)
+            else {
+                BigButton("Scan the new code", Look.Primary, { nav.replace(Screen.Pair) }, radius = 16.dp)
+                BigButton(CONNECT_TYPE_INSTEAD_SHORT, Look.Outline, { nav.pastePairCode = true; nav.replace(Screen.Pair) }, radius = 16.dp)
+            }
         }
     }
 }

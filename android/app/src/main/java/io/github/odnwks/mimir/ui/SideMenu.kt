@@ -172,6 +172,8 @@ const val MENU_PROJECTS = "Projects"
 const val MENU_NEW_PROJECT = "New project…"
 const val MENU_SETTINGS = "Settings"
 const val MENU_BUTTON = "Menu"
+/** The Chats section with nothing in it says so (R12). */
+const val MENU_NO_CHATS = "No chats yet."
 
 /**
  * The menu, top to bottom: search, New chat, Needs you, Updates, Your PC, Whisper, the folding Chats
@@ -247,6 +249,7 @@ fun SideMenu(
                         },
                     ) { go { openIt() } }
                 }
+                if (q.isEmpty() && chats.isEmpty()) item("no-chats-yet") { Text(MENU_NO_CHATS, style = RowText, color = MenuColors.Dim, modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) }
                 if (q.isEmpty() && chats.size > MENU_CHATS_SHOWN) item("all-chats") { MenuRow("All chats", right = "${chats.size}", dim = true) { go { nav.open(Screen.Chats) } } }
                 if (q.isNotEmpty() && capped.isEmpty()) item("no-chats") { Text("No chat has that in its name.", style = RowText, color = MenuColors.Dim, modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) }
             }

@@ -109,6 +109,11 @@ object Checks {
 
     private fun version(p: Probes) = CheckLine("App version", Result.Good, p.version())
 
-    fun words(ms: Long): String = if (ms < 1000) "$ms ms" else "%.1f s".format(java.util.Locale.ROOT, ms / 1000.0)
+    /** How long, in words a person knows (R11): never milliseconds. */
+    fun words(ms: Long): String = when {
+        ms < 1000 -> "under a second"
+        ms < 10_000 -> "%.0f s".format(java.util.Locale.ROOT, ms / 1000.0)
+        else -> "%d s".format(java.util.Locale.ROOT, ms / 1000)
+    }
     private fun gb(b: Long): String = "%.1f GB".format(java.util.Locale.ROOT, b / 1_000_000_000.0)
 }

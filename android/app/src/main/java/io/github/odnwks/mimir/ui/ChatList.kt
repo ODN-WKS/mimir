@@ -186,7 +186,7 @@ fun UndoBar(deleted: Any?, onUndo: () -> Unit, onGone: () -> Unit, words: String
         exit = if (reduce) ExitTransition.None else fadeOut() + shrinkVertically(),
     ) {
         Row(
-            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp).clip(RoundedCornerShape(12.dp)).background(Palette.Bar)
+            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp).clip(RoundedCornerShape(12.dp)).background(Palette.Bar)
                 .padding(start = 16.dp, end = 4.dp).semantics { liveRegion = LiveRegionMode.Polite },
             verticalAlignment = Alignment.CenterVertically,
         ) {

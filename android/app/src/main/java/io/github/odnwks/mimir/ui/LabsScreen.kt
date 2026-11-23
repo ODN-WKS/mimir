@@ -107,8 +107,13 @@ fun LabsScreen(nav: Navigator) {
             CapsLabel(LABS_REPORT_HEAD)
             Panel(spacing = 10.dp) {
                 ReportBox(what) { what = it }
-                SwitchRow(withChecks, { withChecks = it }, Modifier.heightIn(min = 48.dp)) {
-                    Text("Include the last checks", style = Type.BodyTight, color = Palette.Text)
+                // Only offered once there are checks to include: never On beside "(not run yet)" (R10).
+                val haveChecks = checks != null
+                SwitchRow(withChecks && haveChecks, { if (haveChecks) withChecks = it }, Modifier.heightIn(min = 48.dp)) {
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text("Include the last checks", style = Type.BodyTight, color = if (haveChecks) Palette.Text else Palette.TextDim)
+                        if (!haveChecks) Text("Run the checks above first.", style = Type.Small, color = Palette.TextDim)
+                    }
                 }
                 SwitchRow(withErrors && logOn, { if (logOn) withErrors = it }, Modifier.heightIn(min = 48.dp)) {
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -116,9 +121,9 @@ fun LabsScreen(nav: Navigator) {
                         if (!logOn) Text("Turn the notes on above first.", style = Type.Small, color = Palette.TextDim)
                     }
                 }
-                val text = remember(what, withChecks, withErrors && logOn, checks, running) {
+                val text = remember(what, withChecks && checks != null, withErrors && logOn, checks, running) {
                     Report.build(
-                        LabsReport.facts(ctx), if (withChecks) (checks ?: emptyList()) else null,
+                        LabsReport.facts(ctx), if (withChecks) checks else null,
                         if (withErrors && logOn) LabsReport.errors(ctx) else null, what,
                     )
                 }

@@ -271,7 +271,7 @@ LazyColumn(
                     s.partial.isEmpty() -> if (s.readingFound) "Reading it…" else "Reading your message…"
                     else -> s.partial
                 },
-                dim = s.loading || s.thinking || s.partial.isEmpty(),
+                dim = s.loading || s.thinking || s.partial.isEmpty(), buttons = false,
             )
         }
         // The last message has no answer (the app closed mid-reply, or it failed): ask again.
@@ -331,12 +331,14 @@ internal fun Reply(
     onTryAgain: (() -> Unit)? = null,
     /** "Answered by … because …" when another model than the usual one wrote it. */
     note: String? = null,
+    /** False while it is still being written (R20). */
+    buttons: Boolean = true,
 ) {
     // Mímir's replies are read by the phone's own voice: nothing leaves the phone.
     val id = "mimir-${text.hashCode()}"
     // Listen and Copy get the words without the Markdown marks.
     val plain = androidx.compose.runtime.remember(text) { markdownPlain(text) }
-    Answer(plain, id, dim = dim, sources = sources, openSources = openSources, lookUp = lookUp, onTryAgain = onTryAgain, note = note) {
+    Answer(plain, id, dim = dim, sources = sources, openSources = openSources, lookUp = lookUp, onTryAgain = onTryAgain, note = note, buttons = buttons) {
         MarkdownText(text, style = ChatLook.MessageText, color = if (dim) Palette.TextDim else Palette.Text, linksOpen = openSources)
     }
 }

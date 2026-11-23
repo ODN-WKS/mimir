@@ -90,7 +90,7 @@ class ReadSpeedTest {
         start()
         voice.voiceName = "Ingrid"
         nav.open(Screen.Settings); nav.open(Screen.Voice); compose.waitForIdle()
-        compose.onNodeWithText("Hear it").performScrollTo().performClick()
+        compose.onNodeWithText("Play at this speed").performScrollTo().performClick()
         voice.readying.value = SPEED_SAMPLE_ID; compose.waitForIdle()
         compose.onNodeWithText("Getting Ingrid ready…").assertExists()
         // Sound: the button says Stop.

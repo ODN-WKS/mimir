@@ -48,6 +48,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -141,6 +142,7 @@ fun ModelsSection(state: StationState, station: Station, nav: Navigator, phone: 
         Column(mark("phone"), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             val canRun = phone?.state?.collectAsStateWithLifecycle()?.value?.supported == true
             if (canRun) GroupTitle("On this phone".forDevice(), "Run here · no PC, no internet, nothing leaves the phone".forDevice(), group)
+            else if (state.paired) GroupTitle("Free online models", "Optional · your PC answers your chats", group)
             else GroupTitle("Model store", "This phone can't run a model itself · free online ones instead".forDevice(), group)
             WeeklyCheck(state, station)
             PhoneStore(phone, nav, state.paired)
@@ -156,8 +158,10 @@ fun ModelsSection(state: StationState, station: Station, nav: Navigator, phone: 
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             val names = mapOf("claude" to "Online", "free" to "Your PC", "phone" to "On this phone")
+            val canRunHere = phone?.state?.collectAsStateWithLifecycle()?.value?.supported == true
+            val chosenGroup = answeringGroup(state.paired, state.models.chatsEngine == "paid", state.models.power == Power.ClaudeOnly)
             order.forEach { (key, _) ->
-                JumpChip(names.getValue(key), Modifier.weight(1f).fillMaxHeight()) {
+                JumpChip(names.getValue(key), Modifier.weight(1f).fillMaxHeight(), chosen = key == chosenGroup, available = key != "phone" || canRunHere) {
                     val y = tops[key] ?: return@JumpChip
                     scope.launch { if (reduce) scroll.scrollTo(y) else scroll.animateScrollTo(y) }
                 }
@@ -201,16 +205,23 @@ private fun WeeklyCheck(state: StationState, station: Station) {
     }
 }
 
+/** Which of the three groups answers chats now (R4): before pairing this phone, then the PC's own models or Online. */
+fun answeringGroup(paired: Boolean, chatsOnline: Boolean, onlineOnly: Boolean): String =
+    when { !paired -> "phone"; chatsOnline || onlineOnly -> "claude"; else -> "free" }
+
 /** A chip at the top of Models that brings a group into view. */
 @Composable
-private fun JumpChip(text: String, modifier: Modifier, onClick: () -> Unit) {
+private fun JumpChip(text: String, modifier: Modifier, chosen: Boolean = false, available: Boolean = true, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(12.dp)
     Box(
-        modifier.heightIn(min = 48.dp).clip(RoundedCornerShape(12.dp)).border(1.dp, Palette.BlueBorder, RoundedCornerShape(12.dp))
-            .clickable(role = Role.Button, onClickLabel = "Show $text", onClick = onClick).padding(horizontal = 6.dp, vertical = 6.dp),
+        modifier.heightIn(min = 48.dp).clip(shape).background(if (chosen) Palette.BlueCard else Color.Transparent, shape)
+            .border(if (chosen) 2.dp else 1.dp, if (available) Palette.BlueBorder else Palette.Line, shape)
+            .clickable(role = Role.Button, onClickLabel = "Show $text", onClick = onClick)
+            .semantics { selected = chosen; if (!available) stateDescription = "Not available on this phone" }.padding(horizontal = 6.dp, vertical = 6.dp),
         contentAlignment = Alignment.Center,
     ) {
         Text(
-            text, style = Type.Label.copy(fontWeight = FontWeight.SemiBold), color = Palette.BlueText,
+            text, style = Type.Label.copy(fontWeight = if (chosen) FontWeight.Bold else FontWeight.SemiBold), color = if (available) Palette.BlueText else Palette.TextDim,
             textAlign = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.fillMaxWidth(),
         )
     }

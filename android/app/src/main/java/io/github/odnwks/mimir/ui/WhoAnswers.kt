@@ -62,6 +62,7 @@ const val WHO_PC = "Your PC"
 const val WHO_PC_ABOUT = "Smarter and faster. Your chats stay between this phone and your PC."
 const val WHO_CONNECT = "Connect your PC"
 const val WHO_CLAUDE = "Online"
+const val WHO_PC_AWAY = "Your PC is away. Your message is kept and sends when it's back."
 const val WHO_CLAUDE_ABOUT = "Uses your Anthropic plan through your PC. Your messages go to Anthropic."
 
 /** What the top bar's "Your PC ▾" says to TalkBack. */
@@ -75,10 +76,12 @@ fun whoCards(
     chosen: Answerer, phoneCan: Boolean, paired: Boolean, claudeOffered: Boolean,
     /** An online service the owner set up (a fourth card), and whether it is the one answering. */
     online: Setup? = null, onlineChosen: Boolean = false,
+    /** False while the PC is away: its card says so, and Online (which goes through the PC) is offered only if it is already chosen. */
+    pcOnline: Boolean = true,
 ): List<WhoCard> = buildList {
     add(WhoCard(Answerer.Phone, WHO_PHONE, if (phoneCan) WHO_PHONE_ABOUT else WHO_PHONE_CANT, phoneCan, chosen == Answerer.Phone && phoneCan && !onlineChosen))
-    if (paired) add(WhoCard(Answerer.Pc, WHO_PC, WHO_PC_ABOUT, true, chosen == Answerer.Pc && !onlineChosen))
-    if (paired && claudeOffered) add(WhoCard(Answerer.Claude, WHO_CLAUDE, WHO_CLAUDE_ABOUT, true, chosen == Answerer.Claude && !onlineChosen))
+    if (paired) add(WhoCard(Answerer.Pc, WHO_PC, if (pcOnline) WHO_PC_ABOUT else WHO_PC_AWAY, true, chosen == Answerer.Pc && !onlineChosen))
+    if (paired && claudeOffered && (pcOnline || chosen == Answerer.Claude)) add(WhoCard(Answerer.Claude, WHO_CLAUDE, if (pcOnline) WHO_CLAUDE_ABOUT else WHO_PC_AWAY, true, chosen == Answerer.Claude && !onlineChosen))
     if (online != null) {
         val service = OnlineModels.serviceOf(online)
         add(WhoCard(Answerer.Online, "${service.name} \u00b7 ${online.model?.let(::shortModel) ?: "best free one"}", service.who, true, onlineChosen, online = true))
@@ -105,6 +108,7 @@ fun WhoAnswersSheet(
     onChoose: (Answerer) -> Unit,
     onConnect: () -> Unit,
     onClose: () -> Unit,
+    pcOnline: Boolean = true,
 ) {
     val online = OnlineModels.state.collectAsStateWithLifecycle().value
     val onlineSetup = online.setups.firstOrNull { it.id == online.answering }
@@ -143,7 +147,7 @@ fun WhoAnswersSheet(
                     WHO_TITLE, style = Type.SheetTitle,
                     color = Palette.Text, modifier = Modifier.padding(bottom = 4.dp).semantics { heading() },
                 )
-                whoCards(chosen, phoneCan, paired, claudeOffered, offered, onlineSetup != null).forEach { c ->
+                whoCards(chosen, phoneCan, paired, claudeOffered, offered, onlineSetup != null, pcOnline).forEach { c ->
                     WhoCardView(c) {
                         // One answerer at a time: choosing another stops the online one; choosing it stops the rest.
                         if (c.online) { OnlineModels.answerWith(offered?.id); onClose() }
