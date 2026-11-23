@@ -5289,9 +5289,7 @@ impl Service {
         let model_down = match self.model_down {
             Some((at, down)) if at.elapsed() < Duration::from_secs(10) => down,
             _ => {
-                // A chosen model of its own that can't be reached is down
-                // too, before anyone sends anything.
-                let down = crate::models::down_with(has_pick && !paid);
+                let down = crate::models::down();
                 self.model_down = Some((Instant::now(), down));
                 down
             }
