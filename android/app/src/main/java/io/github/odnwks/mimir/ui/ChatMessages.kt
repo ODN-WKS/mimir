@@ -108,15 +108,19 @@ fun OwnMessage(
     onEdit: ((String) -> Unit)? = null,
     /** A line under the edit box (what sending it will do). */
     editNote: String? = null,
+    /** The reason the last edit was not sent: the box opens again with the words kept, and says why. */
+    editFailure: String? = null,
+    onEditCancel: () -> Unit = {},
 ) {
     var editing by rememberSaveable(id) { mutableStateOf(false) }
     var draft by rememberSaveable(id) { mutableStateOf(text) }
+    LaunchedEffect(editFailure) { if (editFailure != null) editing = true }
     Column(modifier.fillMaxWidth(), horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(6.dp)) {
         if (editing && onEdit != null) EditBox(
             draft, { draft = it }, bubble,
-            onCancel = { editing = false; draft = text },
+            onCancel = { editing = false; draft = text; onEditCancel() },
             onSend = { editing = false; onEdit(draft) },
-            note = editNote,
+            note = editFailure ?: editNote,
         ) else MessageMenuHost(plain = text, id = id, lookUp = null, onEdit = onEdit?.let { { draft = text; editing = true } }) { onHold ->
             ChatText {
                 Text(

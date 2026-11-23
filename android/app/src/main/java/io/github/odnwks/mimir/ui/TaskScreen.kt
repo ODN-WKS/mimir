@@ -101,6 +101,8 @@ fun TaskScreen(taskId: String, state: StationState, station: Station, nav: Navig
     val standIn = LocalStandIn.current
     var stepsOpen by rememberSaveable { mutableStateOf(false) }
     var draft by rememberSaveable { mutableStateOf("") }
+    // Why an edit was not sent (its box opens again with the words kept).
+    var editFailure by rememberSaveable { mutableStateOf<String?>(null) }
     // Find in this task: only the messages with the words show while it's open.
     var finding by rememberSaveable { mutableStateOf(false) }
     var find by rememberSaveable { mutableStateOf("") }
@@ -189,18 +191,21 @@ fun TaskScreen(taskId: String, state: StationState, station: Station, nav: Navig
                 // The chat's own parts: an answer with Listen, Copy, Share and Try again, and the owner's
                 // message with its hold menu and Edit. Both only once the task is quiet.
                 val quiet = !task.showsStop && !task.busy
+                // Nothing is queued behind it, and one tap only: Try again never sends an older prompt after a newer one.
+                val nothingWaiting = task.messages.none { it.waiting }
+                var tried by rememberSaveable(task.id) { mutableStateOf<String?>(null) }
                 val lastAnswer = task.messages.lastOrNull { it.fromClaude }
                 val lastOwn = task.messages.lastOrNull { !it.fromClaude && !it.waiting }
                 messages.forEach { m ->
                     if (m.fromClaude) {
                         val writing = m.playLabel.isEmpty()
-                        val again = lastOwn?.takeIf { quiet && !writing && m.id == lastAnswer?.id && task.messages.indexOf(it) < task.messages.indexOf(m) }
+                        val again = lastOwn?.takeIf { quiet && nothingWaiting && tried != m.id && !writing && m.id == lastAnswer?.id && task.messages.indexOf(it) < task.messages.indexOf(m) }
                         Answer(
                             markdownPlain(m.text), "task-${task.id}-${m.id}",
                             dim = writing,
                             // Listen: the PC's voice while the PC is there, otherwise the phone's own.
                             pc = if (state.pc.online) ({ station.playMessage(task.id, m.id) }) else null,
-                            onTryAgain = again?.let { o -> { station.reply(task.id, o.text) } },
+                            onTryAgain = again?.let { o -> { tried = m.id; station.reply(task.id, o.text) } },
                             share = true,
                         ) {
                             MarkdownText(m.text, style = ChatLook.MessageText, color = Palette.Text)
@@ -217,9 +222,9 @@ fun TaskScreen(taskId: String, state: StationState, station: Station, nav: Navig
                     ) else OwnMessage(
                         m.text, id = "task-${task.id}-${m.id}",
                         onEdit = if (quiet && m.id == lastOwn?.id && io.github.odnwks.mimir.link.Wire.entryIndex(task.id, m.id) != null) {
-                            { words -> station.editTaskMessage(task.id, m.id, words.trim()) }
+                            { words -> editFailure = null; station.editTaskMessage(task.id, m.id, words.trim()) { why -> editFailure = why } }
                         } else null,
-                        editNote = EDIT_TASK_NOTE,
+                        editNote = EDIT_TASK_NOTE, editFailure = editFailure, onEditCancel = { editFailure = null },
                     )
                 }
                 // A task that hasn't answered yet says so, instead of a blank page.

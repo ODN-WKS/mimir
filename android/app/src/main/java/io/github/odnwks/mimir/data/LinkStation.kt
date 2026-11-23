@@ -971,15 +971,21 @@ class LinkStation(
         if (now) Thread({ flushReplies(); publish() }, "mimir-reply").start()
     }
 
-    /** Edit: the task goes back to that message (the PC's Undo), then the edited words go out as a normal reply. */
-    override fun editTaskMessage(taskId: String, messageId: String, text: String) {
-        if (text.isBlank()) return
-        val entry = Wire.entryIndex(taskId, messageId) ?: return reply(taskId, text)
+    /**
+     * Edit: the task goes back to that message (the PC's Undo); only when that worked do the edited words go
+     * out as a normal reply (kept and sent when the link is back, like any reply). If Undo is refused or
+     * can't go out, nothing is sent and [done] gets the reason, so the words stay with the owner.
+     */
+    override fun editTaskMessage(taskId: String, messageId: String, text: String, done: (String?) -> Unit) {
+        if (text.isBlank()) return done("Write something first.")
+        val entry = Wire.entryIndex(taskId, messageId)
+        if (entry == null) { reply(taskId, text); return done(null) }
         val sent = call(Wire.undo(taskId, entry)) { _, err ->
-            if (err != null) note(err)
+            if (err != null) return@call done(err)
             reply(taskId, text)
+            done(null)
         }
-        if (!sent) note("Your PC is away: edit this message again when it's back.")
+        if (!sent) done("Your PC is away. Your words are kept here: send them again when it's back.")
     }
 
     /** Sends the task replies waiting on this phone, oldest first. */

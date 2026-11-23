@@ -121,9 +121,13 @@ class FakeStation(initial: StationState = ExampleData.awake()) : Station {
 
     /** Edits made on a task: (task, message, new words). Checks read this. */
     val edited = mutableListOf<Triple<String, String, String>>()
-    override fun editTaskMessage(taskId: String, messageId: String, text: String) {
+    /** Set by a check: the reason an edit is refused (nothing is sent then). */
+    var editRefusal: String? = null
+    override fun editTaskMessage(taskId: String, messageId: String, text: String, done: (String?) -> Unit) {
         edited += Triple(taskId, messageId, text)
-        reply(taskId, text)
+        val why = editRefusal
+        if (why == null) reply(taskId, text)
+        done(why)
     }
 
     /** Words sent as replies in a task (checks read this). */

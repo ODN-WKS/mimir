@@ -281,4 +281,10 @@ class WireTest {
         assertEquals(null, old.chatsModel)
         assertTrue(old.chatModels.isEmpty())
     }
+
+    /** The proto's Undo call (crates/proto/src/lib.rs: Call::Undo { task, entry: usize }), externally tagged. */
+    @Test
+    fun undo_is_the_pcs_undo_call() {
+        assertEquals(parse("""{"Undo":{"task":"t","entry":3}}"""), parse(Wire.undo("t", 3)))
+    }
 }

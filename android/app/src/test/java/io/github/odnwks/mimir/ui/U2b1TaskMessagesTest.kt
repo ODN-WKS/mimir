@@ -113,4 +113,40 @@ class U2b1TaskMessagesTest {
         assertNull(Wire.entryIndex("t1", "t1-live"))
         assertNull(Wire.entryIndex("t1", "s-123"))
     }
+
+    @Test fun aRefusedEditOpensTheBoxAgainWithTheWordsAndTheReason() {
+        val base = ExampleData.awake()
+        val station = FakeStation(base.copy(tasks = listOf(task()), pc = base.pc))
+        station.editRefusal = "There is no snapshot from before that message."
+        compose.setContent {
+            CompositionLocalProvider(LocalReadAloud provides FakeReadAloud()) {
+                MimirTheme(reduceMotion = true) {
+                    val state by station.state.collectAsStateWithLifecycle()
+                    TaskScreen("t1", state, station, Navigator())
+                }
+            }
+        }
+        compose.onAllNodesWithText("Make the title bigger")[0].performTouchInput { longClick() }
+        compose.onNodeWithText("Edit").performClick()
+        compose.onNodeWithTag("edit-box").performTextReplacement("Kept words")
+        compose.onNodeWithContentDescription("Send the edited message").performClick()
+        compose.waitForIdle()
+        compose.onNodeWithText("There is no snapshot from before that message.").assertIsDisplayed()
+        compose.onNodeWithText("Kept words").assertIsDisplayed()
+        assertEquals(emptyList<String>(), station.replied)
+    }
+
+    @Test fun tryAgainIsHiddenWhileAMessageWaitsAndGoesAfterOneTap() {
+        val waiting = task().copy(messages = task().messages + TaskMessage("s-1", false, "A newer one", waiting = true))
+        open(waiting)
+        compose.onAllNodesWithContentDescription("Ask again: try this answer again").assertCountEquals(0)
+    }
+
+    @Test fun tryAgainCanBeTappedOnlyOnce() {
+        val station = open(task())
+        compose.onNodeWithContentDescription("Ask again: try this answer again").performClick()
+        compose.waitForIdle()
+        compose.onAllNodesWithContentDescription("Ask again: try this answer again").assertCountEquals(0)
+        assertEquals(1, station.replied.size)
+    }
 }

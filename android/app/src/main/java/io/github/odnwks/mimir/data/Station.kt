@@ -36,8 +36,8 @@ interface Station {
     fun retryMessage(messageId: String)
     /** A reply typed into one task. */
     fun reply(taskId: String, text: String)
-    /** Edit one of the owner's own messages in a task: the task goes back to that message and carries on with [text]. */
-    fun editTaskMessage(taskId: String, messageId: String, text: String) { reply(taskId, text) }
+    /** [done] gets null when it went out, or the plain reason it did not (nothing was sent then). Edit one of the owner's own messages in a task: the task goes back to that message and carries on with [text]. */
+    fun editTaskMessage(taskId: String, messageId: String, text: String, done: (String?) -> Unit = {}) { reply(taskId, text); done(null) }
     /** Takes back a new task that is still waiting on this phone (nothing is sent). */
     fun cancelWaitingTask(taskId: String) {}
     /** Sends a new task that the PC didn't start once more. */
