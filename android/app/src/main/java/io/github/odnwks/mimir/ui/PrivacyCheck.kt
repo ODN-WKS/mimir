@@ -149,7 +149,7 @@ fun PrivacyCheckScreen(state: StationState, nav: Navigator) {
             Panel(spacing = 4.dp) {
                 Text("When online answers", style = Type.BodyTight.copy(fontWeight = FontWeight.SemiBold), color = Palette.Text)
                 Text(
-                    if (state.paired) "That message goes from your PC to Anthropic. Answers from this phone or your PC's free models do not."
+                    if (state.paired) "That message goes from your PC to Anthropic. Answers from this phone or your PC's models do not."
                     else "Online answers go through your PC. Until one is connected, nothing goes to Anthropic.",
                     style = Type.Small, color = Palette.TextSoft,
                 )

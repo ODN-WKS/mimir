@@ -304,7 +304,7 @@ LazyColumn(
         Composer(
             draft, { draft = it },
             hint = when {
-                to.whisper -> "Whisper to your PC's free model"
+                to.whisper -> "Whisper to your PC's model"
                 state.pcAway -> "Message Mímir (${state.waitsUntil})"
                 else -> "Message Mímir"
             },

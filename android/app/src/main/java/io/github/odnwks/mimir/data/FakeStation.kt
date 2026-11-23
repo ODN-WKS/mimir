@@ -352,7 +352,8 @@ object ExampleData {
         NeedsYouItem("q-release", NeedsKind.Question, "Mímir", "2 min",
             "Release this as 0.16 once the checks pass, or keep it for the next batch?", TASK_ALLOW),
         NeedsYouItem("f-budgetapp", NeedsKind.CheckFix, "Recipe box", "1 h",
-            "Open Recipe box once from the PC's app menu. Did it start without the error?", null),
+            "Open Recipe box once from the PC's app menu. Did it start without the error?", null,
+            listOf("It works", "Still broken")),
         NeedsYouItem("d-keep", NeedsKind.Approve, "Mímir", "2 h",
             "The keep-it-working design is ready. Read it, then say OK or what to change.", null),
     )
@@ -403,7 +404,7 @@ object ExampleData {
         Update("u-allow", "Mímir", "2 min ago", "2 minutes ago",
             "Allow now reaches Mímir in 0.2 s instead of 1.8 s. Waiting for your OK to change one file.", Heard.Heard, UpdateTarget.TaskOf(TASK_ALLOW), 21),
         Update("u-incog", "General", "6 min ago", "6 minutes ago",
-            "Whisper mode works: a free model fixed both test bugs in 24 s with the internet cut off.", Heard.New, UpdateTarget.Incognito, 14),
+            "Whisper mode works: your PC's model fixed both test bugs in 24 s with the internet cut off.", Heard.New, UpdateTarget.Incognito, 14),
         Update("u-models", "General", "18 min ago", "18 minutes ago",
             "Six local models tested. Qwen 3.6 Coding fixed both bugs in 30 s, the fastest.", Heard.Heard, UpdateTarget.Models, 12),
         Update("u-idea", "Budget-App", "41 min ago", "41 minutes ago",

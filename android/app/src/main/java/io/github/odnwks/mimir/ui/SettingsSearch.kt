@@ -11,7 +11,7 @@ data class Findable(
 
 /** The Whisper row's words: what it is, before and after pairing. */
 fun whisperExplained(paired: Boolean) =
-    if (paired) "A private chat that's never kept: with $AI_NAME on this phone, or with your PC's free model and the internet cut off. Tap to start one."
+    if (paired) "A private chat that's never kept: with $AI_NAME on this phone, or with your PC's model and the internet cut off. Tap to start one."
     else "A private chat on this phone: $AI_NAME answers here, nothing is sent anywhere, and nothing of it is kept. Tap to start one."
 
 

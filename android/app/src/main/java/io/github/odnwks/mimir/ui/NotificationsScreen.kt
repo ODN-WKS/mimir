@@ -57,7 +57,7 @@ import io.github.odnwks.mimir.ui.theme.Type
 fun NotificationsScreen(state: StationState, station: Station, nav: Navigator) {
     val standIn = LocalStandIn.current
     val permission = state.needsYou.firstOrNull { it.kind == NeedsKind.Permission }
-    val fix = state.needsYou.firstOrNull { it.kind == NeedsKind.CheckFix }
+    val fix = state.needsYou.firstOrNull { it.kind == NeedsKind.CheckFix && it.choices.isNotEmpty() }
     val newest = state.updates.firstOrNull { it.heard == io.github.odnwks.mimir.data.Heard.New }
     Column(Modifier.fillMaxSize().background(Palette.NotificationGround)) {
         BackHeader("Notifications", nav::back, backLabel = "Back to Settings")

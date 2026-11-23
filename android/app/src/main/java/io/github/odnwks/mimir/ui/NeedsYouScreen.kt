@@ -71,7 +71,8 @@ fun waitingWords(age: String): String = when {
  * choices those are used; the first is the main one.
  */
 fun askButtons(item: NeedsYouItem, answer: (Answer) -> Unit, choose: (Int) -> Unit, release: () -> Unit = { answer(Answer.Release) }): List<AskButton> = when (item.kind) {
-    NeedsKind.CheckFix -> listOf(AskButton("It works") { answer(Answer.ItWorks) }, AskButton("Still broken") { answer(Answer.StillBroken) })
+    // Only when the PC sent these answers with the item (it does for a project that has checks).
+    NeedsKind.CheckFix -> if (item.choices.isEmpty()) emptyList() else listOf(AskButton("It works") { answer(Answer.ItWorks) }, AskButton("Still broken") { answer(Answer.StillBroken) })
     NeedsKind.Release -> listOf(AskButton("Release") { release() }, AskButton("Keep for later") { answer(Answer.KeepForLater) })
     NeedsKind.CheckFailing -> listOf(AskButton("Ask to fix it") { answer(Answer.AskClaudeToFix) }, AskButton("Keep for later") { answer(Answer.KeepForLater) })
     NeedsKind.Approve -> item.choices.take(1).map { AskButton(it) { answer(Answer.Approve) } }
@@ -191,7 +192,7 @@ fun NeedsCard(item: NeedsYouItem, modifier: Modifier, open: () -> Unit, answer: 
         if (item.kind == NeedsKind.Question) MarkdownText(item.text, style = Type.BodyTight, color = look.body)
         else Text(item.text, style = Type.BodyTight, color = look.body)
         if (inline) when (item.kind) {
-            NeedsKind.CheckFix -> Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            NeedsKind.CheckFix -> if (item.choices.isNotEmpty()) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 BigButton("It works", Look.Primary, { answer(Answer.ItWorks) }, Modifier.weight(1f), height = 48.dp, fontSize = 15)
                 BigButton("Still broken", Look.Outline, { answer(Answer.StillBroken) }, Modifier.weight(1f), height = 48.dp, fontSize = 15)
             }

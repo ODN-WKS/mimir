@@ -62,7 +62,7 @@ class PairedWhisperTest {
         // On the PC: the chat itself turns teal and the next message goes as a Whisper task.
         assertTrue(nav.composeTo.whisper)
         assertEquals(Screen.Chat, nav.current)
-        compose.onNodeWithText("Whisper to your PC's free model").assertExists()
+        compose.onNodeWithText("Whisper to your PC's model").assertExists()
         // The eye again stops it, before anything is sent.
         eye(END_PC_WHISPER).performClick(); compose.waitForIdle()
         assertFalse(nav.composeTo.whisper)

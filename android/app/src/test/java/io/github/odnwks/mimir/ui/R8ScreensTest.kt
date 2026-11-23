@@ -81,7 +81,7 @@ class R8ScreensTest {
         assertEquals(listOf("Yes, delete them", "No, keep them"), q.map { it.label })
         q[1].act()
         assertEquals(listOf(1), chosen)
-        val fix = askButtons(NeedsYouItem("f", NeedsKind.CheckFix, "Recipe box", "1 h", "Did it start?", null), { picked += it.name }, { })
+        val fix = askButtons(NeedsYouItem("f", NeedsKind.CheckFix, "Recipe box", "1 h", "Did it start?", null, listOf("It works", "Still broken")), { picked += it.name }, { })
         assertEquals(listOf("It works", "Still broken"), fix.map { it.label })
         fix[0].act()
         assertEquals(listOf(Answer.ItWorks.name), picked)

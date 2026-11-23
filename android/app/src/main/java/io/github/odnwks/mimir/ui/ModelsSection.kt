@@ -74,7 +74,7 @@ fun ModelsScreen(state: StationState, station: Station, nav: Navigator, phone: P
     Column(Modifier.fillMaxSize().background(Palette.Ground)) {
         val subtitle = when {
             !state.paired -> "Not paired with your PC yet"
-            state.models.power == Power.FreeOnly || state.paidOn == false -> "Using free models only"
+            state.models.power == Power.FreeOnly || state.paidOn == false -> "Using your PC's models only"
             else -> "Online use this week: ${state.usage.percentText}"
         }
         BackHeader("Who answers", nav::back, backLabel = "Back", subtitle = subtitle)
@@ -88,6 +88,7 @@ fun ModelsScreen(state: StationState, station: Station, nav: Navigator, phone: P
  * what powers your tasks, then the three groups, with chips that bring each into view. The
  * phone's own group is the Model Store's first page.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ModelsSection(state: StationState, station: Station, nav: Navigator, phone: PhoneModels?, modifier: Modifier = Modifier) {
     val m = state.models
@@ -104,7 +105,7 @@ fun ModelsSection(state: StationState, station: Station, nav: Navigator, phone: 
         Column(mark("claude").selectableGroup(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             GroupTitle("Online", "Uses your Anthropic plan · for new tasks on your PC", group)
             // With free models only, Claude is never called: the list would only mislead.
-            if (power == Power.FreeOnly) GroupNote("Not used: your PC is set to free models only, so online answers are never used.")
+            if (power == Power.FreeOnly) GroupNote("Not used: your PC is set to its own models only, so online answers are never used.")
             // Before pairing the list is still shown; the choice is kept for when the PC is there.
             // Before pairing they're shown greyed, each saying what it takes; nothing is a dead choice.
             else m.claude.ifEmpty { Mapping.CLAUDE }.forEach { ModelRow(it, state.paired && it.id == m.selected, usable = state.paired) { station.selectModel(it.id) } }
@@ -117,7 +118,7 @@ fun ModelsSection(state: StationState, station: Station, nav: Navigator, phone: 
             m.local.forEach { ModelRow(it, it.id == m.selected) { station.selectModel(it.id) } }
             when {
                 !state.paired -> GroupNote("Your PC's models run on your PC's graphics card.", "Connect your PC") { nav.open(Screen.Pair, tap.last) }
-                m.local.isEmpty() && !state.pc.online -> GroupNote("Your PC is away: its free models show here when it's back.")
+                m.local.isEmpty() && !state.pc.online -> GroupNote("Your PC is away: its models show here when it's back.")
                 m.local.isEmpty() -> GroupNote("No models on your PC yet. On the PC, $AI_NAME › Settings › Models can add one.")
             }
             if (power == Power.ClaudeOnly && m.local.isNotEmpty()) GroupNote("Not used for tasks: your PC is set to online only.")
@@ -128,7 +129,7 @@ fun ModelsSection(state: StationState, station: Station, nav: Navigator, phone: 
                     { nav.selectTab(io.github.odnwks.mimir.nav.Tab.Status) }, Modifier.padding(top = 4.dp),
                 )
                 Text(
-                    "Free models suit small, clear jobs. A long task may be too much for them.",
+                    "Your PC's models suit small, clear jobs. A long task may be too much for them.",
                     style = Type.Small.copy(lineHeight = Type.Small.fontSize * 1.45f), color = Palette.TextDim, modifier = Modifier.padding(start = 4.dp, end = 4.dp, top = 4.dp),
                 )
             }
@@ -143,16 +144,16 @@ fun ModelsSection(state: StationState, station: Station, nav: Navigator, phone: 
             PhoneStore(phone, nav, state.paired)
         }
     }
-    // Before pairing, the phone's own models are the ones that work, so they come first.
-    val order = if (state.paired) listOf("claude" to claude, "free" to free, "phone" to onPhone)
-    else listOf("phone" to onPhone, "claude" to claude, "free" to free)
+    // The devices that are yours come before Online: this phone, your PC, then Online.
+    val order = listOf("phone" to onPhone, "free" to free, "claude" to claude)
     Column(modifier.fillMaxWidth().background(Palette.Ground)) {
         // The three groups at a glance; a chip brings its group into view.
-        Row(
-            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 4.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        // They wrap onto a second line when the screen is narrow or the text is large; nothing is cut off.
+        FlowRow(
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            val names = mapOf("claude" to "Online", "free" to "Your PC's model", "phone" to "On this phone")
+            val names = mapOf("claude" to "Online", "free" to "Your PC", "phone" to "On this phone")
             order.forEach { (key, _) ->
                 JumpChip(names.getValue(key)) {
                     val y = tops[key] ?: return@JumpChip

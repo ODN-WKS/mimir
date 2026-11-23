@@ -24,7 +24,7 @@ class F7FixesTest {
         assertFalse(onlineWithdrawn(null, null, owner = false))
         assertFalse(onlineWithdrawn("paid", "paid", owner = false))
         assertFalse(onlineWithdrawn("paid", null, owner = true))
-        assertEquals("Your PC's owner turned off Online for you, so your PC's free model answers now.", ONLINE_WITHDRAWN)
+        assertEquals("Your PC's owner turned off Online for you, so your PC's model answers now.", ONLINE_WITHDRAWN)
     }
 
     @Test fun anotherPersonGetsNoWhatsRunningStarter() {

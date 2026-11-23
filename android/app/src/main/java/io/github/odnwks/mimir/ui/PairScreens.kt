@@ -64,6 +64,12 @@ val PAIR_CODE_KEYBOARD = androidx.compose.foundation.text.KeyboardOptions(
     keyboardType = androidx.compose.ui.text.input.KeyboardType.Uri,
 )
 
+/** Said when "Paste the code" finds nothing on the clipboard. */
+const val NOTHING_TO_PASTE = "Nothing to paste. Copy the code on the PC first."
+
+/** The clipboard's words as a pairing code, or null when there is nothing to paste. */
+fun pastedCode(clip: String?): String? = clip?.let(::cleanPairCode)?.takeIf { it.isNotEmpty() }
+
 /** A pasted code without spaces or line ends (a messenger may wrap it). */
 fun cleanPairCode(raw: String): String = raw.filterNot { it.isWhitespace() }
 
@@ -128,6 +134,7 @@ fun PairScreen(station: Station, nav: Navigator, screenLock: Boolean = true) {
     var typing by remember { mutableStateOf(nav.pastePairCode) }
     androidx.compose.runtime.LaunchedEffect(Unit) { nav.pastePairCode = false }
     var typed by remember { mutableStateOf("") }
+    var nothingToPaste by remember { mutableStateOf(false) }
     val clip = androidx.compose.ui.platform.LocalClipboardManager.current
     // Replaced, not stacked: Scan, Paste, Couldn't pair and back never pile up behind each other.
     val pairNow = { code: String -> station.pair(code); nav.replace(Screen.PairDone) }
@@ -161,7 +168,13 @@ fun PairScreen(station: Station, nav: Navigator, screenLock: Boolean = true) {
             NumberedSteps(CONNECT_STEPS)
             if (typing) {
                 MessageBox(typed, { typed = it }, "Pairing code", "Paste the code from the PC", Modifier.fillMaxWidth(), minLines = 3, shape = RoundedCornerShape(16.dp), keyboardOptions = PAIR_CODE_KEYBOARD)
-                BigButton("Paste the code", Look.Outline, { clip.getText()?.text?.let { typed = cleanPairCode(it) } }, radius = 16.dp)
+                BigButton("Paste the code", Look.Outline, {
+                    val got = pastedCode(clip.getText()?.text)
+                    nothingToPaste = got == null
+                    if (got != null) typed = got
+                }, radius = 16.dp)
+                if (nothingToPaste) Text(NOTHING_TO_PASTE, style = Type.Label, color = Palette.AmberText,
+                    modifier = Modifier.semantics { liveRegion = androidx.compose.ui.semantics.LiveRegionMode.Polite })
             } else {
                 Box(
                     Modifier.fillMaxWidth().height(220.dp).clip(RoundedCornerShape(20.dp)).background(Palette.Bar)

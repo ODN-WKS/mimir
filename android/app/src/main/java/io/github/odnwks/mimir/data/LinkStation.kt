@@ -1271,7 +1271,7 @@ class LinkStation(
         val sent = call(Wire.setYolo(taskId)) { _, err ->
             synchronized(lock) {
                 if (err == null) yoloFromPhone = true
-                else if ((err.contains("YOLO from the phone is off", ignoreCase = true) || err.contains("turn on Go ahead without asking", ignoreCase = true))) yoloFromPhone = false
+                else if (isGoAheadOffText(err)) yoloFromPhone = false
             }
             publish()
             done(err)
@@ -1642,7 +1642,7 @@ class LinkStation(
             change = change,
             stopped = t.status == "Stopped",
             freeModel = t.model?.startsWith("ollama:") == true,
-            outOfRoom = es.takeLast(3).any { it is LEntry.Note && it.text.startsWith("This free model ran out of room") },
+            outOfRoom = es.takeLast(3).any { it is LEntry.Note && isOutOfRoomNote(it.text) },
             refusalsRemoved = t.model?.let { m -> listOf("abliterated", "heretic", "uncensored").any { m.lowercase().contains(it) } } == true,
             // PHW-06: "Answering…" while a Live heartbeat came in within 4 s (PC sends every 2 s).
             status = said?.let { Mapping.truthWords(it.state) }
@@ -1797,7 +1797,7 @@ internal fun personChanged(earlier: String?, now: String): Boolean =
 internal const val OWNER_PERSON = "owner"
 
 /** Said once when the PC's owner takes Online away from this phone's person while it was chosen. */
-internal const val ONLINE_WITHDRAWN = "Your PC's owner turned off Online for you, so your PC's free model answers now."
+internal const val ONLINE_WITHDRAWN = "Your PC's owner turned off Online for you, so your PC's model answers now."
 
 /** Online was chosen before and is not offered to this person now (the owner's own phone always keeps it). */
 internal fun onlineWithdrawn(before: String?, now: String?, owner: Boolean): Boolean =
@@ -1805,11 +1805,18 @@ internal fun onlineWithdrawn(before: String?, now: String?, owner: Boolean): Boo
 
 private const val STOP_TAG = "stop-"
 
+/** The PC refused "Go ahead without asking" from the phone: its older words ("YOLO from the phone is off") and its newer. */
+internal fun isGoAheadOffText(err: String) =
+    err.contains("YOLO from the phone is off", ignoreCase = true) || err.contains("turn on Go ahead without asking", ignoreCase = true)
+
+/** The PC's "ran out of room" note: its older words ("This free model…") and its newer ("This model…"). */
+internal fun isOutOfRoomNote(text: String) = text.startsWith("This free model ran out of room") || text.startsWith("This model ran out of room")
+
 /** One chat entry as a task message; null for steps, and for the "ran out of room" note (its own panel says it). */
 internal fun taskMessageOf(taskId: String, i: Int, e: LEntry, streamingLast: Boolean): TaskMessage? = when (e) {
     is LEntry.You -> TaskMessage("$taskId-$i", false, e.text)
     is LEntry.Claude -> TaskMessage("$taskId-$i", true, e.text, if (streamingLast) "" else "Play the reply")
-    is LEntry.Note -> if (e.text.isBlank() || e.text.startsWith("This free model ran out of room")) null
+    is LEntry.Note -> if (e.text.isBlank() || isOutOfRoomNote(e.text)) null
         else TaskMessage("$taskId-$i", false, e.text, note = true)
     else -> null
 }

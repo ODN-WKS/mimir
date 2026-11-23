@@ -122,7 +122,7 @@ const val WHISPER_ENDED = "Whisper ended. Nothing was kept."
 
 /** The eye on the paired chat: a Whisper on this phone or on the PC, whichever there is. */
 const val START_WHISPER_PAIRED = "Normal mode: Mímir, with internet, and chats are kept. Tap for your chats, a new chat or a new Whisper: a private, incognito chat that's never kept"
-const val END_PC_WHISPER = "Whisper mode: your PC's free model, internet cut off, nothing kept. Tap for your chats, a new chat (back to normal) or a new Whisper"
+const val END_PC_WHISPER = "Whisper mode: your PC's model, internet cut off, nothing kept. Tap for your chats, a new chat (back to normal) or a new Whisper"
 const val OPEN_PC_WHISPER = "Whisper mode: a Whisper is running on your PC. Tap to open it"
 const val WHISPER_ON_PHONE = "Whisper on this phone"
 const val WHISPER_ON_PC = "Whisper on your PC"
@@ -162,7 +162,7 @@ fun WhisperWhere(open: Boolean, onPhone: () -> Unit, onPc: () -> Unit, onClose: 
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 WhisperChoice(WHISPER_ON_PHONE.forDevice(), "$AI_NAME answers here. Nothing leaves this phone.".forDevice(), Glyphs.Lock, onPhone)
-                WhisperChoice(WHISPER_ON_PC, "Your PC's free model, with the internet cut off. Nothing is kept.", Glyphs.Shield, onPc)
+                WhisperChoice(WHISPER_ON_PC, "Your PC's model, with the internet cut off. Nothing is kept.", Glyphs.Shield, onPc)
             }
         },
         confirmButton = { SmallButton("Not now", onClose) },

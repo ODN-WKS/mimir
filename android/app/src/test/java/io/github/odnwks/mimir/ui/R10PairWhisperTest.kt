@@ -51,8 +51,6 @@ class R10PairWhisperTest {
         CONNECT_STEPS.forEach { compose.onNodeWithText(it).assertIsDisplayed() }
         compose.onNodeWithText("Scan the code").assertIsDisplayed()
         compose.onNodeWithText("Can't scan? Paste the code instead").assertIsDisplayed()
-        // The old "Paste the code instead" is gone.
-        compose.onNodeWithText("Paste the code instead").assertDoesNotExist()
     }
 
     @Test fun theUnpairedYourPcPageUsesTheSameSteps() {
