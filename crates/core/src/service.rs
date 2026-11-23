@@ -1188,6 +1188,12 @@ impl Service {
                 ground_rules,
                 ..
             } => {
+                // A project whose folder is gone can't take a task: refused
+                // before anything is made, so the phone keeps the words.
+                if Path::new(&project) != crate::paths::chats_dir() && !Path::new(&project).is_dir()
+                {
+                    return Err("That project's folder isn't on your PC any more.".into());
+                }
                 let attached = crate::task_files::prepare(&pictures, &files)?;
                 // A phone starts tasks only in a project on the PC's list (or
                 // a chat the PC files itself), as with MoveTo.

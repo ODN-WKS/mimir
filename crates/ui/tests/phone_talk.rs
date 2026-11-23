@@ -767,6 +767,42 @@ fn a_task_started_from_the_phone_says_from_phone_in_the_truth() {
     home.let_through(1000);
 }
 
+/// A task for a project whose folder is gone is refused with a plain reason,
+/// so the phone keeps the words and says it didn't start.
+#[test]
+fn a_task_for_a_project_folder_that_is_gone_is_refused_plainly() {
+    let Some(home) = home() else { return };
+    let _ = fake_ollama(&["x"]);
+    home.play("run-1.jsonl", "live.jsonl");
+    let mut st = home.service();
+    let (p, mut seen) = paired(&mut st, &["talk", "chat_sync", "truth"]);
+    let project = home.project.display().to_string();
+    std::fs::remove_dir_all(&home.project).unwrap();
+    let r = seen.call(
+        &p,
+        Call::NewTask {
+            files: vec![],
+            ground_rules: None,
+            project,
+            text: "Tidy up.".into(),
+            pictures: vec![],
+            mode: mimir_core::proto::Mode::Ask,
+            model: None,
+            effort: None,
+            separate_copy: false,
+            msg_id: None,
+        },
+    );
+    let e = r.expect_err("a task started in a folder that is gone");
+    assert_eq!(e, "That project's folder isn't on your PC any more.");
+    let until = Instant::now() + Duration::from_millis(500);
+    while Instant::now() < until {
+        st.poll();
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    assert!(st.tasks.is_empty(), "a task was made anyway");
+}
+
 /// The phone reads and sets Settings › Models' two lines.
 #[test]
 fn p5_the_phone_reads_and_sets_what_answers() {
