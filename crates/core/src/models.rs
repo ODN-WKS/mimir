@@ -196,8 +196,12 @@ pub fn plain_note(note: &str) -> std::borrow::Cow<'_, str> {
 
 /// The models Ollama has (its `/api/tags`), or why not.
 pub fn installed() -> Result<Vec<String>, String> {
+    installed_at(&ollama_url())
+}
+
+fn installed_at(url: &str) -> Result<Vec<String>, String> {
     let out = std::process::Command::new("curl")
-        .args(["-s", "-m", "3", &format!("{}/api/tags", ollama_url())])
+        .args(["-s", "-m", "3", &format!("{url}/api/tags")])
         .output()
         .map_err(|_| "curl is missing".to_string())?;
     let v: serde_json::Value =
@@ -535,6 +539,19 @@ pub fn ensure_running(wait: Duration) -> bool {
 static DOWN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 /// Whether the PC's model program is down: a start failed and it still isn't
+/// answering, or the PC answers with a chosen model of its own and the
+/// program can't be reached (a person who hasn't sent anything yet still
+/// sees it). `has_pick`: a model of its own is chosen for chats.
+pub fn down_with(has_pick: bool) -> bool {
+    down() || (has_pick && installed().is_err())
+}
+
+/// Whether the model program at `url` is unreachable while a pick is made.
+pub fn down_at(url: &str, has_pick: bool) -> bool {
+    has_pick && installed_at(url).is_err()
+}
+
+/// Whether the PC's model program is down: a start failed and it still isn't
 /// answering. Looks (a short call) only while a failure is on record.
 pub fn down() -> bool {
     if !DOWN.load(std::sync::atomic::Ordering::SeqCst) {
@@ -742,6 +759,15 @@ pub fn out_of_room(error: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn an_unreachable_model_program_is_down_once_a_model_is_picked() {
+        // Nothing listens on port 1: refused at once.
+        let dead = "http://127.0.0.1:1";
+        assert!(down_at(dead, true));
+        // No model picked (nothing to say about it): not down.
+        assert!(!down_at(dead, false));
+    }
+
     use super::*;
 
     #[test]
