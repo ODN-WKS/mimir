@@ -207,8 +207,19 @@ pub const FROM_PHONE_SHORT: &str = "Phone";
 /// The group at the very top of the side list: every task going on right
 /// now, wherever it is typed in.
 pub const ACTIVE_NOW: &str = "Active now";
-/// A task's conversation is going on right now.
-pub const LIVE: &str = "Live elsewhere";
+/// What every name of a followed session still going on starts with.
+pub const LIVE: &str = "Still running";
+/// The one name for a followed session still going on outside Mímir, in
+/// the header and the panel (`place`: "app" or "terminal").
+pub fn running_state(place: Option<&str>) -> &'static str {
+    match place {
+        Some("app") => "Still running in the Claude app",
+        Some("terminal") => "Still running in a terminal",
+        _ => "Still running on your PC",
+    }
+}
+/// The button beside that line: ends the session where it runs.
+pub const STOP_ELSEWHERE: &str = "Stop it";
 
 /// A task's row while Claude works on it (here or elsewhere).
 pub const WORKING: &str = "Working";
@@ -261,6 +272,13 @@ pub fn pc_down_line(on_chat: bool) -> &'static str {
     }
 }
 pub const PILL_CLAUDE: &str = "Online · goes to Anthropic";
+/// The same pills for a narrow middle.
+pub const PILL_CLAUDE_SHORT: &str = "Online";
+pub const PILL_PC_DOWN_SHORT: &str = "Model off";
+/// A session going on in the Claude app or a terminal: Mímir only follows it.
+pub const PILL_OUTSIDE: &str = "Not run by Mímir";
+pub const PILL_OUTSIDE_SHORT: &str = "Outside Mímir";
+pub const PILL_OUTSIDE_LINE: &str = "Mímir only follows this session. It answers where it runs.";
 
 /// The message box.
 pub const BOX_CHAT: &str = "Message Mímir";

@@ -1511,7 +1511,7 @@ fn task_menu(
         actions.push(Action::Archive(t.id.clone(), !t.archived));
     }
     sep(ui);
-    if l.running() && item(ui, "Stop", "") {
+    if (l.running() || l.outside_now()) && item(ui, "Stop", "") {
         actions.push(Action::Stop(t.id.clone()));
     }
     if danger(ui, "Delete task…", del) {
@@ -1786,6 +1786,8 @@ fn other_row(ui: &mut egui::Ui, o: &OtherSession, actions: &mut Vec<Action>) {
             ui.set_width(ui.available_width());
             ui.add(egui::Label::new(&name).truncate());
             ui.horizontal(|ui| {
+                // One gap, not two: the labels sit right next to each other.
+                ui.spacing_mut().item_spacing.x = 0.0;
                 ui.label(
                     RichText::new(format!(
                         "{} · {}",
@@ -1796,7 +1798,7 @@ fn other_row(ui: &mut egui::Ui, o: &OtherSession, actions: &mut Vec<Action>) {
                     .size(13.0),
                 );
                 if in_use {
-                    ui.label(RichText::new("· in use").color(AMBER).size(13.0));
+                    ui.label(RichText::new(" · in use").color(AMBER).size(13.0));
                 }
             });
         })

@@ -85,6 +85,7 @@ impl App {
                 &crate::view_top::MidTop {
                     crumb: None,
                     paid,
+                    outside: false,
                     model_down,
                     on_chat: false,
                     panel,
@@ -126,11 +127,17 @@ impl App {
             .as_ref()
             .is_none_or(|p| !projects.contains(p))
         {
+            // With no project used before, "+ New task" opens a task page in a
+            // project, not in the Chats folder (a chat has its own button),
+            // unless Chats is all there is.
+            let chats_dir = crate::places::chats_dir().display().to_string();
+            let not_chats = |p: &&String| **p != chats_dir;
             self.new_project = self
                 .settings
                 .last_project
                 .clone()
                 .filter(|p| projects.contains(p))
+                .or_else(|| projects.iter().find(not_chats).cloned())
                 .or_else(|| projects.first().cloned());
         }
         ui.horizontal_wrapped(|ui| {
@@ -429,5 +436,5 @@ pub(crate) fn new_task_goes_online(
     model: Option<&str>,
 ) -> bool {
     let free_here = mimir_core::models::default_free(&mimir_core::models::cached()).is_some();
-    settings.task_goes_online(model, false, free_here)
+    settings.task_shows_online(model, false, false, free_here)
 }

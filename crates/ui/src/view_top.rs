@@ -368,6 +368,8 @@ pub(crate) struct MidTop<'a> {
     pub crumb: Option<String>,
     /// Whether the answers go to Claude (else they stay on this PC).
     pub paid: bool,
+    /// A session Mímir only follows: nobody here answers it.
+    pub outside: bool,
     /// The PC's model program isn't running (the pill is then not the green "This PC").
     pub model_down: bool,
     /// This page is a chat (where "Try again" is).
@@ -437,16 +439,42 @@ pub(crate) fn mid_top(
     let mut mid = ui.new_child(
         egui::UiBuilder::new()
             .max_rect(egui::Rect::from_min_max(
-                egui::pos2(rect.left() + toggle_w * 0.0, rect.top()),
-                rect.max,
+                rect.min,
+                // Never under the panel toggle.
+                egui::pos2((rect.right() - toggle_w - 8.0).max(rect.left()), rect.max.y),
             ))
             .layout(egui::Layout::top_down(egui::Align::Center)),
     );
-    let down = top.model_down && !top.paid;
-    let (dot, words) = if top.paid {
-        (JADE, crate::labels::PILL_CLAUDE)
+    let down = top.model_down && !top.paid && !top.outside;
+    // Short words when the middle is narrow (a big text scale, the panel open).
+    let narrow = rect.width() - toggle_w < 300.0;
+    let (dot, words) = if top.outside {
+        (
+            MUTED,
+            if narrow {
+                crate::labels::PILL_OUTSIDE_SHORT
+            } else {
+                crate::labels::PILL_OUTSIDE
+            },
+        )
+    } else if top.paid {
+        (
+            JADE,
+            if narrow {
+                crate::labels::PILL_CLAUDE_SHORT
+            } else {
+                crate::labels::PILL_CLAUDE
+            },
+        )
     } else if down {
-        (theme::ORANGE, crate::labels::PILL_PC_DOWN)
+        (
+            theme::ORANGE,
+            if narrow {
+                crate::labels::PILL_PC_DOWN_SHORT
+            } else {
+                crate::labels::PILL_PC_DOWN
+            },
+        )
     } else {
         (JADE, crate::labels::PILL_PC)
     };
@@ -464,7 +492,9 @@ pub(crate) fn mid_top(
             theme::menu_fits(ui, |ui| {
                 ui.set_min_width(250.0);
                 ui.label(
-                    RichText::new(if top.paid {
+                    RichText::new(if top.outside {
+                        crate::labels::PILL_OUTSIDE_LINE
+                    } else if top.paid {
                         "Answers go to Anthropic (your Anthropic plan)"
                     } else if down {
                         crate::labels::pc_down_line(top.on_chat)
@@ -474,7 +504,7 @@ pub(crate) fn mid_top(
                     .color(MUTED)
                     .size(12.5),
                 );
-                if ui.button("Choose who answers…").clicked() {
+                if !top.outside && ui.button("Choose who answers…").clicked() {
                     actions.push(Action::OpenModels);
                     ui.close();
                 }

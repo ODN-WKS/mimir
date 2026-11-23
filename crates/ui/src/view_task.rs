@@ -41,7 +41,13 @@ impl App {
             ui,
             &crate::view_top::MidTop {
                 crumb,
-                paid: !mimir_core::models::is_free(t.model.as_deref()),
+                paid: self.settings.task_shows_online(
+                    t.model.as_deref(),
+                    is_chat,
+                    l.outside_now() || t.from_phone.is_some(),
+                    mimir_core::models::default_free(&mimir_core::models::cached()).is_some(),
+                ),
+                outside: l.outside_now() || t.from_phone.is_some(),
                 model_down,
                 on_chat: false,
                 panel: Some(details),
@@ -192,11 +198,18 @@ impl App {
                 {
                     actions.push(Action::Pause(id.clone()));
                 }
-            } else if matches!(t.status, Status::Paused | Status::Stopped)
-                && t.session_id.is_some()
-                && ui.add(theme::primary("Continue")).clicked()
-            {
-                actions.push(Action::Continue(id.clone()));
+            } else if matches!(t.status, Status::Paused | Status::Stopped) {
+                // A session to carry on, or (never started) the request again.
+                let again = match (&t.session_id, last_request(&t.entries)) {
+                    (Some(_), _) => Some(Action::Continue(id.clone())),
+                    (None, Some(text)) => Some(Action::Send(id.clone(), text, vec![])),
+                    (None, None) => None,
+                };
+                if let Some(a) = again
+                    && ui.add(theme::primary("Continue")).clicked()
+                {
+                    actions.push(a);
+                }
             }
             // Why it stopped, when something went wrong.
             if !running
@@ -367,6 +380,18 @@ impl App {
                                         still_running.as_str()
                                     };
                                     ui.label(RichText::new(line).color(MUTED));
+                                    // Ends it where it runs; then the reply box
+                                    // appears here.
+                                    if !from_phone
+                                        && ui
+                                            .add(theme::quiet(crate::labels::STOP_ELSEWHERE))
+                                            .on_hover_text(
+                                                "End it where it runs. Then carry on here.",
+                                            )
+                                            .clicked()
+                                    {
+                                        actions.push(Action::Stop(id.clone()));
+                                    }
                                     // The link shows only for a session that
                                     // really started on claude.ai.
                                     if crate::labels::is_claude_ai_session(url)
@@ -627,6 +652,7 @@ impl App {
         let open_steps = &mut self.open_steps;
         let show_plan = t.plan_doc.is_some() && !running && t.mode == Mode::Plan;
         let waiting_question = t.question_waiting();
+        let hide_opened = l.outside_now() || t.from_phone.is_some();
         let scroll_down = self.scroll_down > 0;
         if !ui.ctx().will_discard() {
             self.scroll_down = self.scroll_down.saturating_sub(1);
@@ -654,6 +680,13 @@ impl App {
                         // Room on the right for the scrollbar.
                         ui.set_max_width(crate::view_chat::LANE.min(ui.available_width() - 12.0));
                         for (n, e) in t.entries.iter().enumerate() {
+                            // "Send a message to carry on" only where a message can
+                            // be sent: not while it still runs elsewhere.
+                            if hide_opened
+                                && matches!(e, Entry::Note(n) if n == mimir_core::sessions::OPENED_NOTE)
+                            {
+                                continue;
+                            }
                             // The plan card below shows the plan; not twice.
                             if show_plan
                                 && let (Entry::Claude(text), Some(plan)) = (e, &t.plan_doc)

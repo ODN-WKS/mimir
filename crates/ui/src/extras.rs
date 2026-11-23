@@ -152,7 +152,7 @@ pub fn prompts_menu(
     draft: &mut String,
     actions: &mut Vec<Action>,
 ) {
-    ui.menu_button("Saved messages ▾", |ui| {
+    ui.menu_button("Saved messages", |ui| {
         crate::theme::menu_fits(ui, |ui| {
             ui.set_max_width(320.0);
             let mine = settings.project_prompts.get(project);

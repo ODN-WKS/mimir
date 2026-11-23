@@ -159,7 +159,9 @@ impl App {
         }
         ui.add_space(10.0);
         ui.label(
-            RichText::new(if self.stats.model_loaded() {
+            RichText::new(if self.pc_model_down() {
+                crate::labels::PC_DOWN_LINE_ELSEWHERE
+            } else if self.stats.model_loaded() {
                 "Your PC's model is ready, so the first answer is quick."
             } else {
                 "Your PC's model starts when you send something, so the first answer takes longer."
@@ -188,7 +190,10 @@ impl App {
                     ("Stopped unexpectedly", crate::theme::AMBER)
                 }
                 TaskState::Stopped => ("Stopped", MUTED),
-                TaskState::LiveElsewhere => ("Going on in another window", MUTED),
+                TaskState::LiveElsewhere => (
+                    crate::labels::running_state(t.elsewhere_in.as_deref()),
+                    MUTED,
+                ),
                 _ => ("Done", MUTED),
             };
             ui.label(RichText::new(state).color(color).strong());
@@ -282,6 +287,34 @@ impl App {
                 });
             }
         }
+        // A session Mímir only follows has no changes list or permission of
+        // its own here: it runs by the rules of the place it runs in.
+        let outside = l.outside_now();
+        if !outside {
+            self.task_panel_changes(ui, l, git, actions);
+        }
+        if l.running() || outside || l.shown_state() == TaskState::NeedsYou {
+            ui.add_space(6.0);
+            let b = egui::Button::new(RichText::new("Stop this task").color(RED))
+                .fill(egui::Color32::TRANSPARENT)
+                .stroke(egui::Stroke::new(1.0, RED))
+                .corner_radius(egui::CornerRadius::same(theme::RADIUS));
+            if ui.add_sized([ui.available_width(), 34.0], b).clicked() {
+                actions.push(Action::Stop(t.id.clone()));
+            }
+        }
+        let _ = r;
+    }
+
+    /// "Changes so far" and "Permission" for a task Mímir runs.
+    fn task_panel_changes(
+        &self,
+        ui: &mut egui::Ui,
+        l: &mimir_core::client::TaskView,
+        git: Option<&mimir_core::proto::GitInfo>,
+        actions: &mut Vec<Action>,
+    ) {
+        let t = &l.task;
         theme::caps(ui, "Changes so far");
         card(ui, |ui| {
             let n = changes_list(ui, t, git, actions);
@@ -315,17 +348,6 @@ impl App {
             ui.label(RichText::new(t.mode.words()).strong());
             ui.label(RichText::new(t.mode.explain()).color(MUTED).size(13.0));
         });
-        if l.running() || l.shown_state() == TaskState::NeedsYou {
-            ui.add_space(6.0);
-            let b = egui::Button::new(RichText::new("Stop this task").color(RED))
-                .fill(egui::Color32::TRANSPARENT)
-                .stroke(egui::Stroke::new(1.0, RED))
-                .corner_radius(egui::CornerRadius::same(theme::RADIUS));
-            if ui.add_sized([ui.available_width(), 34.0], b).clicked() {
-                actions.push(Action::Stop(t.id.clone()));
-            }
-        }
-        let _ = r;
     }
 }
 

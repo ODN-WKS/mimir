@@ -510,6 +510,7 @@ impl App {
             &crate::view_top::MidTop {
                 crumb: None,
                 paid,
+                outside: false,
                 model_down,
                 on_chat: true,
                 panel,

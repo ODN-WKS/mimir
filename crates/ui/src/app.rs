@@ -2129,7 +2129,10 @@ pub fn state_look(l: &mimir_core::client::TaskView) -> (&'static str, egui::Colo
     match l.shown_state() {
         TaskState::NeedsYou => (t.status_words(), theme::ORANGE),
         TaskState::Working => ("Working", theme::JADE),
-        TaskState::LiveElsewhere => ("Live elsewhere", theme::JADE),
+        TaskState::LiveElsewhere => (
+            crate::labels::running_state(t.elsewhere_in.as_deref()),
+            theme::JADE,
+        ),
         // A stop the owner made reads Stopped; one nobody asked for reads
         // "Stopped unexpectedly" and looks different (F1: T4, P5).
         TaskState::Stopped if t.stopped_unexpectedly() => ("Stopped unexpectedly", theme::AMBER),
