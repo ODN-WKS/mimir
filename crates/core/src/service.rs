@@ -1295,6 +1295,9 @@ impl Service {
                 if let Some(how) = placed {
                     self.file_placed(&id, &project, how, None);
                 }
+                if self.clients.get(&client).is_some_and(|c| c.phone.is_some()) {
+                    self.runner.set_started_on_phone(&id);
+                }
                 self.touched.insert(id.clone());
                 Ok(json!(id))
             }
@@ -5016,7 +5019,7 @@ impl Service {
                         .copied()
                         .or(t.active_unix)
                         .or(Some(t.created_unix)),
-                    from_phone: t.from_phone.is_some(),
+                    from_phone: t.from_phone.is_some() || t.started_on_phone,
                 }
             })
             .collect();

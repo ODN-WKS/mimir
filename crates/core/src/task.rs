@@ -55,6 +55,9 @@ pub struct Task {
     /// address that opens it on claude.ai.
     #[serde(default)]
     pub from_phone: Option<String>,
+    /// A phone asked the PC to start this task (the truth's `from_phone`).
+    #[serde(default)]
+    pub started_on_phone: bool,
     /// Ground rules a phone sent with the request that started this task
     /// (used instead of the PC's own).
     #[serde(default)]
@@ -299,6 +302,7 @@ impl Task {
             project,
             origin: None,
             from_phone: None,
+            started_on_phone: false,
             ground_rules: None,
             copy_branch: None,
             ran_out: None,

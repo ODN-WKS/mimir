@@ -1060,6 +1060,11 @@ impl Runner {
         Ok(())
     }
 
+    /// Marks a task a phone asked the PC to start.
+    pub fn set_started_on_phone(&mut self, id: &str) {
+        self.edit(id, |t| t.started_on_phone = true);
+    }
+
     /// Marks a task as a session a keeper started (from the phone or
     /// claude.ai), opened at `url`; its "opened from an earlier session"
     /// note goes, as it carries on live.

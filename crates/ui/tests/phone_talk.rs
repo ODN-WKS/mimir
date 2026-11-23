@@ -715,6 +715,58 @@ fn p6_the_truth_says_working_then_done_everywhere() {
     assert!(truth_of(&old_seen).is_none());
 }
 
+/// `from_phone` in the truth (and so in `status --json`) is true for a task a
+/// phone started, and false for one the window started.
+#[test]
+fn a_task_started_from_the_phone_says_from_phone_in_the_truth() {
+    let Some(home) = home() else { return };
+    let _ = fake_ollama(&["x"]);
+    home.play("run-1.jsonl", "live.jsonl");
+    home.hold_replies();
+    let mut st = home.service();
+    let (p, mut seen) = paired(&mut st, &["talk", "chat_sync", "truth"]);
+    let project = home.project.display().to_string();
+    let new_task = |text: &str| Call::NewTask {
+        files: vec![],
+        ground_rules: None,
+        project: project.clone(),
+        text: text.into(),
+        pictures: vec![],
+        mode: mimir_core::proto::Mode::Ask,
+        model: None,
+        effort: None,
+        separate_copy: false,
+        msg_id: None,
+    };
+    let from_phone = seen
+        .call(&p, new_task("Tidy up."))
+        .unwrap()
+        .as_str()
+        .unwrap()
+        .to_string();
+    let from_window = st
+        .call_wait(new_task("Tidy up too."))
+        .unwrap()
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert!(
+        service_until(&mut st, |s| s.truth.as_ref().is_some_and(|t| {
+            t.tasks.iter().any(|x| x.id == from_phone)
+                && t.tasks.iter().any(|x| x.id == from_window)
+        })),
+        "the truth never listed both tasks"
+    );
+    let t = st.truth.clone().unwrap();
+    let flag = |id: &str| t.tasks.iter().find(|x| x.id == id).unwrap().from_phone;
+    assert!(flag(&from_phone), "a phone's task says from_phone: false");
+    assert!(
+        !flag(&from_window),
+        "the window's task says from_phone: true"
+    );
+    home.let_through(1000);
+}
+
 /// The phone reads and sets Settings › Models' two lines.
 #[test]
 fn p5_the_phone_reads_and_sets_what_answers() {
