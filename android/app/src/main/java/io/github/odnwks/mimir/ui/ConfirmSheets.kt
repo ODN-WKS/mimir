@@ -177,7 +177,7 @@ private fun SheetContent(sheet: Sheet, state: StationState, station: Station, na
                 undo(Undoable("Archived ${task?.title ?: "the task"}", undo = { station.unarchiveTask(id) }))
             }
             // Stop is for work that runs: the Stop button is on the task itself while it does.
-            if (task != null && task.showsStop && !task.stopPending && !elsewhere) MenuRow(Glyphs.Stop, "Stop this task…", Palette.Red) { nav.openSheet(Sheet.StopTask(id)) }
+            if (task != null && task.showsStop && !task.stopPending && (!elsewhere || state.pcSessions == null)) MenuRow(Glyphs.Stop, "Stop this task…", Palette.Red) { nav.openSheet(Sheet.StopTask(id)) }
             if (!elsewhere) PrivacyLine("Your PC does this task. This phone and your PC talk privately.")
         }
         is Sheet.ChatOptions -> Menu(sheet.title(state)) {
