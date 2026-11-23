@@ -13,7 +13,7 @@
 #   tools/test-pc.sh pair  <name> [mine|NAME]    make a pairing code and answer the PC's questions: the phone
 #                                                 types the printed code; "mine" (default) is the owner's own
 #                                                 phone, a first name is someone else's
-#   tools/test-pc.sh stop  <name> [--clean]      stop it (and with --clean delete its folder)
+#   tools/test-pc.sh stop  <name> [--clean]      stop it and its hosts (and with --clean delete its folder)
 #   tools/test-pc.sh env   <name>                print the variables to run the CLI against it:
 #                                                 eval "$(tools/test-pc.sh env qa)"; $HOME/.local/bin/mimir status
 #   tools/test-pc.sh dir   <name>                print its folder (service.log, pair.out live there)
@@ -118,6 +118,14 @@ pair)
 stop)
     pkill -f "$H/.local/bin/mimir pair" 2>/dev/null || true
     systemctl --user stop "$UNIT" 2>/dev/null || true
+    # A finished task's host waits to be collected; a stopped test PC never collects, so end the
+    # hosts of this test PC (only processes whose state folder is under this test PC's folder).
+    for pid in $(pgrep -f 'mimir.* host t[0-9a-f]+-[0-9]+' 2>/dev/null || true); do
+        [ "$pid" != "$$" ] || continue
+        if tr '\0' '\n' < "/proc/$pid/environ" 2>/dev/null | grep -qxF "XDG_STATE_HOME=$H/.local/state"; then
+            kill -9 -- "-$pid" 2>/dev/null || kill -9 "$pid" 2>/dev/null || true
+        fi
+    done
     if [ "${1:-}" = "--clean" ]; then rm -rf -- "$D"; echo "test-pc: $name stopped and its folder deleted"; else echo "test-pc: $name stopped (folder kept: $D)"; fi
     ;;
 *) echo "test-pc: unknown command $cmd" >&2; exit 2 ;;
