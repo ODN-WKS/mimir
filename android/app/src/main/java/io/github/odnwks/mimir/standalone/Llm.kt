@@ -12,7 +12,7 @@ fun interface PieceSink {
  * model, and only on phones whose CPU has the instructions it was built for.
  */
 object Llm {
-    private val loaded by lazy { System.loadLibrary("standalone"); true }
+    private val loaded by lazy { io.github.odnwks.mimir.NativeGuard.available(io.github.odnwks.mimir.NativeGuard.STANDALONE) }
 
     /** Whether this phone's CPU can run it (dot product and int8 matrix instructions). */
     fun supported(cpuinfo: File = File("/proc/cpuinfo")): Boolean {
@@ -20,8 +20,11 @@ object Llm {
         return text.contains("asimddp") && text.contains("i8mm")
     }
 
+    /** [supported], and the runner's library is on this phone (an x86_64 build has none). */
+    fun usable(cpuinfo: File = File("/proc/cpuinfo")): Boolean = supported(cpuinfo) && loaded
+
     fun open(path: String, context: Int, threads: Int, temperature: Float): Long {
-        check(loaded)
+        if (!loaded) return 0L
         return load(path.toByteArray(), context, threads, temperature)
     }
 

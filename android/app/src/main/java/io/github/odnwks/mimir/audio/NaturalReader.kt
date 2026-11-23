@@ -43,6 +43,7 @@ class SherpaSynth(voice: NaturalVoice, dir: File, assets: android.content.res.As
     private val tts: OfflineTts
 
     init {
+        check(io.github.odnwks.mimir.NativeGuard.available(io.github.odnwks.mimir.NativeGuard.VOICE)) { "the voice library isn't on this phone" }
         val model = OfflineTtsModelConfig(
             vits = OfflineTtsVitsModelConfig(
                 model = voice.model, tokens = voice.tokens, dataDir = File(dir, "espeak-ng-data").path,
@@ -160,7 +161,7 @@ class NaturalReader(
                 check(prepare()) { "the voice's files aren't ready" }
                 engineFor(voice, dir)
                 Log.i(TAG, "${voice.id}: loaded ahead in ${SystemClock.elapsedRealtime() - t0} ms")
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 Log.e(TAG, "${voice.id} wouldn't load ahead; a read will try again", e)
             } finally {
                 runCatching { android.os.Process.setThreadPriority(was) }
@@ -237,7 +238,7 @@ class NaturalReader(
                         s.write(a)
                     }
                     if (session.get() == mine && state.get() != HANDED_OVER) { s.drain(); Log.i(TAG, "${voice.id}: read in ${SystemClock.elapsedRealtime() - asked} ms") }
-                } catch (e: Exception) {
+                } catch (e: Throwable) {
                     Log.w(TAG, "playing stopped", e)
                 } finally {
                     s.stop()
@@ -256,7 +257,7 @@ class NaturalReader(
                     val silence = engine.sampleRate * p.pauseMs / 1000
                     queue.put(if (silence > 0) sound.copyOf(sound.size + silence) else sound)
                 }
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 Log.w(TAG, "making speech stopped", e)
             } finally {
                 queue.put(end)

@@ -22,12 +22,14 @@ object TorLink {
     }
 
     object Native : Core {
-        override fun new(state: String, cache: String) = io.github.odnwks.mimir.link.Native.torNew(state, cache)
-        override fun connect(h: Long, timeoutMs: Long) = io.github.odnwks.mimir.link.Native.torConnect(h, timeoutMs)
-        override fun progress(h: Long) = io.github.odnwks.mimir.link.Native.torProgress(h)
-        override fun get(h: Long, url: String, headers: String, timeoutMs: Long, maxBytes: Long) = io.github.odnwks.mimir.link.Native.torGet(h, url, headers, timeoutMs, maxBytes)
-        override fun cancel(h: Long) = io.github.odnwks.mimir.link.Native.torCancel(h)
-        override fun stop(h: Long) = io.github.odnwks.mimir.link.Native.torStop(h)
+        private val n = io.github.odnwks.mimir.link.Native
+        // No phone core on this phone: Tor can't start (handle 0), the same as when it won't open.
+        override fun new(state: String, cache: String) = if (n.available) n.torNew(state, cache) else 0L
+        override fun connect(h: Long, timeoutMs: Long) = if (n.available) n.torConnect(h, timeoutMs) else "Private lookups aren't available on this device. Use your PC for them."
+        override fun progress(h: Long) = if (n.available) n.torProgress(h) else 0L
+        override fun get(h: Long, url: String, headers: String, timeoutMs: Long, maxBytes: Long) = if (n.available) n.torGet(h, url, headers, timeoutMs, maxBytes) else "{\"error\":\"Private lookups aren't available on this device. Use your PC for them.\"}"
+        override fun cancel(h: Long) { if (n.available) n.torCancel(h) }
+        override fun stop(h: Long) { if (n.available) n.torStop(h) }
     }
 
     @Volatile var core: Core = Native

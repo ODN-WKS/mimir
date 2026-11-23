@@ -69,7 +69,8 @@ android {
         versionName = versionText
         // When this build was made, for the developer log's header.
         buildConfigField("String", "BUILD_TIME", "\"$buildTime\"")
-        // The phone core is built for 64-bit ARM only (every phone it's for).
+        // Every phone is 64-bit ARM; checks also run on the PC's x86_64 emulators. Dev and benchmark
+        // builds add x86_64 below; the release builds keep ARM only (size).
         ndk { abiFilters += "arm64-v8a" }
     }
 
@@ -108,6 +109,8 @@ android {
     }
 
     buildTypes {
+        // Checks run on the PC's x86_64 emulators too (an ABI list adds to the default one above).
+        debug { ndk { abiFilters += "x86_64" } }
         release {
             isMinifyEnabled = true
             isShrinkResources = true
@@ -122,6 +125,7 @@ android {
             initWith(getByName("release"))
             signingConfig = signingConfigs.getByName("debug")
             matchingFallbacks += listOf("release")
+            ndk { abiFilters += "x86_64" }
         }
         // The same, with its names kept, so the baseline profile can be walked on it and then
         // matches the real release (tools/baseline-profile.sh).
@@ -172,7 +176,7 @@ android {
 
 // The natural voices' engine: sherpa-onnx 1.13.8 (the PC's version), its official Android
 // library with onnxruntime built in. Fetched once from its GitHub release, checked, kept in
-// ~/.cache; only its arm64 part ships (abiFilters above).
+// ~/.cache; only the parts for the abiFilters above ship.
 val sherpaAar: File = run {
     val name = "sherpa-onnx-static-link-onnxruntime-1.13.8.aar"
     val sha = "b22c3fc1b6a45666d28892bb2f7694beeb77a8362d7ebd77c1a5431ec9435471"
@@ -219,11 +223,17 @@ dependencies {
     testImplementation("io.github.takahirom.roborazzi:roborazzi-junit-rule:1.77.0")
 }
 
+// Which native parts get built: x86_64 as well when a debug or benchmark build is asked for (the PC's
+// emulators); a release-only run builds ARM only. The abiFilters decide what each APK carries.
+val wantedAbis: String = if (gradle.startParameter.taskNames.any { it.contains("debug", true) || it.contains("benchmark", true) || it.endsWith("androidTest", true) })
+    "arm64-v8a,x86_64" else "arm64-v8a"
+
 // The phone core (Rust, over JNI) is built before every app build, so an APK
 // can never carry a core older than the Kotlin that calls it.
 val buildPhoneCore by tasks.registering(Exec::class) {
     workingDir = rootProject.projectDir.parentFile
     commandLine("bash", "tools/build-phone-core.sh")
+    environment("MIMIR_ABIS", wantedAbis)
 }
 // Standalone mode's model runner (llama.cpp), built the same way.
 val buildStandalone by tasks.registering(Exec::class) {

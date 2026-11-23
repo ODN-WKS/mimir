@@ -2437,7 +2437,7 @@ class Engine(
                     dir = app.filesDir,
                     store = Store(File(app.filesDir, "standalone.bin")),
                     runner = LlmRunner(threads = threadsFor(cores)),
-                    supported = Llm.supported(),
+                    supported = Llm.usable(),
                     busy = { on -> StandaloneService.busy(app, on) },
                     temperature = { batteryTemperature(app) },
                     ownFolders = { SafFolder.of(app, it) },

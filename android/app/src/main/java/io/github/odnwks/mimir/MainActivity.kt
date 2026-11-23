@@ -133,7 +133,7 @@ class MainActivity : FragmentActivity() {
         auth = lockAuth
         if (!check) io.github.odnwks.mimir.ui.AppLock.coldStart(this, android.os.SystemClock.elapsedRealtime())
         val reduceMotion = Motion.systemRemovesAnimations(this)
-        val standaloneOk = Llm.supported()
+        val standaloneOk = Llm.usable()
         // One device word for every screen, chosen once from the display's shortest side.
         val device = Device.of(this)
         setContent {
