@@ -93,6 +93,46 @@ impl App {
         side_panel().show(ui, |ui| {
             // The foot first, so it keeps its place under everything.
             let rest = foot.place(ui, false, actions);
+            // "Needs you" and "Updates" sit just above the foot, only when
+            // there is something: a row that comes or goes here moves
+            // nothing above it.
+            let rest = if waiting > 0 || update_waiting {
+                let mut nav = ui.new_child(
+                    egui::UiBuilder::new()
+                        .id_salt("side-nav")
+                        .max_rect(rest)
+                        .layout(egui::Layout::bottom_up(egui::Align::Min)),
+                );
+                nav.spacing_mut().item_spacing.y = ROW_GAP;
+                if update_waiting
+                    && nav_row(
+                        &mut nav,
+                        "Updates",
+                        Right::Badge(1, BLUE_BADGE, egui::Color32::WHITE),
+                        false,
+                    )
+                    .on_hover_text("A new version of Mímir is ready")
+                    .clicked()
+                {
+                    actions.push(Action::OpenUpdates);
+                }
+                if waiting > 0
+                    && nav_row(
+                        &mut nav,
+                        "Needs you",
+                        Right::Badge(waiting, AMBER_BADGE, AMBER_ON),
+                        false,
+                    )
+                    .on_hover_text("Go to what is waiting for you (Ctrl+J)")
+                    .clicked()
+                {
+                    actions.push(Action::GoToWaiting);
+                }
+                let top = (nav.min_rect().top() - 4.0).max(rest.top());
+                egui::Rect::from_min_max(rest.min, egui::pos2(rest.right(), top))
+            } else {
+                rest
+            };
             ui.scope_builder(egui::UiBuilder::new().max_rect(rest), |ui| {
                 // Other Claude sessions' requests, answered here or on the phone.
                 crate::view_top::outside_asks(ui, r, actions);
@@ -110,30 +150,6 @@ impl App {
                         ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
                     }
                     ui.spacing_mut().item_spacing.y = ROW_GAP;
-                    if waiting > 0
-                        && nav_row(
-                            ui,
-                            "Needs you",
-                            Right::Badge(waiting, AMBER_BADGE, AMBER_ON),
-                            false,
-                        )
-                        .on_hover_text("Go to what is waiting for you (Ctrl+J)")
-                        .clicked()
-                    {
-                        actions.push(Action::GoToWaiting);
-                    }
-                    if update_waiting
-                        && nav_row(
-                            ui,
-                            "Updates",
-                            Right::Badge(1, BLUE_BADGE, egui::Color32::WHITE),
-                            false,
-                        )
-                        .on_hover_text("A new version of Mímir is ready")
-                        .clicked()
-                    {
-                        actions.push(Action::OpenUpdates);
-                    }
                     let paired = match phones {
                         0 => "not paired".to_string(),
                         1 => "1 phone".to_string(),

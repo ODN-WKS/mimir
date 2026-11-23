@@ -1,6 +1,7 @@
 //! The window's left menu (redesign R5a): search, the two start buttons,
-//! Needs you, Updates, Phones, Whisper, then Chats and Projects as folding
-//! sections, and Settings at the bottom. A running task is listed once.
+//! Phones, Whisper, then Chats and Projects as folding sections, and
+//! Needs you and Updates (only when there is something) and Settings at the
+//! bottom. A running task is listed once.
 
 mod common;
 use common::*;

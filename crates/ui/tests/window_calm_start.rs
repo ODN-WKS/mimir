@@ -107,6 +107,19 @@ fn needs_you_shows_when_a_task_waits() {
         "a waiting question didn't raise the Needs you row\n{}",
         screen_text(&h)
     );
+    // It sits at the bottom, above Settings, so it moves nothing above it.
+    let y = |h: &egui_kittest::Harness<'static, station_ui::App>, name: &str| {
+        use egui_kittest::kittest::Queryable;
+        h.query_all_by_role_and_label(eframe::egui::accesskit::Role::Button, name)
+            .next()
+            .map(|n| n.rect().top())
+    };
+    let (needs, settings) = (y(&h, "Needs you").unwrap(), y(&h, "Settings").unwrap());
+    assert!(needs < settings, "Needs you is not above Settings");
+    assert!(
+        needs > y(&h, "Projects").unwrap(),
+        "Needs you is above the lists"
+    );
     close(h);
 }
 
