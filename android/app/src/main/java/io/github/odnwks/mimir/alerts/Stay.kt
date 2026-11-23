@@ -20,6 +20,9 @@ class PrefsStayStore(private val context: Context) : StayStore {
         prefs.edit().putString("mode", mode.name).apply()
         Stay.arm(context)
     }
+
+    /** Pairing just succeeded: the check starts now (the station isn't paired in the store yet for `Stations.current()`). */
+    override fun pairedNow() = Stay.arm(context, paired = true)
 }
 
 /**

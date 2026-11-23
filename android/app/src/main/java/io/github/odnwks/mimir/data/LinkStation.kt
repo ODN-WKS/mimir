@@ -737,6 +737,7 @@ class LinkStation(
             synchronized(lock) { pairWords = words; pairing = PairProgress.ConfirmOnPc(words) }
             publish()
             val done = JSONObject(withLink("{\"error\":\"The connection closed. Try again.\"}") { api.pairFinish(it, code.trim(), 150_000) })
+            var armNow = false
             synchronized(lock) {
                 if (done.has("error")) {
                     LinkLog.i("pairing not confirmed: ${done.getString("error")}")
@@ -748,8 +749,10 @@ class LinkStation(
                     LinkLog.i("paired")
                     onPairingChanged?.invoke()
                     pairing = PairProgress.Paired
+                    armNow = true
                 }
             }
+            if (armNow) stayStore.pairedNow()
             publish()
         }, "mimir-pair").start()
     }
@@ -1693,6 +1696,9 @@ class LinkStation(
 interface StayStore {
     fun mode(): StayMode
     fun save(mode: StayMode)
+
+    /** Pairing just succeeded: the 5-minute check can be armed now, without waiting for the next app start. */
+    fun pairedNow() {}
 
     class InMemory(private var m: StayMode = StayMode.Every5) : StayStore {
         override fun mode() = m
