@@ -314,7 +314,9 @@ pub const PROTO: u32 = 2;
 /// (`Call::NewTask::files` and `Call::Send::files`: a project task's message
 /// can carry files, and its `pictures` are kept for the task too) and
 /// "pc_sessions" (`Event::PcSessions`, `Call::PcSessions` and
-/// `Call::OpenPcSession`: every Claude Code session on the PC, owner only).
+/// `Call::OpenPcSession`: every Claude Code session on the PC, owner only) and
+/// "task_reply_options" (a phone may send `Call::SetModel` and
+/// `Call::SetEffort` for a task, just before its next `Call::Send`).
 /// A client lists the
 /// ones it knows in `Hello`, and only gets the new events when it does.
 pub const FEATURES: &[&str] = &[
@@ -334,6 +336,7 @@ pub const FEATURES: &[&str] = &[
     "task_files",
     "finished_events",
     "pc_sessions",
+    "task_reply_options",
 ];
 
 /// Where a PC session is at.
@@ -1689,6 +1692,7 @@ impl Call {
             | Call::Rename { .. }
             | Call::Archive { .. }
             | Call::SetModel { .. }
+            | Call::SetEffort { .. }
             | Call::DismissQuestion { .. } => true,
             Call::NewTask {
                 mode,

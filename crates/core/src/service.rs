@@ -252,7 +252,22 @@ const OFFERED: &[&str] = &[
     "task_files",
     "finished_events",
     "pc_sessions",
+    "task_reply_options",
 ];
+
+/// The effort levels Claude Code's `--effort` takes.
+pub const EFFORT_LEVELS: &[&str] = &["low", "medium", "high", "xhigh", "max"];
+
+/// A refusal line for an effort Claude Code would not take; None clears.
+pub fn check_effort(effort: Option<&str>) -> Result<(), String> {
+    match effort {
+        Some(e) if !EFFORT_LEVELS.contains(&e) => Err(format!(
+            "That effort level is not known. Choose one of: {}.",
+            EFFORT_LEVELS.join(", ")
+        )),
+        _ => Ok(()),
+    }
+}
 
 /// How often the PC's Claude Code sessions are looked at again.
 const PC_SESSIONS_EVERY: Duration = Duration::from_secs(5);
@@ -1473,6 +1488,7 @@ impl Service {
                 ok
             }
             Call::SetEffort { task, effort } => {
+                check_effort(effort.as_deref())?;
                 self.runner.set_effort(&task, effort);
                 ok
             }
@@ -6278,6 +6294,19 @@ const WHISPER_NO_SPEAK: &str =
 mod pc_name_tests {
     /// An end of work never gets an id an earlier one had, even for the same
     /// task with the same number of entries (an undo brings the length back).
+    #[test]
+    fn an_effort_is_one_claude_code_takes_or_none() {
+        for e in ["low", "medium", "high", "xhigh", "max"] {
+            assert!(super::check_effort(Some(e)).is_ok(), "{e}");
+        }
+        assert!(super::check_effort(None).is_ok());
+        for bad in ["", "HIGH", "extreme", "--model"] {
+            let why = super::check_effort(Some(bad)).unwrap_err();
+            assert!(why.contains("xhigh") && !why.contains(bad) || bad.is_empty());
+        }
+        assert!(super::OFFERED.contains(&"task_reply_options"));
+    }
+
     #[test]
     fn a_finished_id_is_never_repeated() {
         let a = super::finished_id("t-1", 1_794_000_000, 1);
