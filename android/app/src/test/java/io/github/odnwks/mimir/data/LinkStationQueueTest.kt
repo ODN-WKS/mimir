@@ -63,7 +63,7 @@ class LinkStationQueueTest {
             events.add("""{"seq":3,"event":"Ready"}""")
         }
         fun kill() { up = false }
-        fun callsOf(prefix: String) = calls.filter { it.second.startsWith(prefix) }
+        fun callsOf(prefix: String) = synchronized(calls) { calls.filter { it.second.startsWith(prefix) } }
     }
 
     private fun until(ms: Long = 8_000, cond: () -> Boolean): Boolean {
@@ -109,7 +109,7 @@ class LinkStationQueueTest {
 
     @Test fun aTalkAnswerStillResumesAfterTheLinkDropsBeforeTheReply() {
         val link = FakeLink(); val st = paired(link)
-        val log = ArrayList<String>()
+        val log = java.util.Collections.synchronizedList(ArrayList<String>())
         val listener = object : TalkListener {
             override fun filed(f: io.github.odnwks.mimir.link.Filed?, err: String?) { log += "filed:$err" }
             override fun piece(text: String, thinking: Boolean) {}
@@ -119,8 +119,8 @@ class LinkStationQueueTest {
         }
         assertTrue(st.talk(TalkRequest("c1", "t1", emptyList(), null, emptyList(), null, null, null), listener))
         link.kill()
-        assertTrue(until { log.contains("lost") })
-        assertFalse("a dropped link is not the PC's answer", log.any { it.startsWith("filed") })
+        assertTrue(until { synchronized(log) { log.contains("lost") } })
+        assertFalse("a dropped link is not the PC's answer", synchronized(log) { log.any { it.startsWith("filed") } })
         st.close()
     }
 
