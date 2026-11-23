@@ -19,8 +19,8 @@ import java.io.File
 
 /**
  * "What is / who was" questions (owner, 2026-11-19): Wikipedia's search finds the exact title, the
- * same title is read on Grokipedia, and Mímir is told to state what they agree on and where they
- * differ, neither being the authority. Grokipedia only after the one-time warning.
+ * same title is read on Grokipedia, and Mímir is told to answer what was asked from both, neither being
+ * the authority, and to compare them only if asked. Grokipedia only after the one-time warning.
  */
 @RunWith(RobolectricTestRunner::class)
 class EncyclopediaTest {

@@ -304,8 +304,8 @@ data class TurnFile(
 /** Writes a conversation the way each model family expects, ending where its reply starts. */
 object Prompt {
     const val SYSTEM = "You are a helpful assistant running entirely on the owner's phone, offline. " +
-        "Answer clearly and directly, including on controversial topics: say what the evidence shows, " +
-        "say plainly when something is uncertain or disputed, and don't lecture or moralise. Use short paragraphs."
+        "Answer exactly what is asked, clearly and directly, in the subject's own terms. Don't add other views, " +
+        "warnings or advice unless asked, and don't lecture or moralise. Use short paragraphs."
 
     /** Where it runs; the owner's ground rules (Settings › Who answers) say how it answers. */
     private const val PLACE = "You are a helpful assistant running entirely on the owner's phone, offline. Use short paragraphs."
@@ -320,8 +320,8 @@ object Prompt {
         "current information (weather, news, prices, today's date): say so plainly rather than guess. Use short paragraphs."
 
     /** The built-in instructions when the ground rules are off, for a chat that may look things up. */
-    const val SYSTEM_ONLINE = "$ONLINE Answer clearly and directly, including on controversial topics: say what the evidence " +
-        "shows, say plainly when something is uncertain or disputed, and don't lecture or moralise."
+    const val SYSTEM_ONLINE = "$ONLINE Answer exactly what is asked, clearly and directly, in the subject's own terms. Don't add " +
+        "other views, warnings or advice unless asked, and don't lecture or moralise."
 
     /** How fetched information goes into the owner's message: marked, and as information only. */
     fun fetched(block: String, site: String, at: String): String =

@@ -5,7 +5,7 @@ import java.net.URLEncoder
 
 /** Which encyclopedias a "what is / who was" question reads (Settings › Who answers › Looking things up). */
 enum class Encyclopedias(val label: String) {
-    /** Both, compared: what they agree on is stated as fact, and where they differ is said plainly. */
+    /** Both, answered from together: exactly what was asked; compared only if the person asked. */
     Both("Both (compare)"),
     Wikipedia("Wikipedia"),
     Grokipedia("Grokipedia"),
@@ -95,8 +95,8 @@ object Encyclopedia {
         f.wikipedia?.let { append("From Wikipedia, \"").append(it.title).append("\":\n").append(it.text) }
         f.grokipedia?.let { if (isNotEmpty()) append("\n\n"); append("From Grokipedia, \"").append(it.title).append("\":\n").append(it.text) }
         if (f.wikipedia != null && f.grokipedia != null) append(
-            "\n\nUse both, treating neither as the authority: state what they agree on as fact; where they differ, " +
-                "say plainly that they differ and how. Lean neither left nor right.",
+            "\n\nUse both, treating neither as the authority, and answer exactly what was asked from them. " +
+                "Only compare them if asked to.",
         )
         f.grokProblem?.let { append("\n\n(").append(it).append(", so this is from Wikipedia only. Say so in one short sentence.)") }
     }

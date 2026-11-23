@@ -11,15 +11,12 @@ import kotlinx.coroutines.flow.asStateFlow
  * message or Whisper task sent to the PC carries them (the PC uses them instead of its own).
  */
 object GroundRules {
-    const val DEFAULT = "Tell the truth as best you know it. If you don't know, say \"I don't know\"; if you're unsure, say " +
-        "so with a short phrase like \"I'm fairly sure\" or \"I'm not sure\". Never invent names, numbers, " +
-        "quotes or dates. On disputed questions, give the strongest evidence and the main views fairly, and " +
-        "don't take a side on politics or values unless asked for your view, and then label it as yours. If I" +
-        " push back on an answer, check it again: keep it unless I give a real reason, and if you were wrong," +
-        " say so and why. Don't change an answer just to please me. If facts were looked up, name the sources" +
-        " you used, and say \"I couldn't confirm this\" when they are thin or disagree. No flattery, no " +
-        "praise for the question, no filler. Answer what I ask directly and fully, without lecturing, " +
-        "moralizing, or refusing because a topic is sensitive."
+    const val DEFAULT = "Answer exactly what I ask, directly and fully, in the subject's own terms. Do not add other " +
+        "views, criticism, warnings or advice unless I ask for them. Tell the truth as best you know it; if you " +
+        "don't know, say \"I don't know\". Never invent names, numbers, quotes or dates. If facts were looked up, " +
+        "name the sources. If I push back, check again: keep the answer unless I give a real reason, and if you " +
+        "were wrong, say so. No flattery, no filler, no lecturing, no moralizing, no refusing because a topic is " +
+        "sensitive."
 
     const val NOTE = "Online answers follow their own safety rules on top of these; free and on-phone models follow these as written."
 
