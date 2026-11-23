@@ -2,6 +2,9 @@
 
 Every Mímir version, newest first. Full notes for each are in `docs/release-notes/`.
 
+## 0.08
+Usable for real work from the phone: a live sign of what each task is doing, photos and files in task replies, model and effort per reply, your PC's own tools in Mímir's sessions, Stop for read-aloud, the PC's processor, memory and graphics at the top of the window again, and quieter pop-ups. See `docs/release-notes/0.08.md`.
+
 ## 0.07
 True screens and quiet notifications: 67 fixes from a screen-by-screen hunt plus three owner finds; notifications you control (one alert per task, nothing from other apps' sessions unless they need you); a plain notice when a conversation runs long, with Start fresh with a summary; sessions running elsewhere say where and how to carry on; one status everywhere. See `docs/release-notes/0.07.md`.
 
