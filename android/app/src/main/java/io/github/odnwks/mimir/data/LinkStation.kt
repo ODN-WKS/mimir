@@ -1318,6 +1318,10 @@ class LinkStation(
         call(Wire.continueOnClaude(taskId)) { _, err -> if (err != null) note(err) }
     }
 
+    override fun startFresh(taskId: String) {
+        call(Wire.startFresh(taskId)) { _, err -> if (err != null) note(err) }
+    }
+
     override fun setWeeklyCheck(on: Boolean) {
         if (!call(Wire.setWeeklyCheck(on)) { _, err -> if (err != null) note(err); refreshModels() }) note("Your PC is away: try again when it's back.")
     }
@@ -1649,6 +1653,7 @@ class LinkStation(
             createdUnix = t.createdUnix,
             activeUnix = t.activeUnix,
             liveElsewhere = t.liveElsewhere,
+            long = t.long,
             plan = t.plan,
             mode = t.mode,
             whisper = t.incognito,

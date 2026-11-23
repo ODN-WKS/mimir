@@ -251,6 +251,7 @@ class FakeStation(initial: StationState = ExampleData.awake()) : Station {
     }
 
     override fun continueOnClaude(taskId: String) {}
+    override fun startFresh(taskId: String) {}
     override fun selectModel(modelId: String) = flow.update { it.copy(models = it.models.copy(selected = modelId)) }
     override fun setSwitchToFree(on: Boolean) = flow.update { it.copy(models = it.models.copy(switchToFree = on)) }
     override fun setWeeklyCheck(on: Boolean) = flow.update { it.copy(models = it.models.copy(weeklyCheck = on)) }

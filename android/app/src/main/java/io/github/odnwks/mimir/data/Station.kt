@@ -1,5 +1,6 @@
 package io.github.odnwks.mimir.data
 
+import io.github.odnwks.mimir.link.LongNotice
 import kotlinx.coroutines.flow.StateFlow
 
 /**
@@ -89,6 +90,8 @@ interface Station {
     fun selectModel(modelId: String)
     /** A free-model task carries on in a new task on Claude ("Continue on Claude", "Use Claude instead"). */
     fun continueOnClaude(taskId: String)
+    /** "Start fresh with a summary" on a long conversation: a new task from a short summary; the old one stays. */
+    fun startFresh(taskId: String)
     fun setSwitchToFree(on: Boolean)
     /** The PC's weekly look for a better model for this phone ("Worth switching?"), on or off. */
     fun setWeeklyCheck(on: Boolean)
@@ -431,6 +434,8 @@ data class Task(
      * A reply from here would start a second Claude on it, so there's no reply box.
      */
     val liveElsewhere: Boolean = false,
+    /** The conversation has run long: a calm line with "Start fresh with a summary" (null: not long). */
+    val long: LongNotice? = null,
     /** Plan first (it changes nothing yet); false: it asks first before changes. */
     val plan: Boolean = false,
     /** The PC's permission mode: "Ask", "AcceptEdits", "Plan", "Auto" or "NoAsk". */

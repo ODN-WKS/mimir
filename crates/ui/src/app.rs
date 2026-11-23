@@ -189,6 +189,11 @@ pub enum Action {
     NewProject(String),
     SetMode(String, Mode),
     SetModel(String, Option<String>),
+    /// "Start fresh with a summary" on a long conversation.
+    StartFresh(String),
+    /// The long-conversation line is dismissed for this task (true: it was
+    /// the stronger "very long" one).
+    DismissLong(String, bool),
     /// Claude's limit ran out: carry on on the free model.
     ContinueOnFree(String),
     /// Claude is back: the task goes back to it.
@@ -358,6 +363,9 @@ pub struct App {
     /// whenever a rename starts, so one never starts half-way.
     pub(crate) renaming: Option<(String, String, u8)>,
     pub(crate) open_steps: HashSet<String>,
+    /// Tasks whose long-conversation line was dismissed, and whether it was
+    /// at "very long" (it comes back at that point, once).
+    pub(crate) long_dismissed: HashMap<String, bool>,
     /// (title, diff lines) shown in a window.
     pub(crate) diff: Option<(String, Vec<String>)>,
     /// Past sessions offered for a project.
@@ -563,6 +571,7 @@ impl App {
             search: String::new(),
             renaming: None,
             open_steps: HashSet::new(),
+            long_dismissed: HashMap::new(),
             diff: None,
             past: None,
             others: Arc::new(Mutex::new(Others::default())),
@@ -1211,6 +1220,20 @@ impl App {
                     if let Err(e) = r.call_wait(mimir_core::proto::Call::EndIncognito { task: id })
                     {
                         r.problem(&e);
+                    }
+                }
+                Action::DismissLong(id, very) => {
+                    self.long_dismissed.insert(id, very);
+                }
+                Action::StartFresh(id) => {
+                    match r.call_wait(mimir_core::proto::Call::StartFresh { task: id }) {
+                        Ok(v) => {
+                            if let Some(new) = v.as_str() {
+                                let new = new.to_string();
+                                self.select_task(&new);
+                            }
+                        }
+                        Err(e) => r.problem(&e),
                     }
                 }
                 Action::ContinueOnFree(id) => {

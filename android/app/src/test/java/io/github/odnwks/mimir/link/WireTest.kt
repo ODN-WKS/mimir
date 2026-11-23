@@ -139,6 +139,7 @@ class WireTest {
             Wire.models(),
             Wire.setFreeChoice(true, null),
             Wire.continueOnClaude("t"),
+            Wire.startFresh("t"),
             Wire.newIncognito("/home/me/p", "Read the tax letter", "ollama:qwen3.6:35b-a3b-coding"),
             Wire.endIncognito("t"),
             Wire.setWeeklyCheck(false),

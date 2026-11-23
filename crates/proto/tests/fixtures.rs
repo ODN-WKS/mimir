@@ -53,6 +53,7 @@ fn header() -> TaskHeader {
         elsewhere_in: None,
         failed: false,
         background: false,
+        long: None,
     }
 }
 
@@ -648,6 +649,7 @@ fn write_the_examples() {
             free_model: None,
         },
         Call::ContinueOnClaude { task: "t".into() },
+        Call::StartFresh { task: "t".into() },
         Call::NewIncognito {
             ground_rules: None,
             project: "/home/me/p".into(),

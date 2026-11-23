@@ -1,5 +1,6 @@
 package io.github.odnwks.mimir.ui
 
+import io.github.odnwks.mimir.link.LongNotice
 import io.github.odnwks.mimir.ui.theme.ChatTextSize
 import io.github.odnwks.mimir.ui.theme.LocalAppSize
 import io.github.odnwks.mimir.ui.theme.pinchToZoomText
@@ -171,6 +172,13 @@ fun TaskScreen(taskId: String, state: StationState, station: Station, nav: Navig
             ConnectionStrip(state, Modifier.padding(bottom = 4.dp))
             // Pinned above the conversation, so it stays in sight while it scrolls.
             if (listsSessions && task.liveElsewhere) Box(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) { FollowBanner(followedIn(state, task.id)) }
+            // A long conversation: one calm line, not a popup. Dismissed for this task, it comes back at "very long".
+            task.long?.let { n ->
+                var dismissed by rememberSaveable(task.id) { mutableStateOf<Boolean?>(null) }
+                if (!longHidden(dismissed, n)) Box(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+                    LongLine(n, { station.startFresh(task.id) }, { dismissed = n.very })
+                }
+            }
             ChatTextSize {
             Column(
                 Modifier.weight(1f).fillMaxWidth()
@@ -528,6 +536,20 @@ fun followBannerText(where: String) = "Running in $where. You can follow it here
 
 const val FOLLOW_STOP = "Stop"
 const val FOLLOW_CARRY_ON = "Carry on here"
+
+/** A dismissal holds until the conversation turns very long, once; one made at very long holds for good. */
+internal fun longHidden(dismissedAtVery: Boolean?, n: LongNotice): Boolean = dismissedAtVery != null && (dismissedAtVery || !n.very)
+
+/** "This conversation is long…": the line, its size in book pages, and the one button (none while it goes on elsewhere). */
+@Composable
+internal fun LongLine(n: LongNotice, onStartFresh: () -> Unit, onDismiss: () -> Unit) {
+    Panel(background = Palette.Bar, border = if (n.very) Palette.AmberBorder else Palette.Line, spacing = 6.dp, padding = PaddingValues(12.dp)) {
+        Text(n.line, style = Type.Label, color = if (n.very) Palette.AmberText else Palette.TextSoft)
+        n.size?.let { Text(it, style = Type.Small, color = Palette.TextDim) }
+        if (!n.elsewhere) BigButton("Start fresh with a summary", Look.Outline, onStartFresh, height = 48.dp)
+        QuietButton("Not now", "Hide this line", onClick = onDismiss)
+    }
+}
 
 @Composable
 private fun FollowBanner(where: String) {

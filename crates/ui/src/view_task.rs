@@ -231,6 +231,12 @@ impl App {
                 _ => {}
             }
         });
+        // A long conversation: one calm line, not a popup.
+        if let Some(n) = mimir_core::long::notice(t)
+            && !mimir_core::long::hidden(self.long_dismissed.get(&id).copied(), &n)
+        {
+            long_line(ui, &id, &n, actions);
+        }
         // Where this task works: its project (and copy), and the git branch.
         if std::path::Path::new(&t.project) != crate::places::chats_dir() {
             let name = crate::places::display_name(&self.settings, t.home_project());
@@ -2076,6 +2082,50 @@ fn plan_card(
 
 /// Claude's limit ran out in this task: on a free model until Claude is
 /// back (then Back to Claude), or waiting for the owner to choose.
+/// "This conversation is long…": the line, how long it is in book pages,
+/// and one button (not offered for a conversation going on elsewhere).
+fn long_line(
+    ui: &mut egui::Ui,
+    id: &str,
+    n: &mimir_core::proto::LongNotice,
+    actions: &mut Vec<Action>,
+) {
+    egui::Frame::new()
+        .fill(theme::CARD)
+        .stroke(egui::Stroke::new(1.0, theme::LINE))
+        .corner_radius(egui::CornerRadius::same(theme::RADIUS))
+        .inner_margin(egui::Margin::same(8))
+        .show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            ui.horizontal_wrapped(|ui| {
+                let color = if n.very { theme::AMBER } else { theme::MUTED };
+                ui.label(RichText::new(mimir_core::long::line(n)).color(color));
+                if let Some(size) = mimir_core::long::size_words(n) {
+                    ui.label(RichText::new(size).color(theme::MUTED).size(13.0));
+                }
+                if let Some(button) = mimir_core::long::button(n)
+                    && ui
+                        .add(theme::primary(button))
+                        .on_hover_text(
+                            "A new task carries a short summary. This one stays as it is.",
+                        )
+                        .clicked()
+                {
+                    actions.push(Action::StartFresh(id.to_string()));
+                }
+                if ui
+                    .add(theme::quiet("Not now"))
+                    .on_hover_text(
+                        "Hides this line. It comes back if the conversation gets much longer.",
+                    )
+                    .clicked()
+                {
+                    actions.push(Action::DismissLong(id.to_string(), n.very));
+                }
+            });
+        });
+}
+
 fn ran_out_card(
     ui: &mut egui::Ui,
     id: &str,

@@ -2105,37 +2105,26 @@ impl Service {
                 ok
             }
             Call::ContinueOnClaude { task } => {
+                let id = self.carry_on_fresh(
+                    &task,
+                    Some(crate::auto::Style::Efficient.value().into()),
+                    "Carried on in a new task online.",
+                )?;
+                Ok(json!(id))
+            }
+            Call::StartFresh { task } => {
                 let Some(l) = self.task(&task) else {
                     return Err("That task is gone.".into());
                 };
-                let t = &l.task;
-                let did_work = t
-                    .entries
-                    .iter()
-                    .any(|e| matches!(e, Entry::Claude(_) | Entry::Step(_)));
-                let first = t.entries.iter().find_map(|e| match e {
-                    Entry::You(x) => Some(x.clone()),
-                    _ => None,
-                });
-                let text = if did_work {
-                    crate::auto::brief(t)
-                } else {
-                    first.unwrap_or_default()
-                };
-                let (project, mode, rules) = (t.project.clone(), t.mode, t.ground_rules.clone());
-                self.runner.next_rules = rules;
-                self.runner.stop(&task);
-                let id = self.runner.new_task_with(
-                    Path::new(&project),
-                    &text,
-                    &[],
-                    mode,
-                    Some(crate::auto::Style::Efficient.value().into()),
-                    None,
-                );
-                self.runner.note(&task, "Carried on in a new task online.");
-                self.touched.insert(task);
-                self.touched.insert(id.clone());
+                if l.task.live_elsewhere {
+                    return Err("It is going on in another app: start fresh there.".into());
+                }
+                let model = l.task.model.clone();
+                let id = self.carry_on_fresh(
+                    &task,
+                    model,
+                    "Started fresh in a new task from a summary.",
+                )?;
                 Ok(json!(id))
             }
             Call::ContinueOnFree { task } => {
@@ -2819,6 +2808,43 @@ impl Service {
             task,
         });
         Ok(filed)
+    }
+
+    /// A new task in the same project from a short summary of `task` (its
+    /// first message if nothing was done yet); `task` is kept, with a note.
+    fn carry_on_fresh(
+        &mut self,
+        task: &str,
+        model: Option<String>,
+        note: &str,
+    ) -> Result<String, String> {
+        let Some(l) = self.task(task) else {
+            return Err("That task is gone.".into());
+        };
+        let t = &l.task;
+        let did_work = t
+            .entries
+            .iter()
+            .any(|e| matches!(e, Entry::Claude(_) | Entry::Step(_)));
+        let first = t.entries.iter().find_map(|e| match e {
+            Entry::You(x) => Some(x.clone()),
+            _ => None,
+        });
+        let text = if did_work {
+            crate::auto::brief(t)
+        } else {
+            first.unwrap_or_default()
+        };
+        let (project, mode, rules) = (t.project.clone(), t.mode, t.ground_rules.clone());
+        self.runner.next_rules = rules;
+        self.runner.stop(task);
+        let id = self
+            .runner
+            .new_task_with(Path::new(&project), &text, &[], mode, model, None);
+        self.runner.note(task, note);
+        self.touched.insert(task.to_string());
+        self.touched.insert(id.clone());
+        Ok(id)
     }
 
     /// "Move it": the task stops, and starts again in `project` with the
@@ -5507,6 +5533,7 @@ fn header(l: &runner::Live, queued: &HashMap<String, QueuedMessage>) -> TaskHead
         elsewhere_in: elsewhere_in(t),
         failed: t.stopped_unexpectedly(),
         background: l.in_background(),
+        long: crate::long::notice(t),
     }
 }
 
@@ -6199,6 +6226,7 @@ fn call_task(call: &Call) -> Option<String> {
         | Call::EndIncognito { task }
         | Call::ContinueOnFree { task }
         | Call::ContinueOnClaude { task }
+        | Call::StartFresh { task }
         | Call::Queue { task, .. }
         | Call::Unqueue { task } => Some(task.clone()),
         _ => None,

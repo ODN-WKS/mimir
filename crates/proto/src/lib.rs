@@ -703,6 +703,34 @@ pub struct TaskHeader {
     /// False once nothing runs.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub background: bool,
+    /// The conversation has run long (core's one rule): the calm line at
+    /// the top of the task, with "Start fresh with a summary". None: not
+    /// long, or an older PC that doesn't say.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub long: Option<LongNotice>,
+}
+
+/// Why a long conversation matters for this task.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum LongWhy {
+    /// An online model: each reply re-reads it all and uses more of the plan.
+    Online,
+    /// The PC's own model: slower answers, and the start may be forgotten.
+    Own,
+}
+
+/// A task whose conversation has run long.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LongNotice {
+    /// Very long (80% of the model's room): a little stronger, and it
+    /// comes back after being dismissed.
+    pub very: bool,
+    pub why: LongWhy,
+    /// It is going on in a terminal or the Claude app: it can't be handed
+    /// over from here, so no button.
+    pub elsewhere: bool,
+    /// About how many book pages it is (0: too short to say).
+    pub pages: u32,
 }
 
 /// One change "Tidy projects…" proposes, shown before anything is done.
@@ -1359,6 +1387,12 @@ pub enum Call {
     ContinueOnClaude {
         task: String,
     },
+    /// "Start fresh with a summary" on a long conversation: a new task on
+    /// the same model in the same project, from a short summary of this
+    /// one; this one is kept. The reply is the new task's id.
+    StartFresh {
+        task: String,
+    },
     /// Claude's limit ran out: carry this task on on the free model.
     ContinueOnFree {
         task: String,
@@ -1639,6 +1673,7 @@ impl Call {
             | Call::AlwaysAllowed { .. }
             | Call::StopAllowing { .. }
             | Call::ContinueOnClaude { .. }
+            | Call::StartFresh { .. }
             | Call::EndIncognito { .. }
             | Call::Send { .. }
             | Call::Pause { .. }

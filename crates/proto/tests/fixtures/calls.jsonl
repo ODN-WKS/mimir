@@ -28,6 +28,7 @@
 "Models"
 {"SetFreeChoice":{"switch_to_free":true,"free_model":null}}
 {"ContinueOnClaude":{"task":"t"}}
+{"StartFresh":{"task":"t"}}
 {"NewIncognito":{"project":"/home/me/p","text":"Read the tax letter","model":"ollama:qwen3.6:35b-a3b-coding","mode":"Ask"}}
 {"EndIncognito":{"task":"t"}}
 {"SetWeeklyCheck":{"on":false}}

@@ -264,6 +264,7 @@ object Wire {
     fun alwaysAllowed(task: String): String = obj("AlwaysAllowed") { put("task", task) }
     fun stopAllowing(task: String, file: String): String = obj("StopAllowing") { put("task", task); put("file", file) }
     fun continueOnClaude(task: String): String = obj("ContinueOnClaude") { put("task", task) }
+    fun startFresh(task: String): String = obj("StartFresh") { put("task", task) }
     /** An Incognito task always asks first, on a free model. */
     fun newIncognito(project: String, text: String, model: String, rules: String? = null): String = obj("NewIncognito") {
         put("project", project); put("text", text); put("model", model); put("mode", "Ask")
@@ -465,6 +466,9 @@ object Wire {
             mode = h.optString("mode", "Ask"),
             activeUnix = h.optLong("active_unix"),
             liveElsewhere = h.optBoolean("live_elsewhere"),
+            long = h.optJSONObject("long")?.let { l ->
+                LongNotice(very = l.optBoolean("very"), own = l.optString("why") == "Own", elsewhere = l.optBoolean("elsewhere"), pages = l.optInt("pages"))
+            },
         )
     }
 
@@ -754,9 +758,32 @@ data class LinkTask(
     val activeUnix: Long = 0,
     /** Its conversation is going on outside Mímir right now (a terminal, the Claude app). */
     val liveElsewhere: Boolean = false,
+    /** The conversation has run long (the PC's one rule); null: not long, or an older PC that doesn't say. */
+    val long: LongNotice? = null,
     /** A Claude Code process of the task runs on the PC: something there can be stopped (true when an older PC doesn't say). */
     val running: Boolean = true,
 )
+
+/** A task whose conversation has run long (core's one rule, sent by the PC). */
+data class LongNotice(
+    /** Very long (80% of the model's room): a little stronger, and back after a dismissal. */
+    val very: Boolean,
+    /** On the PC's own model (slower answers) rather than online (uses more of the plan). */
+    val own: Boolean,
+    /** Going on in a terminal or the Claude app: it can't be handed over from here. */
+    val elsewhere: Boolean,
+    /** About how many book pages it is (0: too short to say). */
+    val pages: Int,
+) {
+    /** The line, in the PC window's words. */
+    val line: String get() = buildString {
+        append("This conversation is long. ")
+        append(if (own) "Answers get slower, and the start may be forgotten." else "Each reply re-reads all of it, so it uses more of your plan.")
+        if (very) append(" Starting fresh soon will save a lot.")
+        if (elsewhere) append(" It is going on in another app, so it can't be started fresh from here.")
+    }
+    val size: String? get() = if (pages >= 100) "About the length of a $pages-page book." else null
+}
 
 /** A permission request waiting: the tool and what it would do. */
 data class Ask(val tool: String, val input: JSONObject) {

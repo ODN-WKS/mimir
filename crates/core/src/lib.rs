@@ -24,6 +24,7 @@ pub mod keep_current;
 pub mod labs;
 pub mod listen;
 pub mod log;
+pub mod long;
 pub mod lookup;
 pub mod models;
 pub mod needs;
