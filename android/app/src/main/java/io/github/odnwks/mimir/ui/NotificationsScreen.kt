@@ -65,7 +65,8 @@ fun NotificationsScreen(state: StationState, station: Station, nav: Navigator) {
             Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(start = 12.dp, end = 12.dp, bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            SectionTitle("Staying in touch", Modifier.padding(start = 8.dp, top = 4.dp))
+            AlertChoicesSection()
+            SectionTitle("Staying in touch", Modifier.padding(start = 8.dp, top = 12.dp))
             StayMode.entries.forEach { m ->
                 val on = state.stayMode == m
                 Panel(
