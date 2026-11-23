@@ -65,6 +65,13 @@ impl Live {
             && (self.background || matches!(self.task.status, Status::Working | Status::NeedsYou))
     }
 
+    /// A command it started in the background may still be running, or is
+    /// just being noticed (seen once, not yet twice).
+    pub fn background_pending(&self) -> bool {
+        (self.background || self.bg_seen > 0)
+            && !matches!(self.task.status, Status::Stopped | Status::Paused)
+    }
+
     /// Claude works on it right now, here or in a session followed from
     /// elsewhere (what "working" counts).
     pub fn working_now(&self) -> bool {
@@ -83,6 +90,9 @@ pub struct Config {
 }
 
 pub struct Runner {
+    /// Tasks the owner stopped since they last worked (so "stopped" is
+    /// never guessed from the notes).
+    pub owner_stopped: std::collections::HashSet<String>,
     cfg: Config,
     store: Store,
     pub tasks: Vec<Live>,
@@ -128,6 +138,9 @@ pub struct Runner {
 const BACKGROUND_LOOK: std::time::Duration = std::time::Duration::from_millis(200);
 
 /// Said once in the task when its turn ended with work still going.
+/// What the task says when the owner stops it.
+pub const STOPPED_NOTE: &str = "You stopped this task.";
+
 const BACKGROUND_NOTE: &str = "Still running something it started in the background.";
 
 const STOP_GRACE: std::time::Duration = std::time::Duration::from_secs(5);
@@ -219,6 +232,7 @@ impl Runner {
             );
         }
         let mut r = Runner {
+            owner_stopped: Default::default(),
             cfg,
             store,
             tasks,
@@ -755,7 +769,8 @@ impl Runner {
     /// Ends the current turn; the task is finished unless the owner writes
     /// again.
     pub fn stop(&mut self, id: &str) {
-        self.halt(id, Status::Stopped, "You stopped this task.");
+        self.owner_stopped.insert(id.to_string());
+        self.halt(id, Status::Stopped, STOPPED_NOTE);
     }
 
     fn halt(&mut self, id: &str, status: Status, note: &str) {

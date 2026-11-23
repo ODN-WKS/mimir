@@ -250,6 +250,23 @@ const OFFERED: &[&str] = &[
     "finished_events",
 ];
 
+/// How long a task must stay idle before its work counts as ended.
+const FINISH_AFTER: Duration = Duration::from_secs(1);
+
+/// What the service knows about whether a task is at work (for `Finished`).
+struct FinishState {
+    /// It was at work and its end isn't told yet.
+    working: bool,
+    idle_since: Option<Instant>,
+}
+
+/// An id for one end of work. Never the same twice: the time (so a restart
+/// can't repeat one) and a count (so two in a second can't), not the task's
+/// length, which an undo or a reread can bring back.
+fn finished_id(task: &str, unix: i64, n: u64) -> String {
+    format!("fin:{task}:{unix}:{n}")
+}
+
 /// How many ends of work a snapshot lists.
 const FINISHED_KEPT: usize = 20;
 
@@ -369,7 +386,9 @@ struct Service {
     needs_sent: Vec<NeedsYouItem>,
     /// Whether each task was working at the last look (None: not looked
     /// yet, so a restart tells nobody about work that ended before it).
-    was_working: Option<HashMap<String, bool>>,
+    was_working: Option<HashMap<String, FinishState>>,
+    /// Counts the ends of work this run, for their ids.
+    finished_n: u64,
     /// The last few ends of work, newest last (a Whisper is never kept).
     finished: std::collections::VecDeque<mimir_proto::FinishedItem>,
     /// Message ids already done, and their replies.
@@ -470,6 +489,7 @@ impl Service {
             outside: vec![],
             needs_sent: vec![],
             was_working: None,
+            finished_n: 0,
             finished: std::collections::VecDeque::new(),
             msg_ids: crate::chat::MsgIds::load(),
             last_chat: None,
@@ -717,6 +737,10 @@ impl Service {
             || !self.wake_pending.is_empty()
             || !self.outside.is_empty()
             || !self.summary_pending.is_empty()
+            || self
+                .was_working
+                .as_ref()
+                .is_some_and(|m| m.values().any(|s| s.working))
             || self.runner.tasks.iter().any(|l| {
                 l.running() || matches!(l.task.status, Status::Working | Status::NeedsYou)
             });
@@ -2304,54 +2328,64 @@ impl Service {
     }
 
     /// Tasks whose work ended since the last look: one item for each, kept
-    /// for the snapshot's recent list. Nothing for a Whisper, and nothing
-    /// for a task that only waits for a permission (that is a needs-you item).
+    /// for the snapshot's recent list. A task counts as ended only after it
+    /// stayed idle for [`FINISH_AFTER`] (no false end between a turn and a
+    /// background command it started). Nothing for a Whisper, for a task
+    /// that waits for a permission, a plan or a question (those are
+    /// needs-you items), or for a pause.
     fn note_finished(&mut self) -> Vec<mimir_proto::FinishedItem> {
         use mimir_proto::{FinishedHow, FinishedItem};
-        let now: HashMap<String, bool> = self
-            .runner
-            .tasks
-            .iter()
-            .map(|l| {
-                (
-                    l.task.id.clone(),
-                    l.working_now() || l.task.status == Status::NeedsYou,
-                )
-            })
-            .collect();
-        let Some(before) = self.was_working.replace(now) else {
-            return vec![];
-        };
+        let first = self.was_working.is_none();
+        let mut state = self.was_working.take().unwrap_or_default();
+        state.retain(|id, _| self.runner.tasks.iter().any(|l| &l.task.id == id));
         let at = crate::needs::now();
         let mut out = vec![];
         for l in &self.runner.tasks {
             let t = &l.task;
-            if t.incognito || !before.get(&t.id).copied().unwrap_or(false) {
+            if t.incognito {
                 continue;
             }
-            if l.working_now() || t.status == Status::NeedsYou {
+            let active = l.working_now() || t.status == Status::NeedsYou || l.background_pending();
+            let st = state.entry(t.id.clone()).or_insert(FinishState {
+                working: active && !first,
+                idle_since: None,
+            });
+            if active {
+                st.working = true;
+                st.idle_since = None;
+                if l.working_now() {
+                    self.runner.owner_stopped.remove(&t.id);
+                }
                 continue;
             }
+            if !st.working {
+                continue;
+            }
+            let since = *st.idle_since.get_or_insert_with(Instant::now);
+            if since.elapsed() < FINISH_AFTER {
+                continue;
+            }
+            st.working = false;
+            st.idle_since = None;
+            if t.needs_owner() {
+                continue;
+            }
+            let stopped = self.runner.owner_stopped.remove(&t.id);
             let how = match t.status {
                 Status::Done => FinishedHow::Ok,
-                Status::Stopped => {
-                    if matches!(t.entries.last(), Some(Entry::Note(n)) if n == "You stopped this task.")
-                    {
-                        FinishedHow::Stopped
-                    } else {
-                        FinishedHow::Failed
-                    }
-                }
+                Status::Stopped if stopped => FinishedHow::Stopped,
+                Status::Stopped => FinishedHow::Failed,
                 _ => continue,
             };
+            self.finished_n += 1;
             out.push(FinishedItem {
-                id: format!("fin:{}:{}", t.id, t.entries_dropped + t.entries.len()),
+                id: finished_id(&t.id, at, self.finished_n),
                 task: t.id.clone(),
                 how,
                 at,
             });
         }
-        out.retain(|i| !self.finished.iter().any(|f| f.id == i.id));
+        self.was_working = Some(state);
         for i in &out {
             self.finished.push_back(i.clone());
             if self.finished.len() > FINISHED_KEPT {
@@ -5943,6 +5977,17 @@ const WHISPER_NO_SPEAK: &str =
 
 #[cfg(test)]
 mod pc_name_tests {
+    /// An end of work never gets an id an earlier one had, even for the same
+    /// task with the same number of entries (an undo brings the length back).
+    #[test]
+    fn a_finished_id_is_never_repeated() {
+        let a = super::finished_id("t-1", 1_794_000_000, 1);
+        let b = super::finished_id("t-1", 1_794_000_000, 2);
+        let c = super::finished_id("t-1", 1_794_000_100, 1);
+        assert!(a != b && a != c && b != c, "{a} {b} {c}");
+        assert!(a.starts_with("fin:t-1:"));
+    }
+
     #[test]
     fn two_models_with_one_plain_name_are_not_named_in_the_note() {
         let r = "your usual model can't look at pictures";

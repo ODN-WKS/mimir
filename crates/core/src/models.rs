@@ -790,8 +790,8 @@ mod plain_note_tests {
             "On Qwen 3.6 coding because the online limit ran out; online is back at 5 pm."
         );
         assert_eq!(
-            plain_note("You stopped this task."),
-            "You stopped this task."
+            plain_note(crate::runner::STOPPED_NOTE),
+            crate::runner::STOPPED_NOTE
         );
     }
 }

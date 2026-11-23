@@ -235,3 +235,101 @@ fn n4a_one_finished_for_the_owner_none_for_others_or_a_whisper() {
     owner.hello(NEW);
     assert_eq!(owner.recent.as_ref().map(|r| r.len()), Some(1));
 }
+
+/// Starts a task from the window and waits until `ended` says so.
+fn start(st: &mut mimir_core::client::Station, home: &TestHome) -> String {
+    let id = st
+        .call_wait(Call::NewTask {
+            ground_rules: None,
+            project: home.project.display().to_string(),
+            text: "Do the thing.".into(),
+            pictures: vec![],
+            files: vec![],
+            mode: Mode::Ask,
+            model: None,
+            effort: None,
+            separate_copy: false,
+            msg_id: None,
+        })
+        .expect("the task didn't start");
+    id.as_str().unwrap().to_string()
+}
+
+/// A command the turn left running in the background is still work: no
+/// `Finished` while it runs, exactly one when it ends.
+#[test]
+fn n4a_no_finished_while_a_background_command_runs() {
+    let Some(home) = TestHome::new() else { return };
+    settings(&home);
+    home.play("run-1.jsonl", "background.jsonl");
+    set_env("FAKE_CLAUDE_SPEED", "1.0");
+    let mut st = home.service();
+    let mut owner = paired(&mut st, "Owner phone", None, NEW);
+    let id = start(&mut st, &home);
+    // The turn is over and the sleep (about 3 s) is still going.
+    let ok = service_until(&mut st, |s| {
+        s.tasks.iter().any(|v| {
+            v
+        .task
+        .id
+        == id
+        && v.task.entries.iter().any(
+            |e| matches!(e, mimir_core::task::Entry::Note(n) if n.contains("in the background"))
+        )
+        })
+    });
+    assert!(ok);
+    owner.listen(1200);
+    assert!(
+        owner.finished.is_empty(),
+        "told it finished while it still worked: {:?}",
+        owner.finished
+    );
+    owner.listen_until(|p| !p.finished.is_empty());
+    owner.listen(2500);
+    assert_eq!(owner.finished.len(), 1, "{:?}", owner.finished);
+    assert_eq!(owner.finished[0].how, FinishedHow::Ok);
+}
+
+/// Stop reads as Stopped, even with the background command's late output.
+#[test]
+fn n4a_stop_reads_as_stopped() {
+    let Some(home) = TestHome::new() else { return };
+    settings(&home);
+    home.play("run-1.jsonl", "background-long.jsonl");
+    set_env("FAKE_CLAUDE_SPEED", "1.0");
+    let mut st = home.service();
+    let mut owner = paired(&mut st, "Owner phone", None, NEW);
+    let id = start(&mut st, &home);
+    assert!(service_until(&mut st, |s| s.tasks.iter().any(|v| v
+        .task
+        .id
+        == id
+        && v.task.entries.iter().any(
+            |e| matches!(e, mimir_core::task::Entry::Note(n) if n.contains("in the background"))
+        ))));
+    st.call_wait(Call::Stop { task: id.clone() }).unwrap();
+    owner.listen_until(|p| !p.finished.is_empty());
+    owner.listen(2500);
+    assert_eq!(owner.finished.len(), 1, "{:?}", owner.finished);
+    assert_eq!(owner.finished[0].how, FinishedHow::Stopped);
+}
+
+/// A task that ends by asking the owner something gets the needs-you alert
+/// only, not a "finished" too.
+#[test]
+fn n4a_a_question_waiting_is_not_a_finished() {
+    let Some(home) = TestHome::new() else { return };
+    settings(&home);
+    home.play("run-1.jsonl", "question.jsonl");
+    let mut st = home.service();
+    let mut owner = paired(&mut st, "Owner phone", None, NEW);
+    let id = start(&mut st, &home);
+    assert!(service_until(&mut st, |s| s.tasks.iter().any(|v| v
+        .task
+        .id
+        == id
+        && v.task.question_waiting())));
+    owner.listen(3000);
+    assert!(owner.finished.is_empty(), "{:?}", owner.finished);
+}
