@@ -190,7 +190,6 @@ const ANSWER_MENU: &[&str] = &[
     "Select all",
     "Quote in my reply",
     "Listen",
-    "Search the web for this",
     "Try again",
 ];
 
@@ -214,7 +213,7 @@ fn a_message_menu_has_the_common_things_and_copy_takes_the_message() {
     // The owner's message: "Edit" first, then the same, without "Try again".
     right_click_label(&mut h, "How do I grow tomatoes");
     let mut mine = vec!["Edit"];
-    mine.extend_from_slice(&ANSWER_MENU[..6]);
+    mine.extend_from_slice(&ANSWER_MENU[..5]);
     assert_rows(&h, "owner's message", &mine);
     assert_eq!(
         click_row(&mut h, "Copy whole message"),

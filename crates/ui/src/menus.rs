@@ -593,9 +593,6 @@ pub fn message(ui: &egui::Ui, area: &Response, m: &Msg, actions: &mut Vec<Action
                 crate::places::speak(m.listen, m.text);
             }
         }
-        if item(ui, "Search the web for this", "") {
-            actions.push(Action::SendChat(None, web_search(&what)));
-        }
         if let Some(again) = m.again {
             sep(ui);
             if item(ui, "Try again", "") {
@@ -611,12 +608,6 @@ pub fn quoted(text: &str) -> String {
     let mut out: String = text.trim().lines().map(|l| format!("> {l}\n")).collect();
     out.push('\n');
     out
-}
-
-/// What "Search the web for this" asks in a new chat.
-pub fn web_search(text: &str) -> String {
-    let t: String = text.trim().chars().take(400).collect();
-    format!("Search the web for: {t}")
 }
 
 /// Keys that belong to messages, and the end of a "Select all". Call once

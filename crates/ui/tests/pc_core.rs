@@ -285,6 +285,8 @@ fn the_developer_log_tells_what_happened() {
     let Some(home) = TestHome::new() else { return };
     set_env("MIMIR_TEST_DELAY_MS", "80");
     home.play("run-1.jsonl", "live.jsonl");
+    // The notes are off until a person turns them on.
+    home.write_settings(serde_json::json!({"labs_devlog": true, "labs_devlog_chats": true}));
     let mut st = home.service();
     // A task.
     let id = st

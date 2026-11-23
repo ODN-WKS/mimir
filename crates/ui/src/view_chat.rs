@@ -558,7 +558,6 @@ impl App {
             .find(|l| l.task.question_waiting())
             .map(|l| (l.task.id.clone(), l.task.home_project().to_string()));
         let has_projects = !self.settings.projects.is_empty();
-        let mut starter_text: Option<&'static str> = None;
         bottom_area(ui, "chat-composer", |ui| {
             in_lane(ui, |ui| {
                 // Starters, while nothing has been said.
@@ -578,8 +577,6 @@ impl App {
                             if starter_chip(ui, "Start a task", "In one of your projects") {
                                 actions.push(Action::NewTask);
                             }
-                        } else if starter_chip(ui, "What's the weather?", "Ask anything") {
-                            starter_text = Some("What's the weather?");
                         }
                     });
                     ui.add_space(8.0);
@@ -674,10 +671,6 @@ impl App {
             if let Action::SetEffort(_, e) = a {
                 self.new_effort = e;
             }
-        }
-        if let Some(t) = starter_text {
-            draft = t.to_string();
-            self.chat_focus_once = true;
         }
         if !pics.is_empty() {
             self.chat_pics.insert(key.clone(), pics);

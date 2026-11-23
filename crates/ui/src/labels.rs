@@ -221,10 +221,10 @@ pub const LABS: &str = "Labs";
 pub const LABS_PC_ACTIVITY: &str = "Show what Mímir is doing on this PC";
 /// Labs: the developer log's two switches (the same words as the phone's).
 pub const DEV_LOG_TITLE: &str = "Keep notes for fixing problems";
-pub const DEV_LOG_CAPTION: &str =
-    "Keeps 14 days of notes on this PC so problems can be found and fixed. Never your Whispers.";
+pub const DEV_LOG_CAPTION: &str = "Off until you choose. Notes stay on this PC for up to 30 days, only to fix problems. Never your Whispers.";
 pub const DEV_CHATS_TITLE: &str = "Include my normal chats";
-pub const DEV_CHATS_CAPTION: &str = "Also keeps your normal chats in the notes, so problems with answers can be seen. Whispers are never kept.";
+pub const DEV_CHATS_CAPTION: &str =
+    "Off until you choose. Adds your normal chats to the notes, on this PC only. Never Whispers.";
 
 /// The middle's top: the pill that says who answers, and the panel toggle.
 pub const PILL_MENU: &str = "Who answers, and more";

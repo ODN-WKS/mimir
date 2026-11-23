@@ -494,7 +494,7 @@ impl App {
         theme::card().show(ui, |ui| {
             ui.set_width(ui.available_width());
             let mut on = self.settings.devlog_on();
-            let mut chats = self.settings.labs_devlog_chats.unwrap_or(true);
+            let mut chats = self.settings.labs_devlog_chats.unwrap_or(false);
             let mut changed = false;
             if ui.checkbox(&mut on, crate::labels::DEV_LOG_TITLE).changed() {
                 self.settings.labs_devlog = Some(on);

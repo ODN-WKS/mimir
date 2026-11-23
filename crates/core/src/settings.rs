@@ -142,10 +142,10 @@ pub struct Settings {
     #[serde(default)]
     pub labs_pc_activity: bool,
     /// Labs: "Developer log" (the PC's technical log for fixing problems);
-    /// None: on (during development).
+    /// None: off (private by default).
     #[serde(default)]
     pub labs_devlog: Option<bool>,
-    /// Labs: "Include my normal chats" in the developer log; None: on.
+    /// Labs: "Include my normal chats" in the developer log; None: off.
     #[serde(default)]
     pub labs_devlog_chats: Option<bool>,
     /// Keys this version doesn't know (from a newer one): kept as they are.
@@ -163,16 +163,12 @@ pub enum Power {
 }
 
 /// The ground rules every task gets unless the owner changed them.
-pub const DEFAULT_GROUND_RULES: &str = "Tell the truth as best you know it. If you don't know, say \"I don't know\"; if you're \
-unsure, say so with a short phrase like \"I'm fairly sure\" or \"I'm not sure\". Never \
-invent names, numbers, quotes or dates. On disputed questions, give the strongest evidence \
-and the main views fairly, and don't take a side on politics or values unless asked for \
-your view, and then label it as yours. If I push back on an answer, check it again: keep \
-it unless I give a real reason, and if you were wrong, say so and why. Don't change an \
-answer just to please me. If facts were looked up, name the sources you used, and say \"I \
-couldn't confirm this\" when they are thin or disagree. No flattery, no praise for the \
-question, no filler. Answer what I ask directly and fully, without lecturing, moralizing, \
-or refusing because a topic is sensitive.";
+pub const DEFAULT_GROUND_RULES: &str = "Answer exactly what I ask, directly and fully, in the subject's own terms. \
+Do not add other views, criticism, warnings or advice unless I ask for them. Tell the truth \
+as best you know it; if you don't know, say \"I don't know\". Never invent names, numbers, \
+quotes or dates. If facts were looked up, name the sources. If I push back, check again: \
+keep the answer unless I give a real reason, and if you were wrong, say so. No flattery, no \
+filler, no lecturing, no moralizing, no refusing because a topic is sensitive.";
 
 /// Said under the ground rules wherever they are shown.
 pub const GROUND_RULES_NOTE: &str = "Online answers follow their own safety rules on top of these; free \
@@ -220,13 +216,13 @@ impl Settings {
 
     /// Whether the developer log is on.
     pub fn devlog_on(&self) -> bool {
-        self.labs_devlog.unwrap_or(true)
+        self.labs_devlog.unwrap_or(false)
     }
 
     /// Whether ordinary chats' text is in the developer log (only while it
     /// is on).
     pub fn devlog_chats(&self) -> bool {
-        self.devlog_on() && self.labs_devlog_chats.unwrap_or(true)
+        self.devlog_on() && self.labs_devlog_chats.unwrap_or(false)
     }
 
     /// Chats run on a paid model (Claude) instead of the PC's own.
@@ -499,6 +495,30 @@ pub fn save_window(v: &serde_json::Value) {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn an_untouched_install_gets_the_new_rules_and_a_written_one_is_kept() {
+        let s: Settings = serde_json::from_str("{}").unwrap();
+        let r = s.ground_rules().unwrap();
+        assert_eq!(r, DEFAULT_GROUND_RULES);
+        assert!(r.starts_with("Answer exactly what I ask"));
+        let s: Settings = serde_json::from_str(r#"{"ground_rules":"Be brief."}"#).unwrap();
+        assert_eq!(s.ground_rules().as_deref(), Some("Be brief."));
+    }
+
+    #[test]
+    fn notes_for_fixing_problems_and_chats_in_them_are_off_until_chosen() {
+        let s = Settings::default();
+        assert!(!s.devlog_on() && !s.devlog_chats());
+        // An old file with no choice reads as off.
+        let s: Settings = serde_json::from_str("{}").unwrap();
+        assert!(!s.devlog_on() && !s.devlog_chats());
+        // An explicit earlier choice is kept.
+        let s: Settings =
+            serde_json::from_str(r#"{"labs_devlog":true,"labs_devlog_chats":true}"#).unwrap();
+        assert!(s.devlog_on() && s.devlog_chats());
+        let s: Settings = serde_json::from_str(r#"{"labs_devlog":true}"#).unwrap();
+        assert!(s.devlog_on() && !s.devlog_chats());
+    }
 
     /// The truth-seeking rules (R29): each rule is there, they stay short, and the phone's copy is
     /// the same words (one text on both sides).
@@ -507,15 +527,25 @@ mod tests {
         let r = DEFAULT_GROUND_RULES;
         for must in [
             "I don't know",
-            "I'm not sure",
-            "main views fairly",
-            "push back",
-            "Don't change an answer just to please me",
+            "Answer exactly what I ask",
+            "in the subject's own terms",
+            "unless I ask for them",
+            "I push back",
             "name the sources",
-            "I couldn't confirm this",
             "No flattery",
+            "no refusing because a topic is sensitive",
         ] {
             assert!(r.contains(must), "missing: {must}");
+        }
+        // The old hedges and "other views" lines are gone.
+        for gone in [
+            "main views",
+            "fairly sure",
+            "I'm not sure",
+            "disputed",
+            "I couldn't confirm",
+        ] {
+            assert!(!r.contains(gone), "still there: {gone}");
         }
         assert!(
             r.split_whitespace().count() < 190,

@@ -149,9 +149,20 @@ pub fn claude_words(id: &str) -> Option<String> {
     Some(name)
 }
 
-/// What Claude is told it is.
-const PAID_PLACE: &str = "You are Mímir, a private AI; this chat reaches you through the \
-                          owner's own PC. You have no tools: answer from what you know.";
+/// What the online model is told it is. It is Anthropic's model answering and the person's words go to Anthropic,
+/// so it must never call this chat private.
+const PAID_PLACE: &str = "You are Mímir's online answerer: Anthropic's Claude, reached through \
+                          the owner's own PC. This chat's words go to Anthropic, so do not \
+                          call it private. You have no tools: answer from what you know.";
+
+/// The instructions for the online model: the first message's place line is
+/// swapped for the truthful one.
+fn online_system(first: Option<(&str, &str)>) -> String {
+    first
+        .filter(|(r, _)| *r == "system")
+        .map(|(_, t)| t.replacen(PLACE, PAID_PLACE, 1))
+        .unwrap_or_else(|| PAID_PLACE.to_string())
+}
 
 /// What the engine reports, from its own thread.
 #[derive(Debug, Clone)]
@@ -379,7 +390,7 @@ impl Talk {
                                 String::new()
                             };
                             free.model_words = format!(
-                                "Free · Your PC · Online is at its limit{when} — switched to free model"
+                                "Free · Your PC · Online is at its limit{when} · Your PC answered instead"
                             );
                         }
                         if let Some(c) = &mut s.current {
@@ -763,12 +774,7 @@ impl Talk {
                 m
             }
         };
-        let system = job
-            .messages
-            .first()
-            .filter(|(r, _)| r == "system")
-            .map(|(_, t)| t.replacen(PLACE, PAID_PLACE, 1))
-            .unwrap_or_else(|| PAID_PLACE.to_string());
+        let system = online_system(job.messages.first().map(|(r, t)| (r.as_str(), t.as_str())));
         let mut cmd = Command::new(&p.program);
         cmd.current_dir(&p.dir)
             .args([
@@ -1452,13 +1458,24 @@ mod tests {
     }
 
     #[test]
+    fn the_online_model_is_never_told_the_chat_is_private() {
+        let own = system(Some(crate::settings::DEFAULT_GROUND_RULES), None);
+        for s in [online_system(Some(("system", &own))), online_system(None)] {
+            assert!(s.contains("Anthropic"), "{s}");
+            assert!(!s.contains("private AI"), "{s}");
+            assert!(!s.contains(PLACE), "{s}");
+            assert!(s.contains("do not call it private"), "{s}");
+        }
+    }
+
+    #[test]
     fn the_instructions_are_the_place_then_the_rules_then_what_was_looked_up() {
         let rules = crate::settings::DEFAULT_GROUND_RULES;
         let s = system(Some(rules), Some("[Looked up from example.org] Rain."));
         assert!(s.starts_with(PLACE));
         let (a, b, c) = (
             s.find(rules).unwrap(),
-            s.find("I couldn't confirm this").unwrap(),
+            s.find("name the sources").unwrap(),
             s.find("[Looked up").unwrap(),
         );
         assert!(
