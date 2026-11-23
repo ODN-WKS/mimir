@@ -81,6 +81,13 @@ pub fn to_host(cmd: Command) -> Command {
     if !active() {
         return cmd;
     }
+    wrap_for_host(cmd)
+}
+
+/// The command run on the PC through the host portal, whether or not this
+/// process is in a sandbox (the host part of a Flatpak build needs it, and
+/// tests check it).
+pub(crate) fn wrap_for_host(cmd: Command) -> Command {
     let mut c = Command::new("flatpak-spawn");
     c.arg("--host");
     if let Some(dir) = cmd.get_current_dir() {
@@ -270,6 +277,23 @@ mod tests {
         assert_eq!(c.get_program(), "git");
         assert_eq!(c.get_args().count(), 1);
         assert_eq!(host_cmd("git").get_program(), "git");
+        // Wrapped, it keeps its folder, variables and arguments.
+        let mut c = Command::new("claude");
+        c.arg("-p")
+            .current_dir("/proj")
+            .env("A", "b")
+            .env_remove("Z");
+        let w = wrap_for_host(c);
+        assert_eq!(w.get_program(), "flatpak-spawn");
+        let a: Vec<_> = w
+            .get_args()
+            .map(|s| s.to_string_lossy().to_string())
+            .collect();
+        assert_eq!(a[0], "--host");
+        assert!(a.contains(&"--directory=/proj".to_string()));
+        assert!(a.contains(&"--env=A=b".to_string()));
+        assert!(a.contains(&"--unset-env=Z".to_string()));
+        assert_eq!(&a[a.len() - 2..], ["claude", "-p"]);
         assert_eq!(
             own_command_words(Path::new("/bin/mimir")),
             vec!["/bin/mimir".to_string()]

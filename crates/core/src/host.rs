@@ -473,9 +473,31 @@ pub fn main(args: &[String]) -> i32 {
     }
 }
 
+/// The command a host runs for `job`. In a Flatpak the host itself lives
+/// in the sandbox, but Claude Code must run on the PC with the person's
+/// own PATH, HOME and tools (git, build tools, adb): it goes through the
+/// host portal, which brings the PC's environment and only the variables
+/// the job sets or removes.
+pub(crate) fn job_command(job: &Job, in_flatpak: bool) -> std::process::Command {
+    let mut cmd = std::process::Command::new(&job.program);
+    cmd.args(&job.args).current_dir(&job.cwd);
+    crate::process::without_systemd(&mut cmd);
+    for k in &job.env_remove {
+        cmd.env_remove(k);
+    }
+    for (k, v) in &job.env {
+        cmd.env(k, v);
+    }
+    if in_flatpak {
+        crate::flatpak::wrap_for_host(cmd)
+    } else {
+        cmd
+    }
+}
+
 fn run(key: &str) -> std::io::Result<()> {
     use std::os::unix::process::CommandExt;
-    use std::process::{Command, Stdio};
+    use std::process::Stdio;
     let mut rec = read_record(key).ok_or_else(|| std::io::Error::other("no record"))?;
     let sock = socket_path(key);
     let _ = std::fs::remove_file(&sock);
@@ -485,20 +507,11 @@ fn run(key: &str) -> std::io::Result<()> {
         std::fs::set_permissions(&sock, std::fs::Permissions::from_mode(0o600))?;
     }
     let job = rec.job.clone();
-    let mut cmd = Command::new(&job.program);
-    cmd.args(&job.args)
-        .current_dir(&job.cwd)
-        .stdin(Stdio::piped())
+    let mut cmd = job_command(&job, crate::flatpak::active());
+    cmd.stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .process_group(0);
-    crate::process::without_systemd(&mut cmd);
-    for k in &job.env_remove {
-        cmd.env_remove(k);
-    }
-    for (k, v) in &job.env {
-        cmd.env(k, v);
-    }
     // SAFETY: prctl is async-signal-safe: the child never runs on with
     // nobody holding its pipes.
     unsafe {
@@ -676,6 +689,41 @@ fn serve(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn claude_runs_on_the_pc_when_the_host_is_in_a_flatpak() {
+        let job = Job {
+            kind: "task".into(),
+            task_id: "t".into(),
+            program: "/home/p/.local/bin/claude".into(),
+            args: vec!["-p".into()],
+            cwd: "/home/p/proj".into(),
+            env: vec![("MIMIR_TASK".into(), "1".into())],
+            env_remove: vec!["INVOCATION_ID".into()],
+        };
+        let words = |c: &std::process::Command| -> Vec<String> {
+            c.get_args()
+                .map(|s| s.to_string_lossy().to_string())
+                .collect()
+        };
+        let c = job_command(&job, true);
+        assert_eq!(c.get_program(), "flatpak-spawn");
+        let a = words(&c);
+        assert_eq!(a[0], "--host");
+        assert!(a.contains(&"--directory=/home/p/proj".to_string()));
+        assert!(a.contains(&"--env=MIMIR_TASK=1".to_string()));
+        assert!(a.contains(&"--unset-env=INVOCATION_ID".to_string()));
+        // No sandbox variable is handed on: the PC's own PATH and HOME stay.
+        assert!(
+            !a.iter()
+                .any(|w| w.starts_with("--env=PATH") || w.starts_with("--env=HOME"))
+        );
+        assert_eq!(&a[a.len() - 2..], ["/home/p/.local/bin/claude", "-p"]);
+        // Outside a Flatpak it is started directly, as before.
+        let d = job_command(&job, false);
+        assert_eq!(d.get_program(), "/home/p/.local/bin/claude");
+        assert_eq!(d.get_current_dir().unwrap().to_str(), Some("/home/p/proj"));
+    }
 
     #[test]
     fn an_end_by_signal_is_saved_as_ended() {
