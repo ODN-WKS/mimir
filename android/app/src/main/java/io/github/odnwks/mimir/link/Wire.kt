@@ -487,6 +487,8 @@ object Wire {
                 LongNotice(very = l.optBoolean("very"), own = l.optString("why") == "Own", elsewhere = l.optBoolean("elsewhere"), pages = l.optInt("pages"))
             },
             elsewhereIn = h.optString("elsewhere_in"),
+            doing = h.optString("doing"),
+            turnUnix = h.optLong("turn_unix"),
             failed = h.optBoolean("failed"),
         )
     }
@@ -781,6 +783,10 @@ data class LinkTask(
     val outside: Boolean? = null,
     /** The conversation has run long (the PC's one rule); null: not long, or an older PC that doesn't say. */
     val long: LongNotice? = null,
+    /** What Claude is doing right now, in the PC's plain words; "" when it is not working (or an older PC). */
+    val doing: String = "",
+    /** When the working turn began (seconds since 1970); 0 when not said. */
+    val turnUnix: Long = 0,
     /** Where it goes on, when the PC says: "app" (the Claude app) or "terminal"; "" from an older PC. */
     val elsewhereIn: String = "",
     /** With status Stopped: it stopped unexpectedly (its Claude Code died), not by the owner's Stop. */

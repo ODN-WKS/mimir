@@ -718,7 +718,67 @@ pub struct TaskHeader {
     /// long, or an older PC that doesn't say.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub long: Option<LongNotice>,
+    /// While Claude works: what it is doing right now in plain words
+    /// ("Thinking…", "Reading main.rs", "Running a command", "Waiting for
+    /// your OK"). The PC decides the words; phones and the window draw them.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub doing: Option<String>,
+    /// While Claude works: when this turn began (seconds since 1970), for
+    /// "working for 40 s".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub turn_unix: Option<i64>,
 }
+
+/// What Claude is doing, in plain words, for a step that is still running:
+/// from the tool and the step's words ("Read main.rs"). Never a path.
+pub fn doing_words(tool: &str, what: &str) -> String {
+    let rest = |prefixes: &[&str]| -> String {
+        prefixes
+            .iter()
+            .find_map(|p| what.strip_prefix(p))
+            .unwrap_or_default()
+            .trim()
+            .to_string()
+    };
+    let with = |verb: &str, name: String| {
+        if name.is_empty() {
+            format!("{verb} a file")
+        } else {
+            format!("{verb} {name}")
+        }
+    };
+    match tool {
+        "Bash" => "Running a command".into(),
+        "Read" => with("Reading", rest(&["Read "])),
+        "Edit" | "MultiEdit" | "NotebookEdit" => with("Changing", rest(&["Changed "])),
+        "Write" => with("Writing", rest(&["Wrote "])),
+        "Grep" | "Glob" => "Looking through the files".into(),
+        "WebSearch" => "Searching the web".into(),
+        "WebFetch" => "Reading a web page".into(),
+        "Task" | "Agent" => "A helper is working".into(),
+        _ => "Working on it".into(),
+    }
+}
+
+/// How long it has worked, for the live line: "5 s", "1 min 20 s", "12 min".
+pub fn worked_for(secs: u64) -> String {
+    if secs < 60 {
+        format!("{secs} s")
+    } else if secs < 600 {
+        let (m, s) = (secs / 60, secs % 60);
+        if s == 0 {
+            format!("{m} min")
+        } else {
+            format!("{m} min {s} s")
+        }
+    } else {
+        format!("{} min", secs / 60)
+    }
+}
+
+/// The silence line: nothing came from the PC for this long while the task
+/// is said to be working.
+pub const QUIET_AFTER_SECS: u64 = 20;
 
 /// Why a long conversation matters for this task.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

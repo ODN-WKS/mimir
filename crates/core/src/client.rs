@@ -49,9 +49,35 @@ pub struct TaskView {
     pub queued: Option<QueuedMessage>,
     /// The state the PC's truth gives this task (None until it has).
     truth_state: Option<TaskState>,
+    /// What Claude is doing right now, as the PC says (None: not working).
+    doing: Option<String>,
+    /// When the working turn began (seconds since 1970), as the PC says.
+    turn_unix: Option<i64>,
+    /// When anything last came in for this task.
+    news: Instant,
 }
 
 impl TaskView {
+    /// What Claude is doing right now and for how long, in plain words
+    /// ("Reading main.rs · 12 s"); when nothing came in for
+    /// [`mimir_proto::QUIET_AFTER_SECS`] while it works, a line that says
+    /// so instead of looking frozen. None when it is not working.
+    pub fn live_line(&self, now_unix: i64) -> Option<String> {
+        let doing = self.doing.as_ref()?;
+        let quiet = self.news.elapsed().as_secs();
+        if quiet >= mimir_proto::QUIET_AFTER_SECS {
+            return Some(format!("Still working; no news for {quiet} s"));
+        }
+        Some(match self.turn_unix {
+            Some(t) if now_unix >= t => format!(
+                "{} · {}",
+                doing,
+                mimir_proto::worked_for((now_unix - t) as u64)
+            ),
+            _ => doing.clone(),
+        })
+    }
+
     /// The task's one state for every surface of the window: the PC's
     /// truth when it has told, else the same rule worked out here.
     pub fn shown_state(&self) -> TaskState {
@@ -538,6 +564,9 @@ impl Station {
                         v.running = header.running;
                         v.busy = header.busy;
                         v.queued = header.queued.clone();
+                        v.doing = header.doing.clone();
+                        v.turn_unix = header.turn_unix;
+                        v.news = Instant::now();
                     }
                     None => {
                         let mut task = Task::new(
@@ -554,6 +583,9 @@ impl Station {
                             busy: header.busy,
                             screen: vec![],
                             queued: header.queued.clone(),
+                            doing: header.doing.clone(),
+                            turn_unix: header.turn_unix,
+                            news: Instant::now(),
                             truth_state: self
                                 .truth
                                 .as_ref()
@@ -572,11 +604,13 @@ impl Station {
                 if let Some(v) = self.view(&task) {
                     v.task.entries.truncate(from);
                     v.task.entries.extend(entries);
+                    v.news = Instant::now();
                 }
             }
             Event::Live { task, text } => {
                 if let Some(v) = self.view(&task) {
                     v.task.live = text;
+                    v.news = Instant::now();
                 }
             }
             Event::Screen { task, lines } => {
@@ -1963,7 +1997,26 @@ mod tests {
             screen: vec![],
             queued: None,
             truth_state: truth,
+            doing: None,
+            turn_unix: None,
+            news: Instant::now(),
         }
+    }
+
+    /// D1: the live line counts the time, and says plainly when nothing came for a while.
+    #[test]
+    fn the_live_line_counts_and_admits_silence() {
+        let mut v = view(Status::Working, None);
+        assert_eq!(v.live_line(100), None, "not working: nothing to say");
+        v.doing = Some("Reading main.rs".into());
+        v.turn_unix = Some(90);
+        assert_eq!(v.live_line(100).as_deref(), Some("Reading main.rs · 10 s"));
+        v.news = Instant::now() - std::time::Duration::from_secs(25);
+        assert!(
+            v.live_line(100)
+                .unwrap()
+                .starts_with("Still working; no news")
+        );
     }
 
     /// P10a: every surface shows the one state the PC's truth gives; only

@@ -5511,6 +5511,18 @@ impl Service {
             return;
         }
         for e in events {
+            if crate::devlog::enabled() {
+                // When each task change leaves the PC (no words of the task), to time updates.
+                let (kind, n) = match &e {
+                    Event::Task { header } => ("task", header.entry_count),
+                    Event::Entries { entries, .. } => ("entries", entries.len()),
+                    Event::Live { text, .. } => ("live", text.len()),
+                    _ => ("", 0),
+                };
+                if !kind.is_empty() {
+                    crate::devlog::log("push", kind, vec![("n", n.into())]);
+                }
+            }
             self.broadcast(e);
         }
         self.wake_clients();
@@ -5572,6 +5584,8 @@ fn header(l: &runner::Live, queued: &HashMap<String, QueuedMessage>) -> TaskHead
         failed: t.stopped_unexpectedly(),
         background: l.in_background(),
         long: crate::long::notice(t),
+        doing: l.busy().then(|| t.doing(!l.asks.is_empty())),
+        turn_unix: if l.busy() { t.turn_unix } else { None },
     }
 }
 

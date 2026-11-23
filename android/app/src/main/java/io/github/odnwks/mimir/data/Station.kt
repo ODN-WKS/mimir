@@ -449,6 +449,8 @@ data class Task(
     val liveElsewhere: Boolean = false,
     /** The conversation has run long: a calm line with "Start fresh with a summary" (null: not long). */
     val long: LongNotice? = null,
+    /** The live sign under the task: sending, got it, what Claude is doing and for how long (null: nothing to say). */
+    val sign: LiveSign? = null,
     /** Plan first (it changes nothing yet); false: it asks first before changes. */
     val plan: Boolean = false,
     /** The PC's permission mode: "Ask", "AcceptEdits", "Plan", "Auto" or "NoAsk". */

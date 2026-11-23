@@ -126,6 +126,10 @@ pub struct Task {
     /// Text Claude is writing right now (not saved).
     #[serde(skip)]
     pub live: String,
+    /// When the owner's last message went in (seconds since 1970): the turn
+    /// that is working began then. Only read while it works.
+    #[serde(default)]
+    pub turn_unix: Option<i64>,
     #[serde(default)]
     pub context_used: u64,
     #[serde(default)]
@@ -361,6 +365,7 @@ impl Task {
             question_dismissed: None,
             effort: None,
             live: String::new(),
+            turn_unix: None,
             context_used: 0,
             context_window: 0,
             plan_doc: None,
@@ -473,6 +478,7 @@ impl Task {
     pub fn add_you(&mut self, text: &str) {
         self.entries.push(Entry::You(text.to_string()));
         self.status = Status::Working;
+        self.turn_unix = Some(crate::needs::now());
         self.failed = false;
     }
 
@@ -874,6 +880,26 @@ impl Task {
     /// wait for the owner. `busy`: this PC's Claude works on it.
     pub fn working_now(&self, busy: bool) -> bool {
         !self.needs_owner() && (busy || self.status == Status::Working)
+    }
+
+    /// What Claude is doing right now, in plain words, while it works: the
+    /// step still running, else the answer being written, else thinking.
+    /// `asked`: a permission request waits for the owner.
+    pub fn doing(&self, asked: bool) -> String {
+        if asked {
+            return "Waiting for your OK".into();
+        }
+        let running = self.entries.iter().rev().find_map(|e| match e {
+            Entry::Step(s) if s.ok.is_none() && !s.refused && !s.stopped => Some(s),
+            _ => None,
+        });
+        if let Some(s) = running {
+            return mimir_proto::doing_words(&s.tool, &s.what);
+        }
+        if !self.live.trim().is_empty() {
+            return "Writing the answer".into();
+        }
+        "Thinking…".into()
     }
 
     /// Whether the owner is needed: an OK, a plan, or a question.
@@ -1513,5 +1539,42 @@ mod tests {
         let r2 = phone_too_start(&mut t);
         assert!(r2.is_err(), "second start must return error");
         assert!(r2.unwrap_err().contains("already active"));
+    }
+
+    fn running_step(tool: &str, what: &str) -> Entry {
+        Entry::Step(Step {
+            tool_use_id: "u".into(),
+            tool: tool.into(),
+            what: what.into(),
+            place: mimir_proto::Place::ThisPc,
+            started_ms: 0,
+            took_ms: None,
+            ok: None,
+            refused: false,
+            stopped: false,
+            detail: Default::default(),
+        })
+    }
+
+    /// D1: while it works the task says in plain words what Claude is doing.
+    #[test]
+    fn doing_follows_the_step_still_running() {
+        let mut t = Task::new("1-1-1".into(), "T".into(), "/p".into(), 1);
+        t.add_you("hi");
+        assert!(
+            t.turn_unix.is_some(),
+            "the turn's start is kept for 'working for 5 s'"
+        );
+        assert_eq!(t.doing(false), "Thinking…");
+        t.live = "Let me".into();
+        assert_eq!(t.doing(false), "Writing the answer");
+        t.entries.push(running_step("Read", "Read main.rs"));
+        assert_eq!(t.doing(false), "Reading main.rs");
+        assert_eq!(t.doing(true), "Waiting for your OK");
+        if let Some(Entry::Step(s)) = t.entries.last_mut() {
+            s.ok = Some(true);
+        }
+        t.live.clear();
+        assert_eq!(t.doing(false), "Thinking…");
     }
 }

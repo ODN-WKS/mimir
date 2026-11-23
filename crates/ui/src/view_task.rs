@@ -764,16 +764,23 @@ impl App {
                             ui.horizontal(|ui| {
                                 ui.spinner();
                                 ui.label(
-                                    RichText::new(
-                                        if mimir_core::models::is_free(t.model.as_deref()) {
-                                            "Your PC's model is working…"
-                                        } else {
-                                            "Working on it…"
-                                        },
-                                    )
+                                    RichText::new(if mimir_core::models::is_free(t.model.as_deref())
+                                    {
+                                        "Your PC's model is working…"
+                                    } else {
+                                        "Working on it…"
+                                    })
                                     .color(MUTED),
                                 );
                             });
+                            // What it is doing now and for how long, in plain words, and
+                            // a long silence said plainly.
+                            if let Some(line) = l.live_line(mimir_core::needs::now()) {
+                                ui.label(RichText::new(line).small().color(MUTED));
+                            }
+                            // The time it has worked counts on, and a long
+                            // silence shows, without any click.
+                            ui.ctx().request_repaint_after(std::time::Duration::from_millis(500));
                         }
                         if scroll_down {
                             ui.scroll_to_cursor(Some(Align::BOTTOM));

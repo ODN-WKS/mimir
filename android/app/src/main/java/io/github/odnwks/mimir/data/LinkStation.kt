@@ -137,6 +137,10 @@ class LinkStation(
     private val live = HashMap<String, String>()
     /** PHW-06: when each task last got a Live (streaming) event, to detect "answering" state. */
     private val liveAt = HashMap<String, Long>()
+    /** When anything last came in for a task (any event of it), for "no news for 20 s". */
+    private val newsAt = HashMap<String, Long>()
+    /** When the PC answered Ok to a message of a task. */
+    private val gotItAt = HashMap<String, Long>()
     private var items: List<LItem> = emptyList()
     private var page: LStatus? = null
     /** The PC's one truth about its work (Stage 1, 3.1), newest by (run, revision). */
@@ -387,7 +391,7 @@ class LinkStation(
                 }
                 // The PC sends everything again, its problems that still stand among it: one
                 // that's gone is no longer shown.
-                is Ev.Snapshot -> { tasks.clear(); entries.clear(); live.clear(); liveAt.clear(); problem = null; io.github.odnwks.mimir.alerts.OutsideTasks.newConnection() }
+                is Ev.Snapshot -> { tasks.clear(); entries.clear(); live.clear(); liveAt.clear(); newsAt.clear(); problem = null; io.github.odnwks.mimir.alerts.OutsideTasks.newConnection() }
                 Ev.Ready -> after = {
                     talkers().forEach { it.back() }
                     refreshProjects {
@@ -411,6 +415,7 @@ class LinkStation(
                 }
                 is Ev.TaskHeader -> {
                     tasks[ev.task.id] = ev.task
+                    newsAt[ev.task.id] = System.currentTimeMillis()
                     io.github.odnwks.mimir.alerts.OutsideTasks.header(ev.task.id, ev.task.liveElsewhere, ev.task.outside)
                     // What waited for this header (a finished or a question) is judged now.
                     val t = ev.task
@@ -426,6 +431,7 @@ class LinkStation(
                     io.github.odnwks.mimir.alerts.FinishedGate.removed(ev.task)
                 }
                 is Ev.Entries -> entries.getOrPut(ev.task) { ArrayList() }.let { l ->
+                    newsAt[ev.task] = System.currentTimeMillis()
                     while (l.size > ev.from) l.removeAt(l.size - 1)
                     l.addAll(ev.entries)
                     live.remove(ev.task)
@@ -433,7 +439,7 @@ class LinkStation(
                 // Only a PC that lists the feature is believed; each id is shown once by the notifier.
                 is Ev.Finished -> if (Wire.FINISHED_EVENTS in pcFeatures) after = { onFinished?.invoke(listOf(ev.item)) }
                 is Ev.RecentFinished -> if (Wire.FINISHED_EVENTS in pcFeatures) after = { onFinished?.invoke(ev.items) }
-                is Ev.Live -> { live[ev.task] = ev.text; liveAt[ev.task] = System.currentTimeMillis() }
+                is Ev.Live -> { live[ev.task] = ev.text; liveAt[ev.task] = System.currentTimeMillis(); newsAt[ev.task] = liveAt[ev.task]!! }
                 is Ev.Problem -> if (ev.text !in dismissed) problem = ev.text
                 is Ev.NeedsYou -> {
                     items = ev.items
@@ -1039,7 +1045,10 @@ class LinkStation(
             // Kept until the PC answers; a link that went away leaves it for the next connect.
             val held = attachments.load(id)
             val sent = delivery.start(id, { cb -> call(Wire.send(task, text, id, held.pictures, held.files), cb) }) { _, err ->
-                synchronized(lock) { data = data.copy(replies = data.replies.filterNot { it.first == id }); saveData() }
+                synchronized(lock) {
+                    data = data.copy(replies = data.replies.filterNot { it.first == id }); saveData()
+                    if (err == null) gotItAt[task] = System.currentTimeMillis()
+                }
                 attachments.drop(id)
                 if (err != null) note(err)
                 publish()
@@ -1271,6 +1280,7 @@ class LinkStation(
                             attachments.drop(w.id)
                             data = data.copy(newTasks = data.newTasks.filterNot { it.id == w.id })
                             started[w.id] = (ok as? String).orEmpty()
+                            (ok as? String)?.takeIf { it.isNotEmpty() }?.let { gotItAt[it] = System.currentTimeMillis() }
                         } else {
                             // The PC said no: the task stays, with its words, to try again or remove.
                             data = data.copy(newTasks = data.newTasks.map { if (it.id == w.id) it.copy(failed = err) else it })
@@ -1702,6 +1712,7 @@ class LinkStation(
         busy = connected && w.failed.isEmpty(), running = false,
         plan = w.plan, mode = if (w.plan) "Plan" else "Ask", waitingToStart = true,
         canCancel = !delivery.active(w.id), failedWhy = w.failed,
+        sign = LiveSign(sending = connected && w.failed.isEmpty(), linkUp = connected),
     )
 
     private fun task(t: LinkTask, needs: List<NeedsYouItem>): Task {
@@ -1744,6 +1755,11 @@ class LinkStation(
             activeUnix = t.activeUnix,
             liveElsewhere = t.liveElsewhere,
             long = t.long,
+            sign = LiveSign(
+                sending = data.replies.any { it.second == t.id && delivery.active(it.first) },
+                gotItAt = gotItAt[t.id] ?: 0, doing = t.doing, turnUnix = t.turnUnix,
+                newsAt = newsAt[t.id] ?: 0, linkUp = connected,
+            ),
             plan = t.plan,
             mode = t.mode,
             whisper = t.incognito,

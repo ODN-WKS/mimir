@@ -180,7 +180,9 @@ fun TaskScreen(taskId: String, state: StationState, station: Station, nav: Navig
                         if (more) Text(listOf(task.project, if (task.plan) "Plan first" else "", task.age).filter { it.isNotBlank() }.joinToString(" · "), style = Type.Small, color = Palette.TextDim, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                     // What it's doing right now, in words.
-                    if (task.stateWords == "Working" && task.stateLine != "Working on it") Text(task.stateLine, style = Type.Small, color = Palette.TextSoft, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    // Always a sign of life: sending, got it, the step and how long, or the silence said plainly.
+                    if (task.sign?.let { it.doing.isNotEmpty() || it.sending || it.gotItAt > 0 } == true) LiveSignLine(task.sign)
+                    else if (task.stateWords == "Working" && task.stateLine != "Working on it") Text(task.stateLine, style = Type.Small, color = Palette.TextSoft, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 },
                 action = {
                     IconTarget(Glyphs.Search, if (finding) "Close find" else "Find in this task", { finding = !finding; if (!finding) find = "" })
@@ -266,7 +268,7 @@ fun TaskScreen(taskId: String, state: StationState, station: Station, nav: Navig
                         under = {
                             StatusWords(
                                 Glyphs.Clock,
-                                if (!state.phoneOnline) "This phone is offline: sends when it's back" else "Waiting: sends when your PC is back",
+                                if (!state.phoneOnline) "This phone is offline: sends when it's back" else if (task.sign?.sending == true) "Sending…" else "Waiting: sends when your PC is back",
                                 Palette.TextDim,
                             )
                         },

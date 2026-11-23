@@ -55,6 +55,8 @@ fn header() -> TaskHeader {
         failed: false,
         background: false,
         long: None,
+        doing: None,
+        turn_unix: None,
     }
 }
 
