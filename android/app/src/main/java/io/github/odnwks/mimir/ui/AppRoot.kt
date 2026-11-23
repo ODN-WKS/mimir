@@ -305,9 +305,10 @@ private fun ScreenFor(screen: Screen, state: io.github.odnwks.mimir.data.Station
             val ctx = LocalContext.current
             val ok = LocalStandaloneOk.current
             val stand = LocalPhoneEngine.current
+            val standIn = LocalStandIn.current
             PhoneChat(
                 remember(stand, ok, state.paired) { stand ?: if (keepsChatsHere(ok, state.paired)) Engine.get(ctx) else null }, nav, paired = state.paired, pcOnline = state.pc.online, pcName = state.pc.name,
-                task = state::task, onMoveTask = { id, p -> station.moveTask(id, p) }, menuWaiting = menuCount(state),
+                task = state::task, onMoveTask = { id, p -> station.moveTask(id, p) { m -> android.os.Handler(android.os.Looper.getMainLooper()).post { standIn(m) } } }, menuWaiting = menuCount(state),
                 needsYou = state.needsYou.size, unheard = unheardUpdates(state), pcModel = state.models.selectedName, claudeAnswers = state.models.chatsEngine == "paid",
                 claudeOffered = state.models.chatsEngine != null, owner = state.owner, onPickEngine = { station.setEngines(it, null) },
                 claudeModel = state.models.chatsModel, claudeChoices = state.models.chatModels, onPickClaudeModel = station::setChatModel,

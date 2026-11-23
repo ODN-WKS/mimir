@@ -69,7 +69,8 @@ interface Station {
     /** Undo of Archive: the task is back in the list. */
     fun unarchiveTask(taskId: String)
     /** The task, conversation and all, carries on in another project (refused while Claude works on it). */
-    fun moveTask(taskId: String, project: String)
+    /** "Move to another project": [said] gets the PC's answer in plain words (why not, or where it went). */
+    fun moveTask(taskId: String, project: String, said: (String) -> Unit = {})
     /** Ask me first (false) or Plan first (true): the two a phone may choose. */
     fun setTaskPlan(taskId: String, plan: Boolean)
     /** YOLO for this one task, after the warning and the phone's unlock (the PC may refuse). */

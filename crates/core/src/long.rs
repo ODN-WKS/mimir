@@ -19,8 +19,15 @@ const OWN_BASE: u64 = 20_000;
 /// 130,000 of them).
 const TOKENS_PER_PAGE: u64 = 440;
 
+/// What the old task says once it was carried on in a new one.
+pub const CARRIED_NOTE: &str = "Carried on in a fresh task.";
+
 /// The notice a task calls for, or None while it is not long.
 pub fn notice(t: &Task) -> Option<LongNotice> {
+    // Already carried on in a fresh task: nothing left to offer.
+    if matches!(t.entries.last(), Some(crate::task::Entry::Note(n)) if n == CARRIED_NOTE) {
+        return None;
+    }
     // A Whisper keeps nothing: no line, no way to copy it into a saved task.
     if t.incognito {
         return None;

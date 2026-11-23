@@ -153,6 +153,12 @@ private fun SheetContent(sheet: Sheet, state: StationState, station: Station, na
                 else -> {}
             }
             MenuRow(Glyphs.Steps, "Rename…") { nav.openSheet(Sheet.RenameTask(id)) }
+            // Last seen working and the PC is away: Pause and Stop need it, and the menu says why they are missing.
+            if (task?.stateWords == "Was working (PC away)") Row(Modifier.fillMaxWidth().heightIn(min = 52.dp).padding(horizontal = 12.dp).semantics(mergeDescendants = true) {},
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                Icon(Glyphs.Stop, null, tint = Palette.TextDim, modifier = Modifier.size(22.dp))
+                Text("Pause and Stop need your PC. It's away.", style = Type.BodyTight, color = Palette.TextDim, modifier = Modifier.weight(1f))
+            }
             if (!elsewhere) {
                 // A task moves with its whole conversation, but never while Claude works on it.
                 if (task?.status == "Working") {

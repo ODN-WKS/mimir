@@ -120,7 +120,7 @@ fun TaskScreen(taskId: String, state: StationState, station: Station, nav: Navig
     val words = find.trim().takeIf { finding && it.isNotEmpty() }
     // The PC's own notes about a followed session say what the line and buttons below already say.
     val shownMessages = task.messages.filterNot { m ->
-        m.note && ((followed && !carried && isFollowNote(m.text)) ||
+        m.note && ((followed && isFollowNote(m.text)) ||
             // Nothing runs on after a stop or a pause.
             (m.text == BACKGROUND_NOTE && task.stateWords in setOf("Stopped", "Stopped unexpectedly", "Paused")) ||
             // The box below says it, with Continue.
@@ -129,7 +129,7 @@ fun TaskScreen(taskId: String, state: StationState, station: Station, nav: Navig
     val messages = if (words == null) shownMessages else shownMessages.filter { it.text.contains(words, ignoreCase = true) }
     // "Move to another project" in the options: the picker hands back where to.
     LaunchedEffect(nav.pickedProject) {
-        nav.pickedProject?.let { p -> nav.pickedProject = null; if (p != task.project) station.moveTask(task.id, p) }
+        nav.pickedProject?.let { p -> nav.pickedProject = null; if (p != task.project) station.moveTask(task.id, p) { m -> android.os.Handler(android.os.Looper.getMainLooper()).post { standIn(m) } } }
     }
     // The conversation follows its newest part: a message just sent, a reply arriving, a
     // question, or the keyboard opening (which shrinks the space above the reply box).
@@ -264,6 +264,11 @@ fun TaskScreen(taskId: String, state: StationState, station: Station, nav: Navig
                         editNote = EDIT_TASK_NOTE, editFailure = editFailure, onEditCancel = { editFailure = null },
                     )
                 }
+                // Carried on in a fresh task: a way to open it, under the note that says so.
+                if (task.messages.lastOrNull()?.let { it.note && it.text == CARRIED_ON_NOTE } == true) {
+                    val next = state.tasks.filter { it.project == task.project && it.title == "${task.title.trim()} (continued)" }.lastOrNull()
+                    if (next != null) LinkText("Open the new task", { nav.open(Screen.Task(next.id)) }, bold = true)
+                }
                 // A task that hasn't answered yet says so, instead of a blank page.
                 if (task.stateWords == "Starting") Panel(background = Palette.Bar) {
                     Text("Starting… The first reply shows here.", style = Type.Label, color = Palette.TextDim)
@@ -271,7 +276,8 @@ fun TaskScreen(taskId: String, state: StationState, station: Station, nav: Navig
                 // Last, under the conversation it ended.
                 // "Stopped · Continue", and whether a command was cut off by the stop.
                 if (task.stopPending) StatusWords(Glyphs.Clock, STOP_WAITING, Palette.TextDim)
-                if (task.stateWords in setOf("Stopped", "Stopped unexpectedly", "Paused")) Panel(background = Palette.Bar) {
+                // A followed session has its own buttons (Carry on here): one way to carry on, not two.
+                if (task.stateWords in setOf("Stopped", "Stopped unexpectedly", "Paused") && !(listsSessions && followed && !carried)) Panel(background = Palette.Bar) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(if (task.stateWords == "Stopped unexpectedly") "Stopped unexpectedly ·" else "${task.stateWords} ·", style = Type.Label, color = if (task.stateWords == "Stopped unexpectedly") Palette.AmberNote else Palette.TextDim)
                         LinkText("Continue", { station.continueTask(task.id); cutOff = false }, bold = true)
@@ -404,15 +410,17 @@ private fun Steps(task: Task, open: Boolean, toggle: () -> Unit) {
             val done = task.steps.size - failed0
             val failed = task.steps.count { it.startsWith("✕") }
             val going = task.steps.count { it.startsWith("…") }
+            // A task last seen working while the PC is away is not finished: no cross for what may still be going.
+            val working = task.busy || task.stateWords == "Was working (PC away)"
             val words = listOfNotNull(
-                if (task.busy || going > 0) "${count(done + going, "step")} so far" else "${count(done, "step")} done",
-                if (going > 0 && !task.busy) "$going waiting" else null,
+                if (working || going > 0) "${count(done + going, "step")} so far" else "${count(done, "step")} done",
+                if (going > 0 && !working) "$going waiting" else null,
                 if (failed > 0) "$failed not done" else null,
             ).joinToString(", ")
             when {
                 // A red cross is for work that ended with something not done, not for progress that is still going.
-                failed > 0 && !task.busy -> Text("✕", style = Type.Label, color = Palette.Red)
-                going > 0 || task.busy || failed > 0 -> Icon(Glyphs.Clock, null, tint = Palette.TextDim, modifier = Modifier.size(18.dp))
+                failed > 0 && !working -> Text("✕", style = Type.Label, color = Palette.Red)
+                going > 0 || working || failed > 0 -> Icon(Glyphs.Clock, null, tint = Palette.TextDim, modifier = Modifier.size(18.dp))
                 else -> Icon(Glyphs.Check, null, tint = Palette.Green, modifier = Modifier.size(18.dp))
             }
             Text(words, style = Type.Label, color = Palette.Text, modifier = Modifier.weight(1f))
@@ -567,6 +575,9 @@ const val BACKGROUND_NOTE = "Still running something it started in the backgroun
 /** The PC's own notes in a followed session, which the line above and the buttons below replace. */
 fun isFollowNote(text: String) =
     text == "Running in another app; you can follow it here." || text == "Opened from an earlier session. Send a message to carry on."
+
+/** What the PC says under a task that was carried on in a fresh one. */
+const val CARRIED_ON_NOTE = "Carried on in a fresh task."
 
 /** Under a task whose Stop could not reach the PC (as under a reply that waits). */
 const val STOP_WAITING = "Stop waiting: sends when your PC is back"

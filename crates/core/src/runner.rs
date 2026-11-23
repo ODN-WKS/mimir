@@ -211,6 +211,12 @@ impl Runner {
                 match crate::host::read_record(&key) {
                     Some(r) if crate::host::host_alive(&r) || r.exit.is_some() => {
                         attach.push((t.id.clone(), key, offset));
+                        // It said it still ran something in the background:
+                        // that stays so until a look finds nothing running
+                        // (the line goes then), and is never said twice.
+                        let said_busy = t.entries.iter().any(
+                            |e| matches!(e, crate::task::Entry::Note(n) if n == BACKGROUND_NOTE),
+                        );
                         tasks.push(Live {
                             task: t,
                             session: None,
@@ -218,12 +224,12 @@ impl Runner {
                             sent: 0,
                             finished: 0,
                             dirty,
-                            background: false,
+                            background: said_busy,
                             baseline: Vec::new(),
                             bg_checked: None,
                             freeze: false,
                             bg_seen: 0,
-                            bg_noted: false,
+                            bg_noted: said_busy,
                         });
                         continue;
                     }
@@ -387,6 +393,30 @@ impl Runner {
         let id = self.new_id();
         self.make_task(&id, project, text, mode, model, effort);
         self.send_with(&id, text, pictures);
+        id
+    }
+
+    /// The task that carries an earlier one on: a plain `title`, `text` as
+    /// the first message people see, and `brief` (the summary of the earlier
+    /// one) sent along with it, never shown as a message.
+    pub fn new_task_continued(
+        &mut self,
+        project: &Path,
+        title: &str,
+        text: &str,
+        brief: Option<String>,
+        mode: Mode,
+        model: Option<String>,
+    ) -> String {
+        let id = self.new_id();
+        self.make_task(&id, project, text, mode, model, None);
+        self.edit(&id, |t| {
+            t.title = title.to_string();
+            t.title_by_owner = true;
+            t.brief_pending = brief.is_some();
+            t.brief = brief;
+        });
+        self.send_with(&id, text, &[]);
         id
     }
 
@@ -555,6 +585,10 @@ impl Runner {
         // The person carries on here: the task is theirs from now on.
         if self.tasks[i].task.outside {
             self.tasks[i].task.outside = false;
+            // The notes that said it was elsewhere or still to be carried on
+            // are no longer true.
+            self.tasks[i].task.drop_note(crate::sessions::OPENED_NOTE);
+            self.tasks[i].task.drop_note(crate::pcsessions::FOLLOW_NOTE);
             self.tasks[i].dirty = true;
         }
         // Files of the person's own, named in the message: an online model
@@ -703,6 +737,18 @@ impl Runner {
     #[doc(hidden)]
     pub fn own_ended_for_test(&mut self, id: &str, at: i64) {
         self.own_ended.insert(id.to_string(), at);
+    }
+
+    /// For checks: what the service knows of background work in memory is
+    /// gone, as after a restart of the service (the task's own lines stay).
+    #[doc(hidden)]
+    pub fn forget_background_for_test(&mut self, id: &str) {
+        if let Some(i) = self.index(id) {
+            let l = &mut self.tasks[i];
+            l.background = false;
+            l.bg_seen = 0;
+            l.bg_noted = false;
+        }
     }
 
     /// For checks: the process id of a task's run.
@@ -902,6 +948,22 @@ impl Runner {
     pub fn stop(&mut self, id: &str) {
         self.owner_stopped.insert(id.to_string());
         self.halt(id, Status::Stopped, STOPPED_NOTE);
+    }
+
+    /// A task carried on in a new one ("Start fresh with a summary"): what
+    /// still works on it ends, and it says `note`, never "You stopped this
+    /// task" (the person did not). A task that was quiet keeps its state.
+    pub fn carried_on(&mut self, id: &str, note: &str) {
+        let Some(i) = self.index(id) else { return };
+        if self.tasks[i].busy() {
+            self.owner_stopped.insert(id.to_string());
+            self.halt(id, Status::Stopped, note);
+        } else {
+            self.tasks[i].task.drop_note(BACKGROUND_NOTE);
+            self.tasks[i].task.add_note(note);
+            self.tasks[i].dirty = true;
+            self.save_dirty();
+        }
     }
 
     /// A task that followed a session running elsewhere, whose Claude Code
@@ -1977,9 +2039,11 @@ impl Runner {
             }
             // The turn ended but Claude Code stays up for what it started
             // in the background: the task is still working, and says so.
+            // (A run taken over after the service restarted has sent nothing
+            // since: its task being Done while it still lives says the same.)
+            let taken_over = l.sent == 0 && l.finished == 0 && l.task.status == Status::Done;
             let idle = !exited
-                && l.finished >= l.sent
-                && l.sent > 0
+                && ((l.finished >= l.sent && l.sent > 0) || taken_over)
                 && l.asks.is_empty()
                 && !matches!(
                     l.task.status,
@@ -2044,7 +2108,14 @@ impl Runner {
                 let ended_early = l.finished < l.sent;
                 // Its Claude Code ended while something it started was still
                 // running, and nobody stopped it: it died, the work is not done.
-                let died_busy = (l.background || l.bg_seen > 0)
+                // (After a restart of the service the checks start over, but the
+                // line it said before is still in the task.)
+                let said_busy = l
+                    .task
+                    .entries
+                    .iter()
+                    .any(|e| matches!(e, crate::task::Entry::Note(n) if n == BACKGROUND_NOTE));
+                let died_busy = (l.background || l.bg_seen > 0 || said_busy)
                     && !matches!(l.task.status, Status::Stopped | Status::Paused);
                 l.session = None;
                 self.own_ended

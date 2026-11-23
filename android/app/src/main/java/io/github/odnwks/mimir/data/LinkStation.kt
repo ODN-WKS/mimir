@@ -1293,9 +1293,10 @@ class LinkStation(
     override fun renameTask(taskId: String, title: String) { if (title.isNotBlank()) taskCall(Wire.rename(taskId, title.trim())) }
     override fun archiveTask(taskId: String) = taskCall(Wire.archive(taskId, true))
     override fun unarchiveTask(taskId: String) = taskCall(Wire.archive(taskId, false))
-    override fun moveTask(taskId: String, project: String) {
-        val path = pathOf(project) ?: return note("That project isn't on your PC.")
-        taskCall(Wire.moveTo(taskId, path))
+    override fun moveTask(taskId: String, project: String, said: (String) -> Unit) {
+        val path = pathOf(project) ?: return said("That project isn't on your PC.")
+        // The answer is said where the person is looking (the task page), not left in the chat list.
+        if (!call(Wire.moveTo(taskId, path)) { _, err -> said(err ?: "Moved to $project.") }) said("Your PC is away: try again when it's back.")
     }
     override fun setTaskPlan(taskId: String, plan: Boolean) = taskCall(Wire.setMode(taskId, plan))
     override fun setTaskYolo(taskId: String) = taskCall(Wire.setYolo(taskId))

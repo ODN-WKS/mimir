@@ -205,8 +205,13 @@ class FakeStation(initial: StationState = ExampleData.awake()) : Station {
         val t = s.archived.firstOrNull { it.id == taskId } ?: return@update s
         s.copy(tasks = s.tasks + t, archived = s.archived - t)
     }
-    override fun moveTask(taskId: String, project: String) = flow.update { s ->
-        s.copy(tasks = s.tasks.map { if (it.id == taskId) it.copy(project = project) else it })
+    /** For checks: the PC's reason for refusing a move (null: it moves). */
+    var moveRefusal: String? = null
+    override fun moveTask(taskId: String, project: String, said: (String) -> Unit) {
+        val no = moveRefusal
+        if (no != null) return said(no)
+        flow.update { s -> s.copy(tasks = s.tasks.map { if (it.id == taskId) it.copy(project = project) else it }) }
+        said("Moved to $project.")
     }
     override fun setTaskPlan(taskId: String, plan: Boolean) = flow.update { s ->
         s.copy(tasks = s.tasks.map { if (it.id == taskId) it.copy(plan = plan, mode = if (plan) "Plan" else "Ask") else it })

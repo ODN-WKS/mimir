@@ -2122,12 +2122,8 @@ impl Service {
                 }
                 let model = l.task.model.clone();
                 let from_phone = self.clients.get(&client).is_some_and(|c| c.phone.is_some());
-                let id = self.carry_on_fresh(
-                    &task,
-                    model,
-                    from_phone,
-                    "Started fresh in a new task from a summary.",
-                )?;
+                let id =
+                    self.carry_on_fresh(&task, model, from_phone, crate::long::CARRIED_NOTE)?;
                 Ok(json!(id))
             }
             Call::ContinueOnFree { task } => {
@@ -2834,19 +2830,31 @@ impl Service {
             Entry::You(x) => Some(x.clone()),
             _ => None,
         });
-        let text = if did_work {
-            crate::auto::brief(t)
+        // What people see: a plain title, one short first message, and a small
+        // note. The summary itself goes to Claude, not into the conversation.
+        let (text, brief) = if did_work {
+            (
+                "Carry on with this task from the summary.".to_string(),
+                Some(crate::auto::brief(t)),
+            )
         } else {
-            first.unwrap_or_default()
+            (first.unwrap_or_default(), None)
         };
+        let title = format!("{} (continued)", t.title.trim());
+        let old_title = t.title.clone();
         let (project, rules) = (t.project.clone(), t.ground_rules.clone());
         let mode = crate::long::fresh_mode(from_phone, t.mode);
         self.runner.next_rules = rules;
-        self.runner.stop(task);
-        let id = self
-            .runner
-            .new_task_with(Path::new(&project), &text, &[], mode, model, None);
-        self.runner.note(task, note);
+        self.runner.carried_on(task, note);
+        let id =
+            self.runner
+                .new_task_continued(Path::new(&project), &title, &text, brief, mode, model);
+        if did_work {
+            self.runner.note(
+                &id,
+                &format!("Carried on from a short summary of \"{old_title}\"."),
+            );
+        }
         self.touched.insert(task.to_string());
         self.touched.insert(id.clone());
         Ok(id)
