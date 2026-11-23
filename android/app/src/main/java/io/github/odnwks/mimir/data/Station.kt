@@ -448,7 +448,7 @@ data class Task(
     val riskyMode: String? get() = when (mode) {
         "AcceptEdits" -> "Auto-edit"
         "Auto" -> "Auto"
-        "NoAsk" -> "YOLO"
+        "NoAsk" -> "Go ahead"
         else -> null
     }
     /** YOLO: nothing asks first (red chip and a red edge round the chat). */
@@ -728,7 +728,7 @@ data class Models(
 enum class Power(val wire: String, val words: String) {
     Backup("backup", "Online, with free models as backup"),
     ClaudeOnly("claude", "Online only"),
-    FreeOnly("free", "Free models only (on your PC)"),
+    FreeOnly("free", "Your PC's models only"),
     ;
 
     companion object {

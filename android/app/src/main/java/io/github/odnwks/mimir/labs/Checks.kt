@@ -83,7 +83,7 @@ object Checks {
             else -> when (val a = ask.value) {
                 null -> CheckLine("Your PC's model", Result.Skipped, "Your PC isn't set to answer chats")
                 else -> if (a.answered) CheckLine("Your PC's model", Result.Good, "Answered a test in ${words(a.reachedMs)}")
-                else CheckLine("Your PC's model", Result.Problem, "Didn't answer", "Check Settings › Who answers on your PC")
+                else CheckLine("Your PC's model", Result.Problem, "Didn't answer", "Check Settings › Models on your PC")
             }
         }
     }

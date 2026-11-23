@@ -1,5 +1,6 @@
 package io.github.odnwks.mimir.ui
 
+import io.github.odnwks.mimir.ui.adaptive.forDevice
 import androidx.compose.foundation.shape.RoundedCornerShape
 
 import androidx.compose.ui.draw.clip
@@ -47,8 +48,8 @@ const val SEARCH_SWITCH = "Search the web"
 const val SEARCH_ABOUT = "When you ask me to search, or for news or a price. Only the few words needed are sent."
 const val SEARCH_ROUTE = "Goes through your PC when it is connected. A search may sometimes be blocked."
 const val LOOKED_UP = "Looked up"
-const val ENCYCLOPEDIAS = "Encyclopedias"
-const val ENCYCLOPEDIAS_ABOUT = "For \u201cwhat is\u201d and \u201cwho was\u201d questions. With both, I say what they agree on and where they differ. A site may sometimes block this."
+const val ENCYCLOPEDIAS = "Wikipedia and Grokipedia"
+const val ENCYCLOPEDIAS_ABOUT = "For \u201cwhat is\u201d and \u201cwho was\u201d questions. Pick Wikipedia, Grokipedia or both. Only the few words needed go to the site you pick. A site may sometimes block this."
 
 /**
  * "Use my rough location once": asks for Android's approximate location (never precise), takes
@@ -99,7 +100,7 @@ fun LookupSettings(modifier: Modifier = Modifier) {
         SwitchRow(s.lookups, { Online.set(s.copy(lookups = it)) }) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(LOOKUPS_SWITCH, style = Type.BodyTight, color = Palette.Text)
-                Text(LOOKUPS_ABOUT, style = Type.Small, color = Palette.TextDim)
+                Text(LOOKUPS_ABOUT.forDevice(), style = Type.Small, color = Palette.TextDim)
             }
         }
         if (s.lookups) SwitchRow(s.search, { Online.set(s.copy(search = it)) }) {
@@ -112,7 +113,7 @@ fun LookupSettings(modifier: Modifier = Modifier) {
         if (s.lookups) {
             Column(Modifier.fillMaxWidth().selectableGroup().padding(top = 4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(ENCYCLOPEDIAS, style = Type.BodyTight, color = Palette.Text)
-                Text(ENCYCLOPEDIAS_ABOUT, style = Type.Small, color = Palette.TextDim)
+                Text(ENCYCLOPEDIAS_ABOUT.forDevice(), style = Type.Small, color = Palette.TextDim)
                 io.github.odnwks.mimir.online.Encyclopedias.entries.forEach { e ->
                     Row(
                         Modifier.fillMaxWidth().heightIn(min = 48.dp).clip(RoundedCornerShape(12.dp))

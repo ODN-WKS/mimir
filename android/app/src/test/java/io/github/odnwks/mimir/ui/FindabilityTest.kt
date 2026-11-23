@@ -107,7 +107,7 @@ class FindabilityTest {
         settings()
         tap("Who answers")
         heading("Online").assertExists()
-        heading("Free models on your PC").assertExists()
+        heading("Your PC's models").assertExists()
         heading("On this phone").performScrollTo().assertIsDisplayed()
         compose.onAllNodes(hasText("Uncensored")).fetchSemanticsNodes().let { assertTrue("no tag", it.isNotEmpty()) }
         // A phone model opens its page in the Model Store, where Chat with it opens On this phone.
@@ -171,7 +171,7 @@ class FindabilityTest {
         tap("Voice")
         heading("Voice").assertIsDisplayed()
         heading("TALKING INSTEAD OF TYPING").assertExists()
-        compose.onNodeWithText("$AI_NAME › Settings › Read aloud", substring = true).assertExists()
+        compose.onNodeWithText("$AI_NAME › Settings › Voice", substring = true).assertExists()
         // A slider, 50% to 150% in 5% steps: the speed is taken when it's let go.
         compose.onNodeWithContentDescription("Read-aloud speed").performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.SetProgress) { it(1.15f) }
         compose.waitForIdle()
@@ -319,7 +319,7 @@ class FindabilityTest {
         nav.closeSheet(); nav.open(Screen.Task(ExampleData.TASK_CELL)); compose.waitForIdle()
         compose.onNodeWithContentDescription("Task options").performClick()
         compose.waitForIdle()
-        compose.onNodeWithText("Move to another project: move it when it stops").assertExists()
+        compose.onNodeWithText("Move to another project (when it stops)").assertExists()
         compose.onNodeWithText("Move to another project…").assertDoesNotExist()
     }
 
@@ -368,13 +368,13 @@ class FindabilityTest {
         start { it.copy(models = it.models.copy(local = emptyList())) }
         settings()
         tap("Who answers")
-        compose.onNodeWithText("No free models on your PC yet", substring = true).performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText("Settings › Who answers", substring = true).assertExists()
+        compose.onNodeWithText("No models on your PC yet", substring = true).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Settings › Models", substring = true).assertExists()
         // Whisper mode says why it's missing, and where to add a free model.
         nav.resetTo(Screen.Chat); nav.openSheet(io.github.odnwks.mimir.nav.Sheet.WhereTo); compose.waitForIdle()
         compose.onNodeWithText("More options").performClick()
         compose.waitForIdle()
-        compose.onNodeWithText("Needs a free model on your PC", substring = true).assertIsDisplayed()
+        compose.onNodeWithText("Needs a model on your PC", substring = true).assertIsDisplayed()
     }
 
     @Test fun renameDeleteAndAChatsOptionsAreATapOnItsTopic() {
@@ -413,7 +413,8 @@ class FindabilityTest {
         for (row in listOf("Rename…", "Stop this task…")) {
             compose.onNodeWithText(row).assertIsDisplayed()
         }
-        compose.onNodeWithContentDescription("Read-aloud speed", substring = true).assertIsDisplayed()
+        // The speed slider lives in Settings › Voice, not in a task's menu.
+        compose.onNodeWithContentDescription("Read-aloud speed", substring = true).assertDoesNotExist()
     }
 
     @Test fun groundRulesAreFoundByRulesSystemPromptAndInstructionsAndUnderModels() {

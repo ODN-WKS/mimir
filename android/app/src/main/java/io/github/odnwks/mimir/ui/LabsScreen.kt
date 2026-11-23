@@ -53,7 +53,7 @@ const val LABS_WORDS = "labs bug report problem troubleshoot log checks somethin
 const val LABS_CHECKS_HEAD = "RUN CHECKS"
 const val LABS_REPORT_HEAD = "REPORT A PROBLEM"
 const val LABS_REPORT_HINT = "What happened? What did you expect?"
-const val LABS_GITHUB_NOTE = "Mímir never sends this itself. You send it on GitHub, which needs a free account."
+const val LABS_GITHUB_NOTE = "Mímir never sends this itself. Copy it and send it any way you like, or send it on GitHub, which needs a free account."
 
 /** The checks last run, kept while the app is open, so a report can include them. */
 object LastChecks {

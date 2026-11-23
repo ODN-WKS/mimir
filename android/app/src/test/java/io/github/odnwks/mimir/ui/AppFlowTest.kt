@@ -666,7 +666,7 @@ class AppFlowTest {
             }
         }
         nav.open(Screen.Task(id)); nav.openSheet(io.github.odnwks.mimir.nav.Sheet.Yolo(id)); compose.waitForIdle()
-        compose.onNodeWithText("Unlock to turn on YOLO").performClick(); compose.waitForIdle()
+        compose.onNodeWithText("Unlock to go ahead without asking").performClick(); compose.waitForIdle()
         // Still open, saying why and where to change it; the task still asks first.
         compose.onNodeWithText(YOLO_OFF_ON_PC).assertIsDisplayed()
         compose.onNodeWithText("Try again").assertIsDisplayed()
@@ -800,22 +800,22 @@ class AppFlowTest {
         val id = io.github.odnwks.mimir.data.ExampleData.TASK_ALLOW
         nav.open(Screen.Task(id)); nav.openSheet(io.github.odnwks.mimir.nav.Sheet.TaskOptions(id))
         compose.waitForIdle()
-        compose.onNodeWithText("YOLO: never ask (for this task)…").performScrollTo().performClick()
+        compose.onNodeWithText("Go ahead without asking (this task)…").performScrollTo().performClick()
         compose.waitForIdle()
         // The whole warning, every time.
         compose.onNodeWithText(YOLO_WARNING).assertIsDisplayed()
-        compose.onNodeWithText("Unlock to turn on YOLO").performClick()
+        compose.onNodeWithText("Unlock to go ahead without asking").performClick()
         compose.waitForIdle()
         // The unlock was asked for and cancelled: nothing changed.
-        assertEquals("Turn on YOLO", asked)
+        assertEquals("Go ahead without asking", asked)
         assertEquals("Ask", station.state.value.task(id)!!.mode)
         unlocked = true
         nav.openSheet(io.github.odnwks.mimir.nav.Sheet.Yolo(id)); compose.waitForIdle()
-        compose.onNodeWithText("Unlock to turn on YOLO").performClick()
+        compose.onNodeWithText("Unlock to go ahead without asking").performClick()
         compose.waitForIdle()
         assertTrue(station.state.value.task(id)!!.yolo)
         // A red YOLO chip by the task's state.
-        compose.onNodeWithText("YOLO").assertIsDisplayed()
+        compose.onNodeWithText("Go ahead").assertIsDisplayed()
     }
 
     @Test fun whileATaskWorksStopIsAlwaysThereBesideSend() {

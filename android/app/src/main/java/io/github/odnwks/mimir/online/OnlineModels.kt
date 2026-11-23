@@ -228,8 +228,8 @@ object OnlineModels {
 
     /** The words the model is told first. The owner's ground rules (Settings) go on after them. */
     fun system(rules: String? = io.github.odnwks.mimir.data.GroundRules.current): String =
-        "You are a helpful assistant in the owner's phone app, answering through an online model. " +
-            (rules ?: "Answer clearly and directly, and say plainly when something is uncertain. Use short paragraphs.") +
+        "You are Mímir, answering through an online model. " +
+            (rules ?: "Answer exactly what is asked, clearly and directly. Use short paragraphs.") +
             " You can't browse the web yourself; the app may add fetched information to a message, marked as such: use it and say where it came from."
 
     /**

@@ -240,7 +240,7 @@ fun VoiceScreen(state: StationState, station: Station, nav: Navigator) {
                 }
             }
         }
-        Body("The PC's own voice, and how it turns speech into text, are chosen on your PC: $AI_NAME › Settings › Read aloud and Talk instead of type.", Palette.TextDim)
+        Body("The PC's own voice, and how it turns speech into text, are chosen on your PC: $AI_NAME › Settings › Voice.", Palette.TextDim)
     }
 }
 
@@ -304,7 +304,7 @@ const val HELP_PICTURES = "Pictures you send go to your PC (or to Anthropic when
 
 /** The short answer to a Help question. */
 fun helpAnswer(id: String, paired: Boolean): String = when (id) {
-    "who" -> "You choose, in Settings \u203a Who answers: this phone's own model (works with no PC or internet), a free model on your PC, or online through your PC. The chat's top line says which one is answering."
+    "who" -> "You choose, in Settings \u203a Who answers: this phone's own model (works with no PC or internet), your PC's model, or online through your PC. The chat's top line says which one is answering."
     "whisper" -> whisperExplained(paired)
     "updates" -> "Spoken updates that arrive when Mímir finishes something on your PC. Tap one to hear it; a new version of this app is also announced there; Settings \u203a Help and about \u203a App updates checks for one."
     "needs" -> "Mímir asks to change a file or run a command, or has a question, and waits until you answer. Needs you lists them; open one to say yes or no. Project work uses Claude Code on your PC."
@@ -390,5 +390,5 @@ fun SpeedRow(state: StationState, station: Station, icon: Boolean = false) {
 }
 
 /** What "Hear it" reads, and its id while it's being read. */
-const val SPEED_SAMPLE = "This is how fast messages are read aloud. Part three is done and checked."
+const val SPEED_SAMPLE = "This is how fast messages are read aloud."
 const val SPEED_SAMPLE_ID = "speed-sample"

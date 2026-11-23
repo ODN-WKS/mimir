@@ -76,9 +76,9 @@ val CONNECT_STEPS = listOf(
     "Point this phone's camera at it.",
 )
 const val CONNECT_SCAN = "Scan the code"
-const val CONNECT_TYPE_INSTEAD = "Can't scan? Type the code instead"
+const val CONNECT_TYPE_INSTEAD = "Can't scan? Paste the code instead"
 const val CONNECT_SCAN_INSTEAD = "Scan instead"
-const val CONNECT_TYPE_INSTEAD_SHORT = "Type the code instead"
+const val CONNECT_TYPE_INSTEAD_SHORT = "Paste the code instead"
 
 /** The words in a step that are bold: what to look for on the PC. */
 private val STEP_BOLD = listOf("Settings › Phones", "Pair a phone")
@@ -128,6 +128,7 @@ fun PairScreen(station: Station, nav: Navigator, screenLock: Boolean = true) {
     var typing by remember { mutableStateOf(nav.pastePairCode) }
     androidx.compose.runtime.LaunchedEffect(Unit) { nav.pastePairCode = false }
     var typed by remember { mutableStateOf("") }
+    val clip = androidx.compose.ui.platform.LocalClipboardManager.current
     // Replaced, not stacked: Scan, Paste, Couldn't pair and back never pile up behind each other.
     val pairNow = { code: String -> station.pair(code); nav.replace(Screen.PairDone) }
     // No screen lock: said once, plainly, with Pair anyway.
@@ -159,7 +160,8 @@ fun PairScreen(station: Station, nav: Navigator, screenLock: Boolean = true) {
             Text(CONNECT_INTRO.forDevice(), style = Type.Body, color = Palette.TextSoft)
             NumberedSteps(CONNECT_STEPS)
             if (typing) {
-                MessageBox(typed, { typed = it }, "Pairing code", "Type the code from the PC", Modifier.fillMaxWidth(), minLines = 3, shape = RoundedCornerShape(16.dp), keyboardOptions = PAIR_CODE_KEYBOARD)
+                MessageBox(typed, { typed = it }, "Pairing code", "Paste the code from the PC", Modifier.fillMaxWidth(), minLines = 3, shape = RoundedCornerShape(16.dp), keyboardOptions = PAIR_CODE_KEYBOARD)
+                BigButton("Paste the code", Look.Outline, { clip.getText()?.text?.let { typed = cleanPairCode(it) } }, radius = 16.dp)
             } else {
                 Box(
                     Modifier.fillMaxWidth().height(220.dp).clip(RoundedCornerShape(20.dp)).background(Palette.Bar)

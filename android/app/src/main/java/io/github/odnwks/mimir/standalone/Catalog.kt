@@ -209,7 +209,7 @@ object Catalog {
     /** Back to the built-in list (checks). */
     fun reset() { listed = builtIn; found = emptyList() }
 
-    const val REFUSALS_NOTE = "No safety filter: it does what you ask, including things other models won't."
+    const val REFUSALS_NOTE = "Uncensored: it does what you ask, including things other models won't."
     const val THINKING_NOTE = "Thinks before answering: more thorough and more open, but slower to start."
 }
 
@@ -303,18 +303,18 @@ data class TurnFile(
 
 /** Writes a conversation the way each model family expects, ending where its reply starts. */
 object Prompt {
-    const val SYSTEM = "You are a helpful assistant running entirely on the owner's phone, offline. " +
+    const val SYSTEM = "You are Mímir, a private AI running on this phone, offline. " +
         "Answer exactly what is asked, clearly and directly, in the subject's own terms. Don't add other views, " +
         "warnings or advice unless asked, and don't lecture or moralise. Use short paragraphs."
 
     /** Where it runs; the owner's ground rules (Settings › Who answers) say how it answers. */
-    private const val PLACE = "You are a helpful assistant running entirely on the owner's phone, offline. Use short paragraphs."
+    private const val PLACE = "You are Mímir, a private AI running on this phone, offline. Use short paragraphs."
 
     /**
      * Where it runs when it may look things up (normal mode with lookups on): it can't browse, but
      * the app may hand it fetched information, and without that it knows nothing current.
      */
-    const val ONLINE = "You are a helpful assistant running on the owner's phone. You can't browse the web yourself, " + // lint:log-only
+    const val ONLINE = "You are Mímir, a private AI running on this phone. You can't browse the web yourself, " + // lint:log-only
         "but the app may look things up for you (such as the weather): what it found appears in the owner's message, " +
         "marked as fetched information with its source. Use it, and say where it came from. Without it you have no " +
         "current information (weather, news, prices, today's date): say so plainly rather than guess. Use short paragraphs."

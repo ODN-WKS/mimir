@@ -331,14 +331,14 @@ fun WhereToSheet(state: StationState, nav: Navigator) {
                     MimirEye(EyeMode.Whisper, Modifier.size(28.dp).alpha(0.5f))
                     Column(Modifier.weight(1f)) {
                         Text("Whisper mode", style = Type.BodyTight, color = Palette.TextSoft)
-                        Text("Needs a free model on your PC: on the PC, $AI_NAME › Settings › Who answers adds one.", style = Type.Small, color = Palette.TextDim)
+                        Text("Needs a model on your PC: on the PC, $AI_NAME › Settings › Models adds one.", style = Type.Small, color = Palette.TextDim)
                     }
                 }
                 else SwitchRow(to.whisper, { nav.composeTo = nav.composeTo.copy(whisper = it) }, on = Palette.WhisperSwitch) {
                     MimirEye(EyeMode.Whisper, Modifier.size(28.dp))
                     Column(Modifier.weight(1f)) {
                         Text("Whisper mode", style = Type.BodyTight, color = Palette.Text)
-                        Text("Free model on your PC, internet cut off, nothing kept", style = Type.Small, color = Palette.TextDim)
+                        Text("A model on your PC, internet cut off, nothing kept", style = Type.Small, color = Palette.TextDim)
                     }
                 }
             }
@@ -358,7 +358,7 @@ private fun WhereRow(title: String, about: String?, selected: Boolean, recommend
             Text(title, style = Type.BodyTight, color = Palette.Text)
             if (about != null) Text(about, style = Type.Small, color = Palette.TextDim)
         }
-        if (recommended) Tag("Recommended", Palette.BlueText, Palette.BlueIcon)
+        if (recommended) Tag("Default", Palette.BlueText, Palette.BlueIcon)
     }
 }
 

@@ -50,7 +50,7 @@ class R10PairWhisperTest {
         compose.onNodeWithText("Once connected, this phone reaches your PC from anywhere. It stays private, with no account to make.").assertIsDisplayed()
         CONNECT_STEPS.forEach { compose.onNodeWithText(it).assertIsDisplayed() }
         compose.onNodeWithText("Scan the code").assertIsDisplayed()
-        compose.onNodeWithText("Can't scan? Type the code instead").assertIsDisplayed()
+        compose.onNodeWithText("Can't scan? Paste the code instead").assertIsDisplayed()
         // The old "Paste the code instead" is gone.
         compose.onNodeWithText("Paste the code instead").assertDoesNotExist()
     }

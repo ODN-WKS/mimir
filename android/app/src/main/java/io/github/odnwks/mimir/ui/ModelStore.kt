@@ -241,7 +241,7 @@ private fun StoreTags(lm: LocalModel, s: LocalState?, inUse: Boolean, isNew: Boo
     val have = s != null && lm.id in s.have
     FlowRow(Modifier.padding(top = 3.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         if (isNew) Tag("New", Palette.White, Palette.Blue)
-        if (recommended) Tag("Recommended", Palette.BlueText, Palette.BlueIcon)
+        if (recommended) Tag("Best fit", Palette.BlueText, Palette.BlueIcon)
         if (fits) Tag("Fits well", Palette.GreenText, Palette.GreenCard)
         Tag(lm.sizeText, Palette.TextSoft, Palette.Track)
         if (have) Tag("Installed", Palette.GreenText, Palette.GreenCard)
@@ -383,7 +383,7 @@ fun ModelDetailsScreen(id: String, nav: Navigator, phone: PhoneModels?) {
             }
             Panel(spacing = 6.dp) {
                 Text("Our tests", style = Type.BodyTight.copy(fontWeight = FontWeight.SemiBold), color = Palette.Text, modifier = Modifier.semantics { heading() })
-                Text(S25Results.of(lm.id) ?: "Not tested on a Galaxy S25 yet.", style = Type.Small, color = Palette.TextSoft)
+                Text(S25Results.of(lm.id) ?: "Not tested by us yet.", style = Type.Small, color = Palette.TextSoft)
             }
             Panel(spacing = 6.dp) {
                 Text("On this phone", style = Type.BodyTight.copy(fontWeight = FontWeight.SemiBold), color = Palette.Text, modifier = Modifier.semantics { heading() })

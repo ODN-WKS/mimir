@@ -1,5 +1,6 @@
 package io.github.odnwks.mimir.ui
 
+import io.github.odnwks.mimir.ui.adaptive.forDevice
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -171,8 +172,8 @@ private fun WhoCardView(c: WhoCard, onClick: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(c.title, style = Type.BodyTight.copy(fontWeight = FontWeight.SemiBold), color = if (c.enabled) Palette.Text else Palette.Outline)
-            Text(c.about, style = Type.Small, color = if (c.enabled) Palette.TextSoft else Palette.Outline)
+            Text(c.title.forDevice(), style = Type.BodyTight.copy(fontWeight = FontWeight.SemiBold), color = if (c.enabled) Palette.Text else Palette.Outline)
+            Text(c.about.forDevice(), style = Type.Small, color = if (c.enabled) Palette.TextSoft else Palette.Outline)
         }
         if (c.chosen) Icon(Glyphs.Check, "Chosen", tint = Palette.BlueText, modifier = Modifier.padding(2.dp))
     }

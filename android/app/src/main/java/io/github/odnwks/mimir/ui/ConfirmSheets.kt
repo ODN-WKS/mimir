@@ -130,7 +130,7 @@ private fun Sheet.title(state: StationState) = when (this) {
     Sheet.ComposeModel -> "Model for this task"
     is Sheet.RenameTask -> "Rename this task"
     is Sheet.TaskModel -> "Model for this task"
-    is Sheet.Yolo -> "Turn on YOLO for this task?"
+    is Sheet.Yolo -> "Go ahead without asking in this task?"
     is Sheet.ChatOptions -> topic ?: "This chat"
 }
 
@@ -154,7 +154,7 @@ private fun SheetContent(sheet: Sheet, state: StationState, station: Station, na
                 Row(Modifier.fillMaxWidth().heightIn(min = 52.dp).padding(horizontal = 12.dp).semantics(mergeDescendants = true) {},
                     verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                     Icon(Glyphs.Move, null, tint = Palette.TextDim, modifier = Modifier.size(22.dp))
-                    Text("Move to another project: move it when it stops", style = Type.BodyTight, color = Palette.TextDim, modifier = Modifier.weight(1f))
+                    Text("Move to another project (when it stops)", style = Type.BodyTight, color = Palette.TextDim, modifier = Modifier.weight(1f))
                 }
             } else MenuRow(Glyphs.Move, "Move to another project…") { nav.openSheet(Sheet.ProjectPicker(task?.project.orEmpty())) }
             MenuRow(Glyphs.Models, "Change the model…") { nav.openSheet(Sheet.TaskModel(id)) }
@@ -162,11 +162,10 @@ private fun SheetContent(sheet: Sheet, state: StationState, station: Station, na
             MenuRow(Glyphs.Steps, "Ask me first before changes", checked = task?.mode == "Ask") { station.setTaskPlan(id, false); nav.closeSheet() }
             MenuRow(Glyphs.Steps, "Plan first, change nothing yet", checked = task?.plan == true) { station.setTaskPlan(id, true); nav.closeSheet() }
             // YOLO: never in Whisper; a full warning every time, then the phone's unlock.
-            if (task?.whisper != true) MenuRow(Glyphs.Steps, "YOLO: never ask (for this task)…", Palette.Red, checked = task?.yolo == true) {
+            if (task?.whisper != true) MenuRow(Glyphs.Steps, "Go ahead without asking (this task)…", checked = task?.yolo == true) {
                 if (task?.yolo != true) nav.openSheet(Sheet.Yolo(id)) else nav.closeSheet()
             }
             MenuRow(Glyphs.Shield, "Always allowed in this task…") { nav.openSheet(Sheet.AlwaysAllowed(id)) }
-            Box(Modifier.padding(horizontal = 12.dp)) { SpeedRow(state, station, icon = true) }
             MenuRow(Glyphs.Folder, "Archive") {
                 station.archiveTask(id); nav.closeSheet(); nav.back()
                 undo(Undoable("Archived ${task?.title ?: "the task"}", undo = { station.unarchiveTask(id) }))
@@ -237,7 +236,6 @@ private fun SheetContent(sheet: Sheet, state: StationState, station: Station, na
             }
         }
         Sheet.IncognitoOptions -> Menu(sheet.title(state)) {
-            Box(Modifier.padding(horizontal = 12.dp)) { SpeedRow(state, station, icon = true) }
             PrivacyLine("Whisper mode: the internet is cut off for this task, nothing leaves your PC, and it's read aloud by this phone's voice only.")
             MenuRow(Glyphs.Stop, "End and forget…", Palette.Red) { nav.openSheet(Sheet.EndIncognito) }
         }
@@ -441,7 +439,7 @@ private fun MenuRow(icon: ImageVector, text: String, color: Color = Palette.Text
 
 /**
  * Turning on YOLO for a task: the warning, then the phone's unlock, then the PC's answer, shown
- * here. It never fails silently: with "Allow YOLO from my phone" off on the PC, the sheet says so
+ * here. It never fails silently: with "Let my phone turn on Go ahead without asking" off on the PC, the sheet says so
  * and where to switch it on, and any other refusal is said in the sheet too.
  */
 @Composable
@@ -460,10 +458,10 @@ private fun YoloSheet(title: String, taskId: String, state: StationState, statio
             color = if (off) Palette.AmberText else Palette.TextDim)
         problem?.takeIf { !off }?.let { Text(it, style = Type.Label, color = Palette.Red, modifier = Modifier.semantics { liveRegion = androidx.compose.ui.semantics.LiveRegionMode.Polite }) }
         BigButton(
-            when { asking -> "Asking your PC…"; off -> "Try again"; else -> "Unlock to turn on YOLO" },
-            if (off) Look.Outline else Look.Danger,
+            when { asking -> "Asking your PC…"; off -> "Try again"; else -> "Unlock to go ahead without asking" },
+            Look.Outline,
             {
-                confirm("Turn on YOLO") {
+                confirm("Go ahead without asking") {
                     asking = true; problem = null
                     station.turnOnYolo(taskId) { err ->
                         asking = false
@@ -478,8 +476,8 @@ private fun YoloSheet(title: String, taskId: String, state: StationState, statio
 }
 
 /** Said in the YOLO sheet while the PC doesn't allow YOLO from the phone. */
-const val YOLO_OFF_ON_PC = "YOLO from this phone is off on your PC, so it stays off here. " +
-    "To allow it: on your PC, open Mímir › Settings › Phones and switch on \u201cAllow YOLO from my phone\u201d."
+const val YOLO_OFF_ON_PC = "Go ahead without asking is off for this phone on your PC, so it stays off here. " +
+    "To allow it: on your PC, open Mímir › Settings › Phones and switch on \u201cLet my phone turn on Go ahead without asking\u201d."
 
 @Composable
 private fun Ask(
@@ -500,7 +498,7 @@ private fun Ask(
 }
 
 /** What YOLO lets Claude do, shown in full every time before it turns on. */
-const val YOLO_WARNING = "In YOLO Mímir never asks first. On your PC it can change and delete files, run any command, " +
+const val YOLO_WARNING = "With Go ahead without asking, Mímir never asks first. On your PC it can change and delete files, run any command, " +
     "use the internet and push code, all without asking. Anyone holding this phone unlocked could do the same. " +
     "It is for this task only, and goes back to Ask me first after 5 hours of work or 24 hours idle. " +
-    "Your PC must allow YOLO from this phone in its Settings › Phones."
+    "Your PC must allow this for your phone, in Mímir › Settings › Phones."

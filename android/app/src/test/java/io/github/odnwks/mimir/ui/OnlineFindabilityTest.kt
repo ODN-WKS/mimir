@@ -151,7 +151,7 @@ class OnlineFindabilityTest {
             assertEquals(Screen.PrivacyCheck, nav.current)
         }
         compose.onNodeWithText(ENCYCLOPEDIAS).performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText("Both (compare)").performScrollTo().assertIsSelected()
+        compose.onNodeWithText("Both").performScrollTo().assertIsSelected()
         compose.onNodeWithText("Wikipedia").performScrollTo().performClick()
         compose.waitForIdle()
         assertEquals(io.github.odnwks.mimir.online.Encyclopedias.Wikipedia, Online.settings.value.encyclopedias)

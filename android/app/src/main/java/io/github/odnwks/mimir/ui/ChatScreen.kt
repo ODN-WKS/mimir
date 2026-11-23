@@ -179,8 +179,6 @@ LazyColumn(
                 EmptyState("Ask for anything. $AI_NAME files it in the right project.") {
                     androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         SmallButton("What's the status?", { station.send("What's the status?") })
-                        SmallButton("Fix…", { draft = "Fix " }, description = "Start a message: Fix")
-                        SmallButton("Idea:…", { draft = "Idea: " }, description = "Start a message: Idea")
                     }
                 }
             }

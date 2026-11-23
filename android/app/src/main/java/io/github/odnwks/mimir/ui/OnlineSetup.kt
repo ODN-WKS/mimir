@@ -1,5 +1,6 @@
 package io.github.odnwks.mimir.ui
 
+import io.github.odnwks.mimir.ui.adaptive.forDevice
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
@@ -76,14 +77,14 @@ import kotlinx.coroutines.withContext
 /** The words of the free-online-models part of the store and its setup (the redesign, screens 20 and 21). */
 const val ONLINE_HEADING = "FREE ONLINE MODELS"
 const val ONLINE_STILL_CHAT = "You can still chat."
-const val ONLINE_STILL_CHAT_MORE = " Use a free online model. It takes two minutes to set up."
+const val ONLINE_STILL_CHAT_MORE = " Connect your PC, or use a free online model."
 const val ONLINE_OPENROUTER_ABOUT = "Many free models in one place. No card needed."
 const val ONLINE_GROQ_ABOUT = "Very fast answers. Free with a daily limit."
 const val ONLINE_OWN_TITLE = "Another service"
 const val ONLINE_OWN_ABOUT = "Have a key from somewhere else? Paste it and its address."
 const val ONLINE_KNOW = "Know before you choose:"
 const val ONLINE_KNOW_MORE = " with an online model, your messages go to that company. With a PC or a phone model, they never do."
-const val ONLINE_CONNECT_PC = "Or connect a PC with Mímir instead"
+const val ONLINE_CONNECT_PC = "Connect your PC with Mímir"
 const val ONLINE_STEP1 = "Get a free key."
 const val ONLINE_STEP1_MORE = " Their website opens, you sign up, and copy the key it gives you."
 const val ONLINE_STEP2 = "Paste it here."
@@ -94,8 +95,8 @@ const val ONLINE_CHOOSE = "Let me choose"
 
 fun onlineSetupTitle(service: String) = "Set up $service"
 fun tooLittleMemory(ramBytes: Long) =
-    if (ramBytes > 0) "📱 This phone: %.0f GB memory. That's too little to run a model by itself.".format(ramBytes / 1e9)
-    else "📱 This phone can't run a model by itself."
+    if (ramBytes > 0) "This phone: %.0f GB memory. That's too little to run a model by itself.".format(ramBytes / 1e9)
+    else "This phone can't run a model by itself."
 const val CLIPBOARD_CLEARED = "Copied key removed from the clipboard."
 const val KEY_SETUP_AGAIN = "Your key needs to be set up again."
 fun keySentTo(host: String) = "Your key will be sent to $host"
@@ -127,33 +128,33 @@ internal fun OnlineStore(canRun: Boolean, ramBytes: Long, nav: Navigator, paired
     var setting by rememberSaveable { mutableStateOf<String?>(null) }
     if (!canRun) {
         Panel(background = Palette.Bar, radius = 16.dp, padding = PaddingValues(horizontal = 14.dp, vertical = 12.dp), spacing = 6.dp) {
-            Text(tooLittleMemory(ramBytes), style = Type.Label.copy(fontWeight = FontWeight.SemiBold), color = Palette.Text)
+            Text(tooLittleMemory(ramBytes).forDevice(), style = Type.Label.copy(fontWeight = FontWeight.SemiBold), color = Palette.Text)
         }
         Text(
             androidx.compose.ui.text.buildAnnotatedString {
                 pushStyle(androidx.compose.ui.text.SpanStyle(fontWeight = FontWeight.Bold, color = Palette.Text)); append(ONLINE_STILL_CHAT); pop()
-                append(ONLINE_STILL_CHAT_MORE)
+                append(ONLINE_STILL_CHAT_MORE.forDevice())
             },
             style = Type.Body, color = Palette.TextSoft, modifier = Modifier.padding(horizontal = 4.dp),
-        )
-    }
-    Text(ONLINE_HEADING, style = Type.Small.copy(fontWeight = FontWeight.Bold, letterSpacing = 0.8.sp), color = Palette.TextDim, modifier = Modifier.padding(top = 6.dp).semantics { heading() })
-    ServiceCard(OnlineModels.OPENROUTER, ONLINE_OPENROUTER_ABOUT, listOf("Easiest", "Free"), st.setups.firstOrNull { it.id == "openrouter" }, "openrouter" in st.broken, "Set up") { setting = "openrouter" }
-    ServiceCard(OnlineModels.GROQ, ONLINE_GROQ_ABOUT, listOf("Free"), st.setups.firstOrNull { it.id == "groq" }, "groq" in st.broken, "Set up") { setting = "groq" }
-    ServiceCard(null, ONLINE_OWN_ABOUT, emptyList(), st.setups.firstOrNull { it.id == "own" }, "own" in st.broken, "Add") { setting = "own" }
-    Panel(background = Palette.AmberCard, border = Palette.AmberBorder, radius = 16.dp, padding = PaddingValues(horizontal = 14.dp, vertical = 12.dp)) {
-        Text(
-            androidx.compose.ui.text.buildAnnotatedString {
-                pushStyle(androidx.compose.ui.text.SpanStyle(fontWeight = FontWeight.Bold)); append(ONLINE_KNOW); pop()
-                append(ONLINE_KNOW_MORE)
-            },
-            style = Type.Label, color = Palette.AmberText,
         )
     }
     if (!canRun && !paired) Text(
         ONLINE_CONNECT_PC, style = Type.BodyTight.copy(fontWeight = FontWeight.SemiBold), color = Palette.BlueText,
         modifier = Modifier.heightIn(min = 48.dp).clip(RoundedCornerShape(12.dp)).clickable(role = Role.Button) { nav.open(Screen.Pair) }.padding(horizontal = 4.dp, vertical = 12.dp),
     )
+    Text(ONLINE_HEADING, style = Type.Small.copy(fontWeight = FontWeight.Bold, letterSpacing = 0.8.sp), color = Palette.TextDim, modifier = Modifier.padding(top = 6.dp).semantics { heading() })
+    ServiceCard(OnlineModels.OPENROUTER, ONLINE_OPENROUTER_ABOUT, listOf("Free"), st.setups.firstOrNull { it.id == "openrouter" }, "openrouter" in st.broken, "Set up") { setting = "openrouter" }
+    ServiceCard(OnlineModels.GROQ, ONLINE_GROQ_ABOUT, listOf("Free"), st.setups.firstOrNull { it.id == "groq" }, "groq" in st.broken, "Set up") { setting = "groq" }
+    ServiceCard(null, ONLINE_OWN_ABOUT, emptyList(), st.setups.firstOrNull { it.id == "own" }, "own" in st.broken, "Add") { setting = "own" }
+    Panel(background = Palette.AmberCard, border = Palette.AmberBorder, radius = 16.dp, padding = PaddingValues(horizontal = 14.dp, vertical = 12.dp)) {
+        Text(
+            androidx.compose.ui.text.buildAnnotatedString {
+                pushStyle(androidx.compose.ui.text.SpanStyle(fontWeight = FontWeight.Bold)); append(ONLINE_KNOW); pop()
+                append(ONLINE_KNOW_MORE.forDevice())
+            },
+            style = Type.Label, color = Palette.AmberText,
+        )
+    }
     setting?.let { id ->
         OnlineSetupDialog(
             service = when (id) { "openrouter" -> OnlineModels.OPENROUTER; "groq" -> OnlineModels.GROQ; else -> null },

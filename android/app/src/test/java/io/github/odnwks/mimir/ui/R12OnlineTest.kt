@@ -59,7 +59,7 @@ class R12OnlineTest {
 
     @Test fun aPhoneThatCantRunAModelSeesFreeOnlineModelsInsteadOfModelsItCantRun() {
         store(supported = false)
-        compose.onNodeWithText("📱 This phone: 4 GB memory. That's too little to run a model by itself.").assertIsDisplayed()
+        compose.onNodeWithText("This phone: 4 GB memory. That's too little to run a model by itself.").assertIsDisplayed()
         compose.onNodeWithText(ONLINE_STILL_CHAT, substring = true).assertExists()
         compose.onNodeWithText(ONLINE_HEADING).assertExists()
         compose.onNodeWithText("OpenRouter").assertExists()

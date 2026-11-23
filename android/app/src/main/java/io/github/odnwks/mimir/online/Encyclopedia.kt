@@ -6,7 +6,7 @@ import java.net.URLEncoder
 /** Which encyclopedias a "what is / who was" question reads (Settings › Who answers › Looking things up). */
 enum class Encyclopedias(val label: String) {
     /** Both, answered from together: exactly what was asked; compared only if the person asked. */
-    Both("Both (compare)"),
+    Both("Both"),
     Wikipedia("Wikipedia"),
     Grokipedia("Grokipedia"),
 }

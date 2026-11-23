@@ -114,7 +114,7 @@ class ModelTester(
         var peak = memoryMb()
         questions.forEachIndexed { i, q ->
             val last = model.refusalsRemoved && i == questions.lastIndex
-            progress(TestProgress(model.id, i + 1, steps, if (last) "Checking it has no safety filter" else "Asking everyday question ${i + 1} of ${EVERYDAY.size}"))
+            progress(TestProgress(model.id, i + 1, steps, if (last) "Checking it is uncensored" else "Asking everyday question ${i + 1} of ${EVERYDAY.size}"))
             val out = StringBuilder()
             val result = JSONObject(runner.reply(Prompt.build(model.format, listOf(Turn(true, q.text))), q.maxTokens, PieceSink { b ->
                 out.append(String(b, Charsets.UTF_8))
@@ -191,10 +191,10 @@ enum class Fit(val words: String) {
     }
 }
 
-/** What we measured ourselves on the owner's S25 Ultra, per model (null: not tested there yet). */
+/** What we measured ourselves on the test phone, per model (null: not tested there yet). */
 object S25Results {
     private val known = mapOf(
-        "gemma4-e2b-heretic-q4km" to "On a Galaxy S25 Ultra: loads in 5.7 s, writes about 7 to 9 words a second, uses about 1.9 GB",
+        "gemma4-e2b-heretic-q4km" to "On our test phone: loads in 5.7 s, writes about 7 to 9 words a second, uses about 1.9 GB",
     )
 
     fun of(id: String): String? = known[id]

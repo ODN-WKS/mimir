@@ -48,7 +48,7 @@ object VoiceCatalog {
         model = "voices/ingrid-model.ort", tokens = "voices/alba-tokens.txt",
         tempo = 1.10f, threads = 2, licence = "CC BY 4.0 (University of Edinburgh data)",
         carried = mapOf("espeak-ng-data" to "espeak-ng-data"),
-        sample = "Hello, I'm Ingrid. Part three is done and checked, and all the tests pass.",
+        sample = "Hello, I'm Ingrid. This is how I sound when I read your messages aloud.",
     )
 
     val all: List<NaturalVoice> = listOf(ingrid)

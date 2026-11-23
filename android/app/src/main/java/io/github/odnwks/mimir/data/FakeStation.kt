@@ -449,7 +449,7 @@ object ExampleData {
         player = Player("u-allow", playing = true, positionSeconds = 8, speed = 1.25f),
         models = models,
         phones = listOf(
-            Phone("s25", "Galaxy S25 Ultra", "This phone · used now", thisPhone = true),
+            Phone("s25", "Your phone", "This phone · used now", thisPhone = true),
             Phone("s8", "Galaxy S8", "Test phone · used 2 h ago", thisPhone = false),
         ),
         fingerprintLock = true,

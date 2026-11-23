@@ -44,7 +44,7 @@ object Notifier {
         val m = context.getSystemService(NotificationManager::class.java)
         m.createNotificationChannel(
             NotificationChannel(NEEDS, "Needs you", NotificationManager.IMPORTANCE_HIGH)
-                .apply { description = "Permissions, questions, releases and failing checks: Mímir waits for you." },
+                .apply { description = "Questions and permissions: Mímir waits for you." },
         )
         m.createNotificationChannel(
             NotificationChannel(QUIET, "Other news", NotificationManager.IMPORTANCE_LOW)

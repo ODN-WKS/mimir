@@ -186,12 +186,12 @@ fun TaskScreen(taskId: String, state: StationState, station: Station, nav: Navig
                 if (task.steps.isNotEmpty()) Steps(task, stepsOpen) { stepsOpen = !stepsOpen }
                 if (task.freeModel) Panel(background = Palette.Bar) {
                     Text(
-                        if (task.outOfRoom) "This free model ran out of room. Mímir can carry on online from a summary of the work."
-                        else "On a free model on your PC. Free models fit small, clear jobs.",
+                        if (task.outOfRoom) "Your PC's model ran out of room. Mímir can carry on online from a summary of the work."
+                        else "On your PC's model. It fits small, clear jobs.",
                         style = Type.Label, color = Palette.TextSoft,
                     )
                     if (task.refusalsRemoved) Text(
-                        "No safety filter: it does what you ask, including things other models won't.",
+                        "Uncensored: it does what you ask, including things other models won't.",
                         style = Type.Small, color = Palette.AmberNote,
                     )
                     BigButton(if (task.outOfRoom) "Continue online" else "Answer online instead", Look.Outline, { station.continueOnClaude(task.id) }, height = 48.dp)

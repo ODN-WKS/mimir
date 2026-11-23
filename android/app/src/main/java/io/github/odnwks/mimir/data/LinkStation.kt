@@ -1162,7 +1162,7 @@ class LinkStation(
                 chosenModel.takeIf { it.startsWith("ollama:") } ?: pcModels?.freeModel ?: pcModels?.free?.firstOrNull()?.id
             }
             if (path == null || free == null) {
-                startWhy = if (free == null) "Whisper mode needs a free model on your PC, and none is set up." else "Pick a project first."
+                startWhy = if (free == null) "Whisper mode needs a model on your PC, and none is set up." else "Pick a project first."
                 note(startWhy)
                 return ""
             }
@@ -1271,7 +1271,7 @@ class LinkStation(
         val sent = call(Wire.setYolo(taskId)) { _, err ->
             synchronized(lock) {
                 if (err == null) yoloFromPhone = true
-                else if (err.contains("YOLO from the phone is off", ignoreCase = true)) yoloFromPhone = false
+                else if ((err.contains("YOLO from the phone is off", ignoreCase = true) || err.contains("turn on Go ahead without asking", ignoreCase = true))) yoloFromPhone = false
             }
             publish()
             done(err)

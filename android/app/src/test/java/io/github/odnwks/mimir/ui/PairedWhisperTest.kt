@@ -97,7 +97,7 @@ class PairedWhisperTest {
         compose.onNodeWithText("A Whisper needs a private model").assertIsDisplayed()
         assertFalse(nav.composeTo.whisper)
         assertFalse(engine.state.value.whisper)
-        compose.onNodeWithText("Add a free model on your PC").assertIsDisplayed()
+        compose.onNodeWithText("Add a model on your PC").assertIsDisplayed()
         compose.onNodeWithText("Get $AI_NAME").assertIsDisplayed().performClick(); compose.waitForIdle()
         assertEquals(Screen.Models, nav.current)
     }

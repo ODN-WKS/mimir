@@ -38,7 +38,7 @@ import io.github.odnwks.mimir.ui.theme.Type
  */
 
 /** Normal mode on this phone's own chat. */
-const val START_WHISPER = "Normal mode: $AI_NAME, with ground rules on, and chats are kept. Tap for your chats, a new chat or a new Whisper: a private, incognito chat on this phone that's never kept"
+const val START_WHISPER = "Normal mode: $AI_NAME, with your rules for every chat on, and chats are kept. Tap for your chats, a new chat or a new Whisper: a private, incognito chat on this phone that's never kept"
 /** A Whisper on this phone. */
 const val END_WHISPER = "Whisper mode: private, offline, nothing kept. Tap for your chats, a new chat (this Whisper is forgotten) or a new Whisper"
 
@@ -121,7 +121,7 @@ const val END_WHISPER_ABOUT = "Forget this Whisper now, no question asked"
 const val WHISPER_ENDED = "Whisper ended. Nothing was kept."
 
 /** The eye on the paired chat: a Whisper on this phone or on the PC, whichever there is. */
-const val START_WHISPER_PAIRED = "Normal mode: Mímir, with internet and its usual safeguards, and chats are kept. Tap for your chats, a new chat or a new Whisper: a private, incognito chat that's never kept"
+const val START_WHISPER_PAIRED = "Normal mode: Mímir, with internet, and chats are kept. Tap for your chats, a new chat or a new Whisper: a private, incognito chat that's never kept"
 const val END_PC_WHISPER = "Whisper mode: your PC's free model, internet cut off, nothing kept. Tap for your chats, a new chat (back to normal) or a new Whisper"
 const val OPEN_PC_WHISPER = "Whisper mode: a Whisper is running on your PC. Tap to open it"
 const val WHISPER_ON_PHONE = "Whisper on this phone"
@@ -144,7 +144,7 @@ fun whisperStartFor(paired: Boolean, pcFree: Boolean, pcOnline: Boolean, phoneRe
     else -> WhisperStart.Nowhere
 }
 
-const val WHISPER_NOWHERE = "A Whisper needs a free model on your PC, or $AI_NAME on this phone. Neither is ready."
+const val WHISPER_NOWHERE = "A Whisper needs a model on your PC, or $AI_NAME on this phone. Neither is ready."
 const val WHISPER_WEB_PHONE_ONLY = "A Whisper with internet runs on this phone, and this phone can't run $AI_NAME."
 
 /** The places a Whisper can start right now: [phone] when Mímir is on it, [pc] when the PC has a free model. */
@@ -188,12 +188,12 @@ fun WhisperNeedsAModel(open: Boolean, phoneCanRun: Boolean, size: String?, onGet
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(
-                    (if (phoneCanRun) "Get $AI_NAME on this phone (a one-time download${size?.let { " of $it" } ?: ""}), or add a free model on your PC. Either keeps a Whisper private."
-                    else "Add a free model on your PC: a Whisper runs there with the internet cut off, and nothing is kept.").forDevice(),
+                    (if (phoneCanRun) "Get $AI_NAME on this phone (a one-time download${size?.let { " of $it" } ?: ""}), or add a model on your PC. Either keeps a Whisper private."
+                    else "Add a model on your PC: a Whisper runs there with the internet cut off, and nothing is kept.").forDevice(),
                     style = Type.BodyTight, color = Palette.WhisperSoft,
                 )
                 if (phoneCanRun) BigButton("Get $AI_NAME", Look.Whisper, onGetMimir, Modifier.fillMaxWidth(), height = 48.dp)
-                BigButton("Add a free model on your PC", if (phoneCanRun) Look.WhisperOutline else Look.Whisper, onAddPc, Modifier.fillMaxWidth(), height = 48.dp)
+                BigButton("Add a model on your PC", if (phoneCanRun) Look.WhisperOutline else Look.Whisper, onAddPc, Modifier.fillMaxWidth(), height = 48.dp)
             }
         },
         confirmButton = { SmallButton("Not now", onClose) },

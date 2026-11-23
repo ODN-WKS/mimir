@@ -21,9 +21,9 @@ class EnginesPanelTest {
         compose.setContent { MimirTheme { EnginesPanel("free", "claude") { c, p -> sent += c to p } } }
         compose.onNodeWithText("Chats and lookups").assertExists()
         compose.onNodeWithText("Project work").assertExists()
-        // Both lines read "Free (on your PC)" and "Online": the first pair is chats, the second is project work.
+        // Both lines read "Your PC's model" and "Online": the first pair is chats, the second is project work.
         compose.onAllNodesWithText("Online")[0].performClick()
-        compose.onAllNodesWithText("Free (on your PC)")[1].performClick()
+        compose.onAllNodesWithText("Your PC's model")[1].performClick()
         assertEquals(listOf<Pair<String?, String?>>("paid" to null, null to "free"), sent)
     }
 }

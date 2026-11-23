@@ -110,7 +110,7 @@ fun ModelChip(current: LocalModel, installed: List<LocalModel>, onChoose: (Strin
 fun ModelRows(current: LocalModel, installed: List<LocalModel>, onChoose: (String) -> Unit, onMore: () -> Unit) {
     installed.forEach { m ->
         DropdownMenuItem(
-            { MenuLine(m.chipName, m.chipWord + " · " + m.sizeText + if (m.refusalsRemoved) " · no safety filter" else "", m.id == current.id) },
+            { MenuLine(m.chipName, m.chipWord + " · " + m.sizeText + if (m.refusalsRemoved) " · uncensored" else "", m.id == current.id) },
             { onChoose(m.id) },
             modifier = Modifier.semantics { selected = m.id == current.id },
         )

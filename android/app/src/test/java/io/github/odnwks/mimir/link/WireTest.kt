@@ -39,7 +39,7 @@ class WireTest {
         }
         // Auto-edit, Auto and Never ask get an amber chip; asking or planning first gets none.
         val chip = { m: String -> io.github.odnwks.mimir.data.Task("t", "t", "", "", "", emptyList(), emptyList(), null, null, null, mode = m).riskyMode }
-        assertEquals(listOf(null, "Auto-edit", null, "Auto", "YOLO"), listOf("Ask", "AcceptEdits", "Plan", "Auto", "NoAsk").map(chip))
+        assertEquals(listOf(null, "Auto-edit", null, "Auto", "Go ahead"), listOf("Ask", "AcceptEdits", "Plan", "Auto", "NoAsk").map(chip))
     }
 
     @Test

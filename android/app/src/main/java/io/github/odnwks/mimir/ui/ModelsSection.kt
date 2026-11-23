@@ -1,5 +1,6 @@
 package io.github.odnwks.mimir.ui
 
+import io.github.odnwks.mimir.ui.adaptive.forDevice
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.runtime.mutableStateMapOf
@@ -112,12 +113,12 @@ fun ModelsSection(state: StationState, station: Station, nav: Navigator, phone: 
     }
     val free: @Composable () -> Unit = {
         Column(mark("free").selectableGroup(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            GroupTitle("Free models on your PC", "Run on your PC's own graphics card · no online use", group)
+            GroupTitle("Your PC's models", "Run on your PC's own graphics card · no online use", group)
             m.local.forEach { ModelRow(it, it.id == m.selected) { station.selectModel(it.id) } }
             when {
-                !state.paired -> GroupNote("Free models run on your PC's graphics card.", "Connect your PC") { nav.open(Screen.Pair, tap.last) }
+                !state.paired -> GroupNote("Your PC's models run on your PC's graphics card.", "Connect your PC") { nav.open(Screen.Pair, tap.last) }
                 m.local.isEmpty() && !state.pc.online -> GroupNote("Your PC is away: its free models show here when it's back.")
-                m.local.isEmpty() -> GroupNote("No free models on your PC yet. On the PC, $AI_NAME › Settings › Who answers can add one.")
+                m.local.isEmpty() -> GroupNote("No models on your PC yet. On the PC, $AI_NAME › Settings › Models can add one.")
             }
             if (power == Power.ClaudeOnly && m.local.isNotEmpty()) GroupNote("Not used for tasks: your PC is set to online only.")
             if (m.local.isNotEmpty() && power != Power.ClaudeOnly) {
@@ -136,8 +137,8 @@ fun ModelsSection(state: StationState, station: Station, nav: Navigator, phone: 
     val onPhone: @Composable () -> Unit = {
         Column(mark("phone"), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             val canRun = phone?.state?.collectAsStateWithLifecycle()?.value?.supported == true
-            if (canRun) GroupTitle("On this phone", "Run here · no PC, no internet, nothing leaves the phone", group)
-            else GroupTitle("Model store", "This phone can't run a model itself · free online ones instead", group)
+            if (canRun) GroupTitle("On this phone".forDevice(), "Run here · no PC, no internet, nothing leaves the phone".forDevice(), group)
+            else GroupTitle("Model store", "This phone can't run a model itself · free online ones instead".forDevice(), group)
             WeeklyCheck(state, station)
             PhoneStore(phone, nav, state.paired)
         }
@@ -151,7 +152,7 @@ fun ModelsSection(state: StationState, station: Station, nav: Navigator, phone: 
             Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 4.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            val names = mapOf("claude" to "Online", "free" to "Free (on your PC)", "phone" to "On this phone")
+            val names = mapOf("claude" to "Online", "free" to "Your PC's model", "phone" to "On this phone")
             order.forEach { (key, _) ->
                 JumpChip(names.getValue(key)) {
                     val y = tops[key] ?: return@JumpChip
@@ -222,7 +223,7 @@ private fun PowerPanel(paired: Boolean, power: Power?) {
     if (!paired) {
         // Before pairing there's nothing to choose: one quiet line says so.
         Text(
-            "Not paired with a PC, so your chats here always use the model on this phone.",
+            "Not paired with a PC, so your chats here always use the model on this phone.".forDevice(),
             style = Type.Small, color = Palette.TextDim, modifier = Modifier.padding(horizontal = 4.dp),
         )
         return
@@ -230,7 +231,7 @@ private fun PowerPanel(paired: Boolean, power: Power?) {
     Panel(background = Palette.Bar, radius = 16.dp, padding = PaddingValues(horizontal = 14.dp, vertical = 12.dp), spacing = 4.dp) {
         Text("What powers your tasks", style = Type.BodyTight.copy(fontWeight = FontWeight.SemiBold), color = Palette.Text, modifier = Modifier.semantics { heading() })
         Text(power!!.words, style = Type.Label, color = Palette.TextSoft)
-        Text("Set on your PC, in $AI_NAME › Settings › General. Tasks from this phone follow it.", style = Type.Small, color = Palette.TextDim)
+        Text("Set on your PC, in $AI_NAME › Settings › Models. Tasks from this phone follow it.", style = Type.Small, color = Palette.TextDim)
     }
 }
 
@@ -239,9 +240,9 @@ private fun PowerPanel(paired: Boolean, power: Power?) {
 internal fun EnginesPanel(chats: String?, project: String?, set: (chats: String?, project: String?) -> Unit) {
     Panel(background = Palette.Bar, radius = 16.dp, padding = PaddingValues(horizontal = 14.dp, vertical = 12.dp), spacing = 10.dp) {
         Text("Who answers what", style = Type.BodyTight.copy(fontWeight = FontWeight.SemiBold), color = Palette.Text, modifier = Modifier.semantics { heading() })
-        EngineLine("Chats and lookups", listOf("free" to "Free (on your PC)", "paid" to "Online"), chats) { set(it, null) }
-        EngineLine("Project work", listOf("free" to "Free (on your PC)", "claude" to "Online"), project) { set(null, it) }
-        Text("Free runs on your PC and costs nothing; your messages stay between this phone and your PC. Online uses your Anthropic plan, and your messages go to Anthropic.", style = Type.Small, color = Palette.TextDim)
+        EngineLine("Chats and lookups", listOf("free" to "Your PC's model", "paid" to "Online"), chats) { set(it, null) }
+        EngineLine("Project work", listOf("free" to "Your PC's model", "claude" to "Online"), project) { set(null, it) }
+        Text("Your PC's model runs on your PC and costs nothing; your messages stay between this phone and your PC. Online uses your Anthropic plan, and your messages go to Anthropic.".forDevice(), style = Type.Small, color = Palette.TextDim)
     }
 }
 
@@ -320,10 +321,9 @@ private fun ModelRow(model: Model, selected: Boolean, usable: Boolean = true, se
             Text(model.note, style = Type.Small, color = Palette.TextDim)
             // The tags sit under the words, so large text never squeezes the name; a model with no
             // safety filter carries its tag here and the note is said once, below the list.
-            if (model.id == "auto" || model.free) FlowRow(
+            if (model.free || model.refusalsRemoved) FlowRow(
                 Modifier.padding(top = 3.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                if (model.id == "auto") Tag("Recommended", Palette.BlueText, Palette.BlueIcon)
                 if (model.free) Tag("Free", Palette.Ground, Palette.GreenText)
                 if (model.refusalsRemoved) NoFilterTag()
             }
