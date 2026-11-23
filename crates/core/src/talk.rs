@@ -160,7 +160,14 @@ const PAID_PLACE: &str = "You are Mímir's online answerer: Anthropic's Claude, 
 fn online_system(first: Option<(&str, &str)>) -> String {
     first
         .filter(|(r, _)| *r == "system")
-        .map(|(_, t)| t.replacen(PLACE, PAID_PLACE, 1))
+        .map(|(_, t)| {
+            if t.contains(PLACE) {
+                t.replacen(PLACE, PAID_PLACE, 1)
+            } else {
+                // A prompt built elsewhere: never leave the model without the truthful line.
+                format!("{PAID_PLACE}\n\n{t}")
+            }
+        })
         .unwrap_or_else(|| PAID_PLACE.to_string())
 }
 
@@ -1466,6 +1473,14 @@ mod tests {
             assert!(!s.contains(PLACE), "{s}");
             assert!(s.contains("do not call it private"), "{s}");
         }
+    }
+
+    #[test]
+    fn a_prompt_built_elsewhere_still_gets_the_online_place_line() {
+        let s = online_system(Some(("system", "Be brief.")));
+        assert!(s.starts_with(PAID_PLACE), "{s}");
+        assert!(s.ends_with("Be brief."), "{s}");
+        assert!(!s.contains(PLACE), "{s}");
     }
 
     #[test]

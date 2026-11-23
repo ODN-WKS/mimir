@@ -96,6 +96,7 @@ impl Prefs {
         let text = self
             .ground_rules
             .as_deref()
+            .filter(|t| !crate::settings::is_old_default(t))
             .unwrap_or(crate::settings::DEFAULT_GROUND_RULES)
             .trim();
         (!text.is_empty()).then(|| text.to_string())

@@ -1209,7 +1209,7 @@ impl Service {
                     );
                 }
                 // The phone's own ground rules, for the task this starts.
-                self.runner.next_rules = ground_rules.filter(|r| !r.trim().is_empty());
+                self.runner.next_rules = settings::without_old_default(ground_rules);
                 // A chat with no project is filed where it belongs.
                 let (project, placed) =
                     if Path::new(&project) == crate::paths::chats_dir() && !separate_copy {
@@ -1789,7 +1789,7 @@ impl Service {
                 text,
                 ground_rules,
             } => {
-                self.runner.next_rules = ground_rules.filter(|r| !r.trim().is_empty());
+                self.runner.next_rules = settings::without_old_default(ground_rules);
                 let by = if self.clients.get(&client).is_some_and(|c| c.phone.is_some()) {
                     "phone"
                 } else {
@@ -2165,7 +2165,7 @@ impl Service {
             } => {
                 // YOLO is never offered in Whisper.
                 crate::yolo::phone_may(true, mode == mimir_proto::Mode::NoAsk)?;
-                self.runner.next_rules = ground_rules.filter(|r| !r.trim().is_empty());
+                self.runner.next_rules = settings::without_old_default(ground_rules);
                 let made = self
                     .runner
                     .new_incognito(Path::new(&project), &text, &model, mode);

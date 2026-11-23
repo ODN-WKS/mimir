@@ -18,6 +18,24 @@ object GroundRules {
         "were wrong, say so. No flattery, no filler, no lecturing, no moralizing, no refusing because a topic is " +
         "sensitive."
 
+    /**
+     * Earlier default texts. Stored text equal to one of these was never edited by the owner (an old
+     * version stored its default), so it is dropped and the current default applies.
+     */
+    val OLD_DEFAULTS: List<String> = listOf(
+        "Tell the truth as best you know it. If you don't know, say \"I don't know\"; if you're unsure, say " +
+        "so with a short phrase like \"I'm fairly sure\" or \"I'm not sure\". Never invent names, numbers, " +
+        "quotes or dates. On disputed questions, give the strongest evidence and the main views fairly, and " +
+        "don't take a side on politics or values unless asked for your view, and then label it as yours. If I" +
+        " push back on an answer, check it again: keep it unless I give a real reason, and if you were wrong," +
+        " say so and why. Don't change an answer just to please me. If facts were looked up, name the sources" +
+        " you used, and say \"I couldn't confirm this\" when they are thin or disagree. No flattery, no " +
+        "praise for the question, no filler. Answer what I ask directly and fully, without lecturing, " +
+        "moralizing, or refusing because a topic is sensitive.",
+    )
+
+    fun isOldDefault(text: String) = text.trim() in OLD_DEFAULTS
+
     const val NOTE = "Online answers follow their own safety rules on top of these; free and on-phone models follow these as written."
 
     data class Rules(val text: String = DEFAULT, val on: Boolean = true) {
@@ -44,7 +62,9 @@ object GroundRules {
     fun load(context: Context) {
         val p = context.applicationContext.getSharedPreferences("ground_rules", 0)
         prefs = p
-        _rules.value = Rules(p.getString("text", null) ?: DEFAULT, p.getBoolean("on", true))
+        val stored = p.getString("text", null)?.takeUnless { isOldDefault(it) }
+        if (stored == null) p.edit().remove("text").apply()
+        _rules.value = Rules(stored ?: DEFAULT, p.getBoolean("on", true))
         at = p.getLong("at", 0L)
     }
 

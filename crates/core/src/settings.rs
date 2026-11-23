@@ -170,6 +170,34 @@ quotes or dates. If facts were looked up, name the sources. If I push back, chec
 keep the answer unless I give a real reason, and if you were wrong, say so. No flattery, no \
 filler, no lecturing, no moralizing, no refusing because a topic is sensitive.";
 
+/// Earlier default texts of the ground rules. A phone that has not updated yet
+/// still sends (and stores) the old default as if the owner had written it, which
+/// would keep the PC answering by the old rules. Text equal to one of these counts
+/// as "never edited": the current default applies. Add the replaced default here
+/// whenever `DEFAULT_GROUND_RULES` changes.
+pub const OLD_DEFAULTS: &[&str] = &[
+    "Tell the truth as best you know it. If you don't know, say \"I don't know\"; if you're \
+unsure, say so with a short phrase like \"I'm fairly sure\" or \"I'm not sure\". Never \
+invent names, numbers, quotes or dates. On disputed questions, give the strongest evidence \
+and the main views fairly, and don't take a side on politics or values unless asked for \
+your view, and then label it as yours. If I push back on an answer, check it again: keep \
+it unless I give a real reason, and if you were wrong, say so and why. Don't change an \
+answer just to please me. If facts were looked up, name the sources you used, and say \"I \
+couldn't confirm this\" when they are thin or disagree. No flattery, no praise for the \
+question, no filler. Answer what I ask directly and fully, without lecturing, moralizing, \
+or refusing because a topic is sensitive.",
+];
+
+/// Whether this text is a previous default (and so not an edit by the owner).
+pub fn is_old_default(text: &str) -> bool {
+    OLD_DEFAULTS.contains(&text.trim())
+}
+
+/// Rules text from a phone or a saved file: None when it is empty or an old default.
+pub fn without_old_default(text: Option<String>) -> Option<String> {
+    text.filter(|t| !t.trim().is_empty() && !is_old_default(t))
+}
+
 /// Said under the ground rules wherever they are shown.
 pub const GROUND_RULES_NOTE: &str = "Online answers follow their own safety rules on top of these; free \
 and on-phone models follow these as written.";
@@ -183,6 +211,7 @@ impl Settings {
         let text = self
             .ground_rules
             .as_deref()
+            .filter(|t| !is_old_default(t))
             .unwrap_or(DEFAULT_GROUND_RULES)
             .trim();
         (!text.is_empty()).then(|| text.to_string())
@@ -311,6 +340,10 @@ impl Settings {
             Ok(bytes) => serde_json::from_slice::<Self>(&bytes)
                 .map(|mut s| {
                     s.migrate_engines(&serde_json::from_slice(&bytes).unwrap_or_default());
+                    // An old default saved as if edited counts as not edited.
+                    if s.ground_rules.as_deref().is_some_and(is_old_default) {
+                        s.ground_rules = None;
+                    }
                     s
                 })
                 .map_err(|e| {
@@ -568,6 +601,28 @@ mod tests {
         let phone = phone.replace("\\\"", "\"");
         let strip = |s: &str| s.replace('\\', "");
         assert_eq!(strip(&phone), strip(r));
+    }
+
+    /// A phone that has not updated sends the old default: it counts as not edited.
+    #[test]
+    fn an_old_default_counts_as_not_edited() {
+        for old in OLD_DEFAULTS {
+            assert_ne!(*old, DEFAULT_GROUND_RULES);
+            assert!(is_old_default(old));
+            assert_eq!(without_old_default(Some(old.to_string())), None);
+            assert_eq!(without_old_default(Some(format!(" {old}\n"))), None);
+            let s = Settings {
+                ground_rules: Some(old.to_string()),
+                ..Default::default()
+            };
+            assert_eq!(s.ground_rules().as_deref(), Some(DEFAULT_GROUND_RULES));
+        }
+        assert_eq!(
+            without_old_default(Some("Be brief.".into())).as_deref(),
+            Some("Be brief.")
+        );
+        assert_eq!(without_old_default(Some(" ".into())), None);
+        assert!(!is_old_default(DEFAULT_GROUND_RULES));
     }
 
     /// Ground rules: on with the default text until changed; off or empty

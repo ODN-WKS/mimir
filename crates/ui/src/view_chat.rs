@@ -561,7 +561,7 @@ impl App {
         bottom_area(ui, "chat-composer", |ui| {
             in_lane(ui, |ui| {
                 // Starters, while nothing has been said.
-                if empty {
+                if empty && (waiting_task.is_some() || has_projects) {
                     ui.horizontal_wrapped(|ui| {
                         if let Some((task, project)) = &waiting_task {
                             let name = crate::places::display_name(&self.settings, project);
