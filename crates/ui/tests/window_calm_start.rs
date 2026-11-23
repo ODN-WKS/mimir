@@ -32,14 +32,12 @@ fn a_new_install_greets_with_chat_first_and_no_extra_sections() {
         .find("Choose a project folder")
         .expect("no folder button");
     assert!(chat < folder, "button order\n{text}");
-    // No right panel, no empty "Needs you" or "Updates".
-    for gone in [
-        "THIS PC",
-        "Processor",
-        "Needs you",
-        "Updates",
-        "Test leftovers",
-    ] {
+    // The right panel is open with "This PC" first (owner, 2026-11-23), but
+    // no empty "Needs you" or "Updates".
+    for want in ["THIS PC", "Processor"] {
+        assert!(shows(&h, want), "{want:?} missing on a new install\n{text}");
+    }
+    for gone in ["Needs you", "Updates", "Test leftovers"] {
         assert!(!shows(&h, gone), "{gone:?} on a new install\n{text}");
     }
     let lower = text.to_lowercase();
@@ -56,7 +54,8 @@ fn the_right_panel_opens_by_itself_while_a_task_runs() {
     home.hold_replies();
     home.let_through(1);
     let mut h = home.open();
-    assert!(!has_button(&h, labels::HIDE_PANEL), "{}", screen_text(&h));
+    // Open from the start (owner, 2026-11-23), and it stays open.
+    assert!(has_button(&h, labels::HIDE_PANEL), "{}", screen_text(&h));
     start_task(&mut h, "Tidy up notes.txt.");
     assert!(
         wait_for(&mut h, |h| shows(h, "Stop this task")

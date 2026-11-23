@@ -86,8 +86,9 @@ impl App {
             });
     }
 
-    /// "This PC" and "Doing now".
-    fn pc_panel(&self, ui: &mut egui::Ui, r: &Station, actions: &mut Vec<Action>) {
+    /// The "This PC" card with the three meters, always first at the very
+    /// top of the panel (as in the old app), whatever is open.
+    fn pc_stats_card(&self, ui: &mut egui::Ui) {
         theme::caps(ui, "This PC");
         let s = &self.stats;
         card(ui, |ui| {
@@ -95,7 +96,7 @@ impl App {
             if s.mem_total > 0 {
                 stat(
                     ui,
-                    "Memory",
+                    "PC memory (RAM)",
                     memory_words(s.mem_used, s.mem_total),
                     s.mem_used as f32 / s.mem_total as f32,
                 );
@@ -104,6 +105,11 @@ impl App {
                 stat(ui, "Graphics", format!("{g:.0}%"), g / 100.0);
             }
         });
+    }
+
+    /// "This PC" and "Doing now".
+    fn pc_panel(&self, ui: &mut egui::Ui, r: &Station, actions: &mut Vec<Action>) {
+        self.pc_stats_card(ui);
         theme::caps(ui, "Doing now");
         let mut any = false;
         for l in &r.tasks {
@@ -185,6 +191,7 @@ impl App {
         actions: &mut Vec<Action>,
     ) {
         let t = &l.task;
+        self.pc_stats_card(ui);
         theme::caps(ui, "This task");
         card(ui, |ui| {
             let (state, color) = match l.shown_state() {

@@ -96,6 +96,7 @@ fn a_pc_chat_has_no_task_things_and_a_task_keeps_them() {
             screen_text(&h)
         );
     }
-    assert!(!shows(&h, "THIS PC"), "{}", screen_text(&h));
+    // "This PC" is the first card on a task's panel too.
+    assert!(shows(&h, "THIS PC"), "{}", screen_text(&h));
     close(h);
 }

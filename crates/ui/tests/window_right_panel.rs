@@ -27,7 +27,7 @@ fn an_empty_chat_shows_this_pc_and_what_is_running() {
     for _ in 0..5 {
         h.step();
     }
-    for want in ["THIS PC", "Processor", "Memory", "DOING NOW"] {
+    for want in ["THIS PC", "Processor", "PC memory (RAM)", "DOING NOW"] {
         assert!(shows(&h, want), "missing {want:?}\n{}", screen_text(&h));
     }
     assert!(
@@ -78,9 +78,9 @@ fn a_finished_task_shows_its_state_changes_and_permission() {
             screen_text(&h)
         );
     }
-    // Nothing to stop, and no machine bars on a task.
+    // Nothing to stop; "This PC" is the first card on a task's panel too.
     assert!(!shows(&h, "Stop this task"), "{}", screen_text(&h));
-    assert!(!shows(&h, "THIS PC"), "{}", screen_text(&h));
+    assert!(shows(&h, "THIS PC"), "{}", screen_text(&h));
     close(h);
 }
 

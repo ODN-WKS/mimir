@@ -778,16 +778,14 @@ impl App {
         if let Some(v) = self.settings.details {
             return v;
         }
-        let wide = ctx.content_rect().width() >= 1180.0;
         if !self.panel_auto {
-            let has_tasks = self.station.as_ref().is_ok_and(|r| !r.tasks.is_empty());
-            return panel_by_default(wide, has_tasks);
+            return panel_by_default(ctx.content_rect().width());
         }
         let wide = ctx.content_rect().width() >= 1180.0;
         let busy = self
             .station
             .as_ref()
-            .is_ok_and(|r| r.tasks.iter().any(|l| l.busy()));
+            .is_ok_and(|r| r.tasks.iter().any(|l| l.working_now()));
         let typing = ctx.memory(|m| m.focused().is_some())
             || !self.draft.is_empty()
             || !self.new_text.is_empty()
@@ -2190,11 +2188,14 @@ pub fn should_wake(window_visible: bool, has_busy_tasks: bool) -> bool {
 /// How long the automatic side panel stays after the last task ends.
 const PANEL_HOLD_SECS: f64 = 8.0;
 
-/// With no choice made, the side panel shows whenever the window is wide
-/// enough, once there is any work to look at (a new install stays calm).
-pub(crate) fn panel_by_default(wide: bool, has_tasks: bool) -> bool {
-    wide && has_tasks
+/// With no choice made, the side panel is open, always (the old app's
+/// way, with "This PC" at the top), unless the window is too narrow for it.
+pub(crate) fn panel_by_default(window_width: f32) -> bool {
+    window_width >= PANEL_MIN_WINDOW
 }
+
+/// The narrowest window that still has room for the side panel.
+const PANEL_MIN_WINDOW: f32 = 900.0;
 
 /// The automatic side panel: (shown, hold-until time).
 fn auto_panel(
@@ -2218,9 +2219,9 @@ fn auto_panel(
 mod tests {
     #[test]
     fn the_side_panel_stays_open_by_default_when_the_window_is_wide() {
-        assert!(super::panel_by_default(true, true));
-        assert!(!super::panel_by_default(false, true));
-        assert!(!super::panel_by_default(true, false));
+        assert!(super::panel_by_default(1300.0));
+        assert!(super::panel_by_default(1000.0));
+        assert!(!super::panel_by_default(700.0));
     }
 
     #[test]
