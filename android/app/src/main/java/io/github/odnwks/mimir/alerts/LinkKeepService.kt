@@ -23,12 +23,15 @@ class LinkKeepService : Service() {
     private val tick = object : Runnable {
         override fun run() {
             val s = Stations.current()
-            val more = s != null && s.paired && keep.tick(s.workingCount(), s.waitingCount())
+            val more = s != null && s.paired && keep.tick(s.isConnected(), s.workingCount(), s.waitingCount())
             if (more) handler.postDelayed(this, Keep.CHECK_MS) else stopSelf()
         }
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
+
+    /** Never restarted by Android on its own (that would start it from the background). */
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int = START_NOT_STICKY
 
     override fun onCreate() {
         super.onCreate()
@@ -42,8 +45,15 @@ class LinkKeepService : Service() {
             .setPriority(NotificationCompat.PRIORITY_MIN)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .build()
-        if (Build.VERSION.SDK_INT >= 34) startForeground(Notifier.KEEP_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
-        else startForeground(Notifier.KEEP_ID, n)
+        try {
+            if (Build.VERSION.SDK_INT >= 34) startForeground(Notifier.KEEP_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+            else startForeground(Notifier.KEEP_ID, n)
+        } catch (_: Exception) {
+            // Android refused (started from the background): never crash; the 5-minute check covers it.
+            running = false
+            stopSelf()
+            return
+        }
         Stations.current()?.keepLink(true)
         handler.postDelayed(tick, Keep.CHECK_MS)
     }

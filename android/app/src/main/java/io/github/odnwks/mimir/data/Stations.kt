@@ -48,6 +48,7 @@ object Stations {
                 val app = context.applicationContext
                 s.onItems = { items -> Notifier.show(app, items); io.github.odnwks.mimir.alerts.LinkKeepService.maybeStart(app) }
                 s.onFinished = { items -> Notifier.showFinished(app, items) }
+                s.onPairingChanged = { Notifier.forgetFinished(app) }
                 s.onWorking = { n -> Notifier.working(app, n); io.github.odnwks.mimir.alerts.LinkKeepService.maybeStart(app) }
                 s.onOnlineWithdrawn = { words -> io.github.odnwks.mimir.standalone.Engine.get(app).say(words) }
                 s.onStandaloneModels = { list -> io.github.odnwks.mimir.standalone.Engine.get(app).useCatalog(list) }

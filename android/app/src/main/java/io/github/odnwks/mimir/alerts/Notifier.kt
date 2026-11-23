@@ -128,18 +128,16 @@ object Notifier {
         prefs.edit().putStringSet("ids", now).apply()
     }
 
-    private fun finishedPrefs(context: Context) = context.getSharedPreferences("finished_notified", Context.MODE_PRIVATE)
+    /** What this phone told about already: forgotten when the pairing changes. */
+    fun forgetFinished(context: Context) = FinishedSeen(context).clear()
 
     /**
      * A quiet, generic note for each finished item not handled before (by id). The very first
-     * list a phone ever hears only seeds the ids. While the app is on screen nothing is posted.
+     * list a pairing ever hears only seeds the ids. While the app is on screen nothing is posted.
      */
     @Synchronized
     fun showFinished(context: Context, items: List<io.github.odnwks.mimir.link.LFinished>) {
-        val prefs = finishedPrefs(context)
-        val seen = prefs.getStringSet("ids", emptySet()).orEmpty()
-        val fresh = FinishedNotes.fresh(items, seen, prefs.getBoolean("seeded", false), System.currentTimeMillis() / 1000)
-        prefs.edit().putStringSet("ids", FinishedNotes.remember(seen, items)).putBoolean("seeded", true).apply()
+        val fresh = FinishedSeen(context).take(items, System.currentTimeMillis() / 1000)
         if (foreground || !allowed(context)) return
         for (f in fresh) postFinished(context, f)
     }

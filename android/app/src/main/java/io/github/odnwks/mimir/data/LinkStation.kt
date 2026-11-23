@@ -182,6 +182,9 @@ class LinkStation(
     /** True while the link-keeping service runs: the link reconnects as on screen. */
     @Volatile private var kept = false
     fun keepLink(on: Boolean) { kept = on; if (on) { synchronized(lock) { reconnect.soon() }; wakeLoop() } }
+    fun isConnected(): Boolean = synchronized(lock) { connected }
+    /** Called when this phone forgets its PC or pairs with one (what it remembered about finished items goes). */
+    @Volatile var onPairingChanged: (() -> Unit)? = null
     fun workingCount(): Int = synchronized(lock) { maxOf(lastWorking, 0) }
     fun waitingCount(): Int = synchronized(lock) { items.size }
     /** The PC sends finished items (an older one doesn't: today's 5-minute check only). */
@@ -708,6 +711,7 @@ class LinkStation(
             connected = false
         }
         replies.failAll()
+        onPairingChanged?.invoke()
         publish()
     }
 
@@ -742,6 +746,7 @@ class LinkStation(
                     pcName = done.getString("pc_name")
                     saveData()
                     LinkLog.i("paired")
+                    onPairingChanged?.invoke()
                     pairing = PairProgress.Paired
                 }
             }

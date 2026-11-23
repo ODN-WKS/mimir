@@ -21,23 +21,23 @@ class N4bKeepTest {
 
     @Test fun theServiceStopsAboutTwoMinutesAfterNothingWorksOrWaits() {
         val k = Keep { t }
-        assertTrue(k.tick(2, 0))
+        assertTrue(k.tick(true, 2, 0))
         t += 5 * 60_000
-        assertTrue("still working: stays", k.tick(1, 0))
+        assertTrue("still working: stays", k.tick(true, 1, 0))
         t += 1_000
-        assertTrue("a short grace", k.tick(0, 0))
+        assertTrue("a short grace", k.tick(true, 0, 0))
         t += Keep.GRACE_MS - 2_000
-        assertTrue(k.tick(0, 0))
+        assertTrue(k.tick(true, 0, 0))
         t += 2_000
-        assertFalse("two minutes of nothing", k.tick(0, 0))
+        assertFalse("two minutes of nothing", k.tick(true, 0, 0))
     }
 
     @Test fun aTaskWaitingForThePersonAlsoKeepsIt() {
         val k = Keep { t }
         t += Keep.GRACE_MS - 1
-        assertTrue(k.tick(0, 1))
+        assertTrue(k.tick(true, 0, 1))
         t += Keep.GRACE_MS - 1
-        assertTrue(k.tick(0, 0))
+        assertTrue(k.tick(true, 0, 0))
     }
 
     @Test fun whileTheServiceRunsTheLinkReconnectsAsOnScreen() {
@@ -53,22 +53,22 @@ class N4bKeepTest {
 
     @Test fun eachFinishedIdShowsOnce() {
         val items = listOf(f("a"), f("b"), f("a"))
-        val first = FinishedNotes.fresh(items, emptySet(), true, 10_100)
+        val first = FinishedNotes.fresh(items, emptyList(), true, 10_100)
         assertEquals(listOf("a", "b"), first.map { it.id })
-        val seen = FinishedNotes.remember(emptySet(), items)
+        val seen = FinishedNotes.remember(emptyList(), items)
         assertTrue("a reconnect's recent list shows nothing twice", FinishedNotes.fresh(items + f("c"), seen, true, 10_100).map { it.id } == listOf("c"))
     }
 
     @Test fun theVeryFirstListOnlySeedsAndOldOrStoppedOnesAreNotShown() {
-        assertTrue(FinishedNotes.fresh(listOf(f("a")), emptySet(), false, 10_100).isEmpty())
-        assertTrue("older than an hour", FinishedNotes.fresh(listOf(f("a", at = 1_000)), emptySet(), true, 10_000 + 3_700).isEmpty())
-        assertTrue("the owner stopped it", FinishedNotes.fresh(listOf(f("a", "Stopped")), emptySet(), true, 10_100).isEmpty())
-        assertEquals(1, FinishedNotes.fresh(listOf(f("a", "Failed")), emptySet(), true, 10_100).size)
+        assertTrue(FinishedNotes.fresh(listOf(f("a")), emptyList(), false, 10_100).isEmpty())
+        assertTrue("older than an hour", FinishedNotes.fresh(listOf(f("a", at = 1_000)), emptyList(), true, 10_000 + 3_700).isEmpty())
+        assertTrue("the owner stopped it", FinishedNotes.fresh(listOf(f("a", "Stopped")), emptyList(), true, 10_100).isEmpty())
+        assertEquals(1, FinishedNotes.fresh(listOf(f("a", "Failed")), emptyList(), true, 10_100).size)
     }
 
     @Test fun theRememberedIdsStayBounded() {
         val many = (1..300).map { f("i$it") }
-        assertEquals(FinishedNotes.KEEP_IDS, FinishedNotes.remember(emptySet(), many).size)
+        assertEquals(FinishedNotes.KEEP_IDS, FinishedNotes.remember(emptyList(), many).size)
     }
 
     @Test fun theWordsAreGenericAndNeverNameTheTask() {
