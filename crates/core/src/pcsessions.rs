@@ -142,7 +142,7 @@ pub fn open(
         }
         let id = l.task.id.clone();
         // Mímir's own Claude on it is no "elsewhere".
-        let own = l.running() || l.busy();
+        let own = l.running() || l.busy() || runner.own_recent(&id, now);
         let modified = found.as_ref().map(|o| o.session.modified_unix).unwrap_or(0);
         let follow = !own && working_elsewhere(modified);
         if follow && runner.set_elsewhere(&id, true) {
@@ -823,6 +823,28 @@ mod tests {
         let t = &r.tasks.iter().find(|l| l.task.id == o.task).unwrap().task;
         assert!(t.live_elsewhere);
         assert!(format!("{:?}", t.entries).contains(FOLLOW_NOTE));
+    }
+
+    #[test]
+    fn a_task_mimir_just_ran_is_never_taken_for_another_app() {
+        // A task the person started from the phone (or the PC window) and
+        // tried again: its own Claude just ended, its process still shows in
+        // the last scan and its transcript was just written.
+        let h = home("own");
+        session(&h, "own1", "Sort the photos", None, 2);
+        let mut r = runner(&h);
+        let o = open(&mut r, &h.root, "own1", &set(&[]), now()).unwrap();
+        r.own_ended_for_test(&o.task, now() - 1);
+        let again = open(&mut r, &h.root, "own1", &set(&["own1"]), now()).unwrap();
+        assert_eq!(again.task, o.task);
+        assert!(!again.follow, "followed Mímir's own run");
+        let t = &r.tasks.iter().find(|l| l.task.id == o.task).unwrap().task;
+        assert!(!t.live_elsewhere);
+        assert!(!format!("{:?}", t.entries).contains(FOLLOW_NOTE));
+        // Long after, a Claude process on it is really another app.
+        r.own_ended_for_test(&o.task, now() - 600);
+        let later = open(&mut r, &h.root, "own1", &set(&["own1"]), now()).unwrap();
+        assert!(later.follow);
     }
 
     #[test]

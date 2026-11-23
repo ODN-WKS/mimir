@@ -89,6 +89,10 @@ pub struct Config {
     pub env: Vec<(String, String)>,
 }
 
+/// How long after its own Claude ended a task is still not "elsewhere": the
+/// process list is looked at every few seconds and the process may linger.
+pub const OWN_GRACE_SECS: i64 = 20;
+
 pub struct Runner {
     /// Tasks the owner stopped since they last worked (so "stopped" is
     /// never guessed from the notes).
@@ -97,6 +101,10 @@ pub struct Runner {
     /// (the session may not have died), but they stay Stopped until the
     /// owner continues them.
     stopped_followed: std::collections::HashSet<String>,
+    /// Task → when (unix seconds) Mímir's own Claude on it last ended. Its
+    /// process may still show for a moment, and its last writes are fresh:
+    /// neither is another app.
+    own_ended: std::collections::HashMap<String, i64>,
     cfg: Config,
     store: Store,
     pub tasks: Vec<Live>,
@@ -238,6 +246,7 @@ impl Runner {
         let mut r = Runner {
             owner_stopped: Default::default(),
             stopped_followed: Default::default(),
+            own_ended: Default::default(),
             cfg,
             store,
             tasks,
@@ -648,6 +657,22 @@ impl Runner {
             return;
         }
         self.start_and_send(i, &line);
+    }
+
+    /// Mímir's own Claude is on the task, or ended just now: whatever a
+    /// scan of the PC's processes shows for it is not another app.
+    pub fn own_recent(&self, id: &str, now: i64) -> bool {
+        self.index(id).is_some_and(|i| self.tasks[i].running())
+            || self
+                .own_ended
+                .get(id)
+                .is_some_and(|t| now - t < OWN_GRACE_SECS)
+    }
+
+    /// For checks: Mímir's own Claude on a task ended at `at`.
+    #[doc(hidden)]
+    pub fn own_ended_for_test(&mut self, id: &str, at: i64) {
+        self.own_ended.insert(id.to_string(), at);
     }
 
     /// For checks: the process id of a task's run.
@@ -1973,6 +1998,8 @@ impl Runner {
             if exited {
                 let ended_early = l.finished < l.sent;
                 l.session = None;
+                self.own_ended
+                    .insert(l.task.id.clone(), crate::needs::now());
                 l.background = false;
                 l.task.host = None;
                 if ended_early && matches!(l.task.status, Status::Working | Status::NeedsYou) {

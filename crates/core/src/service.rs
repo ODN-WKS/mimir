@@ -3775,8 +3775,11 @@ impl Service {
             // Going on outside Mímir right now: replies go there.
             // (Only what was followed from outside: never this service's own
             // Claude, just finished.)
+            // (Nor its process still showing in the last scan just after it
+            // ended: Mímir's own run is never another app.)
             let elsewhere = !running
                 && !followed
+                && !self.runner.own_recent(&id, unix)
                 && (in_proc
                     || (self.outside_followed.contains(&id)
                         && talk.is_some_and(|t| unix - t < crate::task::LIVE_SECS)));
