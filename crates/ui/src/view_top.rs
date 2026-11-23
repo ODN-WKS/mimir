@@ -144,6 +144,10 @@ impl Foot<'_> {
                     actions.push(Action::OpenModels);
                 }
             }
+            if self.r.is_some_and(|r| r.weekly.is_none()) {
+                ui.label(RichText::new("Weekly use: not read yet").color(MUTED).size(13.0))
+                    .on_hover_text("Your Anthropic plan's 7-day use shows here once it has been read.");
+            }
             // The 5-hour window, while it is current.
             if let Some(use_) = self
                 .r
@@ -413,6 +417,22 @@ pub(crate) fn mid_top(
         toggle_w = r.rect.width();
         if r.clicked() {
             actions.push(Action::ToggleDetails(shown));
+        }
+        // The panel can go back to opening by itself while something runs.
+        let auto = right
+            .ctx()
+            .data(|d| d.get_temp::<bool>(egui::Id::NULL.with("panel-auto")))
+            .unwrap_or(false);
+        if !auto && rect.width() > 600.0 {
+            let a = right
+                .add(theme::pill_button(
+                    RichText::new("Automatic").color(MUTED).size(12.5).into(),
+                ))
+                .on_hover_text("The side panel opens while Mímir works and closes when it is calm");
+            toggle_w += a.rect.width() + 6.0;
+            if a.clicked() {
+                actions.push(Action::PanelAutomatic);
+            }
         }
     }
     // Left: where this task lives.

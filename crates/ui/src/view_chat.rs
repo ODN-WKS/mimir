@@ -217,6 +217,54 @@ pub(crate) struct ComposerOut {
     pub later: bool,
 }
 
+/// The chat box's model choice: the PC's own model, or an online one. It is
+/// the same setting as Settings › Models › Who answers (it applies to all chats).
+fn chat_model_chip(
+    ui: &mut egui::Ui,
+    words: &str,
+    paid: bool,
+    online_ready: bool,
+    alias: &str,
+    chose: &mut Option<(bool, &'static str)>,
+    actions: &mut Vec<Action>,
+) {
+    let button = theme::pill_button(RichText::new(words).color(MUTED).size(13.0).into())
+        .stroke(egui::Stroke::new(1.0, theme::CHIP_EDGE));
+    let (resp, _) = egui::containers::menu::MenuButton::from_button(button).ui(ui, |ui| {
+        theme::menu_fits(ui, |ui| {
+            if ui
+                .selectable_label(!paid, "Your PC's model  ·  private, free")
+                .clicked()
+            {
+                *chose = Some((false, "auto"));
+            }
+            for (id, name, about) in mimir_core::talk::CLAUDE_CHOICES {
+                let on = paid && alias == id;
+                if ui
+                    .add_enabled(
+                        online_ready || on,
+                        egui::Button::selectable(on, format!("Online: {name}  ·  {about}")),
+                    )
+                    .clicked()
+                {
+                    *chose = Some((true, id));
+                }
+            }
+            ui.separator();
+            if ui
+                .add(
+                    egui::Button::new(RichText::new("More under Models ›").color(JADE))
+                        .frame(false),
+                )
+                .clicked()
+            {
+                actions.push(Action::OpenModels);
+            }
+        });
+    });
+    resp.on_hover_text("Who answers chats (all chats on this PC)");
+}
+
 /// What the plus and the chips need side by side (a mode, a model and an
 /// effort chip are about this wide).
 const CHIPS_W: f32 = 330.0;
@@ -553,6 +601,7 @@ impl App {
 
         // The message box at the bottom.
         let mut picked: Vec<Action> = vec![];
+        let mut chose_model: Option<(bool, &'static str)> = None;
         let waiting_task = r
             .tasks
             .iter()
@@ -626,21 +675,15 @@ impl App {
                     crate::labels::SEND,
                     |ui, actions| {
                         crate::chat_pics::box_thumbnails(ui, &pics, shrinking, actions);
-                        if ui
-                            .add(
-                                theme::pill_button(
-                                    RichText::new(model_words.clone())
-                                        .color(MUTED)
-                                        .size(13.0)
-                                        .into(),
-                                )
-                                .stroke(egui::Stroke::new(1.0, theme::CHIP_EDGE)),
-                            )
-                            .on_hover_text("Who answers: choose it under Models")
-                            .clicked()
-                        {
-                            actions.push(Action::OpenModels);
-                        }
+                        chat_model_chip(
+                            ui,
+                            &model_words,
+                            self.settings.chats_paid(),
+                            self.setup.claude_ready() != Some(false),
+                            self.settings.chats_model_alias().unwrap_or("auto"),
+                            &mut chose_model,
+                            actions,
+                        );
                         crate::view_task::effort_chip(ui, "chat", &None, &new_effort, &mut picked);
                     },
                     actions,
@@ -666,6 +709,13 @@ impl App {
                 }
             });
         });
+        if let Some((paid, alias)) = chose_model {
+            self.settings.chats_engine = Some(if paid { "paid" } else { "free" }.into());
+            if paid {
+                self.settings.chats_model = Some(alias.into());
+            }
+            self.settings_dirty = true;
+        }
         for a in picked {
             if let Action::SetEffort(_, e) = a {
                 self.new_effort = e;

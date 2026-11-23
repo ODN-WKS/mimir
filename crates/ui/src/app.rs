@@ -212,6 +212,8 @@ pub enum Action {
     RemoteControl(PathBuf),
     /// Show or hide the side panel; carries whether it is shown now.
     ToggleDetails(bool),
+    /// The side panel goes back to opening and closing by itself.
+    PanelAutomatic,
     /// The New task page with this project chosen.
     NewTaskIn(String),
     /// The first task that needs an answer.
@@ -437,6 +439,8 @@ pub struct App {
     pub(crate) pics_note: Option<String>,
     /// The file picker was opened from a chat.
     pub(crate) attach_to_chat: bool,
+    /// The side panel opens and closes by itself (an explicit choice, this session).
+    pub(crate) panel_auto: bool,
     /// Where to save a picture: the dialog, and what is saved.
     pub(crate) saving_pic: Option<(Receiver<Option<PathBuf>>, Picture)>,
     /// Put the cursor in the chat's message box once.
@@ -587,6 +591,7 @@ impl App {
             pics_next: 1,
             pics_note: None,
             attach_to_chat: false,
+            panel_auto: false,
             saving_pic: None,
             chat_focus_once: false,
             confirm_delete_chat: None,
@@ -768,8 +773,15 @@ impl App {
     /// something runs, stays a few seconds after, and never closes while the
     /// person is typing (it closes at the next calm moment).
     pub(crate) fn details_shown(&self, ctx: &egui::Context) -> bool {
+        // The top bar shows its "Automatic" button only while this is off.
+        ctx.data_mut(|d| d.insert_temp(egui::Id::NULL.with("panel-auto"), self.panel_auto));
         if let Some(v) = self.settings.details {
             return v;
+        }
+        let wide = ctx.content_rect().width() >= 1180.0;
+        if !self.panel_auto {
+            let has_tasks = self.station.as_ref().is_ok_and(|r| !r.tasks.is_empty());
+            return panel_by_default(wide, has_tasks);
         }
         let wide = ctx.content_rect().width() >= 1180.0;
         let busy = self
@@ -883,7 +895,8 @@ impl App {
                     let key = chat.clone().unwrap_or_default();
                     let pending = self.chat_pics.remove(&key).unwrap_or_default();
                     let pictures: Vec<Picture> = pending.iter().map(|p| p.pic.clone()).collect();
-                    match r.send_chat(chat.as_deref(), &text, pictures, None) {
+                    let effort = self.new_effort.clone();
+                    match r.send_chat(chat.as_deref(), &text, pictures, effort.as_deref()) {
                         Ok(id) => {
                             self.pics_note = None;
                             self.chat_drafts.remove(&key);
@@ -1307,6 +1320,12 @@ impl App {
                 Action::ToggleDetails(shown) => {
                     self.settings.details = Some(!shown);
                     self.settings_dirty = true;
+                    self.panel_auto = false;
+                }
+                Action::PanelAutomatic => {
+                    self.settings.details = None;
+                    self.settings_dirty = true;
+                    self.panel_auto = true;
                 }
                 Action::NewTaskIn(project) => {
                     swap_buffers(
@@ -2171,6 +2190,12 @@ pub fn should_wake(window_visible: bool, has_busy_tasks: bool) -> bool {
 /// How long the automatic side panel stays after the last task ends.
 const PANEL_HOLD_SECS: f64 = 8.0;
 
+/// With no choice made, the side panel shows whenever the window is wide
+/// enough, once there is any work to look at (a new install stays calm).
+pub(crate) fn panel_by_default(wide: bool, has_tasks: bool) -> bool {
+    wide && has_tasks
+}
+
 /// The automatic side panel: (shown, hold-until time).
 fn auto_panel(
     wide: bool,
@@ -2191,6 +2216,13 @@ fn auto_panel(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn the_side_panel_stays_open_by_default_when_the_window_is_wide() {
+        assert!(super::panel_by_default(true, true));
+        assert!(!super::panel_by_default(false, true));
+        assert!(!super::panel_by_default(true, false));
+    }
+
     #[test]
     fn the_auto_panel_holds_then_closes_when_calm() {
         use super::auto_panel;
