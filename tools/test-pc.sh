@@ -7,7 +7,7 @@
 #   tools/test-pc.sh start <name> [--ollama URL] [--env KEY=VALUE]... [--real-claude]
 #                                                 start it (own unit mimir-test-pc-<name>). --real-claude: its tasks
 #                                                 run the real Claude Code with the real home and sign-in, on a small
-#                                                 model (ANTHROPIC_MODEL, default claude-haiku-5-5), through a wrapper
+#                                                 model (ANTHROPIC_MODEL, default claude-haiku-5-5), and project work uses Claude (not free models), through a wrapper
 #                                                 written into its folder (MIMIR_CLAUDE). To get a permission prompt
 #                                                 with the owner's settings, add an "ask Bash" rule in the test project.
 #   tools/test-pc.sh pair  <name> [mine|NAME]    make a pairing code and answer the PC's questions: the phone
@@ -78,6 +78,11 @@ start)
         } > "$D/claude-real"
         chmod 700 "$D/claude-real"
         extra+=(--setenv=MIMIR_CLAUDE="$D/claude-real")
+        # Project work must really use Claude (a fresh service starts on free models only): the
+        # setting is written before the service starts, only where this test PC has none yet.
+        conf="$H/.config/mimir/settings.json"
+        mkdir -p "$H/.config/mimir"
+        [ -e "$conf" ] || printf '{"project_engine":"claude"}\n' > "$conf"
     fi
     cp "$bin" "$D/mimir-bin"
     cp "$bin" "$H/.local/bin/mimir"
