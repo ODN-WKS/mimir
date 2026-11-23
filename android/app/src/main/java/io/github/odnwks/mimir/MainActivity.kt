@@ -98,11 +98,15 @@ class MainActivity : FragmentActivity() {
         // Unpaired, Chat opens with the welcome: pair with the PC, or use a model on this phone.
         val nav = Shared.nav ?: Navigator(Screen.Chat).also { Shared.nav = it }
         // Notifications: their channels, the permission (Android 13 and later), the 5-minute
-        // check and, if this build has the owner's Firebase project, the wake-up push.
+        // check, and holding the link while a task works.
         Notifier.channels(this)
         // The permission is asked once, with a plain line why, right after pairing (PairDoneScreen), never mid-session.
         Stay.arm(this)
         if (intent.getStringExtra("open") == "needs_you" && station.paired) nav.open(Screen.NeedsYou)
+        if (intent.getStringExtra("open") == "task" && station.paired) {
+            val id = intent.getStringExtra("task")
+            nav.open(if (id.isNullOrEmpty()) Screen.NeedsYou else Screen.Task(id))
+        }
         if (intent.getStringExtra("open") == "standalone" && nav.current != Screen.Standalone) nav.open(Screen.Standalone)
         if (check && !station.paired) {
             intent.getStringExtra("pair_code")?.let { code ->
@@ -242,6 +246,8 @@ class MainActivity : FragmentActivity() {
         io.github.odnwks.mimir.data.NetUse.sample()
         Notifier.foreground = false
         Notifier.refreshWorking(this)
+        // Work still going or waiting: keep the link as the app leaves.
+        io.github.odnwks.mimir.alerts.LinkKeepService.maybeStart(this)
         io.github.odnwks.mimir.audio.Voices.made()?.offScreen()
         // "End Whispers when I leave the app" (Settings › Privacy check): an open Whisper is forgotten.
         io.github.odnwks.mimir.standalone.Engine.made()?.appLeft(

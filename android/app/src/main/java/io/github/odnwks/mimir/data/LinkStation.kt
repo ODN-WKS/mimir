@@ -177,6 +177,15 @@ class LinkStation(
     /** Called with how many tasks Claude works on, each time it changes (the "working" note). */
     @Volatile var onWorking: ((Int) -> Unit)? = null
     private var lastWorking = -1
+    /** Called with finished items, each time the PC says some (new ones, or its recent list on connect). */
+    @Volatile var onFinished: ((List<io.github.odnwks.mimir.link.LFinished>) -> Unit)? = null
+    /** True while the link-keeping service runs: the link reconnects as on screen. */
+    @Volatile private var kept = false
+    fun keepLink(on: Boolean) { kept = on; if (on) { synchronized(lock) { reconnect.soon() }; wakeLoop() } }
+    fun workingCount(): Int = synchronized(lock) { maxOf(lastWorking, 0) }
+    fun waitingCount(): Int = synchronized(lock) { items.size }
+    /** The PC sends finished items (an older one doesn't: today's 5-minute check only). */
+    fun pcFinishedEvents(): Boolean = synchronized(lock) { Wire.FINISHED_EVENTS in pcFeatures }
 
     /** The PC's list of standalone models arrived (kept for use with no PC). */
     @Volatile var onStandaloneModels: ((String) -> Unit)? = null
@@ -299,7 +308,7 @@ class LinkStation(
                 }
                 // A task working, or a chat answer the PC is still writing for this phone.
                 val busy = synchronized(lock) { lastWorking > 0 || talking.isNotEmpty() }
-                if (!synchronized(lock) { reconnect.due(onScreen(), busy) }) {
+                if (!synchronized(lock) { reconnect.due(onScreen(), busy, kept) }) {
                     // PHD-15: wait on condition instead of polling; woken by wakeLoop() on state changes
                     loopWake.withLock { loopReady.await(5, java.util.concurrent.TimeUnit.SECONDS) }
                     continue
@@ -388,8 +397,9 @@ class LinkStation(
                     l.addAll(ev.entries)
                     live.remove(ev.task)
                 }
-                // Finished alerts are the notification work's (N4b step 2); parsed so nothing breaks meanwhile.
-                is Ev.Finished, is Ev.RecentFinished -> {}
+                // Only a PC that lists the feature is believed; each id is shown once by the notifier.
+                is Ev.Finished -> if (Wire.FINISHED_EVENTS in pcFeatures) after = { onFinished?.invoke(listOf(ev.item)) }
+                is Ev.RecentFinished -> if (Wire.FINISHED_EVENTS in pcFeatures) after = { onFinished?.invoke(ev.items) }
                 is Ev.Live -> { live[ev.task] = ev.text; liveAt[ev.task] = System.currentTimeMillis() }
                 is Ev.Problem -> if (ev.text !in dismissed) problem = ev.text
                 is Ev.NeedsYou -> {
@@ -1477,6 +1487,7 @@ class LinkStation(
             screenLock = secure(),
             paidOn = t?.engine?.paidOn,
             pcTalks = data.pcTalks,
+            pcFinished = Wire.FINISHED_EVENTS in pcFeatures,
             owner = isOwner(),
             pc = Pc(Mapping.pcName(pcName), online = connected, lastSeen = when { connected -> "now"; !failedOnce -> "not connected"; else -> seenWords(lastSeenAt, System.currentTimeMillis()) }, route = "private connection", tasksRunning = if (!connected) 0 else t?.working ?: tasks.values.count { Mapping.working(it) }),
             needsYou = needs,

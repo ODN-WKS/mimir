@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- The link to the PC, the pairing code scanner, the app lock, and staying in touch
-     (notifications, the 5-minute check, the wake-up push), playing updates and speaking messages. -->
+     (notifications, the 5-minute check, holding the link while a task works), playing updates and speaking messages. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
@@ -106,6 +106,16 @@
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="Runs a language model on the phone to finish writing a reply the user asked for." />
+        </service>
+
+        <!-- Holds the link to the PC while a task works or waits for the person, so alerts come in seconds. -->
+        <service
+            android:name=".alerts.LinkKeepService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Keeps the user's own encrypted connection to their PC open while a task they started works or waits for them, to tell them within seconds when it finishes or needs them." />
         </service>
 
         <!-- Labs: keeps the don't-touch notice over the screen while a test runs. -->

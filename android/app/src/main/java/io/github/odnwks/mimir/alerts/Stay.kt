@@ -25,7 +25,7 @@ class PrefsStayStore(private val context: Context) : StayStore {
 /**
  * "Check every 5 minutes": an alarm that may fire while the phone dozes (no special permission),
  * started again after each check and after a restart. Android lets it fire about every 8 to 9
- * minutes in deep sleep; things that need you don't wait for it (they come by wake-up push).
+ * minutes in deep sleep. While a task works, the link-keeping service holds the link instead.
  */
 object Stay {
     const val EVERY_MS = 5 * 60 * 1000L

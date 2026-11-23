@@ -16,14 +16,15 @@ import io.github.odnwks.mimir.data.Stations
 
 /**
  * One check with the PC: the link connects (or is up already), the needs-you list arrives, and
- * the notifications follow it. Started by the 5-minute alarm and by a wake-up push, as an
+ * the notifications follow it. Started by the 5-minute alarm, as an
  * expedited job (on Android 11 and older that's a short foreground job with a quiet notification).
  */
 class CheckWorker(context: Context, params: WorkerParameters) : Worker(context, params) {
     override fun doWork(): Result {
         val station = Stations.get(applicationContext)
         if (!station.paired) return Result.success()
-        if (station.awaitSynced(25_000)) Notifier.show(applicationContext, station.currentItems())
+        // The link may need a new connection from a cold process: wait up to 60 s, and once more if it didn't arrive.
+        if (station.awaitSynced(WAIT_MS) || station.awaitSynced(WAIT_MS)) Notifier.show(applicationContext, station.currentItems())
         return Result.success()
     }
 
@@ -42,6 +43,7 @@ class CheckWorker(context: Context, params: WorkerParameters) : Worker(context, 
     }
 
     companion object {
+        const val WAIT_MS = 60_000L
         fun now(context: Context) {
             val req = OneTimeWorkRequestBuilder<CheckWorker>()
                 .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)

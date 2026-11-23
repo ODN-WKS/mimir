@@ -221,6 +221,8 @@ data class StationState(
     val screenLock: Boolean = true,
     /** The PC answers chats itself (Stage 1): the one chat (the phone's own chat screen) is used, paired too. */
     val pcTalks: Boolean = false,
+    /** The PC tells this phone when a task finishes (feature "finished_events"): alerts come in seconds while a task works. */
+    val pcFinished: Boolean = false,
     /** This phone belongs to the PC's owner. Anyone else sees no "Needs you", no Projects and no "What's running?": the PC keeps those to its owner. */
     val owner: Boolean = true,
     /** The PC's project names for the picker (kept from earlier while the PC is away). */
@@ -339,7 +341,7 @@ data class Filing(
 
 enum class FilingKind { NewTask, SameTask, Idea, Waiting, Inbox, Failed }
 
-/** How the phone stays in touch with the PC: both get things that need you at once (by wake-up push). */
+/** How the phone stays in touch with the PC when the app is closed. */
 enum class StayMode(val title: String, val about: String) {
     BatterySaver("Battery saver", "Live updates only while the app is open. Other updates wait until you open it."),
     Every5("Check every 5 minutes", "The phone checks with your PC about every 5 minutes, a bit less often while it sleeps."),
@@ -358,7 +360,7 @@ data class NeedsYouItem(
     val text: String,
     val taskId: String?,
     val choices: List<String> = emptyList(),
-    /** Serious items arrive at once (a sound and a wake-up push). */
+    /** Serious items make a sound. */
     val serious: Boolean = false,
     /** PCS-10: action leaves this PC and cannot be undone. Show a warning. */
     val leavesPC: Boolean = false,

@@ -23,6 +23,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -48,8 +50,8 @@ import io.github.odnwks.mimir.ui.theme.Palette
 import io.github.odnwks.mimir.ui.theme.Type
 
 /**
- * Notifications (board 9): how things look on the lock screen. The real notifications come with
- * the wake-up push; until then this page shows them, and its buttons do what theirs will.
+ * Notifications (board 9): how staying in touch works, and samples of how alerts look on the
+ * lock screen (their buttons do what the real ones do).
  */
 @Composable
 fun NotificationsScreen(state: StationState, station: Station, nav: Navigator) {
@@ -79,17 +81,20 @@ fun NotificationsScreen(state: StationState, station: Station, nav: Navigator) {
             Text(
                 // One plain line: when something that needs you reaches this phone (Stage 1, 4.4).
                 when {
-                    state.stayMode == io.github.odnwks.mimir.data.StayMode.BatterySaver -> "With the app closed, things that need you show when you open it."
-                    else -> "With the app closed, things that need you show within about 5 minutes."
+                    state.stayMode == io.github.odnwks.mimir.data.StayMode.BatterySaver && !state.pcFinished -> "With the app closed, things that need you show when you open it."
+                    state.stayMode == io.github.odnwks.mimir.data.StayMode.BatterySaver -> "With the app closed and no task working, things that need you show when you open it."
+                    state.pcFinished -> "While a task works, alerts show within seconds, even with the app closed. With nothing running, the phone checks about every 5 to 10 minutes."
+                    else -> "With the app closed, the phone checks about every 5 to 10 minutes, so things that need you can take that long to show."
                 },
                 style = Type.Label, color = Palette.TextDim, modifier = Modifier.padding(horizontal = 8.dp),
             )
             Text(
                 if (state.stayMode == io.github.odnwks.mimir.data.StayMode.BatterySaver)
-                    "Battery saver: things that need you still show on the lock screen with a sound; other updates wait until you open the app."
+                    (if (state.pcFinished) "Battery saver: while a task works, alerts still show within seconds. At other times they wait until you open the app." else "Battery saver: alerts wait until you open the app.")
                 else "Alerts show on the lock screen, even with the app closed. Things that need you make a sound, and updates stay quiet.",
                 style = Type.Label, color = Palette.TextDim, modifier = Modifier.padding(start = 8.dp, end = 8.dp, top = 8.dp, bottom = 4.dp),
             )
+            BatteryOffer()
             // The cards below show how alerts look, made from what's waiting now; said plainly so
             // nobody takes them for alerts of their own.
             if (permission != null || fix != null || newest != null || state.player.updateId != null) {
@@ -166,6 +171,32 @@ private fun ColumnScope.NowPlaying(state: StationState, station: Station) {
                 contentAlignment = Alignment.Center,
             ) { Icon(if (state.player.playing) Glyphs.Pause else Glyphs.Play, null, tint = Palette.Ground, modifier = Modifier.size(22.dp)) }
             RoundButton(Glyphs.SkipNext, "Next update", station::playNext)
+        }
+    }
+}
+
+/**
+ * The one-time plain offer to let Mímir use the battery without limits, so Android doesn't stop it
+ * while it follows a task. The person chooses; "Open the setting" shows Android's own list.
+ */
+@Composable
+private fun BatteryOffer() {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var show by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(io.github.odnwks.mimir.alerts.Battery.shouldOffer(context)) }
+    if (!show) return
+    Panel(background = Palette.Card, border = Palette.Line) {
+        Text("Let Mímir follow your tasks", style = Type.BodyTight.copy(fontWeight = FontWeight.SemiBold), color = Palette.Text)
+        Text(
+            "Some phones stop apps that run in the background. To get alerts within seconds, you can allow Mímir to use the battery without limits. It only keeps in touch while a task works or waits for you.",
+            style = Type.Label, color = Palette.TextSoft,
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Action("Open the setting") {
+                io.github.odnwks.mimir.alerts.Battery.answered(context)
+                show = false
+                runCatching { context.startActivity(io.github.odnwks.mimir.alerts.Battery.settings()) }
+            }
+            Action("Not now") { io.github.odnwks.mimir.alerts.Battery.answered(context); show = false }
         }
     }
 }

@@ -13,7 +13,7 @@ import java.io.File
 
 /**
  * The one link to the PC, for as long as the app's process lives: the screens, the check job
- * and the wake-up push all use the same one.
+ * and the link-keeping service all use the same one.
  */
 object Stations {
     @Volatile private var station: LinkStation? = null
@@ -46,8 +46,9 @@ object Stations {
                 onScreen = { io.github.odnwks.mimir.alerts.Notifier.foreground },
             ).also { s ->
                 val app = context.applicationContext
-                s.onItems = { items -> Notifier.show(app, items) }
-                s.onWorking = { n -> Notifier.working(app, n) }
+                s.onItems = { items -> Notifier.show(app, items); io.github.odnwks.mimir.alerts.LinkKeepService.maybeStart(app) }
+                s.onFinished = { items -> Notifier.showFinished(app, items) }
+                s.onWorking = { n -> Notifier.working(app, n); io.github.odnwks.mimir.alerts.LinkKeepService.maybeStart(app) }
                 s.onOnlineWithdrawn = { words -> io.github.odnwks.mimir.standalone.Engine.get(app).say(words) }
                 s.onStandaloneModels = { list -> io.github.odnwks.mimir.standalone.Engine.get(app).useCatalog(list) }
                 watchNetwork(app) { why ->
