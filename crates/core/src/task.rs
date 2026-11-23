@@ -498,6 +498,31 @@ impl Task {
         }
     }
 
+    /// A helper finished: one dim line; several in a row become one count.
+    pub fn add_helper_finished(&mut self, name: &str) {
+        let n = match self.entries.last() {
+            Some(Entry::Note(last)) if last.starts_with("A helper finished") => 2,
+            Some(Entry::Note(last)) if last.ends_with(" helpers finished") => {
+                last.split(' ')
+                    .next()
+                    .and_then(|n| n.parse().ok())
+                    .unwrap_or(1)
+                    + 1
+            }
+            _ => 1,
+        };
+        if n == 1 {
+            let name = name.trim();
+            self.add_note(&if name.is_empty() {
+                "A helper finished".to_string()
+            } else {
+                format!("A helper finished: {name}")
+            });
+        } else if let Some(Entry::Note(last)) = self.entries.last_mut() {
+            *last = format!("{n} helpers finished");
+        }
+    }
+
     pub fn add_note(&mut self, text: &str) {
         self.entries.push(Entry::Note(text.to_string()));
     }

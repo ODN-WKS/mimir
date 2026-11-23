@@ -36,9 +36,41 @@ pub struct PastSession {
     pub messages: usize,
 }
 
-fn user_text(e: &Value) -> Option<String> {
+/// What one `user` line in a Claude Code transcript is: the person's words,
+/// or something Claude Code wrote there on its own.
+#[derive(Debug, Clone, PartialEq)]
+enum UserLine {
+    /// The person typed it.
+    Person(String),
+    /// A helper or background command finished (its name, when it has one).
+    HelperFinished(String),
+    /// A helper reported back (its words, tags removed).
+    HelperReported(String),
+    /// The person stopped the work at this point.
+    Stopped,
+    /// A slash command ran (its name, without the slash).
+    Command(String),
+    /// Bookkeeping that is never shown.
+    Hidden,
+}
+
+fn between<'a>(text: &'a str, open: &str, close: &str) -> Option<&'a str> {
+    let a = text.find(open)? + open.len();
+    let b = text[a..].find(close)? + a;
+    Some(text[a..b].trim())
+}
+
+/// The helper's name from `Agent "X" finished`, `Background command "X"
+/// completed` and the like; the whole summary when it has another shape.
+fn helper_name(summary: &str) -> String {
+    match (summary.find('"'), summary.rfind('"')) {
+        (Some(a), Some(b)) if b > a => summary[a + 1..b].trim().to_string(),
+        _ => summary.trim().to_string(),
+    }
+}
+
+fn classify(e: &Value) -> Option<UserLine> {
     if e.get("type").and_then(Value::as_str) != Some("user")
-        || e.get("isMeta").and_then(Value::as_bool) == Some(true)
         || e.get("isSidechain").and_then(Value::as_bool) == Some(true)
     {
         return None;
@@ -61,6 +93,45 @@ fn user_text(e: &Value) -> Option<String> {
         }
         _ => return None,
     };
+    let kind = e.pointer("/origin/kind").and_then(Value::as_str);
+    let meta = e.get("isMeta").and_then(Value::as_bool) == Some(true);
+    let raw = text.trim();
+    let helper_done = |raw: &str| {
+        let summary = between(raw, "<summary>", "</summary>").unwrap_or("");
+        UserLine::HelperFinished(helper_name(summary))
+    };
+    let helper_said = |raw: &str| {
+        let body = raw
+            .strip_prefix("Another Claude session sent a message:")
+            .unwrap_or(raw);
+        UserLine::HelperReported(strip_tags(body))
+    };
+    match kind {
+        Some("human") => {}
+        Some("task-notification") => return Some(helper_done(raw)),
+        Some("peer") => return Some(helper_said(raw)),
+        Some(_) | None => {}
+    }
+    if kind != Some("human") {
+        // Older transcripts have no origin: tell by the shape of the text.
+        if raw.starts_with("<task-notification>") {
+            return Some(helper_done(raw));
+        }
+        if raw.starts_with("Another Claude session sent a message") {
+            return Some(helper_said(raw));
+        }
+        if meta {
+            return Some(UserLine::Hidden);
+        }
+    }
+    if raw.starts_with("[Request interrupted by user") {
+        return Some(UserLine::Stopped);
+    }
+    if let Some(name) = between(raw, "<command-name>", "</command-name>")
+        && raw.starts_with("<command-")
+    {
+        return Some(UserLine::Command(name.trim_start_matches('/').to_string()));
+    }
     let text = clean_text(&text);
     let t = text.trim();
     // Slash-command bookkeeping, not something the owner typed.
@@ -69,9 +140,35 @@ fn user_text(e: &Value) -> Option<String> {
         || t.starts_with("<local-command")
         || t.starts_with("Caveat:")
     {
-        return None;
+        return Some(UserLine::Hidden);
     }
-    Some(t.to_string())
+    Some(UserLine::Person(t.to_string()))
+}
+
+/// Text with every `<tag>` taken out and file paths under `/tmp` dropped, so
+/// a helper's report reads as plain words.
+fn strip_tags(text: &str) -> String {
+    let mut out = String::new();
+    let mut rest = text;
+    while let Some(a) = rest.find('<') {
+        out.push_str(&rest[..a]);
+        match rest[a..].find('>') {
+            Some(b) => rest = &rest[a + b + 1..],
+            None => {
+                rest = "";
+                break;
+            }
+        }
+    }
+    out.push_str(rest);
+    out.trim().to_string()
+}
+
+fn user_text(e: &Value) -> Option<String> {
+    match classify(e)? {
+        UserLine::Person(t) => Some(t),
+        _ => None,
+    }
 }
 
 /// Removes what Claude Code adds around the owner's words: whole
@@ -898,9 +995,32 @@ fn add_line(t: &mut Task, line: &str) {
     if v.get("isSidechain").and_then(Value::as_bool) == Some(true) {
         return;
     }
-    if let Some(you) = user_text(&v) {
-        t.add_you(&you);
-        return;
+    match classify(&v) {
+        Some(UserLine::Person(you)) => {
+            t.add_you(&you);
+            return;
+        }
+        Some(UserLine::HelperFinished(name)) => {
+            t.add_helper_finished(&name);
+            return;
+        }
+        Some(UserLine::HelperReported(_)) => {
+            t.add_note("A helper reported back");
+            return;
+        }
+        Some(UserLine::Stopped) => {
+            t.add_note("You stopped it here.");
+            return;
+        }
+        Some(UserLine::Command(name)) => {
+            t.add_note(&match name.as_str() {
+                "model" => "Changed the model".to_string(),
+                n => format!("Ran /{n}"),
+            });
+            return;
+        }
+        Some(UserLine::Hidden) => return,
+        None => {}
     }
     for ev in parse_line(line) {
         t.apply(&ev, 0);
@@ -1472,6 +1592,105 @@ mod tests {
             "-home-user-Projects-mimir"
         );
         assert_eq!(folder_name(Path::new("/tmp/a.b_c")), "-tmp-a-b-c");
+    }
+
+    fn user_line(origin: &str, meta: bool, text: &str) -> Value {
+        let mut v = serde_json::json!({
+            "type": "user",
+            "message": {"role": "user", "content": text},
+        });
+        if !origin.is_empty() {
+            v["origin"] = serde_json::json!({"kind": origin});
+        }
+        if meta {
+            v["isMeta"] = Value::Bool(true);
+        }
+        v
+    }
+
+    const DONE: &str = "<task-notification>\n<task-id>abc</task-id>\n<tool-use-id>toolu_1</tool-use-id>\n<output-file>/tmp/x/out.output</output-file>\n<status>completed</status>\n<summary>Agent \"Garden planner fixes\" finished</summary>\n</task-notification>";
+
+    fn shown(lines: &[Value]) -> Vec<String> {
+        let mut t = Task::new("t".into(), "t".into(), "/work/proj".into(), 0);
+        for l in lines {
+            add_line(&mut t, &l.to_string());
+        }
+        t.entries.iter().map(|e| format!("{e:?}")).collect()
+    }
+
+    #[test]
+    fn system_lines_become_small_notes_or_nothing() {
+        let out = shown(&[
+            user_line("human", false, "Fix the build"),
+            user_line("task-notification", false, DONE),
+            user_line(
+                "peer",
+                true,
+                "Another Claude session sent a message:\n<msg from=\"x\">Done, all green</msg>",
+            ),
+            user_line("", true, "Base directory for this skill: /x"),
+            user_line("", true, "<system-reminder>hi</system-reminder>"),
+            user_line(
+                "",
+                false,
+                "<command-name>/model</command-name>\n<command-args></command-args>",
+            ),
+            user_line("", false, "<command-name>/clear</command-name>"),
+            user_line(
+                "",
+                false,
+                "<local-command-stdout>Set model</local-command-stdout>",
+            ),
+            user_line("", false, "[Request interrupted by user]"),
+        ]);
+        assert_eq!(
+            out,
+            [
+                "You(\"Fix the build\")",
+                "Note(\"A helper finished: Garden planner fixes\")",
+                "Note(\"A helper reported back\")",
+                "Note(\"Changed the model\")",
+                "Note(\"Ran /clear\")",
+                "Note(\"You stopped it here.\")",
+            ]
+        );
+        let all = out.join(" ");
+        assert!(!all.contains('<') && !all.contains("/tmp") && !all.contains("toolu"));
+    }
+
+    #[test]
+    fn an_old_transcript_without_origin_is_told_by_shape() {
+        let out = shown(&[
+            user_line("", false, DONE),
+            user_line("", false, "Another Claude session sent a message: hi"),
+            user_line("", false, "Please also add a note"),
+        ]);
+        assert_eq!(
+            out,
+            [
+                "Note(\"A helper finished: Garden planner fixes\")",
+                "Note(\"A helper reported back\")",
+                "You(\"Please also add a note\")",
+            ]
+        );
+    }
+
+    #[test]
+    fn a_person_message_with_summary_tags_stays_theirs() {
+        let text = "Write a <summary>tag</summary> parser";
+        let out = shown(&[user_line("human", false, text), user_line("", false, text)]);
+        assert_eq!(out.len(), 2);
+        assert!(out.iter().all(|e| e.starts_with("You(")));
+    }
+
+    #[test]
+    fn several_helpers_in_a_row_become_one_line() {
+        let out = shown(&[
+            user_line("task-notification", false, DONE),
+            user_line("task-notification", false, DONE),
+            user_line("task-notification", false, DONE),
+        ]);
+        assert_eq!(out, ["Note(\"3 helpers finished\")"]);
     }
 
     #[test]
