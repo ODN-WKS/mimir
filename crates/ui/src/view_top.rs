@@ -135,7 +135,7 @@ impl Foot<'_> {
                     )
                     .on_hover_cursor(egui::CursorIcon::PointingHand)
                     .on_hover_text(format!(
-                        "{pct:.0}% of weekly limit · resets {}\nYour Anthropic plan's 7-day use, as reported{}.\nClick: what happens when it runs out (Settings › Models)",
+                        "{pct:.0}% of weekly limit · resets {}\nYour Anthropic plan's 7-day use, as reported{}.\nClick: what happens when it runs out (Settings › Models › Who answers)",
                         resets_in(use_.resets_at),
                         updated_line(self.r.and_then(|r| r.usage_at))
                     ))

@@ -602,7 +602,7 @@ mod tests {
         assert_eq!(tidy("Hello [Music] there"), "Hello there");
     }
 
-    /// Needs the engine and the model on this PC (Settings › Talk instead
+    /// Needs the engine and the model on this PC (Settings › Voice instead
     /// of type, or STATION_LISTEN_ROOT). STATION_LISTEN_WAV names the file.
     #[test]
     #[ignore]

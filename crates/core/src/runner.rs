@@ -1628,7 +1628,7 @@ impl Runner {
         mode: Mode,
     ) -> Result<String, String> {
         if !crate::models::is_free(Some(model)) {
-            return Err("Whisper mode runs only free models.".into());
+            return Err("Whisper mode runs only models on this PC.".into());
         }
         let id = self.new_id();
         crate::devlog::mark_whisper(&id);

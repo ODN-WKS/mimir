@@ -100,7 +100,7 @@ pub fn get_at(base: &str, path: &str) -> Result<Value, String> {
         }
     }
     serde_json::from_str(&text)
-        .map_err(|_| "The free model gave an answer Mímir could not read. Try again.".into())
+        .map_err(|_| "Your PC's model gave an answer Mímir could not read. Try again.".into())
 }
 
 /// An answer's body, read piece by piece (chunked or not).
@@ -205,7 +205,7 @@ impl Stream {
                     continue;
                 }
                 let v: Value = serde_json::from_str(t).map_err(|_| {
-                    "The free model gave an answer Mímir could not read. Try again.".to_string()
+                    "Your PC's model gave an answer Mímir could not read. Try again.".to_string()
                 })?;
                 if let Some(e) = v["error"].as_str() {
                     return Err(e.to_string());

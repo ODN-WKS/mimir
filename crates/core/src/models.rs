@@ -185,6 +185,12 @@ pub fn plain_note(note: &str) -> std::borrow::Cow<'_, str> {
         )
         .into();
     }
+    // Notes saved by the last version said "a free model on your PC".
+    if note.starts_with("Answered by ") && note.contains(", a free model on your PC.") {
+        return note
+            .replacen(", a free model on your PC.", ", a model on your PC.", 1)
+            .into();
+    }
     note.into()
 }
 
@@ -402,7 +408,7 @@ pub fn add_with_progress(name: &str, mut progress: impl FnMut(f32)) -> Result<()
     }
     if !ensure_running(Duration::from_secs(20)) {
         return Err(
-            "The free models could not be started on this PC. Try again in a minute.".into(),
+            "The models on this PC could not be started on this PC. Try again in a minute.".into(),
         );
     }
     let mut child = std::process::Command::new("curl")
@@ -777,6 +783,12 @@ mod plain_note_tests {
 
     #[test]
     fn an_old_note_reads_plainly_and_other_notes_stay() {
+        assert_eq!(
+            plain_note(
+                "Answered by Qwen 3.6 coding, a free model on your PC. Your chats stay on this PC."
+            ),
+            "Answered by Qwen 3.6 coding, a model on your PC. Your chats stay on this PC."
+        );
         assert_eq!(
             plain_note(
                 "On qwen3.6:35b-a3b-coding, a free model on this PC (Settings \u{203a} Models \u{203a} What powers your tasks)."

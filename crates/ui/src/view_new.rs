@@ -253,13 +253,13 @@ impl App {
             ui.add_enabled_ui(free, |ui| {
                 ui.checkbox(&mut self.new_incognito, crate::labels::WHISPER_SWITCH)
                     .on_hover_text(
-                        "The free model runs on this PC in a sealed space: no internet, no \
+                        "Your PC's model runs on this PC in a sealed space: no internet, no \
                      saved history, no updates. It won't search the web or go online.",
                     );
             });
             if !free {
                 ui.label(
-                    RichText::new("(pick a free model for Whisper mode)")
+                    RichText::new("(pick a model on your PC for Whisper mode)")
                         .color(MUTED)
                         .size(13.0),
                 );

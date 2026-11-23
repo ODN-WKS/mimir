@@ -506,7 +506,7 @@ pub fn weekly_main() -> i32 {
     let mut said = vec![];
     for (name, bytes) in tidy_free_models() {
         let t = format!(
-            "Removed the free model {name} from this PC: unused for {FREE_UNUSED_DAYS} days. That freed {}. It downloads again if you pick it.",
+            "Removed the model {name} from this PC: unused for {FREE_UNUSED_DAYS} days. That freed {}. It downloads again if you pick it.",
             gb(bytes)
         );
         card(&t);

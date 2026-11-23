@@ -113,7 +113,7 @@ pub fn weekly_use(percent: f64) -> String {
     format!("{percent:.0}% of weekly limit")
 }
 
-/// Settings › Updates, for a copy that updates through Flatpak.
+/// Settings › About, for a copy that updates through Flatpak.
 pub fn update_ready(version: &str) -> String {
     format!("Version {version} is ready.")
 }
@@ -213,6 +213,9 @@ pub const LIVE: &str = "Live elsewhere";
 /// A task's row while Claude works on it (here or elsewhere).
 pub const WORKING: &str = "Working";
 pub const FOLLOWS_ALONG: &str = "Reply from your phone; this view follows along live.";
+/// A task going on in a terminal or another app on this PC.
+pub const LIVE_ELSEWHERE_LINE: &str =
+    "Going on in a terminal or another app on this PC; this view follows along live.";
 /// The link out is for a session that really started on claude.ai.
 pub fn is_claude_ai_session(url: &str) -> bool {
     url.starts_with("https://claude.ai/")

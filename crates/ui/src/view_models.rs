@@ -563,7 +563,7 @@ fn store_card(ui: &mut egui::Ui) {
         ui.set_width(ui.available_width());
         theme::heading(ui, "Model Store");
         ui.label(small(
-            "Free models we tested on a PC like yours, best for coding first. Download one and it \
+            "Models we tested on a PC like yours, best for coding first. Download one and it \
              shows under On this PC.",
         ));
         ui.add_space(6.0);

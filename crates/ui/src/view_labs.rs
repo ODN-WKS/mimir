@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 
 pub const CHECKS_TITLE: &str = "Run checks";
 pub const CHECKS_HINT: &str =
-    "Looks at Claude Code, the free models on this PC, your phones, the voice and the space.";
+    "Looks at Claude Code, the models on this PC, your phones, the voice and the space.";
 pub const REPORT_TITLE: &str = "Report a problem";
 pub const REPORT_HINT: &str = "What happened? What did you expect?";
 pub const GITHUB_NOTE: &str =

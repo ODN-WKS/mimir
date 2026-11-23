@@ -342,6 +342,7 @@ impl App {
                         .clone()
                         .or_else(|| t.live_elsewhere.then(String::new));
                     if let Some(url) = &elsewhere {
+                        let from_phone = t.from_phone.is_some();
                         egui::Frame::new()
                             .fill(CARD)
                             .stroke(egui::Stroke::new(1.0, LINE))
@@ -350,9 +351,12 @@ impl App {
                             .show(ui, |ui| {
                                 ui.set_width(ui.available_width());
                                 ui.horizontal_wrapped(|ui| {
-                                    ui.label(
-                                        RichText::new(crate::labels::FOLLOWS_ALONG).color(MUTED),
-                                    );
+                                    let line = if from_phone {
+                                        crate::labels::FOLLOWS_ALONG
+                                    } else {
+                                        crate::labels::LIVE_ELSEWHERE_LINE
+                                    };
+                                    ui.label(RichText::new(line).color(MUTED));
                                     // The link shows only for a session that
                                     // really started on claude.ai.
                                     if crate::labels::is_claude_ai_session(url)

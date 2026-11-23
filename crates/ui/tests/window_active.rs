@@ -33,6 +33,11 @@ fn transcript(home: &TestHome, ago: i64) -> String {
 /// seconds back: a title that is system text, a transcript Claude Code
 /// writes.
 fn outside_session(home: &TestHome, ago: i64) -> PathBuf {
+    outside_session_from(home, ago, None)
+}
+
+/// The same, started from the phone (or claude.ai) at `from_phone`.
+fn outside_session_from(home: &TestHome, ago: i64, from_phone: Option<&str>) -> PathBuf {
     let project = home.project.display().to_string();
     let folder = home
         .root
@@ -50,8 +55,72 @@ fn outside_session(home: &TestHome, ago: i64) -> PathBuf {
     );
     t.session_id = Some(SESSION.into());
     t.status = mimir_core::task::Status::Done;
+    t.from_phone = from_phone.map(str::to_string);
     store.save(&t).unwrap();
     file
+}
+
+/// Opens the one outside task and waits for its message box line.
+fn open_outside(h: &mut egui_kittest::Harness<'static, station_ui::App>, text: bool) {
+    assert!(wait_for(h, |h| rows_with(h, "Fix the garden gate latch") == 1));
+    let label = h
+        .query_all_by(|n| {
+            n.role() == eframe::egui::accesskit::Role::Button
+                && n.label()
+                    .is_some_and(|l| l.contains("Fix the garden gate latch"))
+        })
+        .next()
+        .and_then(|n| n.accesskit_node().label().map(|l| l.to_string()))
+        .unwrap();
+    click(h, &label);
+    assert!(!text || wait_for(h, |h| shows(h, "Looking at the latch now.")));
+}
+
+/// A task live in a terminal or the Claude app has its own plain line:
+/// not the phone's, and no claude.ai link.
+#[test]
+fn a_task_live_in_a_terminal_has_its_own_line_and_no_link() {
+    let Some(home) = TestHome::new() else { return };
+    outside_session(&home, 0);
+    let mut h = home.open();
+    open_outside(&mut h, true);
+    assert!(
+        wait_for(&mut h, |h| shows(h, labels::LIVE_ELSEWHERE_LINE)),
+        "no line for a live outside task\n{}",
+        screen_text(&h)
+    );
+    assert!(!shows(&h, labels::FOLLOWS_ALONG), "{}", screen_text(&h));
+    assert!(!shows(&h, labels::OPEN_ON_CLAUDE_AI), "{}", screen_text(&h));
+    close(h);
+}
+
+/// The claude.ai link is present for a claude.ai session and absent for any
+/// other address.
+#[test]
+fn the_claude_ai_link_shows_only_for_a_claude_ai_session() {
+    let Some(home) = TestHome::new() else { return };
+    outside_session_from(&home, 0, Some("https://claude.ai/code/session_1"));
+    let mut h = home.open();
+    open_outside(&mut h, false);
+    assert!(
+        wait_for(&mut h, |h| shows(h, labels::OPEN_ON_CLAUDE_AI)),
+        "no link for a claude.ai session\n{}",
+        screen_text(&h)
+    );
+    assert!(shows(&h, labels::FOLLOWS_ALONG), "{}", screen_text(&h));
+    close(h);
+
+    let Some(home) = TestHome::new() else { return };
+    outside_session_from(&home, 0, Some("https://example.invalid/session_1"));
+    let mut h = home.open();
+    open_outside(&mut h, false);
+    assert!(
+        wait_for(&mut h, |h| shows(h, labels::FOLLOWS_ALONG)),
+        "no phone line\n{}",
+        screen_text(&h)
+    );
+    assert!(!shows(&h, labels::OPEN_ON_CLAUDE_AI), "{}", screen_text(&h));
+    close(h);
 }
 
 /// Buttons whose spoken name has these words.

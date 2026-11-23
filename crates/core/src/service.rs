@@ -1302,7 +1302,7 @@ impl Service {
                         _ => self.runner.note(
                             &id,
                             &format!(
-                                "Answered by {}, a free model on your PC. Your chats stay on \
+                                "Answered by {}, a model on your PC. Your chats stay on \
                                  this PC.",
                                 crate::models::plain_name(&name)
                             ),
@@ -1930,7 +1930,7 @@ impl Service {
                     Ok(_) => String::new(),
                     Err(e) if crate::models::unit_path().is_file() => {
                         eprintln!("mimir: model runner: {e}");
-                        "Your PC's model runner isn't answering yet. It starts by itself when a free model is used.".to_string()
+                        "Your PC's model runner isn't answering yet. It starts by itself when a model on this PC is used.".to_string()
                     }
                     Err(e) => e.clone(),
                 };
@@ -2126,7 +2126,7 @@ impl Service {
                     self.runner.note(
                         &task,
                         "Back online. Your next message carries on from a short brief of \
-                         the work done on the free model.",
+                         the work done on your PC's model.",
                     );
                 } else {
                     self.runner
@@ -4746,10 +4746,10 @@ impl Service {
                     );
                     let t = format!(
                         "The online limit ran out in \"{title}\". Online is back at {when}; it can \
-                         carry on now with {}, a free model on your PC.",
-                        f.map_or("a free model".to_string(), |f| crate::models::plain_name(
-                            &f.name
-                        ))
+                         carry on now with {}, a model on your PC.",
+                        f.map_or("a model on your PC".to_string(), |f| {
+                            crate::models::plain_name(&f.name)
+                        })
                     );
                     self.runner.note(&id, &t);
                     t
@@ -6131,7 +6131,7 @@ mod pc_name_tests {
     #[test]
     fn another_person_is_told_what_is_missing_when_no_model_is_set_up() {
         let other = super::no_model_words(false, None);
-        assert!(other.contains("no free model set up yet"), "{other}");
+        assert!(other.contains("no model set up yet"), "{other}");
         assert!(other.contains("owner"), "{other}");
         assert_eq!(
             super::no_model_words(true, None),

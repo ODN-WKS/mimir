@@ -363,7 +363,7 @@ pub struct App {
     /// Past sessions offered for a project.
     pub(crate) past: Option<(String, Vec<PastSession>)>,
     pub(crate) shortcuts_open: bool,
-    /// Settings › Phone.
+    /// Settings › Phones.
     pub(crate) phone: crate::view_phone::PhonePanel,
     pub(crate) confirm_remove: Option<String>,
     /// A project waiting for "Remove project" to be confirmed.

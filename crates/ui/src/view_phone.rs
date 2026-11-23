@@ -1,4 +1,4 @@
-//! Settings › Phone: pair a phone (QR code or copied code), confirm its
+//! Settings › Phones: pair a phone (QR code or copied code), confirm its
 //! words, see and remove paired phones.
 
 use crate::app::App;
@@ -235,7 +235,7 @@ impl App {
                         if ui
                             .checkbox(&mut on, "Can use your online plan")
                             .on_hover_text(
-                                "Off: their chats use your PC's free model. On: they can choose Online, which uses your plan.",
+                                "Off: their chats use your PC's model. On: they can choose Online, which uses your plan.",
                             )
                             .changed()
                         {

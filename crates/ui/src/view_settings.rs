@@ -546,7 +546,7 @@ impl App {
                 ),
                 (
                     "The online limit ran out",
-                    "With an online model and a backup on your PC (Settings › Models), tasks carry on on your \
+                    "With an online model and a backup on your PC (Settings › Models › Who answers), tasks carry on on your \
                      PC's model and offer Back online when the limit resets.",
                 ),
                 (
