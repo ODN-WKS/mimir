@@ -23,7 +23,7 @@ class LinkKeepService : Service() {
     private val tick = object : Runnable {
         override fun run() {
             val s = Stations.current()
-            val more = s != null && s.paired && keep.tick(s.isConnected(), s.workingCount(), s.waitingCount())
+            val more = s != null && s.paired && AlertRules.showWorking(AlertStore.get(this@LinkKeepService)) && keep.tick(s.isConnected(), s.workingCount(), s.waitingCount())
             if (more) handler.postDelayed(this, Keep.CHECK_MS) else stopSelf()
         }
     }
@@ -67,6 +67,11 @@ class LinkKeepService : Service() {
 
     companion object {
         @Volatile var running = false
+
+        /** Stops the service at once (and its ongoing note), as when "Show Working" is switched off. */
+        fun stopNow(context: Context) {
+            if (running) context.stopService(Intent(context, LinkKeepService::class.java))
+        }
 
         /** Starts the service when it should run and isn't (only while the app is visible, or Android refuses). */
         fun maybeStart(context: Context) {

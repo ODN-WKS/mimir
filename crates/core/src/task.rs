@@ -161,6 +161,10 @@ pub struct Task {
     /// replies go there (Claude Code has one writer). Not saved.
     #[serde(skip)]
     pub live_elsewhere: bool,
+    /// Found running outside Mímir, and the person has not acted on it in
+    /// Mímir since. Saved, so a restart keeps it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub outside: bool,
     /// With `live_elsewhere`: "app" (the Claude app) or "terminal". Not saved.
     #[serde(skip)]
     pub elsewhere_in: Option<String>,
@@ -352,6 +356,7 @@ impl Task {
             active_unix: None,
             host: None,
             live_elsewhere: false,
+            outside: false,
             elsewhere_in: None,
             failed: false,
             background: false,
@@ -399,6 +404,7 @@ impl Task {
         self.placed_why = h.placed_why.clone();
         self.active_unix = h.active_unix;
         self.live_elsewhere = h.live_elsewhere;
+        self.outside = h.outside;
         self.elsewhere_in = h.elsewhere_in.clone();
         self.failed = h.failed;
         self.background = h.background;

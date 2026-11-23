@@ -182,6 +182,9 @@ class LinkStation(
     private var lastWorkingTitles: List<String> = emptyList()
     /** Called with finished items, each time the PC says some (new ones, or its recent list on connect). */
     @Volatile var onFinished: ((List<io.github.odnwks.mimir.link.LFinished>) -> Unit)? = null
+    /** A task's header came in: its status and whether it works (for the one-alert-per-finish rule). */
+    @Volatile var onHeader: ((String, String, Boolean) -> Unit)? = null
+
     /** True while the link-keeping service runs: the link reconnects as on screen. */
     @Volatile private var kept = false
     fun keepLink(on: Boolean) { kept = on; if (on) { synchronized(lock) { reconnect.soon() }; wakeLoop() } }
@@ -379,7 +382,7 @@ class LinkStation(
                 }
                 // The PC sends everything again, its problems that still stand among it: one
                 // that's gone is no longer shown.
-                is Ev.Snapshot -> { tasks.clear(); entries.clear(); live.clear(); liveAt.clear(); problem = null }
+                is Ev.Snapshot -> { tasks.clear(); entries.clear(); live.clear(); liveAt.clear(); problem = null; io.github.odnwks.mimir.alerts.OutsideTasks.newConnection() }
                 Ev.Ready -> after = {
                     talkers().forEach { it.back() }
                     refreshProjects {
@@ -401,8 +404,22 @@ class LinkStation(
                     if (Wire.TALK in pcFeatures || Wire.CHAT_SYNC in pcFeatures) io.github.odnwks.mimir.standalone.Engine.made()?.linkUp()
                     sendGroundRules()
                 }
-                is Ev.TaskHeader -> { tasks[ev.task.id] = ev.task; io.github.odnwks.mimir.alerts.OutsideTasks.seen(ev.task.id, ev.task.liveElsewhere) }
-                is Ev.Removed -> { tasks.remove(ev.task); entries.remove(ev.task) }
+                is Ev.TaskHeader -> {
+                    tasks[ev.task.id] = ev.task
+                    io.github.odnwks.mimir.alerts.OutsideTasks.header(ev.task.id, ev.task.liveElsewhere, ev.task.outside)
+                    // What waited for this header (a finished or a question) is judged now.
+                    val t = ev.task
+                    val itemsNow = items
+                    after = {
+                        onHeader?.invoke(t.id, t.status, t.busy)
+                        if (itemsNow.any { it.task == t.id }) onItems?.invoke(itemsNow)
+                    }
+                }
+                is Ev.Removed -> {
+                    tasks.remove(ev.task); entries.remove(ev.task)
+                    io.github.odnwks.mimir.alerts.OutsideTasks.removed(ev.task)
+                    io.github.odnwks.mimir.alerts.FinishedGate.removed(ev.task)
+                }
                 is Ev.Entries -> entries.getOrPut(ev.task) { ArrayList() }.let { l ->
                     while (l.size > ev.from) l.removeAt(l.size - 1)
                     l.addAll(ev.entries)

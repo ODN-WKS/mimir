@@ -466,6 +466,7 @@ object Wire {
             mode = h.optString("mode", "Ask"),
             activeUnix = h.optLong("active_unix"),
             liveElsewhere = h.optBoolean("live_elsewhere"),
+            outside = if (h.has("outside")) h.optBoolean("outside") else null,
             long = h.optJSONObject("long")?.let { l ->
                 LongNotice(very = l.optBoolean("very"), own = l.optString("why") == "Own", elsewhere = l.optBoolean("elsewhere"), pages = l.optInt("pages"))
             },
@@ -760,6 +761,8 @@ data class LinkTask(
     val activeUnix: Long = 0,
     /** Its conversation is going on outside Mímir right now (a terminal, the Claude app). */
     val liveElsewhere: Boolean = false,
+    /** The PC says Mímir found it running outside it (null: an older PC doesn't say). */
+    val outside: Boolean? = null,
     /** The conversation has run long (the PC's one rule); null: not long, or an older PC that doesn't say. */
     val long: LongNotice? = null,
     /** Where it goes on, when the PC says: "app" (the Claude app) or "terminal"; "" from an older PC. */

@@ -96,9 +96,16 @@ object Notifier {
             Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
+        // The task's title shows only once the phone is unlocked; the lock screen says how many.
+        val publicNote = NotificationCompat.Builder(context, WORKING)
+            .setSmallIcon(io.github.odnwks.mimir.R.drawable.ic_notify)
+            .setContentTitle(workingWords(n))
+            .build()
         val note = NotificationCompat.Builder(context, WORKING)
             .setSmallIcon(io.github.odnwks.mimir.R.drawable.ic_notify)
             .setContentTitle(if (io.github.odnwks.mimir.ui.AppLock.on(context)) workingWords(n) else workingTitle(titles))
+            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+            .setPublicVersion(publicNote)
             .setOngoing(true)
             .setSilent(true)
             .setOnlyAlertOnce(true)
@@ -120,18 +127,25 @@ object Notifier {
      * Shows a notification for each item not shown before, and takes away the ones answered
      * elsewhere. While the app is on screen it only takes them away.
      */
-    fun show(context: Context, items: List<LItem>, outside: (String?) -> Boolean = OutsideTasks::contains) {
+    fun show(
+        context: Context,
+        items: List<LItem>,
+        outside: (String?) -> Boolean = OutsideTasks::contains,
+        known: (String?) -> Boolean = OutsideTasks::known,
+    ) {
         val prefs = shown(context)
         val before = prefs.getStringSet("ids", emptySet()).orEmpty()
         val now = items.map { it.askId }.toSet()
         val nm = NotificationManagerCompat.from(context)
         for (gone in before - now) nm.cancel(gone, 0)
         val fresh = items.filter { it.askId !in before }
+        // An item of a task whose header hasn't come in yet waits: whether it is outside Mímir is not known.
+        val held = fresh.filter { !known(it.task) }.map { it.askId }.toSet()
         if (!foreground && allowed(context)) {
             val choices = AlertStore.get(context)
-            for (i in fresh) if (AlertRules.postNeeds(choices, Mapping.kind(i.kind), outside(i.task))) post(context, i)
+            for (i in fresh) if (i.askId !in held && AlertRules.postNeeds(choices, Mapping.kind(i.kind), outside(i.task))) post(context, i)
         }
-        prefs.edit().putStringSet("ids", now).apply()
+        prefs.edit().putStringSet("ids", now - held).apply()
     }
 
     /** What this phone told about already: forgotten when the pairing changes. */
@@ -142,14 +156,28 @@ object Notifier {
      * list a pairing ever hears only seeds the ids. While the app is on screen nothing is posted.
      */
     @Synchronized
-    fun showFinished(context: Context, items: List<io.github.odnwks.mimir.link.LFinished>, outside: (String?) -> Boolean = OutsideTasks::contains) {
-        val fresh = FinishedSeen(context).take(items, System.currentTimeMillis() / 1000)
+    fun showFinished(
+        context: Context,
+        items: List<io.github.odnwks.mimir.link.LFinished>,
+        outside: (String?) -> Boolean = OutsideTasks::contains,
+        known: (String?) -> Boolean = OutsideTasks::known,
+    ) {
+        val seen = FinishedSeen(context)
+        // The very first list of a pairing only seeds the ids; after that, only what may alert is taken.
+        val fresh = seen.take(if (seen.seeded()) FinishedGate.pass(items, known) else items, System.currentTimeMillis() / 1000)
         if (foreground || !allowed(context)) return
         val choices = AlertStore.get(context)
         // One note per task: a task that ran several turns shows one, the newest replacing the earlier.
         for (f in fresh.groupBy { it.task }.values.map { it.last() }) {
             if (AlertRules.postFinished(choices, outside(f.task))) postFinished(context, f)
         }
+    }
+
+    /** A task's header came in: what waited for it is judged now. */
+    fun headerSeen(context: Context, task: String, status: String, busy: Boolean) {
+        FinishedGate.header(task, status, busy)
+        val held = FinishedGate.release(task)
+        if (held.isNotEmpty()) showFinished(context, held)
     }
 
     /** The tag of a task's one "finished" note: the next one for the same task replaces it. */

@@ -32,6 +32,7 @@ class Speaker private constructor(context: Context) : Playback {
         .build()
     private var controller: MediaController? = null
     private var binding = false
+    private var pending: com.google.common.util.concurrent.ListenableFuture<MediaController>? = null
 
     /** Lets go of the media session and its notification (nothing plays; it may start again later). */
     private val release = Runnable {
@@ -40,6 +41,8 @@ class Speaker private constructor(context: Context) : Playback {
         player.clearMediaItems()
         controller?.release()
         controller = null
+        pending?.let { MediaController.releaseFuture(it) }
+        pending = null
         binding = false
         app.stopService(android.content.Intent(app, PlaybackService::class.java))
         report()
@@ -59,7 +62,11 @@ class Speaker private constructor(context: Context) : Playback {
         binding = true
         val token = SessionToken(app, ComponentName(app, PlaybackService::class.java))
         val f = MediaController.Builder(app, token).setApplicationLooper(Looper.getMainLooper()).buildAsync()
-        f.addListener({ controller = runCatching { f.get() }.getOrNull(); scheduleRelease() }, { main.post(it) })
+        pending = f
+        f.addListener({
+            // A release while it was still binding cancelled it: nothing to keep.
+            if (pending === f) { controller = runCatching { f.get() }.getOrNull(); pending = null; scheduleRelease() }
+        }, { main.post(it) })
     }
     override var onState: ((PlayState) -> Unit)? = null
 

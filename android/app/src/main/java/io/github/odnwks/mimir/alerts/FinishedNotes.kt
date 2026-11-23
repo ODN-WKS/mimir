@@ -37,6 +37,9 @@ object FinishedNotes {
 class FinishedSeen(context: Context) {
     private val prefs = context.getSharedPreferences("finished_notified", Context.MODE_PRIVATE)
 
+    @Synchronized
+    fun seeded(): Boolean = prefs.getBoolean("seeded", false)
+
     /** The items to show now; every id of [items] is remembered (the first list ever only seeds). */
     @Synchronized
     fun take(items: List<LFinished>, nowS: Long): List<LFinished> {

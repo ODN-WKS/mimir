@@ -690,6 +690,13 @@ pub struct TaskHeader {
     /// terminal, the Claude app): replies go there, not from here.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub live_elsewhere: bool,
+    /// Mímir found this session running outside it (a terminal, the Claude
+    /// app). True until the person acts on it in Mímir (replies, continues);
+    /// the phone alerts for it only when it needs the person. Absent from an
+    /// older PC (the phone tells that from the field missing, so it is
+    /// always sent).
+    #[serde(default)]
+    pub outside: bool,
     /// With `live_elsewhere`: where it still runs, "app" (the Claude app) or
     /// "terminal". Absent from an older PC: say "your PC".
     #[serde(default, skip_serializing_if = "Option::is_none")]

@@ -19,7 +19,6 @@ enum class OutsideMode(val title: String) {
 data class AlertChoices(
     val needsYou: Boolean = true,
     val taskFinished: Boolean = true,
-    val chatReplies: Boolean = true,
     val outside: OutsideMode = OutsideMode.NeedMe,
     val updates: Boolean = true,
     val showWorking: Boolean = true,
@@ -56,7 +55,6 @@ object AlertStore {
         return AlertChoices(
             needsYou = p.getBoolean("needs", d.needsYou),
             taskFinished = p.getBoolean("finished", d.taskFinished),
-            chatReplies = p.getBoolean("chats", d.chatReplies),
             outside = OutsideMode.entries.firstOrNull { it.name == p.getString("outside", null) } ?: d.outside,
             updates = p.getBoolean("updates", d.updates),
             showWorking = p.getBoolean("working", d.showWorking),
@@ -65,7 +63,7 @@ object AlertStore {
 
     fun set(context: Context, c: AlertChoices) {
         prefs(context).edit()
-            .putBoolean("needs", c.needsYou).putBoolean("finished", c.taskFinished).putBoolean("chats", c.chatReplies)
+            .putBoolean("needs", c.needsYou).putBoolean("finished", c.taskFinished)
             .putString("outside", c.outside.name).putBoolean("updates", c.updates).putBoolean("working", c.showWorking)
             .apply()
     }

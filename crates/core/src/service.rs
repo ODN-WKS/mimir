@@ -5535,6 +5535,7 @@ fn header(l: &runner::Live, queued: &HashMap<String, QueuedMessage>) -> TaskHead
         placed_why: t.placement_note.as_deref().and_then(crate::placement::why),
         active_unix: t.active_unix,
         live_elsewhere: t.live_elsewhere,
+        outside: t.outside,
         elsewhere_in: elsewhere_in(t),
         failed: t.stopped_unexpectedly(),
         background: l.in_background(),

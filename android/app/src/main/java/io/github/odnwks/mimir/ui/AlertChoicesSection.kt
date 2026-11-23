@@ -34,8 +34,6 @@ object AlertWords {
     const val NEEDS_NOTE = "Questions and permissions. So a task never waits on you without you knowing."
     const val FINISHED = "A task finished"
     const val FINISHED_NOTE = "One note for each task, when it is done."
-    const val CHATS = "Replies in chats while the app is closed"
-    const val CHATS_NOTE = "A quiet note when a reply is ready."
     const val OUTSIDE = "Sessions from other apps on your PC"
     const val OUTSIDE_NOTE = "Work started outside Mímir, like in a terminal. Your PC can tell when one waits for you in most cases, not in every one."
     const val UPDATES = "Updates to Mímir"
@@ -53,12 +51,12 @@ fun AlertChoicesSection() {
     fun change(f: (AlertChoices) -> AlertChoices) {
         c = AlertStore.change(context, f)
         Notifier.refreshWorking(context)
+        if (!c.showWorking) io.github.odnwks.mimir.alerts.LinkKeepService.stopNow(context)
     }
     SectionTitle(AlertWords.TITLE, Modifier.padding(start = 8.dp, top = 4.dp))
     Panel(background = Palette.Card, border = Palette.Line) {
         Switch(AlertWords.NEEDS, AlertWords.NEEDS_NOTE, c.needsYou) { v -> change { it.copy(needsYou = v) } }
         Switch(AlertWords.FINISHED, AlertWords.FINISHED_NOTE, c.taskFinished) { v -> change { it.copy(taskFinished = v) } }
-        Switch(AlertWords.CHATS, AlertWords.CHATS_NOTE, c.chatReplies) { v -> change { it.copy(chatReplies = v) } }
         Text(AlertWords.OUTSIDE, style = Type.BodyTight.copy(fontWeight = FontWeight.SemiBold), color = Palette.Text, modifier = Modifier.padding(top = 8.dp))
         Text(AlertWords.OUTSIDE_NOTE, style = Type.Label, color = Palette.TextSoft)
         OutsideMode.entries.forEach { m ->

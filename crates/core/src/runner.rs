@@ -552,6 +552,11 @@ impl Runner {
     /// Sends a message with pictures.
     pub fn send_with(&mut self, id: &str, text: &str, pictures: &[Picture]) {
         let Some(i) = self.index(id) else { return };
+        // The person carries on here: the task is theirs from now on.
+        if self.tasks[i].task.outside {
+            self.tasks[i].task.outside = false;
+            self.tasks[i].dirty = true;
+        }
         // Files of the person's own, named in the message: an online model
         // reads a cleaned copy, never the original.
         let (cleaned, file_notes) = self.cleaned_attached_files(i, id, text);
@@ -1297,6 +1302,11 @@ impl Runner {
         let t = &mut self.tasks[i].task;
         let changed = t.live_elsewhere != on;
         t.live_elsewhere = on;
+        // Found outside Mímir: it stays so until the person acts on it here.
+        if on && !t.outside {
+            t.outside = true;
+            self.tasks[i].dirty = true;
+        }
         changed
     }
 

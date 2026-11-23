@@ -765,6 +765,31 @@ mod tests {
         assert!(l.iter().all(|s| s.here));
     }
 
+    /// F5: a session found outside Mímir stays "outside" (also after it goes
+    /// quiet) until the person acts on it in Mímir, and then it is theirs.
+    #[test]
+    fn outside_stays_until_the_person_acts_here() {
+        let h = home("outside");
+        session(&h, "o1", "Sort the notes", None, 5);
+        let mut r = runner(&h);
+        let o = open(&mut r, &h.root, "o1", &set(&["o1"]), now()).unwrap();
+        let outside = |r: &crate::runner::Runner| {
+            r.tasks
+                .iter()
+                .find(|l| l.task.id == o.task)
+                .unwrap()
+                .task
+                .outside
+        };
+        assert!(outside(&r), "found outside Mímir");
+        // It goes quiet: still outside (a flip must not make it the person's).
+        r.set_elsewhere(&o.task, false);
+        assert!(outside(&r));
+        // The person carries on here: theirs from then on, also when it is marked again by a stale scan only if found again.
+        r.send(&o.task, "Carry on");
+        assert!(!outside(&r));
+    }
+
     fn runner(h: &Home) -> crate::runner::Runner {
         let exe = h.base.join("claude-stand-in");
         crate::runner::Runner::new(
