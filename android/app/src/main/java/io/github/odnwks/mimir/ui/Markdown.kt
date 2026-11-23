@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.height
@@ -95,6 +96,13 @@ object Markdown {
         return out
     }
 
+    /** A line that can't be a table row: another kind of block, or a short line with no leading bar. */
+    private fun endsTable(line: String, width: Int): Boolean {
+        val t = line.trim()
+        return t.startsWith("```") || t.startsWith(">") || heading.matches(t) || bullet.matches(line) || numbered.matches(line) || rule.matches(line) ||
+            (!t.startsWith("|") && cells(line).size < width)
+    }
+
     private fun isTableStart(lines: List<String>, i: Int): Boolean =
         i + 1 < lines.size && lines[i].contains('|') && lines[i + 1].contains('-') && lines[i + 1].contains('|') && tableSep.matches(lines[i + 1]) &&
             cells(lines[i]).size == cells(lines[i + 1]).size
@@ -126,7 +134,7 @@ object Markdown {
                     val head = cells(line)
                     val rows = mutableListOf<List<String>>()
                     i += 2
-                    while (i < lines.size && lines[i].isNotBlank() && lines[i].contains('|')) {
+                    while (i < lines.size && lines[i].isNotBlank() && lines[i].contains('|') && !endsTable(lines[i], head.size)) {
                         rows += cells(lines[i]).let { r -> List(head.size) { c -> r.getOrElse(c) { "" } } }
                         i++
                     }
@@ -137,7 +145,14 @@ object Markdown {
                 heading.matches(t) -> { flush(); heading.find(t)!!.let { out += Block.Heading(it.groupValues[1].length, it.groupValues[2]) } }
                 bullet.matches(line) -> { flush(); bullet.find(line)!!.let { out += Block.Item(null, it.groupValues[1].length / 2, it.groupValues[2]) } }
                 numbered.matches(line) -> { flush(); numbered.find(line)!!.let { out += Block.Item(it.groupValues[2], it.groupValues[1].length / 2, it.groupValues[3]) } }
-                t.startsWith(">") -> { flush(); out += Block.Quote(t.removePrefix(">").trim()) }
+                // A run of quote lines is one quote (a table inside it stays readable as its own lines).
+                t.startsWith(">") -> {
+                    flush()
+                    val q = t.removePrefix(">").trim()
+                    val last = out.lastOrNull()
+                    if (last is Block.Quote && lines.getOrNull(i - 1)?.trim()?.startsWith(">") == true) out[out.lastIndex] = Block.Quote(last.text + "\n" + q)
+                    else out += Block.Quote(q)
+                }
                 // A line under a list item that isn't a new item carries on that item.
                 out.lastOrNull() is Block.Item && para.isEmpty() && line.startsWith(" ") ->
                     (out.last() as Block.Item).let { out[out.lastIndex] = it.copy(text = it.text + " " + t) }
@@ -249,7 +264,7 @@ fun MarkdownText(md: String, style: TextStyle, color: Color, modifier: Modifier 
                 is Markdown.Block.Item -> Row(Modifier.padding(start = (b.depth * 20).dp)) {
                     Text(
                         if (b.number != null) "${b.number}." else "•", style = style, color = color,
-                        modifier = Modifier.width(if (b.number != null) 36.dp else 20.dp), textAlign = if (b.number != null) TextAlign.End else TextAlign.Start,
+                        softWrap = false, modifier = if (b.number != null) Modifier.widthIn(min = 36.dp) else Modifier.width(20.dp), textAlign = if (b.number != null) TextAlign.End else TextAlign.Start,
                     )
                     Spacer(Modifier.width(if (b.number != null) 8.dp else 0.dp))
                     Text(Markdown.inline(b.text, codeSpan, link, links), style = style, color = color, modifier = Modifier.weight(1f))
@@ -288,9 +303,12 @@ private fun CodeBlock(b: Markdown.Block.Code, style: TextStyle, color: Color) {
 /** A table as a grid: a bold header row, padded cells, thin lines; a wide one scrolls sideways inside the answer. */
 @Composable
 private fun TableBlock(b: Markdown.Block.Table, style: TextStyle, color: Color, code: SpanStyle, link: SpanStyle, links: Markdown.Links) {
-    val widths = b.header.indices.map { c ->
-        val longest = (listOf(b.header[c]) + b.rows.map { it[c] }).maxOf { Markdown.inline(it).text.length }
-        (longest * 8 + 24).coerceIn(64, 220).dp
+    val fontScale = LocalDensity.current.fontScale
+    val widths = remember(b, fontScale) {
+        b.header.indices.map { c ->
+            val longest = (listOf(b.header[c]) + b.rows.map { it[c] }).maxOf { Markdown.inline(it).text.length }
+            ((longest * 8 + 24) * fontScale).coerceIn(64f, 220f * fontScale).dp
+        }
     }
     Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).border(1.dp, Palette.Line, RoundedCornerShape(8.dp)).horizontalScroll(rememberScrollState())) {
         Column(Modifier.testTag("md-table")) {

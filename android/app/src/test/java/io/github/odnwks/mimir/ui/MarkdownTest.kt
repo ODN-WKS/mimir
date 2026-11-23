@@ -102,4 +102,29 @@ class MarkdownTest {
         val cm = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>().getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
         assertEquals("print('hi')", cm.primaryClip!!.getItemAt(0).text.toString())
     }
+
+    @Test fun aTableEndsAtABulletHeadingOrShortLine() {
+        val b = Markdown.blocks("| a | b |\n|---|---|\n| 1 | 2 |\n- note: x | y\n# Head\n| 3 | 4 |")
+        assertEquals(Markdown.Block.Table(listOf("a", "b"), listOf(listOf("1", "2"))), b[0])
+        assertEquals(Markdown.Block.Item(null, 0, "note: x | y"), b[1])
+        assertEquals(Markdown.Block.Heading(1, "Head"), b[2])
+        val c = Markdown.blocks("| a | b | c |\n|---|---|---|\n| 1 | 2 | 3 |\nplain x | y")
+        assertEquals(Markdown.Block.Para("plain x | y"), c[1])
+    }
+
+    @Test fun aTableInAQuoteStaysOneReadableQuote() {
+        val b = Markdown.blocks("> | a | b |\n> |---|---|\n> | 1 | 2 |")
+        assertEquals(listOf(Markdown.Block.Quote("| a | b |\n|---|---|\n| 1 | 2 |")), b)
+    }
+
+    @Test fun aBigNumberStaysOnOneLineAtBigFont() {
+        val md = (1..100).joinToString("\n") { "$it. tip" }
+        compose.setContent {
+            androidx.compose.runtime.CompositionLocalProvider(androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(2f, 2.0f)) {
+                MimirTheme { MarkdownText(md, Type.Body, Palette.Text) }
+            }
+        }
+        val n = compose.onNodeWithText("100.").fetchSemanticsNode()
+        assertTrue(n.size.height < 2 * (compose.onNodeWithText("9.").fetchSemanticsNode().size.height))
+    }
 }
