@@ -23,12 +23,14 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -51,6 +53,13 @@ const val PC_ALL_TAB = "All"
 const val PC_SETTINGS_ROW = "PC settings"
 const val PC_SETTINGS_HINT = "name, reach from anywhere"
 const val PC_NOTHING_RUNNING = "Nothing is running on your PC right now."
+const val PC_NOTHING_YET = "Nothing here yet"
+/** How often the times in the rows ("2m", "1h") are worked out again while the screen is open. */
+const val PC_TIME_REFRESH_MS = 30_000L
+
+/** Under the tabs while the PC is away: the list is from earlier, so nothing in it is "running". */
+fun pcLastSeenLine(lastSeen: String) =
+    if (lastSeen.isBlank() || lastSeen == "not connected" || lastSeen == "now") "Your PC is away. This list is from earlier." else "Your PC is away. Last seen $lastSeen."
 
 /** The tab's label: "Running · 2". */
 fun pcRunningLabel(n: Int) = "$PC_RUNNING_TAB · $n"
@@ -74,9 +83,18 @@ private fun startOfToday(nowUnix: Long): Long {
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PcSessionsScreen(state: StationState, station: Station, nav: Navigator, nowUnix: Long = System.currentTimeMillis() / 1000) {
+fun PcSessionsScreen(
+    state: StationState, station: Station, nav: Navigator, nowUnix: Long? = null,
+    clock: () -> Long = { System.currentTimeMillis() / 1000 },
+) {
+    var tick by remember { mutableLongStateOf(clock()) }
+    LaunchedEffect(Unit) { while (true) { kotlinx.coroutines.delay(PC_TIME_REFRESH_MS); tick = clock() } }
+    val now = nowUnix ?: tick
+    val away = !state.pc.online
+    // One open at a time: a second tap while the PC is still answering would stack a second screen.
+    var opening by remember { mutableStateOf(false) }
     val sessions = state.pcSessions.orEmpty()
-    val (working, earlier) = pcRunningSplit(sessions, startOfToday(nowUnix))
+    val (working, earlier) = pcRunningSplit(sessions, startOfToday(now))
     var showAll by rememberSaveable { mutableStateOf(false) }
     var refreshing by remember { mutableStateOf(false) }
     LaunchedEffect(refreshing) { if (refreshing) { kotlinx.coroutines.delay(900); refreshing = false } }
@@ -92,15 +110,17 @@ fun PcSessionsScreen(state: StationState, station: Station, nav: Navigator, nowU
         Row(
             Modifier.padding(horizontal = 16.dp).fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Palette.Card).border(1.dp, Palette.Line, RoundedCornerShape(14.dp)).padding(3.dp),
         ) {
-            Seg(pcRunningLabel(working.size), !showAll, Modifier.weight(1f)) { showAll = false }
+            Seg(if (away) PC_RUNNING_TAB else pcRunningLabel(working.size), !showAll, Modifier.weight(1f)) { showAll = false }
             Seg(PC_ALL_TAB, showAll, Modifier.weight(1f)) { showAll = true }
         }
         Spacer(Modifier.size(8.dp))
         PullToRefreshBox(refreshing, { refreshing = true; station.refreshPcSessions() }, Modifier.weight(1f).fillMaxWidth()) {
             val shown = if (showAll) sessions else working
             LazyColumn(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
-                items(shown, key = { it.id }) { s -> SessionRow(s, nowUnix) { open(station, nav, s) } }
-                if (!showAll) {
+                if (away) item("away") { Text(pcLastSeenLine(state.pc.lastSeen), style = Type.Small, color = Palette.TextDim, modifier = Modifier.padding(top = 4.dp, start = 6.dp, bottom = 4.dp)) }
+                items(shown, key = { it.id }) { s -> SessionRow(s, now, away) { if (!opening) { opening = true; open(station, nav, s) { opening = false } } } }
+                if (showAll && sessions.isEmpty()) item("empty") { Text(PC_NOTHING_YET, style = Type.Small, color = Palette.TextDim, modifier = Modifier.padding(top = 12.dp, start = 6.dp)) }
+                if (!showAll && !away) {
                     if (working.isEmpty()) item("none") { Text(PC_NOTHING_RUNNING, style = Type.Small, color = Palette.TextDim, modifier = Modifier.padding(top = 12.dp, start = 6.dp)) }
                     if (earlier > 0) item("more") {
                         Row(Modifier.fillMaxWidth().padding(top = 14.dp), horizontalArrangement = Arrangement.Center) {
@@ -123,9 +143,10 @@ fun PcSessionsScreen(state: StationState, station: Station, nav: Navigator, nowU
 }
 
 /** Opens a session: an idle or ended one becomes a task, one working elsewhere is followed live. */
-private fun open(station: Station, nav: Navigator, s: PcSession) {
-    val go = { id: String -> nav.open(Screen.Task(id)) }
-    station.openPcSession(s.id) { id -> if (id != null) android.os.Handler(android.os.Looper.getMainLooper()).post { go(id) } }
+private fun open(station: Station, nav: Navigator, s: PcSession, finished: () -> Unit) {
+    station.openPcSession(s.id) { id ->
+        android.os.Handler(android.os.Looper.getMainLooper()).post { finished(); if (id != null) nav.open(Screen.Task(id)) }
+    }
 }
 
 @Composable
@@ -138,11 +159,12 @@ private fun Seg(text: String, on: Boolean, modifier: Modifier, onClick: () -> Un
 }
 
 @Composable
-private fun SessionRow(s: PcSession, nowUnix: Long, onClick: () -> Unit) {
-    val working = s.state == PcSessionState.Working
+private fun SessionRow(s: PcSession, nowUnix: Long, away: Boolean, onClick: () -> Unit) {
+    // While the PC is away the row is from earlier: no green dot, dimmed.
+    val working = s.state == PcSessionState.Working && !away
     val time = pcAgo(s.lastUnix, nowUnix)
     Row(
-        Modifier.fillMaxWidth().clickable(role = Role.Button, onClick = onClick).heightIn(min = 56.dp).padding(horizontal = 6.dp, vertical = 12.dp)
+        Modifier.fillMaxWidth().alpha(if (away) 0.55f else 1f).clickable(role = Role.Button, onClick = onClick).heightIn(min = 56.dp).padding(horizontal = 6.dp, vertical = 12.dp)
             .semantics(mergeDescendants = true) { contentDescription = "${s.title}, ${s.line}, ${if (working) "working now" else time}" },
         horizontalArrangement = Arrangement.spacedBy(11.dp), verticalAlignment = Alignment.Top,
     ) {

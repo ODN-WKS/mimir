@@ -119,7 +119,8 @@ fun TaskScreen(taskId: String, state: StationState, station: Station, nav: Navig
     var cutOff by rememberSaveable(task.id) { mutableStateOf(false) }
     // A PC that lists its sessions: a task going on elsewhere is followed with a banner, Stop and Carry on here.
     val listsSessions = state.pcSessions != null
-    var followed by rememberSaveable(task.id) { mutableStateOf(false) }
+    // Known on the first frame: from the task itself, or from the PC's list (a session working somewhere else).
+    var followed by rememberSaveable(task.id) { mutableStateOf(listsSessions && (task.liveElsewhere || followedElsewhere(state, task.id))) }
     var carried by rememberSaveable(task.id) { mutableStateOf(false) }
     if (listsSessions && task.liveElsewhere) followed = true
     val reduce = LocalReduceMotion.current
@@ -515,6 +516,10 @@ fun followedIn(state: StationState, taskId: String): String {
     val s = state.pcSessions?.firstOrNull { it.task == taskId } ?: return "another app"
     return if (s.app) "the Claude app" else "a terminal"
 }
+
+/** True when the PC's list says this task's session is working in a terminal or the Claude app. */
+fun followedElsewhere(state: StationState, taskId: String): Boolean =
+    state.pcSessions?.any { it.task == taskId && it.state == io.github.odnwks.mimir.data.PcSessionState.Working && !it.here } == true
 
 /** The words of the green banner over a task that is going on elsewhere. */
 fun followBannerText(where: String) = "Running in $where. You can follow it here."

@@ -154,6 +154,61 @@ class PcSessionsTest {
         assertTrue(compose.onAllNodesWithText(PC_SETTINGS_ROW).fetchSemanticsNodes().isEmpty())
     }
 
+    @Test fun whileThePcIsAwayTheListIsDimmedWithNoGreenAndNoCount() {
+        val base = station(listOf(mine, idle))
+        val away = base.state.value.let { it.copy(pc = it.pc.copy(online = false, lastSeen = "09:41")) }
+        compose.setContent { MimirTheme(reduceMotion = true) { PcSessionsScreen(away, base, nav, nowUnix = now) } }
+        compose.waitForIdle()
+        compose.onNodeWithText(PC_RUNNING_TAB).assertIsDisplayed()
+        assertTrue(compose.onAllNodesWithText(pcRunningLabel(1)).fetchSemanticsNodes().isEmpty())
+        compose.onNodeWithText(pcLastSeenLine("09:41")).assertIsDisplayed()
+        assertEquals("Your PC is away. Last seen 09:41.", pcLastSeenLine("09:41"))
+        compose.onNodeWithText("Plan the spring planting").assertIsDisplayed()
+    }
+
+    @Test fun theAllTabSaysNothingHereYetWhenEmpty() {
+        val st = station(emptyList())
+        compose.setContent { MimirTheme(reduceMotion = true) { PcSessionsScreen(st.state.value, st, nav, nowUnix = now) } }
+        compose.waitForIdle()
+        compose.onNodeWithText(PC_ALL_TAB).performClick(); compose.waitForIdle()
+        compose.onNodeWithText(PC_NOTHING_YET).assertIsDisplayed()
+    }
+
+    @Test fun aSecondTapWhileOpeningIsIgnored() {
+        val asked = mutableListOf<String>()
+        val base = station(listOf(mine))
+        val st = object : Station by base { override fun openPcSession(session: String, done: (String?) -> Unit) { asked += session } }
+        compose.setContent { MimirTheme(reduceMotion = true) { PcSessionsScreen(base.state.value, st, nav, nowUnix = now) } }
+        compose.waitForIdle()
+        compose.onNodeWithText("Plan the spring planting").performClick(); compose.waitForIdle()
+        compose.onNodeWithText("Plan the spring planting").performClick(); compose.waitForIdle()
+        assertEquals(listOf("s-1"), asked)
+    }
+
+    @Test fun theTimesRefreshEveryHalfMinute() {
+        var t = now
+        val st = station(listOf(task))
+        compose.setContent { MimirTheme(reduceMotion = true) { PcSessionsScreen(st.state.value, st, nav, clock = { t }) } }
+        compose.waitForIdle()
+        compose.onNodeWithText("2m").assertIsDisplayed()
+        t = now + 180
+        compose.mainClock.advanceTimeBy(PC_TIME_REFRESH_MS + 100); compose.waitForIdle()
+        compose.onNodeWithText("5m").assertIsDisplayed()
+    }
+
+    @Test fun aSessionWorkingElsewhereIsFollowedFromTheFirstFrame() {
+        val id = ExampleData.TASK_ALLOW
+        val base = station(listOf(mine.copy(here = false, task = id)))
+        assertTrue(followedElsewhere(base.state.value, id))
+        assertTrue(!followedElsewhere(base.state.value.copy(pcSessions = listOf(mine.copy(here = true, task = id))), id))
+        assertTrue(!followedElsewhere(base.state.value.copy(pcSessions = listOf(idle.copy(task = id))), id))
+        assertTrue(!followedElsewhere(base.state.value.copy(pcSessions = null), id))
+        compose.setContent { MimirTheme(reduceMotion = true) { AppRoot(base, nav) } }
+        compose.waitForIdle()
+        nav.open(Screen.Task(id)); compose.waitForIdle()
+        compose.onNodeWithText(FOLLOW_CARRY_ON).assertIsDisplayed()
+    }
+
     @Test fun aSessionGoingOnElsewhereShowsTheBannerAndStopWorks() {
         val id = ExampleData.TASK_ALLOW
         val linked = mine.copy(here = true, task = id)
