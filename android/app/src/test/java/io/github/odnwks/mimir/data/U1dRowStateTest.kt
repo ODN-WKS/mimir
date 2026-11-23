@@ -50,6 +50,25 @@ class U1dRowStateTest {
         assertEquals(KeyboardCapitalization.None, PAIR_CODE_KEYBOARD.capitalization)
     }
 
+    @Test fun onlyDoneIsGreenAndUnknownWordsNeverAre() {
+        listOf("Was working (PC away)", "Archived", "Answering…", "Something new").forEach { w ->
+            assertFalse("$w must not be Done", Chip.ofWords(w) == Chip.Done)
+        }
+        assertEquals(Chip.Away, Chip.ofWords("Was working (PC away)"))
+        assertEquals(Chip.Archived, Chip.ofWords("Archived"))
+        assertEquals(Chip.Running, Chip.ofWords("Answering…"))
+        assertEquals(Chip.Done, Chip.ofWords("Done"))
+        val pt = ProjectTask("t", "T", "Odd words", Chip.Running)
+        val kept = Mapping.withTaskWords(pt, "Something new")
+        assertEquals("Odd words", kept.meta)
+        assertEquals(Chip.Waiting, kept.chip)
+        assertEquals("Archived", Mapping.withTaskWords(pt, "Archived").meta)
+    }
+
+    @Test fun aWrappedPastedCodeWorks() {
+        assertEquals("abc-kitchen-pc", cleanPairCode("abc-\nkitchen -pc\r\n"))
+    }
+
     @Test fun pastedCodeWithSpacesWorks() {
         assertEquals("abc-kitchen-pc", cleanPairCode("  abc-kitchen-pc \n"))
     }

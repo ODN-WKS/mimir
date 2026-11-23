@@ -64,8 +64,8 @@ val PAIR_CODE_KEYBOARD = androidx.compose.foundation.text.KeyboardOptions(
     keyboardType = androidx.compose.ui.text.input.KeyboardType.Uri,
 )
 
-/** A pasted code with spaces or line ends around it. */
-fun cleanPairCode(raw: String): String = raw.trim()
+/** A pasted code without spaces or line ends (a messenger may wrap it). */
+fun cleanPairCode(raw: String): String = raw.filterNot { it.isWhitespace() }
 
 /** Connect your PC: the intro, and the three plain steps (the words the PC really uses). */
 const val CONNECT_TITLE = "Connect your PC"
@@ -143,7 +143,7 @@ fun PairScreen(station: Station, nav: Navigator, screenLock: Boolean = true) {
             containerColor = Palette.Card,
         )
     }
-    val scan = rememberLauncherForActivityResult(ScanContract()) { r -> r.contents?.let { go(it) } }
+    val scan = rememberLauncherForActivityResult(ScanContract()) { r -> r.contents?.let { go(cleanPairCode(it)) } }
     val startScan = {
         scan.launch(
             ScanOptions().setDesiredBarcodeFormats(ScanOptions.QR_CODE).setBeepEnabled(false)

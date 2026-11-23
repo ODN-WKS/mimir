@@ -85,6 +85,10 @@ pub struct Task {
     /// File-changing calls waiting for their result: (tool_use_id, path).
     #[serde(default)]
     pending_files: Vec<(String, String)>,
+    /// Commands started with `run_in_background` (tool_use ids): their step stays open
+    /// after a turn ends cleanly, until the run ends.
+    #[serde(skip)]
+    background_steps: Vec<String>,
     #[serde(default)]
     pub mode: Mode,
     /// e.g. "claude-opus-5-5", or "auto"; None uses Claude Code's default.
@@ -310,6 +314,7 @@ impl Task {
             weekly: None,
             pending_plan: vec![],
             pending_files: vec![],
+            background_steps: vec![],
             mode: Mode::Ask,
             model: None,
             auto_choice: None,
@@ -499,6 +504,9 @@ impl Task {
     }
 
     fn tool_use(&mut self, id: &str, name: &str, input: &Value, now_ms: u64) {
+        if input.get("run_in_background").and_then(Value::as_bool) == Some(true) {
+            self.background_steps.push(id.to_string());
+        }
         let get = |k: &str| input.get(k).and_then(Value::as_str).unwrap_or_default();
         match name {
             "TaskCreate" => {
@@ -642,11 +650,25 @@ impl Task {
         if f.context_window > 0 {
             self.context_window = f.context_window;
         }
-        // Steps still running when a turn ended with a problem, or after Pause or Stop,
-        // were cut short. After a clean end one may be a command left running in the
-        // background: it stays open until the run ends (see `settle_open_steps`).
+        // Steps still running when the turn ended were cut short. After a clean end a command
+        // started in the background stays open until the run ends (see `settle_open_steps`).
         if f.is_error || matches!(self.status, Status::Paused | Status::Stopped) {
             self.close_open_steps(now_ms);
+        } else {
+            let keep = std::mem::take(&mut self.background_steps);
+            for e in &mut self.entries {
+                if let Entry::Step(st) = e
+                    && st.ok.is_none()
+                    && !keep.contains(&st.tool_use_id)
+                {
+                    st.ok = Some(false);
+                    st.stopped = true;
+                    if now_ms > 0 {
+                        st.took_ms = Some(now_ms.saturating_sub(st.started_ms));
+                    }
+                }
+            }
+            self.background_steps = keep;
         }
         match self.status {
             // The owner already chose Pause or Stop; keep that.
@@ -1083,6 +1105,61 @@ fn patch_lines(detail: &Value) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn finished_ok() -> Event {
+        Event::Finished(Finished {
+            session_id: "s".into(),
+            subtype: "success".into(),
+            is_error: false,
+            text: None,
+            duration_ms: 0,
+            cost_usd: 0.0,
+            terminal_reason: "completed".into(),
+            context_window: 0,
+        })
+    }
+
+    fn step_oks(t: &Task) -> Vec<Option<bool>> {
+        t.entries
+            .iter()
+            .filter_map(|e| match e {
+                Entry::Step(s) => Some(s.ok),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_result_less_step_closes_when_a_turn_ends_cleanly() {
+        let mut t = Task::new("t".into(), "T".into(), "/p".into(), 0);
+        t.apply(
+            &Event::ToolUse {
+                id: "a".into(),
+                name: "Bash".into(),
+                input: serde_json::json!({"command": "ls"}),
+            },
+            1,
+        );
+        t.apply(&finished_ok(), 2);
+        assert_eq!(step_oks(&t), vec![Some(false)]);
+    }
+
+    #[test]
+    fn a_background_step_stays_open_at_a_clean_end_then_settles_done() {
+        let mut t = Task::new("t".into(), "T".into(), "/p".into(), 0);
+        t.apply(
+            &Event::ToolUse {
+                id: "b".into(),
+                name: "Bash".into(),
+                input: serde_json::json!({"command": "sleep 3", "run_in_background": true}),
+            },
+            1,
+        );
+        t.apply(&finished_ok(), 2);
+        assert_eq!(step_oks(&t), vec![None]);
+        t.settle_open_steps(3);
+        assert_eq!(step_oks(&t), vec![Some(true)]);
+    }
 
     #[test]
     fn system_text_is_never_a_title() {

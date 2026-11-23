@@ -587,7 +587,8 @@ data class Check(val name: String, val ok: Boolean)
 
 enum class Chip(val label: String) {
     Running("Working"), Idea("Idea"), Done("Done"), Stopped("Stopped"), Waiting("Waiting"),
-    NeedsYou("Needs you"), WaitingForYou("Waiting for you"), Paused("Paused"), Starting("Starting"), Live("Live");
+    NeedsYou("Needs you"), WaitingForYou("Waiting for you"), Paused("Paused"), Starting("Starting"), Live("Live"),
+    Away("Was working"), Archived("Archived");
 
     companion object {
         /** A task's chip from the PC's status words: a stopped or denied task isn't "Done". */
@@ -597,17 +598,29 @@ enum class Chip(val label: String) {
             else -> Done
         }
 
-        /** A task's chip from [Task.stateWords], the one source every screen shows. */
+        /**
+         * A task's chip from [Task.stateWords], the one source every screen shows. Only "Done" is
+         * green; a word not known here gets the neutral chip, never Done.
+         */
         fun ofWords(words: String): Chip = when (words) {
+            "Done" -> Done
             "Needs you" -> NeedsYou
             "Waiting for you" -> WaitingForYou
             "Paused" -> Paused
             "Starting" -> Starting
-            "Working" -> Running
+            "Working", "Answering…" -> Running
             "Stopped" -> Stopped
             "Live" -> Live
-            else -> Done
+            "Was working (PC away)" -> Away
+            "Archived" -> Archived
+            else -> Waiting
         }
+
+        /** The words [ofWords] knows. */
+        fun knows(words: String): Boolean = words in setOf(
+            "Done", "Needs you", "Waiting for you", "Paused", "Starting", "Working", "Answering…",
+            "Stopped", "Live", "Was working (PC away)", "Archived",
+        )
     }
 }
 

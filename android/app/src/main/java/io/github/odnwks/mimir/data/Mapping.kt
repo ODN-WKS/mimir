@@ -27,7 +27,7 @@ object Mapping {
      */
     /** A project page's task row with the task's own state words (the same as its task screen). */
     fun withTaskWords(pt: ProjectTask, words: String): ProjectTask =
-        pt.copy(meta = words, chip = Chip.ofWords(words))
+        if (Chip.knows(words)) pt.copy(meta = words, chip = Chip.ofWords(words)) else pt.copy(chip = Chip.ofWords(words))
 
     fun working(t: io.github.odnwks.mimir.link.LinkTask): Boolean = t.busy || t.status == "Working"
 
