@@ -66,7 +66,7 @@ impl SettingsPage {
         match self {
             SettingsPage::General => "Who answers, how the window looks, and project work.",
             SettingsPage::Models => {
-                "Your Anthropic plan, free models on your PC, what happens when the online limit runs out, and the phone's models."
+                "Who answers, the free models on your PC, the phone's models, and an optional online plan."
             }
             SettingsPage::Phone => "Pair a phone, and how phones reach your PC.",
             SettingsPage::Voice => "The voice that reads replies aloud, and Talk.",

@@ -112,7 +112,7 @@ pub fn about(ui: &mut egui::Ui) {
     ui.label(
         RichText::new(format!(
             "How fast each model uses up your Anthropic plan. On a Pro or Max plan you are not billed \
-             per message. The prices are Anthropic's, per million words-ish (750,000 words), \
+             per message. The prices are Anthropic's, per 750,000 words, \
              checked {PRICES_CHECKED}."
         ))
         .color(MUTED)

@@ -6,6 +6,7 @@
 #
 # Setup: install, sign in, update, sign out of the outside tool on the PC.
 crates/ui/src/setup_view.rs|Claude Code
+crates/ui/src/setup_view.rs|a Claude plan
 # The Labs check ("Claude Code found / signed in") on the PC and the phone.
 crates/ui/src/view_labs.rs|Claude Code
 crates/core/src/labs.rs|Claude Code

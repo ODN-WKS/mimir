@@ -1,11 +1,10 @@
-//! The setup part of Settings: Claude Code and GitHub.
+//! The optional Claude setup in Settings › Models: install and sign in to
+//! Claude Code, for people who want a Claude plan. Nothing here shows up
+//! until a person opens that section.
 
-use crate::theme::{self, JADE, MUTED, ORANGE, RED};
+use crate::theme::{self, JADE, MUTED, RED};
 use eframe::egui::{self, RichText};
-use mimir_core::setup::{
-    self, ClaudeStatus, GITHUB_DEVICE_PAGE, GITHUB_LOGIN, GithubStatus, INSTALL_CLAUDE, Job,
-    JobState,
-};
+use mimir_core::setup::{self, ClaudeStatus, INSTALL_CLAUDE, Job, JobState};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -21,13 +20,16 @@ struct Watch {
 }
 
 /// How often, and for how long, to check while a sign-in is open.
+/// What the card says first: Claude is an option, and where the words go.
+pub(crate) const OPTIONAL_NOTE: &str =
+    "Optional: connect a Claude plan for heavy coding. Those words then go to Anthropic.";
+
 const WATCH_EVERY: Duration = Duration::from_secs(3);
 const WATCH_FOR: Duration = Duration::from_secs(15 * 60);
 
 #[derive(Default)]
 struct Snapshot {
     claude: Option<ClaudeStatus>,
-    github: Option<GithubStatus>,
     checking: bool,
 }
 
@@ -35,10 +37,7 @@ pub struct SetupPanel {
     claude: PathBuf,
     snap: Arc<Mutex<Snapshot>>,
     job: Option<Job>,
-    github_login: Option<Job>,
     job_seen: bool,
-    login_seen: bool,
-    opened_device_page: bool,
     /// A sign-in is open in a terminal window; checked until it finishes.
     watching: Option<Watch>,
     ctx: egui::Context,
@@ -50,10 +49,7 @@ impl SetupPanel {
             claude,
             snap: Arc::new(Mutex::new(Snapshot::default())),
             job: None,
-            github_login: None,
             job_seen: false,
-            login_seen: false,
-            opened_device_page: false,
             watching: None,
             ctx: ctx.clone(),
         };
@@ -61,7 +57,7 @@ impl SetupPanel {
         p
     }
 
-    /// Checks Claude Code and GitHub in the background.
+    /// Checks Claude Code in the background.
     pub fn refresh(&self) {
         {
             let mut s = self.snap.lock().unwrap();
@@ -75,23 +71,21 @@ impl SetupPanel {
         let ctx = self.ctx.clone();
         std::thread::spawn(move || {
             let c = setup::claude_status(&claude);
-            let g = setup::github_status();
             let mut s = snap.lock().unwrap();
             s.claude = Some(c);
-            s.github = Some(g);
             s.checking = false;
             ctx.request_repaint();
         });
     }
 
-    /// Something the owner must do before tasks can run, in plain words.
-    pub fn needs_setup(&self) -> Option<&'static str> {
+    /// Whether Claude Code is installed and signed in (None while the
+    /// first check runs). Only Settings reads this; nothing else in the
+    /// window asks a person to set Claude up.
+    pub fn claude_ready(&self) -> Option<bool> {
         let s = self.snap.lock().unwrap();
-        match &s.claude {
-            Some(c) if c.version.is_none() => Some("Install Claude Code"),
-            Some(c) if !c.signed_in => Some("Sign in to Claude Code"),
-            _ => None,
-        }
+        s.claude
+            .as_ref()
+            .map(|c| c.version.is_some() && c.signed_in)
     }
 
     fn wake(&self) -> impl Fn() + Send + Sync + 'static {
@@ -157,37 +151,34 @@ impl SetupPanel {
         // A finished job changes what is installed or signed in: check
         // again once for each.
         let mut finished = false;
-        for (job, seen) in [
-            (&self.job, &mut self.job_seen),
-            (&self.github_login, &mut self.login_seen),
-        ] {
-            if let Some(j) = job
-                && !j.running()
-                && !*seen
-            {
-                *seen = true;
-                finished = true;
-            }
+        if let Some(j) = &self.job
+            && !j.running()
+            && !self.job_seen
+        {
+            self.job_seen = true;
+            finished = true;
         }
         if finished {
             self.refresh();
         }
-        let (claude, github, checking) = {
+        let (claude, checking) = {
             let s = self.snap.lock().unwrap();
-            (s.claude.clone(), s.github.clone(), s.checking)
+            (s.claude.clone(), s.checking)
         };
         let busy = self.job.as_ref().is_some_and(Job::running);
 
         theme::card().show(ui, |ui| {
             ui.set_width(ui.available_width());
             ui.horizontal(|ui| {
-                theme::heading(ui, "Claude Code");
+                theme::heading(ui, "Optional: a Claude plan");
+
                 if checking {
                     ui.spinner();
                 } else if ui.link("Check again").clicked() {
                     self.refresh();
                 }
             });
+            ui.label(RichText::new(OPTIONAL_NOTE).color(MUTED).size(13.0));
             match &claude {
                 None => {
                     ui.label(RichText::new("Checking…").color(MUTED));
@@ -195,7 +186,9 @@ impl SetupPanel {
                 Some(c) => {
                     match &c.version {
                         Some(v) => ui.label(format!("Installed: version {v}")),
-                        None => ui.label(RichText::new("Not installed yet").color(ORANGE)),
+                        None => ui.label(
+                            RichText::new("Not set up. Nothing is sent anywhere.").color(MUTED),
+                        ),
                     };
                     if c.version.is_some() {
                         if c.signed_in {
@@ -209,13 +202,13 @@ impl SetupPanel {
                                     .color(JADE),
                             );
                         } else {
-                            ui.label(RichText::new("Not signed in to Claude Code").color(ORANGE));
+                            ui.label(RichText::new("Installed, not signed in yet.").color(MUTED));
                         }
                     }
                     ui.horizontal(|ui| {
                         if c.version.is_none() {
                             if ui
-                                .add_enabled(!busy, theme::primary("Install Claude Code"))
+                                .add_enabled(!busy, theme::quiet("Install Claude Code"))
                                 .clicked()
                             {
                                 self.job_seen = false;
@@ -262,7 +255,7 @@ impl SetupPanel {
                                     self.start_sign_in(setup::claude_switch_account(&self.claude));
                                 }
                             } else if ui
-                                .add_enabled(!busy, theme::primary("Sign in to Claude Code"))
+                                .add_enabled(!busy, theme::quiet("Sign in to Claude Code"))
                                 .on_hover_text(
                                     "Opens Claude Code's sign-in in a terminal window and \
                                      your default browser",
@@ -288,79 +281,6 @@ impl SetupPanel {
                 }
             }
         });
-        ui.add_space(8.0);
-
-        theme::card().show(ui, |ui| {
-            ui.set_width(ui.available_width());
-            theme::heading(ui, "GitHub");
-            match &github {
-                None => {
-                    ui.label(RichText::new("Checking…").color(MUTED));
-                }
-                Some(g) if !g.gh_installed => {
-                    ui.label(RichText::new("GitHub's sign-in tool (gh) is not installed.").color(ORANGE));
-                }
-                Some(g) => {
-                    match &g.account {
-                        Some(a) => ui.label(RichText::new(format!("Signed in to GitHub as {a}")).color(JADE)),
-                        None => ui.label(RichText::new("Not signed in to GitHub").color(ORANGE)),
-                    };
-                    ui.label(
-                        RichText::new("Used to get Mímir updates from its private repository.")
-                            .color(MUTED)
-                            .size(13.0),
-                    );
-                    let signing = self.github_login.as_ref().is_some_and(Job::running);
-                    if !signing {
-                        let label = if g.account.is_some() { "Sign in again" } else { "Sign in to GitHub" };
-                        let button = if g.account.is_some() { theme::quiet(label) } else { theme::primary(label) };
-                        if ui.add(button).clicked() {
-                            self.opened_device_page = false;
-                            self.login_seen = false;
-                            self.github_login = Some(Job::start("Signing in to GitHub", GITHUB_LOGIN, self.wake()));
-                        }
-                    }
-                }
-            }
-            if let Some(j) = &self.github_login {
-                let lines = j.lines();
-                match (j.state(), setup::parse_device_code(&lines)) {
-                    (JobState::Running, Some(code)) => {
-                        if !self.opened_device_page {
-                            self.opened_device_page = true;
-                            ui.ctx().copy_text(code.clone());
-                            setup::open_url(GITHUB_DEVICE_PAGE);
-                        }
-                        ui.add_space(6.0);
-                        ui.label("Your browser is opening GitHub. Enter this code there:");
-                        ui.horizontal(|ui| {
-                            ui.label(RichText::new(&code).monospace().size(26.0).color(JADE).strong());
-                            if ui.add(theme::quiet("Copy code")).clicked() {
-                                ui.ctx().copy_text(code.clone());
-                            }
-                            if ui.link("Open the page again").clicked() {
-                                setup::open_url(GITHUB_DEVICE_PAGE);
-                            }
-                        });
-                        ui.label(RichText::new("The code is already copied. This updates by itself when you finish.").color(MUTED).size(13.0));
-                    }
-                    (JobState::Running, None) => {
-                        ui.horizontal(|ui| {
-                            ui.spinner();
-                            ui.label("Asking GitHub for a sign-in code…");
-                        });
-                    }
-                    (JobState::Done { ok: true }, _) => {
-                        ui.label(RichText::new("GitHub sign-in finished.").color(JADE));
-                    }
-                    (JobState::Done { ok: false }, _) => {
-                        ui.label(RichText::new("GitHub sign-in did not finish.").color(RED));
-                        job_output(ui, &lines);
-                    }
-                }
-            }
-        });
-
         if let Some(j) = &self.job {
             ui.add_space(8.0);
             theme::card().show(ui, |ui| {

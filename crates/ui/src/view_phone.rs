@@ -404,35 +404,13 @@ impl App {
             );
         });
         ui.add_space(10.0);
-        theme::card().show(ui, |ui| {
-            ui.set_width(ui.available_width());
-            theme::heading(ui, "Three different phone things");
-            for (what, says) in [
-                (
-                    "Mímir phone app",
-                    "Pair it above. Follow and answer your work, and use private models on the phone.",
-                ),
-                (
-                    "Anthropic's own phone app",
-                    "A project's remote control lets it start and drive sessions on this PC.",
-                ),
-                (
-                    "Remote control in a terminal",
-                    "A task's ⋯ menu shows a QR code for Anthropic's app, for that one folder.",
-                ),
-            ] {
-                ui.label(RichText::new(what).strong());
-                ui.label(RichText::new(says).color(MUTED).size(13.0));
-                ui.add_space(4.0);
-            }
-            ui.label(
-                RichText::new(
-                    "The phone app locks with a fingerprint or its PIN; change that on the phone.",
-                )
-                .color(MUTED)
-                .size(13.0),
-            );
-        });
+        ui.label(
+            RichText::new(
+                "The phone app locks with a fingerprint or its PIN; change that on the phone.",
+            )
+            .color(MUTED)
+            .size(13.0),
+        );
     }
 
     /// "Do the words match?" and "Whose phone is this?" over everything

@@ -56,7 +56,6 @@ impl App {
         let foot = crate::view_top::Foot {
             r: self.station.as_ref().ok(),
             panel: &self.app_panel,
-            setup: self.setup.needs_setup(),
             view: self.view,
         };
         let Ok(r) = &self.station else {
@@ -199,6 +198,10 @@ impl App {
                     let mut else_open = ui
                         .data(|d| d.get_temp::<bool>(else_id))
                         .unwrap_or(r.tasks.is_empty());
+                    // Nothing from elsewhere: no section, no toggle.
+                    if elsewhere.is_empty() {
+                        else_open = false;
+                    }
                     ui.add_space(10.0);
                     ui.horizontal_wrapped(|ui| {
                         ui.spacing_mut().item_spacing.x = 6.0;
@@ -227,13 +230,17 @@ impl App {
                         };
                         if !archived.is_empty() {
                             quiet(ui, crate::labels::archived(archived.len()), &mut arch_open);
-                            ui.label(RichText::new("·").color(MUTED).size(12.5));
+                            if !elsewhere.is_empty() {
+                                ui.label(RichText::new("·").color(MUTED).size(12.5));
+                            }
                         }
-                        quiet(
-                            ui,
-                            crate::labels::from_elsewhere(elsewhere.len()),
-                            &mut else_open,
-                        );
+                        if !elsewhere.is_empty() {
+                            quiet(
+                                ui,
+                                crate::labels::from_elsewhere(elsewhere.len()),
+                                &mut else_open,
+                            );
+                        }
                         if !projects.is_empty() {
                             ui.label(RichText::new("·").color(MUTED).size(12.5));
                             let mut open = false;
@@ -288,16 +295,6 @@ impl App {
                             );
                             for o in elsewhere {
                                 other_row(ui, o, actions);
-                            }
-                            if ui
-                                .link(RichText::new("Cloud sessions on claude.ai ↗").size(13.0))
-                                .on_hover_text(
-                                    "Sessions that ran on Anthropic's computers are not on this \
-                                 PC; they open in your browser",
-                                )
-                                .clicked()
-                            {
-                                mimir_core::setup::open_url("https://claude.ai/code");
                             }
                         });
                     }
@@ -866,7 +863,7 @@ impl Side<'_> {
                 if self.remote_on.contains(project) {
                     "Turn remote control off"
                 } else {
-                    "Turn remote control on (phone or claude.ai)"
+                    "Turn on remote control"
                 },
                 "",
             )

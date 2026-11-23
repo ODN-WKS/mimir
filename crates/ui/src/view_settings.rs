@@ -212,8 +212,6 @@ impl App {
             });
         });
         gap(ui);
-        self.setup.show(ui);
-        gap(ui);
         if let Ok(r) = &self.station {
             theme::card().show(ui, |ui| {
                 ui.set_width(ui.available_width());

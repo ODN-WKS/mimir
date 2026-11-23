@@ -165,6 +165,9 @@ pub fn power_words(s: &Settings) -> String {
     format!("{chats}; {work}.")
 }
 
+/// The label of the choice that sends words out: it names where they go.
+const ONLINE_CHOICE: &str = "Online (your words go to Anthropic)";
+
 /// What "Remove" asks first, per model (temp data).
 fn confirm_id(name: &str) -> egui::Id {
     egui::Id::unique(("remove-free-model", name))
@@ -236,8 +239,6 @@ impl App {
         ui.add_space(10.0);
         self.ground_rules_card(ui);
         ui.add_space(10.0);
-        claude_card(ui);
-        ui.add_space(10.0);
         self.on_this_pc_card(ui);
         ui.add_space(10.0);
         store_card(ui);
@@ -245,6 +246,14 @@ impl App {
         phone_models_card(ui);
         ui.add_space(10.0);
         self.weekly_card(ui);
+        ui.add_space(10.0);
+        // Claude is one optional section at the end: its setup, and its
+        // models and prices only once a plan is connected.
+        self.setup.show(ui);
+        if self.setup.claude_ready() == Some(true) {
+            ui.add_space(10.0);
+            claude_card(ui);
+        }
     }
 
     /// Ground rules: sent with every task, Claude's and the free models'.
@@ -291,13 +300,18 @@ impl App {
             ui.set_width(ui.available_width());
             theme::heading(ui, "Who answers");
             let paid = self.settings.chats_paid();
+            let ready = self.setup.claude_ready() == Some(true);
             ui.horizontal_wrapped(|ui| {
                 ui.label("Chats and look-ups:");
                 if ui.radio(!paid, "Free (on your PC)").clicked() && paid {
                     self.settings.chats_engine = Some("free".into());
                     self.settings_dirty = true;
                 }
-                if ui.radio(paid, "Online").clicked() && !paid {
+                if ui
+                    .add_enabled(ready || paid, egui::RadioButton::new(paid, ONLINE_CHOICE))
+                    .clicked()
+                    && !paid
+                {
                     self.settings.chats_engine = Some("paid".into());
                     self.settings_dirty = true;
                 }
@@ -328,15 +342,26 @@ impl App {
                     self.settings.set_power(Power::FreeOnly);
                     self.settings_dirty = true;
                 }
-                if ui.radio(!free, "Online").clicked() && free {
+                if ui
+                    .add_enabled(ready || !free, egui::RadioButton::new(!free, ONLINE_CHOICE))
+                    .clicked()
+                    && free
+                {
                     self.settings.set_power(Power::Backup);
                     self.settings_dirty = true;
                 }
             });
-            ui.label(small(
-                "When your Anthropic plan can't answer (it ran out, you are signed out, or you are offline), a free \
-                 model on your PC carries on and tells you.",
-            ));
+            if !ready && free && !paid {
+                ui.label(small(
+                    "Online is optional. To use it, set up an Anthropic plan in the last section of this page.",
+                ));
+            }
+            if !free {
+                ui.label(small(
+                    "When your Anthropic plan can't answer (it ran out, you are signed out, or you are offline), a free \
+                     model on your PC carries on and tells you.",
+                ));
+            }
         });
     }
 
@@ -366,6 +391,7 @@ impl App {
                 .filter(|m| models.iter().any(|f| &f.id == m))
                 .or_else(|| mimir_core::models::default_free(&models).map(|f| f.id.clone()));
             let working = busy();
+            let online_used = self.settings.chats_paid() || !self.settings.project_free();
             for m in &models {
                 ui.add_space(4.0);
                 ui.horizontal_wrapped(|ui| {
@@ -373,7 +399,7 @@ impl App {
                     if m.refusals_removed {
                         tag(ui, "No safety filter");
                     }
-                    if backup.as_deref() == Some(m.id.as_str()) {
+                    if online_used && backup.as_deref() == Some(m.id.as_str()) {
                         tag(ui, "Used when your online plan runs out");
                     }
                 });
@@ -386,7 +412,8 @@ impl App {
                         line.push_str(&format!(" · used {}", crate::view_windows::ago(*t as i64)));
                     }
                     ui.label(small(line));
-                    if backup.as_deref() != Some(m.id.as_str())
+                    if online_used
+                        && backup.as_deref() != Some(m.id.as_str())
                         && !m.note.starts_with("Didn't")
                         && ui
                             .add(theme::quiet("Use when your online plan runs out"))
@@ -492,7 +519,7 @@ fn sizes() -> std::collections::HashMap<String, u64> {
 fn claude_card(ui: &mut egui::Ui) {
     theme::card().show(ui, |ui| {
         ui.set_width(ui.available_width());
-        theme::heading(ui, "Online");
+        theme::heading(ui, "Online models");
         ui.label(small(
             "Pick a model for each task under the message box (Model ▾), or let Auto pick. \
              Strongest first:",

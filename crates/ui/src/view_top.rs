@@ -12,7 +12,6 @@ use mimir_core::client::Station;
 pub(crate) struct Foot<'a> {
     pub r: Option<&'a Station>,
     pub panel: &'a AppPanel,
-    pub setup: Option<&'static str>,
     pub view: View,
 }
 
@@ -170,19 +169,6 @@ impl Foot<'_> {
                     .clicked()
                 {
                     actions.push(Action::PickFolder);
-                }
-            }
-            if let Some(todo) = self.setup {
-                ui.add_space(6.0);
-                let b = egui::Button::new(RichText::new(todo).color(theme::GROUND).strong())
-                    .fill(ORANGE)
-                    .corner_radius(egui::CornerRadius::same(theme::RADIUS));
-                if ui
-                    .add_sized([w, 32.0], b)
-                    .on_hover_text("Needed before Mímir can work")
-                    .clicked()
-                {
-                    actions.push(Action::OpenSettings);
                 }
             }
             self.update_row(ui, w);
