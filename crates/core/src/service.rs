@@ -4766,7 +4766,7 @@ impl Service {
                 (settings::Power::Backup, None) => {
                     let t = format!(
                         "The online limit ran out in \"{title}\". Online is back at {when}. No \
-                         free model is on this PC to carry on meanwhile: add one in Settings › \
+                         model is on this PC to carry on meanwhile: add one in Settings › \
                          Models."
                     );
                     self.runner.note(&id, &t);
@@ -4948,7 +4948,7 @@ impl Service {
     ) -> Result<String, String> {
         let f = self
             .free_choice()
-            .ok_or("No free model is on this PC: add one in Settings › Who answers.")?;
+            .ok_or("No model is on this PC: add one in Settings › Models.")?;
         self.runner.hand_to(id, Some(f.id.clone()));
         self.runner.set_ran_out(
             id,

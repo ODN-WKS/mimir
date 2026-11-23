@@ -1005,7 +1005,7 @@ fn yolo_from_a_phone_only_when_the_pc_allows_it() {
     assert!(
         refused
             .as_ref()
-            .is_err_and(|e| e.contains("Allow YOLO from my phone")),
+            .is_err_and(|e| e.contains("Let my phone turn on Go ahead without asking")),
         "a phone turned on YOLO with the PC's switch off: {refused:?}"
     );
     assert!(

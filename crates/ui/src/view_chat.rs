@@ -110,36 +110,11 @@ pub(crate) fn in_lane<R>(ui: &mut egui::Ui, add: impl FnOnce(&mut egui::Ui) -> R
     .inner
 }
 
-/// The hour on the clock, read at most once a minute.
-pub(crate) fn local_hour(ctx: &egui::Context) -> u32 {
-    let id = egui::Id::unique("clock-hour");
-    let now = ctx.input(|i| i.time);
-    if let Some((at, h)) = ctx.data(|d| d.get_temp::<(f64, u32)>(id))
-        && now - at < 60.0
-    {
-        return h;
-    }
-    let h = std::process::Command::new("date")
-        .arg("+%H")
-        .output()
-        .ok()
-        .and_then(|o| {
-            String::from_utf8_lossy(&o.stdout)
-                .trim()
-                .parse::<u32>()
-                .ok()
-        })
-        .unwrap_or(12);
-    ctx.data_mut(|d| d.insert_temp(id, (now, h)));
-    h
-}
-
 /// The calm greeting, centred in what is left of the page.
 pub(crate) fn greeting_block(ui: &mut egui::Ui) {
-    let hour = local_hour(ui.ctx());
     ui.add_space((ui.available_height() * 0.30).max(24.0));
     ui.vertical_centered(|ui| {
-        ui.label(theme::title(crate::labels::greeting(hour), 33.0));
+        ui.label(theme::title(crate::labels::GREETING, 33.0));
         ui.add_space(6.0);
         ui.label(
             RichText::new(crate::labels::ASK_HELP)
@@ -817,7 +792,7 @@ impl App {
                                     ui,
                                     if speaking { "■ Stop" } else { "▶ Listen" },
                                     if speaking { JADE } else { dim },
-                                    "Read this answer aloud with the desktop's voice",
+                                    "Read this answer aloud",
                                 ) {
                                     if speaking {
                                         crate::places::stop_speaking();
@@ -863,7 +838,7 @@ impl App {
                                 let words = match &note.waiting {
                                     Some(w) => w.clone(),
                                     None if paid => "Working on it…".to_string(),
-                                    None => "The free model is working…".to_string(),
+                                    None => "Your PC's model is working…".to_string(),
                                 };
                                 ui.label(RichText::new(words).color(MUTED));
                             });

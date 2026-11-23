@@ -41,7 +41,7 @@ pub fn question_card(question: &str) -> String {
 }
 
 /// The task's button that carries the conversation on the phone too.
-pub const PHONE_TOO: &str = "📱 Your phone";
+pub const PHONE_TOO: &str = "Your phone";
 
 /// Shown while the window can't reach Mímir's service.
 pub const RECONNECTING: &str = "Reconnecting to Mímir…";
@@ -197,8 +197,8 @@ pub fn trying_again_in(secs: u64) -> String {
 pub const TALK: &str = "Talk / voice typing";
 
 /// Claude's limit ran out and a free model carries the task on.
-pub const ON_FREE_UNTIL_BACK: &str = "On a free model until online is back";
-pub const CONTINUE_ON_FREE: &str = "Continue on the free model";
+pub const ON_FREE_UNTIL_BACK: &str = "On your PC's model until online is back";
+pub const CONTINUE_ON_FREE: &str = "Continue on your PC's model";
 pub const BACK_TO_CLAUDE: &str = "Back online";
 /// A session started from the phone or claude.ai through a project's
 /// Remote Control: the window follows it, and replies go there.
@@ -212,10 +212,14 @@ pub const LIVE: &str = "Live elsewhere";
 
 /// A task's row while Claude works on it (here or elsewhere).
 pub const WORKING: &str = "Working";
-pub const FOLLOWS_ALONG: &str = "Reply from your phone or claude.ai; this view follows along live.";
+pub const FOLLOWS_ALONG: &str = "Reply from your phone; this view follows along live.";
+/// The link out is for a session that really started on claude.ai.
+pub fn is_claude_ai_session(url: &str) -> bool {
+    url.starts_with("https://claude.ai/")
+}
 pub const OPEN_ON_CLAUDE_AI: &str = "Open on claude.ai";
 /// Settings › Models: the rules sent with every task.
-pub const GROUND_RULES: &str = "Instructions";
+pub const GROUND_RULES: &str = "Rules for every chat";
 /// Settings: the card of experiments, and its first switch.
 pub const LABS: &str = "Labs";
 pub const LABS_PC_ACTIVITY: &str = "Show what Mímir is doing on this PC";
@@ -247,14 +251,8 @@ pub const HINT_TASK: &str = "Enter send · Esc stop · right-click anything for 
 /// The calm greeting when nothing is open.
 pub const ASK_HELP: &str = "What can I help with?";
 
-/// "Good morning." and its two siblings, by the hour on the clock (0..24).
-pub fn greeting(hour: u32) -> &'static str {
-    match hour {
-        5..=11 => "Good morning.",
-        12..=17 => "Good afternoon.",
-        _ => "Good evening.",
-    }
-}
+/// The first line when nothing is open (the same words as the phone).
+pub const GREETING: &str = "Hi, I'm Mímir.";
 
 /// "Needs you · waiting N min" on a real waiting question.
 pub fn needs_you_waiting(minutes: u64) -> String {
@@ -269,3 +267,30 @@ pub fn needs_you_waiting(minutes: u64) -> String {
 
 /// How wide the messages and the message box may get, in points.
 pub const LANE_WIDTH: f32 = 680.0;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_claude_ai_link_is_for_a_claude_ai_session_only() {
+        assert!(is_claude_ai_session("https://claude.ai/code/session_1"));
+        assert!(!is_claude_ai_session(""));
+        assert!(!is_claude_ai_session("https://example.invalid/x"));
+    }
+
+    #[test]
+    fn the_follow_along_line_names_only_the_phone() {
+        assert_eq!(
+            FOLLOWS_ALONG,
+            "Reply from your phone; this view follows along live."
+        );
+        assert!(!FOLLOWS_ALONG.contains("claude.ai"));
+    }
+
+    #[test]
+    fn the_rules_have_the_phones_name_and_no_emoji() {
+        assert_eq!(GROUND_RULES, "Rules for every chat");
+        assert!(!PHONE_TOO.contains('\u{1F4F1}'));
+    }
+}

@@ -49,7 +49,7 @@ fn run_checks_lists_each_check() {
     click(&mut h, "Run checks");
     for words in [
         "Claude Code",
-        "Free models on this PC",
+        "Models on this PC",
         "Phones",
         "Voice",
         "Space on this PC",

@@ -625,7 +625,7 @@ fn p5_a_paid_chat_runs_without_tools_and_falls_back_to_free() {
     let t = seen.done["t2.a"].clone().unwrap();
     assert_eq!(t.text, "Free answer.");
     assert_eq!(t.ran, Some(mimir_core::proto::Ran::Pc));
-    assert!(t.model_words.unwrap().starts_with("Free · Your PC"));
+    assert!(t.model_words.unwrap().starts_with("Your PC"));
 }
 
 fn truth_of(seen: &Seen) -> Option<mimir_core::proto::Truth> {

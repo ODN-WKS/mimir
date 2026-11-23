@@ -162,6 +162,7 @@ impl App {
         let Ok(st) = &mut self.station else { return };
         let p = &mut self.phone;
         p.refresh(st);
+        let online_ready = self.settings.online_set_up();
         theme::card().show(ui, |ui| {
             ui.set_width(ui.available_width());
             theme::heading(ui, "Pair a phone");
@@ -229,7 +230,7 @@ impl App {
                             p.phones_seen = None;
                         }
                     }
-                    if !mine {
+                    if !mine && (online_ready || online) {
                         let mut on = online;
                         if ui
                             .checkbox(&mut on, "Can use your online plan")
@@ -255,7 +256,7 @@ impl App {
                         ..
                     } = row.clone();
                     ui.horizontal(|ui| {
-                        ui.label(RichText::new(format!("📱 {name}")).color(if stale {
+                        ui.label(RichText::new(name.clone()).color(if stale {
                             MUTED
                         } else {
                             JADE

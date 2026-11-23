@@ -627,7 +627,7 @@ mod tests {
             "pastes",
             "voice",
             "checkpoints",
-            "claude.ai window",
+            "old web window",
             "saved conversations",
         ] {
             assert!(paths.iter().any(|(n, _)| n == name), "{name} not listed");

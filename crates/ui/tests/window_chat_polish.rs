@@ -84,7 +84,7 @@ fn a_pc_chat_has_no_task_things_and_a_task_keeps_them() {
         "breadcrumb on a chat\n{text}"
     );
     assert!(shows(&h, "THIS PC"), "no PC panel\n{text}");
-    assert!(shows(&h, "Effort: —"), "no dash effort\n{text}");
+    assert!(shows(&h, "Effort: not used"), "no dash effort\n{text}");
 
     // A task is unchanged.
     let name = project.file_name().unwrap().to_string_lossy().to_string();

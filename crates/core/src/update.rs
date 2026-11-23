@@ -55,7 +55,7 @@ pub fn fetch_url(url: &str, timeout_secs: u64) -> Result<Vec<u8>, String> {
         .map_err(|_| "curl is not installed".to_string())?;
     if !out.status.success() {
         return Err(format!(
-            "Update check failed (curl exited {}). Check failed — try again.",
+            "Update check failed (curl exited {}). Check failed. Try again.",
             out.status.code().unwrap_or(-1)
         ));
     }

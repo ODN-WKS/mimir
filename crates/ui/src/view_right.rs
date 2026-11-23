@@ -160,9 +160,9 @@ impl App {
         ui.add_space(10.0);
         ui.label(
             RichText::new(if self.stats.model_loaded() {
-                "The free model is ready, so the first answer is quick."
+                "Your PC's model is ready, so the first answer is quick."
             } else {
-                "The free model starts when you send something, so the first answer takes longer."
+                "Your PC's model starts when you send something, so the first answer takes longer."
             })
             .color(theme::DIM)
             .size(12.5),

@@ -132,7 +132,7 @@ impl App {
             who_answers: if self.settings.chats_paid() {
                 "Online".into()
             } else {
-                "Free (on this PC)".into()
+                "On this PC".into()
             },
         }
     }

@@ -385,7 +385,7 @@ impl Talk {
                         free.paid = None;
                         // The "Answered online" note no longer fits.
                         free.switch_note = None;
-                        free.model_words = "Free · Your PC".into();
+                        free.model_words = "Your PC".into();
                         let mut s = self.lock();
                         // PCE-33: show the reason on every free-model switch while
                         // at the limit, not just the first time.
@@ -397,7 +397,7 @@ impl Talk {
                                 String::new()
                             };
                             free.model_words = format!(
-                                "Free · Your PC · Online is at its limit{when} · Your PC answered instead"
+                                "Your PC · Online is at its limit{when} · Your PC answered instead"
                             );
                         }
                         if let Some(c) = &mut s.current {
@@ -1359,7 +1359,7 @@ mod tests {
         let (_, _, result) = until_done(&rx);
         let turn = result.unwrap();
         assert_eq!(turn.switch_note, None);
-        assert!(turn.model_words.unwrap().starts_with("Free"));
+        assert!(turn.model_words.unwrap().starts_with("Your PC"));
         let _ = std::fs::remove_dir_all(&d);
     }
 

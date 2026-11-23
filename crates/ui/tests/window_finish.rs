@@ -224,7 +224,7 @@ fn a_free_model_task_has_no_claude_words_effort_or_cost() {
     let mut h = home.open();
     start_task(&mut h, "Tidy up notes.txt.");
     assert!(
-        wait_for(&mut h, |h| shows(h, "The free model is working…")),
+        wait_for(&mut h, |h| shows(h, "Your PC's model is working…")),
         "no free-model working line\n{}",
         screen_text(&h)
     );
@@ -240,7 +240,7 @@ fn a_free_model_task_has_no_claude_words_effort_or_cost() {
     );
     // R5d: the chip is there so the box looks the same, but it is off.
     assert!(
-        shows(&h, "Effort: —"),
+        shows(&h, "Effort: not used"),
         "no disabled effort chip\n{}",
         screen_text(&h)
     );

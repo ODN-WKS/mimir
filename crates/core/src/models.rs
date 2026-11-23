@@ -13,17 +13,17 @@ pub const FREE: &str = "ollama:";
 
 /// The one line abliterated (refusal-removed) models carry; it blocks nothing.
 pub const REFUSALS_REMOVED: &str =
-    "Refusals removed: it does what you ask, including things other models won't.";
+    "Uncensored: it does what you ask, including things other models won't.";
 
 /// The context Ollama gives each request (the proven 2026-11-18 setting).
 pub const CONTEXT: u64 = 32_768;
 
 /// Free models fit small, clear jobs: Claude Code's own instructions take
 /// about 20,000 of the 32,768 tokens.
-pub const FIT_NOTE: &str = "Free models fit small, clear jobs; a long task won't fit.";
+pub const FIT_NOTE: &str = "Models on your PC fit small, clear jobs; a long task won't fit.";
 
 /// What a task says when a free model ran out of room.
-pub const OUT_OF_ROOM: &str = "This free model ran out of room.";
+pub const OUT_OF_ROOM: &str = "This model ran out of room.";
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FreeModel {
@@ -167,7 +167,7 @@ pub fn plain_note(note: &str) -> std::borrow::Cow<'_, str> {
         && !id.contains(' ')
     {
         return format!(
-            "Answered by {}, a free model on your PC. Your chats stay on this PC.",
+            "Answered by {}, a model on your PC. Your chats stay on this PC.",
             plain_name(id)
         )
         .into();
@@ -214,7 +214,7 @@ pub struct StorePick {
     pub name: &'static str,
     /// A plain name.
     pub title: &'static str,
-    /// What it's good at, in tags ("No safety filter" for refusal-removed).
+    /// What it's good at, in tags ("Uncensored" for refusal-removed).
     pub tags: &'static [&'static str],
     /// Download size in bytes (as Ollama lists it).
     pub bytes: u64,
@@ -295,7 +295,7 @@ pub const STORE: &[StorePick] = &[
     StorePick {
         name: "huihui_ai/Qwen3.6-abliterated:35b-a3b",
         title: "Qwen 3.6 35B, uncensored",
-        tags: &["No safety filter", "Coding"],
+        tags: &["Uncensored", "Coding"],
         bytes: 23_938_334_500,
         licence: Some("Apache 2.0"),
         tested: "Fixed both test bugs in 90 s",
@@ -310,7 +310,7 @@ pub const STORE: &[StorePick] = &[
     StorePick {
         name: "huihui_ai/gpt-oss-abliterated:20b",
         title: "gpt-oss 20B, uncensored",
-        tags: &["No safety filter"],
+        tags: &["Uncensored"],
         bytes: 13_792_657_605,
         licence: Some("Apache 2.0"),
         tested: "Fixed both test bugs in 3 min",
@@ -327,7 +327,7 @@ pub const STORE: &[StorePick] = &[
     StorePick {
         name: SMALL_CHAT,
         title: "Qwen 3.5 4B, uncensored",
-        tags: &["No safety filter", "Small"],
+        tags: &["Uncensored", "Small"],
         bytes: 2_707_515_040,
         licence: Some("Apache 2.0"),
         tested: "The phone's own model",
@@ -781,7 +781,7 @@ mod plain_note_tests {
             plain_note(
                 "On qwen3.6:35b-a3b-coding, a free model on this PC (Settings \u{203a} Models \u{203a} What powers your tasks)."
             ),
-            "Answered by Qwen 3.6 coding, a free model on your PC. Your chats stay on this PC."
+            "Answered by Qwen 3.6 coding, a model on your PC. Your chats stay on this PC."
         );
         assert_eq!(
             plain_note(

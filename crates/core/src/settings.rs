@@ -238,6 +238,11 @@ impl Settings {
         );
     }
 
+    /// Online (Anthropic) is set up: chats or project work use it.
+    pub fn online_set_up(&self) -> bool {
+        self.chats_paid() || !self.project_free()
+    }
+
     /// Project work runs on a free model on this PC.
     pub fn project_free(&self) -> bool {
         self.project_engine.as_deref() != Some("claude")
@@ -528,6 +533,17 @@ pub fn save_window(v: &serde_json::Value) {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn online_is_set_up_only_when_chats_or_project_work_use_it() {
+        let mut s = Settings::default();
+        assert!(!s.online_set_up());
+        s.chats_engine = Some("paid".into());
+        assert!(s.online_set_up());
+        s.chats_engine = None;
+        s.project_engine = Some("claude".into());
+        assert!(s.online_set_up());
+    }
+
     #[test]
     fn an_untouched_install_gets_the_new_rules_and_a_written_one_is_kept() {
         let s: Settings = serde_json::from_str("{}").unwrap();

@@ -28,19 +28,8 @@ fn box_width(h: &egui_kittest::Harness<'static, station_ui::App>) -> f32 {
 }
 
 #[test]
-fn the_greeting_follows_the_hour() {
-    for (hour, words) in [
-        (0, "Good evening."),
-        (4, "Good evening."),
-        (5, "Good morning."),
-        (11, "Good morning."),
-        (12, "Good afternoon."),
-        (17, "Good afternoon."),
-        (18, "Good evening."),
-        (23, "Good evening."),
-    ] {
-        assert_eq!(labels::greeting(hour), words, "hour {hour}");
-    }
+fn the_greeting_is_the_phones_hello() {
+    assert_eq!(labels::GREETING, "Hi, I'm Mímir.");
 }
 
 #[test]
@@ -58,16 +47,17 @@ fn the_empty_chat_is_a_greeting_with_no_eye_and_no_app_name() {
     for _ in 0..5 {
         h.step();
     }
-    let any = ["Good morning.", "Good afternoon.", "Good evening."]
-        .iter()
-        .any(|g| shows(&h, g));
-    assert!(any, "no greeting\n{}", screen_text(&h));
+    assert!(
+        shows(&h, labels::GREETING),
+        "no greeting\n{}",
+        screen_text(&h)
+    );
     assert!(shows(&h, labels::ASK_HELP), "{}", screen_text(&h));
-    // No app name as a heading or label (the box's own hint says it).
+    // No app name as a heading or label besides the hello (the box's own hint says it).
     let named: Vec<String> = h
         .query_all_by(|n| n.role() == Role::Label)
         .filter_map(|n| n.accesskit_node().label().map(|l| l.to_string()))
-        .filter(|l| l.contains("Mímir"))
+        .filter(|l| l.contains("Mímir") && l != labels::GREETING)
         .collect();
     assert!(named.is_empty(), "app name on screen: {named:?}");
     // The shortcut hint under the box.

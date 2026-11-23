@@ -176,7 +176,7 @@ fn p8_models_list_free_ones_with_the_refusals_note() {
         v["refusals_removed_note"]
             .as_str()
             .unwrap()
-            .starts_with("Refusals removed")
+            .starts_with("Uncensored")
     );
     st.call_wait(Call::SetFreeChoice {
         switch_to_free: Some(true),

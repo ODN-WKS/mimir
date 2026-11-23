@@ -286,7 +286,7 @@ fn say(args: &[String]) -> i32 {
 fn import_old(args: &[String]) -> i32 {
     let dry_run = args.iter().any(|a| a == "--dry-run");
     if dry_run {
-        println!("Dry run — nothing will be written.");
+        println!("Dry run: nothing will be written.");
     }
     let Some(from) = args
         .iter()

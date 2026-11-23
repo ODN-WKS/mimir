@@ -66,7 +66,7 @@ impl SettingsPage {
         match self {
             SettingsPage::General => "Who answers, how the window looks, and project work.",
             SettingsPage::Models => {
-                "Who answers, the free models on your PC, the phone's models, and an optional online plan."
+                "The models on your PC, who answers, the phone's models, and an optional online plan."
             }
             SettingsPage::Phone => "Pair a phone, and how phones reach your PC.",
             SettingsPage::Voice => "The voice that reads replies aloud, and Talk.",
@@ -92,7 +92,7 @@ impl SettingsPage {
                 "phone phones pair pairing qr unpair remove connections pc name android app"
             }
             SettingsPage::Voice => {
-                "voice read aloud speed pauses alba talk voice typing speech microphone mic dictation"
+                "voice read aloud speed pauses talk voice typing speech microphone mic dictation"
             }
             SettingsPage::Notifications => "notifications alerts sound battery push",
             SettingsPage::Storage => {

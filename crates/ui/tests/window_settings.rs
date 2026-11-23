@@ -88,7 +88,7 @@ fn settings_models_has_every_model_and_the_weekly_look() {
         "Model Store",
         "gpt-oss 20B",
         "Fixed both test bugs in 32 s",
-        "No safety filter",
+        "Uncensored",
         "On the phone",
         "Gemma 4 E2B heretic",
         "Tiny/Better",
@@ -234,8 +234,8 @@ fn every_settings_section_opens_with_its_settings() {
             ],
         ),
         ("Voice", vec!["Read aloud", station_ui::labels::TALK]),
-        ("Notifications", vec!["Settings › Alerts"]),
-        ("Storage", vec!["Free models", "Speech for Talk"]),
+        ("Notifications", vec!["Settings › Notifications"]),
+        ("Storage", vec!["Models on this PC", "Speech for Talk"]),
         (
             "Labs",
             // The don't-touch notice and the PC activity strip are gone; the

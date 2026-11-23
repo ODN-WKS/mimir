@@ -155,12 +155,16 @@ impl App {
             {
                 self.settings_dirty = true;
             }
+            let plan_note = if self.settings.online_set_up() {
+                " This uses a little more of your Anthropic plan each time."
+            } else {
+                ""
+            };
             ui.label(
-                RichText::new(
+                RichText::new(format!(
                     "After Mímir changed files or ran commands, it tells you what it changed, \
-                         what it checked and what is left for you. Not after plain answers. \
-                         This uses a little more of your Anthropic plan each time.",
-                )
+                         what it checked and what is left for you. Not after plain answers.{plan_note}"
+                ))
                 .color(MUTED)
                 .size(13.0),
             );
@@ -212,7 +216,17 @@ impl App {
             });
         });
         gap(ui);
-        if let Ok(r) = &self.station {
+        // Only with Online project work set up and at least one listed.
+        let online_work = !self.settings.project_free();
+        if let Ok(r) = &self.station
+            && online_work
+            && !(if r.mcp_servers.is_empty() {
+                &self.settings.connectors
+            } else {
+                &r.mcp_servers
+            })
+            .is_empty()
+        {
             theme::card().show(ui, |ui| {
                 ui.set_width(ui.available_width());
                 theme::heading(ui, "Connectors");
@@ -222,13 +236,6 @@ impl App {
                 } else {
                     &r.mcp_servers
                 };
-                if list.is_empty() {
-                    ui.label(
-                        RichText::new("None yet. They show after Mímir has worked once.")
-                            .color(MUTED)
-                            .size(13.0),
-                    );
-                }
                 for (name, status) in list {
                     let c = if status == "connected" { JADE } else { ORANGE };
                     ui.horizontal(|ui| {
@@ -236,11 +243,6 @@ impl App {
                         ui.label(RichText::new(status.replace('-', " ")).color(c).size(13.0));
                     });
                 }
-                ui.label(
-                    RichText::new("Add them on claude.ai under Settings › Connectors.")
-                        .color(MUTED)
-                        .size(13.0),
-                );
             });
         }
         let _ = actions;
@@ -402,7 +404,7 @@ impl App {
             });
             ui.label(
                 RichText::new(
-                    "The 🎤 Talk button next to the message box (Ctrl+M): say what you want, \
+                    "The Talk button next to the message box (Ctrl+M): say what you want, \
                          click again, and your words appear in the box for you to check before \
                          sending. Your voice is turned into text on this PC; nothing you say \
                          leaves it.",
@@ -469,7 +471,7 @@ impl App {
                 RichText::new(
                     "Your paired phone tells you when a task needs you or is done. Choose \
                      which alerts, their sound and battery use on the phone, under \
-                     Settings › Alerts.",
+                     Settings › Notifications.",
                 )
                 .color(MUTED)
                 .size(13.0),
@@ -539,13 +541,13 @@ impl App {
             for (q, a) in [
                 (
                     "Where are the models?",
-                    "Settings › Who answers: the online models, free models on this PC, the \
-                     Model Store, and the phone's models.",
+                    "Settings › Models: your PC's models, the Model Store, the phone's models and the \
+                     online models.",
                 ),
                 (
                     "The online limit ran out",
-                    "With an online model and a free backup (Settings › Who answers), tasks carry on on a \
-                     free model and offer Back online when the limit resets.",
+                    "With an online model and a backup on your PC (Settings › Models), tasks carry on on your \
+                     PC's model and offer Back online when the limit resets.",
                 ),
                 (
                     "Pair a phone",

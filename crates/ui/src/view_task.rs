@@ -337,10 +337,10 @@ impl App {
                     // live; replies go there (Claude Code has one writer).
                     // The same for a conversation going on in a terminal or the
                     // Claude app right now.
-                    let elsewhere = t.from_phone.clone().or_else(|| {
-                        t.live_elsewhere
-                            .then(|| "https://claude.ai/code".to_string())
-                    });
+                    let elsewhere = t
+                        .from_phone
+                        .clone()
+                        .or_else(|| t.live_elsewhere.then(String::new));
                     if let Some(url) = &elsewhere {
                         egui::Frame::new()
                             .fill(CARD)
@@ -353,10 +353,13 @@ impl App {
                                     ui.label(
                                         RichText::new(crate::labels::FOLLOWS_ALONG).color(MUTED),
                                     );
-                                    if ui
-                                        .add(theme::quiet(crate::labels::OPEN_ON_CLAUDE_AI))
-                                        .on_hover_text(url.as_str())
-                                        .clicked()
+                                    // The link shows only for a session that
+                                    // really started on claude.ai.
+                                    if crate::labels::is_claude_ai_session(url)
+                                        && ui
+                                            .add(theme::quiet(crate::labels::OPEN_ON_CLAUDE_AI))
+                                            .on_hover_text(url.as_str())
+                                            .clicked()
                                     {
                                         mimir_core::setup::open_url(url);
                                     }
@@ -707,7 +710,7 @@ impl App {
                                 ui.label(
                                     RichText::new(
                                         if mimir_core::models::is_free(t.model.as_deref()) {
-                                            "The free model is working…"
+                                            "Your PC's model is working…"
                                         } else {
                                             "Working on it…"
                                         },
@@ -978,10 +981,10 @@ pub(crate) fn auto_model_note(ui: &mut egui::Ui, model: &Option<String>) {
     if let Some(style) = mimir_core::auto::Style::of(model.as_deref()) {
         let line = match style {
             mimir_core::auto::Style::Efficient => {
-                "⚠ Auto picks the lightest model that suits each message. Switching uses a little of your limit."
+                "Auto picks the lightest model that suits each message. Switching uses a little of your limit."
             }
             mimir_core::auto::Style::Capable => {
-                "⚠ Auto picks a stronger model for each message. Switching uses a little of your limit."
+                "Auto picks a stronger model for each message. Switching uses a little of your limit."
             }
         };
         ui.label(RichText::new(line).color(theme::AMBER).size(13.0))
@@ -1078,10 +1081,7 @@ fn model_effort_chips(
                     actions.push(Action::SetModel(id.to_string(), None));
                 }
                 for (style, about) in [
-                    (
-                        mimir_core::auto::Style::Efficient,
-                        "lightest that suits, saves your limit",
-                    ),
+                    (mimir_core::auto::Style::Efficient, "lightest that suits"),
                     (
                         mimir_core::auto::Style::Capable,
                         "one step stronger, for harder work",
@@ -1112,11 +1112,7 @@ fn model_effort_chips(
                 let free = mimir_core::models::cached();
                 if !free.is_empty() {
                     ui.separator();
-                    ui.label(
-                        RichText::new("Free · runs on this PC")
-                            .color(MUTED)
-                            .size(12.5),
-                    );
+                    ui.label(RichText::new("On this PC").color(MUTED).size(12.5));
                     for f in free {
                         let chosen = model.as_deref() == Some(f.id.as_str());
                         let mut hover = format!("{}\n{}", f.note, mimir_core::models::FIT_NOTE);
@@ -1158,7 +1154,7 @@ fn model_effort_chips(
             .response
             .on_hover_text(
                 match model.as_deref().and_then(mimir_core::models::ollama_name) {
-                    Some(raw) => format!("{raw}\nRuns on this PC, free."),
+                    Some(raw) => format!("{raw}\nRuns on this PC."),
                     None => "The model that answers".to_string(),
                 },
             );
@@ -1188,7 +1184,7 @@ pub(crate) fn effort_chip(
         theme::chipped(ui, |ui| {
             ui.add_enabled(
                 false,
-                egui::Label::new(RichText::new("Effort: —").size(13.0)),
+                egui::Label::new(RichText::new("Effort: not used").size(13.0)),
             )
             .on_disabled_hover_text("This model has no effort setting");
         });
@@ -1664,7 +1660,7 @@ fn entry(
                     ui,
                     if speaking { "■ Stop" } else { "▶ Listen" },
                     if speaking { JADE } else { color },
-                    "Read this reply aloud with the desktop's voice",
+                    "Read this answer aloud",
                 ) {
                     if speaking {
                         crate::places::stop_speaking();

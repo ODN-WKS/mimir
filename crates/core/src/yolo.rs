@@ -71,11 +71,11 @@ impl Ended {
     pub fn note(self) -> &'static str {
         match self {
             Ended::Worked => {
-                "YOLO ended after 5 hours of work: this task asks first again before \
+                "Go ahead without asking ended after 5 hours of work: this task asks first again before \
                  changing files or running commands."
             }
             Ended::Idle => {
-                "YOLO ended after 24 hours idle: this task asks first again before \
+                "Go ahead without asking ended after 24 hours idle: this task asks first again before \
                  changing files or running commands."
             }
         }
@@ -96,12 +96,12 @@ pub fn phone_may_with_task(task_exists: bool, allowed: bool, whisper: bool) -> R
 /// allow it, and never in Whisper.
 pub fn phone_may(allowed: bool, whisper: bool) -> Result<(), String> {
     if whisper {
-        return Err("YOLO isn't offered in Whisper.".into());
+        return Err("Go ahead without asking isn't offered in Whisper.".into());
     }
     if !allowed {
         return Err(
-            "YOLO from the phone is off. Switch on \"Allow YOLO from my phone\" in \
-                    the PC's Settings › Phone first."
+            "Go ahead without asking from the phone is off. Switch on \"Let my phone turn on Go ahead without asking\" in \
+                    the PC's Settings › Phones first."
                 .into(),
         );
     }
@@ -201,7 +201,7 @@ mod tests {
         assert!(
             phone_may(false, false)
                 .unwrap_err()
-                .contains("Allow YOLO from my phone")
+                .contains("Let my phone turn on Go ahead without asking")
         );
         assert!(phone_may(true, true).unwrap_err().contains("Whisper"));
         assert!(phone_may(false, true).is_err());

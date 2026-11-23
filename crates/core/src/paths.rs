@@ -271,7 +271,7 @@ pub fn paths_in_use() -> Vec<(String, PathBuf)> {
         ("voice".into(), crate::voice::root(&data)),
         ("checkpoints".into(), data.join("checkpoints")),
         ("separate copies".into(), data.join("copies")),
-        ("claude.ai window".into(), data.join("claude-ai-web")),
+        ("old web window".into(), data.join("claude-ai-web")),
         ("saved conversations".into(), saved_conversations_dir()),
         (
             "phone link keys and paired phones".into(),

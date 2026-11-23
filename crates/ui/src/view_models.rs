@@ -133,18 +133,14 @@ fn gb(bytes: u64) -> String {
 }
 
 fn tag(ui: &mut egui::Ui, t: &str) {
-    let color = if t == "No safety filter" {
-        ORANGE
-    } else {
-        JADE
-    };
+    let color = if t == "Uncensored" { ORANGE } else { JADE };
     egui::Frame::new()
         .stroke(egui::Stroke::new(1.0, color))
         .corner_radius(egui::CornerRadius::same(6))
         .inner_margin(egui::Margin::symmetric(6, 1))
         .show(ui, |ui| {
             let r = ui.label(RichText::new(t).color(color).size(12.5));
-            if t == "No safety filter" {
+            if t == "Uncensored" {
                 r.on_hover_text(mimir_core::models::REFUSALS_REMOVED);
             }
         });
@@ -155,12 +151,12 @@ pub fn power_words(s: &Settings) -> String {
     let chats = if s.chats_paid() {
         "Chats online"
     } else {
-        "Chats on your PC (free)"
+        "Chats on your PC"
     };
     let work = if s.project_free() {
-        "project work on your PC (free)"
+        "project work on your PC"
     } else {
-        "project work online (a free model when it can't)"
+        "project work online (your PC's model when it can't)"
     };
     format!("{chats}; {work}.")
 }
@@ -253,7 +249,7 @@ impl App {
         // Their models stay in view for anyone with Claude installed or
         // online chosen, also while signed out; the price list is only for
         // a connected plan.
-        let online = self.settings.chats_paid() || !self.settings.project_free();
+        let online = self.settings.online_set_up();
         if self.setup.claude_installed() == Some(true) || online {
             ui.add_space(10.0);
             claude_card(ui, self.setup.claude_ready() == Some(true));
@@ -308,7 +304,7 @@ impl App {
             let ready = self.setup.claude_ready() != Some(false);
             ui.horizontal_wrapped(|ui| {
                 ui.label("Chats and look-ups:");
-                if ui.radio(!paid, "Free (on your PC)").clicked() && paid {
+                if ui.radio(!paid, "Your PC's model").clicked() && paid {
                     self.settings.chats_engine = Some("free".into());
                     self.settings_dirty = true;
                 }
@@ -343,7 +339,7 @@ impl App {
             let free = self.settings.project_free();
             ui.horizontal_wrapped(|ui| {
                 ui.label("Project work:");
-                if ui.radio(free, "Free (on your PC)").clicked() && !free {
+                if ui.radio(free, "Your PC's model").clicked() && !free {
                     self.settings.set_power(Power::FreeOnly);
                     self.settings_dirty = true;
                 }
@@ -363,8 +359,8 @@ impl App {
             }
             if !free {
                 ui.label(small(
-                    "When your Anthropic plan can't answer (it ran out, you are signed out, or you are offline), a free \
-                     model on your PC carries on and tells you.",
+                    "When your Anthropic plan can't answer (it ran out, you are signed out, or you are offline), your PC's \
+                     model carries on and tells you.",
                 ));
             }
         });
@@ -375,7 +371,7 @@ impl App {
             ui.set_width(ui.available_width());
             theme::heading(ui, "On this PC");
             ui.label(small(format!(
-                "Free models run on your PC: free and private. Whisper mode \
+                "Your PC's models run on this PC: private, and they cost nothing to use. Whisper mode \
                  needs one. {}",
                 mimir_core::models::FIT_NOTE
             )));
@@ -383,7 +379,7 @@ impl App {
             let models = mimir_core::models::cached();
             if models.is_empty() {
                 ui.label(small(
-                    "No free models on your PC yet. Download one \
+                    "No models on your PC yet. Download one \
                      from the Model Store below.",
                 ));
             }
@@ -396,13 +392,13 @@ impl App {
                 .filter(|m| models.iter().any(|f| &f.id == m))
                 .or_else(|| mimir_core::models::default_free(&models).map(|f| f.id.clone()));
             let working = busy();
-            let online_used = self.settings.chats_paid() || !self.settings.project_free();
+            let online_used = self.settings.online_set_up();
             for m in &models {
                 ui.add_space(4.0);
                 ui.horizontal_wrapped(|ui| {
                     ui.label(RichText::new(crate::models::plain_name(&m.name)).strong());
                     if m.refusals_removed {
-                        tag(ui, "No safety filter");
+                        tag(ui, "Uncensored");
                     }
                     if online_used && backup.as_deref() == Some(m.id.as_str()) {
                         tag(ui, "Used when your online plan runs out");
@@ -422,7 +418,7 @@ impl App {
                         && !m.note.starts_with("Didn't")
                         && ui
                             .add(theme::quiet("Use when your online plan runs out"))
-                            .on_hover_text("The free model that takes over when your Anthropic plan runs out")
+                            .on_hover_text("The model on your PC that takes over when your Anthropic plan runs out")
                             .clicked()
                     {
                         self.settings.free_model = Some(m.id.clone());
@@ -686,7 +682,7 @@ fn phone_models_card(ui: &mut egui::Ui) {
             ui.horizontal_wrapped(|ui| {
                 ui.label(RichText::new(m["name"].as_str().unwrap_or("A model")).strong());
                 if m["refusals_removed"].as_bool() == Some(true) {
-                    tag(ui, "No safety filter");
+                    tag(ui, "Uncensored");
                 }
                 ui.label(small(format!(
                     "{} · {}",
@@ -703,7 +699,7 @@ fn phone_models_card(ui: &mut egui::Ui) {
 pub fn storage(ui: &mut egui::Ui) {
     theme::card().show(ui, |ui| {
         ui.set_width(ui.available_width());
-        theme::heading(ui, "Free models");
+        theme::heading(ui, "Models on this PC");
         let models = mimir_core::models::cached();
         let sizes = sizes();
         let working = busy();
@@ -727,7 +723,7 @@ pub fn storage(ui: &mut egui::Ui) {
         }
         job_line(ui);
         ui.label(small(format!(
-            "A free model you don't use for {} days is removed to save space.",
+            "A model you don't use for {} days is removed to save space.",
             mimir_core::keep_current::FREE_UNUSED_DAYS
         )));
     });

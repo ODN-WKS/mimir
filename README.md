@@ -9,7 +9,7 @@ PC for free, or an online model), and keep both in step.
   Kotlin (`android/`).
 - Updates are checked before they are installed.
 
-**Found a problem?** [Report it here](https://github.com/ODN-WKS/mimir/issues/new?template=report-a-problem.yml) — or in the app: Labs › Report a problem. A security problem? See [SECURITY.md](SECURITY.md).
+**Found a problem?** [Report it here](https://github.com/ODN-WKS/mimir/issues/new?template=report-a-problem.yml) or in the app: Labs › Report a problem. A security problem? See [SECURITY.md](SECURITY.md).
 
 ## Install
 

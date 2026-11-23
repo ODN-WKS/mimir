@@ -31,7 +31,7 @@ fn an_empty_chat_shows_this_pc_and_what_is_running() {
         assert!(shows(&h, want), "missing {want:?}\n{}", screen_text(&h));
     }
     assert!(
-        shows(&h, "The free model is ready") || shows(&h, "The free model starts when you send"),
+        shows(&h, "Your PC's model is ready") || shows(&h, "Your PC's model starts when you send"),
         "no model line\n{}",
         screen_text(&h)
     );

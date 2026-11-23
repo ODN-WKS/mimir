@@ -103,19 +103,19 @@ pub fn run_checks(p: &dyn Probes) -> Vec<CheckLine> {
     }
     match p.runner() {
         None => out.push(CheckLine::new(
-            "Free models on this PC",
+            "Models on this PC",
             Outcome::Problem,
             "Not answering",
             Some("Start the model program, then run the checks again"),
         )),
         Some((0, _)) => out.push(CheckLine::new(
-            "Free models on this PC",
+            "Models on this PC",
             Outcome::Problem,
             "Reachable, but no model is installed",
             Some("Get one in Settings › Models"),
         )),
         Some((installed, loaded)) => out.push(CheckLine::new(
-            "Free models on this PC",
+            "Models on this PC",
             Outcome::Good,
             format!(
                 "Reachable · {} · {} ready now",
@@ -398,7 +398,7 @@ mod tests {
         });
         for n in [
             "Claude Code",
-            "Free models on this PC",
+            "Models on this PC",
             "Phones",
             "Voice",
             "Space on this PC",
@@ -418,7 +418,7 @@ mod tests {
             ..Fake::default()
         });
         assert_eq!(by(&l, "Claude Code").result, Outcome::Problem);
-        assert_eq!(by(&l, "Free models on this PC").result, Outcome::Problem);
+        assert_eq!(by(&l, "Models on this PC").result, Outcome::Problem);
         assert_eq!(by(&l, "Phones").result, Outcome::Skipped);
     }
 
