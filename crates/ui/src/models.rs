@@ -68,19 +68,53 @@ pub fn plain_test_note(note: &str) -> String {
 }
 
 /// What to show for each model's name: its plain name, and, when two
-/// installed models would read the same, what tells them apart (the name
-/// they are stored under), so two models never show one name.
+/// installed models would read the same, plain words that tell them apart
+/// ("agent version"), never the name they are stored under.
 pub fn show_names(models: &[mimir_core::models::FreeModel]) -> Vec<(String, Option<String>)> {
     let plain: Vec<String> = models.iter().map(|m| plain_name(&m.name)).collect();
     plain
         .iter()
-        .map(|p| {
+        .enumerate()
+        .map(|(i, p)| {
             let same = plain.iter().filter(|q| *q == p).count() > 1;
-            (p.clone(), same)
+            let apart = same.then(|| tell_apart(&models[i].name, i, &plain, models));
+            (p.clone(), apart)
         })
-        .zip(models)
-        .map(|((p, same), m)| (p, same.then(|| m.name.clone())))
         .collect()
+}
+
+/// A few plain words for one of several same-named models: "agent version",
+/// or its size, or its place in the list as the last resort.
+fn tell_apart(
+    raw: &str,
+    i: usize,
+    plain: &[String],
+    models: &[mimir_core::models::FreeModel],
+) -> String {
+    let lower = raw.to_lowercase();
+    if lower.contains("agent") {
+        return "agent version".into();
+    }
+    let size = lower
+        .rsplit_once(':')
+        .and_then(|(_, tag)| tag.split('-').next())
+        .filter(|t| {
+            t.len() > 1
+                && t.ends_with('b')
+                && t[..t.len() - 1]
+                    .chars()
+                    .all(|c| c.is_ascii_digit() || c == '.')
+        });
+    if let Some(sz) = size {
+        // Only when no other of the same name has that size too.
+        let clash = models.iter().enumerate().any(|(j, o)| {
+            j != i && plain[j] == plain[i] && o.name.to_lowercase().contains(&format!(":{sz}"))
+        });
+        if !clash {
+            return format!("{} version", sz.to_uppercase());
+        }
+    }
+    format!("version {}", i + 1)
 }
 
 /// The picker's name for a saved `--model` value. Older tasks saved the

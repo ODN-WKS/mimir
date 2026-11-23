@@ -15,6 +15,11 @@ impl App {
         let chats = crate::places::chats_dir().display().to_string();
         let chat_chosen = self.new_project.as_deref() == Some(chats.as_str());
         if projects.is_empty() && !chat_chosen {
+            let has_elsewhere = self
+                .others
+                .lock()
+                .map(|o| !o.list.is_empty())
+                .unwrap_or(false);
             // First run: say what this is and what to do.
             ui.add_space((ui.available_height() * 0.25).max(16.0));
             ui.vertical_centered(|ui| {
@@ -47,15 +52,18 @@ impl App {
                 {
                     actions.push(Action::PickFolder);
                 }
-                ui.add_space(10.0);
-                ui.label(
-                    RichText::new(
-                        "Tasks you had in the terminal or another app are listed on \
-                         the left under From elsewhere.",
-                    )
-                    .color(MUTED)
-                    .size(13.0),
-                );
+                // Only while the list on the left really has them.
+                if has_elsewhere {
+                    ui.add_space(10.0);
+                    ui.label(
+                        RichText::new(
+                            "Tasks you had in the terminal or another app are listed on \
+                             the left under From elsewhere.",
+                        )
+                        .color(MUTED)
+                        .size(13.0),
+                    );
+                }
             });
             return;
         }
@@ -67,6 +75,7 @@ impl App {
         let panel = Some(self.details_shown(ui.ctx()));
         // Exactly where the words go once sent: the same rule the service uses.
         let paid = new_task_goes_online(&self.settings, self.new_model.as_deref());
+        let model_down = self.pc_model_down();
         {
             let project = self.new_project.clone().unwrap_or_default();
             let settings = &self.settings;
@@ -76,6 +85,7 @@ impl App {
                 &crate::view_top::MidTop {
                     crumb: None,
                     paid,
+                    model_down,
                     panel,
                     menu_name: "new-menu",
                 },

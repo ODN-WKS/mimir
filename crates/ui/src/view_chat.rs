@@ -503,12 +503,14 @@ impl App {
         let settings = &self.settings;
         let draft_ref = &mut draft;
         let panel = Some(self.details_shown(ui.ctx()));
+        let model_down = self.pc_model_down();
         let confirm = &mut self.confirm_delete_chat;
         crate::view_top::mid_top(
             ui,
             &crate::view_top::MidTop {
                 crumb: None,
                 paid,
+                model_down,
                 panel,
                 menu_name: "chat-menu",
             },
@@ -888,6 +890,15 @@ impl App {
                     if let Some(why) = &note.problem {
                         ui.add_space(6.0);
                         ui.label(RichText::new(why).color(ORANGE).size(13.5));
+                        // A model program that isn't running: a way to ask again
+                        // once it is back (the PC tries to start it each time).
+                        if why == mimir_core::models::MODEL_DOWN
+                            && last_user.is_some()
+                            && !busy
+                            && ui.add(theme::primary(crate::labels::TRY_AGAIN)).clicked()
+                        {
+                            actions.push(Action::TryAgain(c.id.clone()));
+                        }
                     }
                     if scroll_down {
                         ui.scroll_to_cursor(Some(Align::BOTTOM));

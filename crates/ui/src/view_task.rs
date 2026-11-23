@@ -36,11 +36,13 @@ impl App {
         } else {
             Some(format!("{home_name} › {}", t.title))
         };
+        let model_down = self.pc_model_down();
         let crumb_resp = crate::view_top::mid_top(
             ui,
             &crate::view_top::MidTop {
                 crumb,
                 paid: !mimir_core::models::is_free(t.model.as_deref()),
+                model_down,
                 panel: Some(details),
                 menu_name: "task-menu",
             },
@@ -343,6 +345,7 @@ impl App {
                     // live; replies go there (Claude Code has one writer).
                     // The same for a conversation going on in a terminal or the
                     // Claude app right now.
+                    let still_running = crate::labels::still_running_in(t.elsewhere_in.as_deref());
                     let elsewhere = t
                         .from_phone
                         .clone()
@@ -360,7 +363,7 @@ impl App {
                                     let line = if from_phone {
                                         crate::labels::FOLLOWS_ALONG
                                     } else {
-                                        crate::labels::LIVE_ELSEWHERE_LINE
+                                        still_running.as_str()
                                     };
                                     ui.label(RichText::new(line).color(MUTED));
                                     // The link shows only for a session that
@@ -677,14 +680,17 @@ impl App {
                                     undo,
                                     waiting,
                                     asking: !l.asks.is_empty(),
-                                    again: (!running && n + 1 == t.entries.len())
-                                        .then(|| last_request(&t.entries))
-                                        .flatten(),
-                                    retry: (!running && n + 1 == t.entries.len()).then(|| {
-                                        match (&t.session_id, last_request(&t.entries)) {
-                                            (None, Some(text)) => Retry::Resend(text),
-                                            _ => Retry::Continue,
-                                        }
+                                    again: (!running
+                                        && !t.live_elsewhere
+                                        && n + 1 == t.entries.len())
+                                    .then(|| last_request(&t.entries))
+                                    .flatten(),
+                                    retry: (!running
+                                        && !t.live_elsewhere
+                                        && n + 1 == t.entries.len())
+                                    .then(|| match (&t.session_id, last_request(&t.entries)) {
+                                        (None, Some(text)) => Retry::Resend(text),
+                                        _ => Retry::Continue,
                                     }),
                                 },
                                 actions,
@@ -1472,6 +1478,8 @@ fn entry(
                     .color(MUTED),
             );
         }
+        // A message with nothing in it draws nothing (no empty bubble with Copy).
+        Entry::You(text) if text.trim().is_empty() => {}
         Entry::You(text) => {
             let bubble = ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
                 let frame = egui::Frame::new()

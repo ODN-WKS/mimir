@@ -131,7 +131,11 @@ fn chats_words(e: Option<&mimir_core::engine::EngineFile>) -> String {
     if words == "Your PC hasn't tested its models yet" {
         "Not checked for chats yet".into()
     } else {
-        words
+        // "GPU + CPU" in plain words (the words come from the PC's engine).
+        words.replace(
+            "graphics card (GPU + CPU)",
+            "graphics card and processor together",
+        )
     }
 }
 
@@ -418,7 +422,7 @@ impl App {
                 ui.horizontal_wrapped(|ui| {
                     ui.label(RichText::new(shown).strong());
                     if let Some(a) = apart {
-                        ui.label(small(a));
+                        ui.label(small(format!("({a})")));
                     }
                     if m.refusals_removed {
                         tag(ui, "Uncensored");
@@ -613,14 +617,17 @@ fn store_card(ui: &mut egui::Ui) {
                             tag(ui, t);
                         }
                     });
+                    let here = installed.iter().any(|n| n == p.name);
+                    // A model already running here is never "too big" for it.
+                    let fit_words = if here || fits {
+                        "fits your PC"
+                    } else {
+                        "too big for your graphics card"
+                    };
                     ui.label(small(format!(
                         "{} · {} · tested here: {}",
                         gb(p.bytes),
-                        if fits {
-                            "fits your PC"
-                        } else {
-                            "too big for your graphics card"
-                        },
+                        fit_words,
                         crate::models::plain_test_note(p.tested)
                     )));
                     ui.horizontal_wrapped(|ui| {
@@ -740,7 +747,7 @@ pub fn storage(ui: &mut egui::Ui) {
                 total += b;
                 ui.label(RichText::new(shown).strong());
                 if let Some(a) = apart {
-                    ui.label(small(a));
+                    ui.label(small(format!("({a})")));
                 }
                 if b > 0 {
                     ui.label(small(gb(b)));
@@ -762,13 +769,16 @@ pub fn storage(ui: &mut egui::Ui) {
         ui.set_width(ui.available_width());
         theme::heading(ui, "Voice and speech");
         let status = crate::places::voice_status();
-        ui.horizontal_wrapped(|ui| {
-            ui.label(RichText::new("Natural voice (Ingrid)").strong());
-            ui.label(small(&status));
-            if status == "Ready" && ui.add(theme::quiet("Remove")).clicked() {
-                crate::places::delete_voice();
-            }
-        });
+        // A voice that isn't in this copy is not listed as if it were here.
+        if !status.starts_with("Not in this copy") {
+            ui.horizontal_wrapped(|ui| {
+                ui.label(RichText::new("Natural voice (Ingrid)").strong());
+                ui.label(small(&status));
+                if status == "Ready" && ui.add(theme::quiet("Remove")).clicked() {
+                    crate::places::delete_voice();
+                }
+            });
+        }
         ui.horizontal_wrapped(|ui| {
             ui.label(RichText::new("Speech for Talk").strong());
             let ready = crate::places::listen_ready();

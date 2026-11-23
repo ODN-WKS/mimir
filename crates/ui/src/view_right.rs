@@ -224,7 +224,7 @@ impl App {
                                 )
                                 .on_hover_text("How much of this chat Mímir can keep in mind at once. When it is nearly full, Compact sums up the earlier part.");
                     }
-                    // On a Claude plan (weekly limits reported) it is not a bill.
+                    // On an Anthropic plan (weekly limits reported) it is not a bill.
                     if t.cost_usd > 0.0
                         && r.weekly.is_none()
                         && !mimir_core::models::is_free(t.model.as_deref())

@@ -81,17 +81,27 @@ fn two_models_never_show_one_name() {
     fake_ollama(&[AGENT, CODING]);
     let mut h = home.open();
     models_page(&mut h);
-    // Both read "Qwen 3.6 coding"; what tells them apart is beside each.
-    want(&mut h, AGENT);
-    want(&mut h, CODING);
+    // Both read "Qwen 3.6 coding"; plain words beside each tell them apart, never the stored names.
+    want(&mut h, "(agent version)");
+    want(&mut h, "(35B version)");
+    assert!(
+        !shows(&h, CODING) && !shows(&h, AGENT),
+        "{}",
+        screen_text(&h)
+    );
     close(h);
     // And in Storage.
     let Some(home) = TestHome::new() else { return };
     let mut h = home.open();
     click(&mut h, "Settings");
     click(&mut h, "Storage");
-    want(&mut h, AGENT);
-    want(&mut h, CODING);
+    want(&mut h, "(agent version)");
+    want(&mut h, "(35B version)");
+    assert!(
+        !shows(&h, CODING) && !shows(&h, AGENT),
+        "{}",
+        screen_text(&h)
+    );
     close(h);
     let _ = home;
 }

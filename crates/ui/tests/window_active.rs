@@ -85,12 +85,20 @@ fn a_task_live_in_a_terminal_has_its_own_line_and_no_link() {
     let mut h = home.open();
     open_outside(&mut h, true);
     assert!(
-        wait_for(&mut h, |h| shows(h, labels::LIVE_ELSEWHERE_LINE)),
+        wait_for(&mut h, |h| shows(h, "Still running in")),
         "no line for a live outside task\n{}",
+        screen_text(&h)
+    );
+    assert!(
+        shows(&h, "Stop it to carry on here."),
+        "{}",
         screen_text(&h)
     );
     assert!(!shows(&h, labels::FOLLOWS_ALONG), "{}", screen_text(&h));
     assert!(!shows(&h, labels::OPEN_ON_CLAUDE_AI), "{}", screen_text(&h));
+    // P4: nothing to press that goes nowhere.
+    assert!(!has_button(&h, "Try again"), "{}", screen_text(&h));
+    assert!(!shows(&h, "Click one to carry on"), "{}", screen_text(&h));
     close(h);
 }
 

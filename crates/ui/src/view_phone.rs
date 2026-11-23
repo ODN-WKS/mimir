@@ -321,6 +321,9 @@ impl App {
                     ui.ctx().copy_text(code.clone());
                     p.copied = true;
                 }
+                if p.code.is_some() && ui.add(theme::quiet("Hide the code")).clicked() {
+                    p.code = None;
+                }
             });
             if let Some(e) = &p.problem {
                 ui.label(RichText::new(e).color(RED).size(13.0));
@@ -393,16 +396,25 @@ impl App {
             {
                 self.settings_dirty = true;
             }
-            ui.label(
-                RichText::new(
-                    "Off: a phone can't switch a task to auto-approve. On: it can, after \
-                     a warning and the phone's unlock. In auto-approve mode Mímir changes and deletes files and \
-                     runs commands without asking, so a stolen phone could too. Each task \
-                     goes back to Ask me first after 5 hours of work or 24 hours idle.",
-                )
-                .color(theme::RED)
-                .size(13.0),
-            );
+            // The long warning shows (in red) only when the switch is on.
+            if self.settings.yolo_from_phone {
+                ui.label(
+                    RichText::new(
+                        "A phone can switch a task to Go ahead without asking, after a warning \
+                         and the phone's unlock. In that mode Mímir changes and deletes files and \
+                         runs commands without asking, so a stolen phone could too. Each task \
+                         goes back to Ask me first after 5 hours of work or 24 hours idle.",
+                    )
+                    .color(theme::RED)
+                    .size(13.0),
+                );
+            } else {
+                ui.label(
+                    RichText::new("Off: a phone can't switch a task to Go ahead without asking.")
+                        .color(theme::MUTED)
+                        .size(13.0),
+                );
+            }
         });
         ui.add_space(10.0);
         ui.label(

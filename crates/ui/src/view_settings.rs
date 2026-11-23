@@ -72,7 +72,7 @@ impl App {
                 let edit = ui
                     .add(
                         egui::TextEdit::singleline(&mut search)
-                            .hint_text("for example voice, phone, models")
+                            .hint_text("voice, phones, models")
                             .desired_width(f32::INFINITY),
                     )
                     .labelled_by(said.id);

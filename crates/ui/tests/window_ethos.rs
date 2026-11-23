@@ -88,7 +88,7 @@ fn settings_lead_with_own_models_and_keep_claude_optional() {
     assert!(
         wait_for(&mut h, |h| shows(
             h,
-            "Optional: connect a Claude plan for heavy coding. Those words then go to Anthropic."
+            "Optional: connect an Anthropic plan for heavy coding. Those words then go to Anthropic."
         )),
         "{}",
         screen_text(&h)
@@ -106,7 +106,7 @@ fn settings_lead_with_own_models_and_keep_claude_optional() {
     }
     // The own models come before the Claude section.
     let at = |w: &str| text.find(w).unwrap_or_else(|| panic!("no {w:?}\n{text}"));
-    assert!(at("On this PC") < at("Optional: a Claude plan"));
+    assert!(at("On this PC") < at("Anthropic plan (optional)"));
     close(h);
 }
 

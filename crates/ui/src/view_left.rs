@@ -161,14 +161,9 @@ impl App {
                     {
                         actions.push(Action::OpenPhones);
                     }
-                    if nav_row(
-                        ui,
-                        "Whisper",
-                        Right::Dim("a chat that's never kept".into()),
-                        false,
-                    )
-                    .on_hover_text(crate::labels::WHISPER_SWITCH)
-                    .clicked()
+                    if nav_row(ui, "Whisper", Right::Dim("never kept".into()), false)
+                        .on_hover_text(crate::labels::WHISPER_SWITCH)
+                        .clicked()
                     {
                         actions.push(Action::NewWhisper);
                     }
@@ -211,6 +206,18 @@ impl App {
                         })
                         .take(15)
                         .collect();
+                    if !needle.is_empty()
+                        && !side.search_finds()
+                        && archived.is_empty()
+                        && elsewhere.is_empty()
+                    {
+                        ui.add_space(6.0);
+                        ui.label(
+                            RichText::new(crate::labels::nothing_found(search.trim()))
+                                .color(MUTED)
+                                .size(13.0),
+                        );
+                    }
                     // One quiet line at the end: archived tasks, and work from
                     // the terminal or the Claude app. Each opens its list.
                     let arch_id = egui::Id::unique("side-archived-open");
@@ -310,7 +317,7 @@ impl App {
                             ui.label(
                                 RichText::new(
                                     "Chats you had in the terminal, another app or on your phone. \
-                                 Click one to carry on here.",
+                                 Open one to follow it or carry on.",
                                 )
                                 .color(MUTED)
                                 .size(13.0),
@@ -569,6 +576,21 @@ impl Side<'_> {
     /// state and, indented under it, its tasks.
     fn projects_section(&self, ui: &mut egui::Ui, actions: &mut Vec<Action>) {
         let searching = !self.needle.is_empty();
+        // A search shows only the projects with a match, and counts those.
+        let shown: Vec<String> = self
+            .projects
+            .iter()
+            .filter(|p| {
+                !searching
+                    || project_tasks(self.r, self.settings, p)
+                        .iter()
+                        .any(|l| matches(self.needle, l))
+            })
+            .cloned()
+            .collect();
+        if searching && shown.is_empty() {
+            return;
+        }
         let folded = !searching && self.settings.projects_folded;
         let (_, waiting) = self.r.counts();
         ui.add_space(2.0);
@@ -576,7 +598,7 @@ impl Side<'_> {
             ui,
             "Projects",
             folded,
-            &projects_note(self.projects.len(), waiting, folded),
+            &projects_note(shown.len(), waiting, folded),
         );
         if head.clicked() {
             actions.push(Action::ToggleSection(false));
@@ -584,9 +606,24 @@ impl Side<'_> {
         if folded {
             return;
         }
-        for (i, project) in self.projects.iter().enumerate() {
-            self.project(ui, i, project, actions);
+        for project in &shown {
+            if let Some(i) = self.projects.iter().position(|p| p == project) {
+                self.project(ui, i, project, actions);
+            }
         }
+    }
+
+    /// Whether a search finds anything in the chats and the projects.
+    fn search_finds(&self) -> bool {
+        self.r.chats.values().any(|c| {
+            self.chat_index
+                .get(&c.id)
+                .is_some_and(|h| h.contains(self.needle))
+        }) || self
+            .r
+            .tasks
+            .iter()
+            .any(|l| !l.task.archived && matches(self.needle, l))
     }
 
     /// One project: its header (fold, drag, +, right-click menu) and its
@@ -899,10 +936,15 @@ impl Side<'_> {
         if item(ui, crate::labels::MERGE_INTO, "") {
             actions.push(org(Organize::AskMerge(project.clone())));
         }
-        if item_if(ui, index > 0, "Move up", "") {
+        if item_if(ui, index > 0, "Move up", "Already first") {
             actions.push(org(Organize::MoveProject(project.clone(), true)));
         }
-        if item_if(ui, index + 1 < self.projects.len(), "Move down", "") {
+        if item_if(
+            ui,
+            index + 1 < self.projects.len(),
+            "Move down",
+            "Already last",
+        ) {
             actions.push(org(Organize::MoveProject(project.clone(), false)));
         }
         sep(ui);
@@ -1446,10 +1488,10 @@ fn task_menu(
         if item(ui, if p.pinned { "Unpin" } else { "Pin to top" }, "") {
             actions.push(org(Organize::PinTask(t.id.clone(), !p.pinned)));
         }
-        if item_if(ui, p.up, "Move up", "") {
+        if item_if(ui, p.up, "Move up", "Already first") {
             actions.push(org(Organize::MoveTask(t.id.clone(), true)));
         }
-        if item_if(ui, p.down, "Move down", "") {
+        if item_if(ui, p.down, "Move down", "Already last") {
             actions.push(org(Organize::MoveTask(t.id.clone(), false)));
         }
     }

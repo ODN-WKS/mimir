@@ -368,6 +368,8 @@ pub(crate) struct MidTop<'a> {
     pub crumb: Option<String>,
     /// Whether the answers go to Claude (else they stay on this PC).
     pub paid: bool,
+    /// The PC's model program isn't running (the pill is then not the green "This PC").
+    pub model_down: bool,
     /// The side panel's state, when this page has one to toggle.
     pub panel: Option<bool>,
     /// The shot name for the pill's menu (debug pictures).
@@ -438,8 +440,11 @@ pub(crate) fn mid_top(
             ))
             .layout(egui::Layout::top_down(egui::Align::Center)),
     );
+    let down = top.model_down && !top.paid;
     let (dot, words) = if top.paid {
         (JADE, crate::labels::PILL_CLAUDE)
+    } else if down {
+        (theme::ORANGE, crate::labels::PILL_PC_DOWN)
     } else {
         (JADE, crate::labels::PILL_PC)
     };
@@ -459,6 +464,8 @@ pub(crate) fn mid_top(
                 ui.label(
                     RichText::new(if top.paid {
                         "Answers go to Anthropic (your Anthropic plan)"
+                    } else if down {
+                        crate::labels::PC_DOWN_LINE
                     } else {
                         "Answers are made on this PC"
                     })
@@ -482,4 +489,15 @@ pub(crate) fn mid_top(
     });
     crate::shot::open_menu(ui.ctx(), top.menu_name, &resp);
     crumb_resp
+}
+
+impl crate::App {
+    /// The PC says its model program isn't running.
+    pub(crate) fn pc_model_down(&self) -> bool {
+        self.station
+            .as_ref()
+            .ok()
+            .and_then(|r| r.truth.as_ref())
+            .is_some_and(|t| t.engine.model_down)
+    }
 }

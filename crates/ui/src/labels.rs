@@ -213,9 +213,16 @@ pub const LIVE: &str = "Live elsewhere";
 /// A task's row while Claude works on it (here or elsewhere).
 pub const WORKING: &str = "Working";
 pub const FOLLOWS_ALONG: &str = "Reply from your phone; this view follows along live.";
-/// A task going on in a terminal or another app on this PC.
-pub const LIVE_ELSEWHERE_LINE: &str =
-    "Going on in a terminal or another app on this PC; this view follows along live.";
+/// A followed session still running somewhere else: where, and what to do.
+/// `place` is the PC's "app" or "terminal"; absent (an older PC) says "your PC".
+pub fn still_running_in(place: Option<&str>) -> String {
+    let at = match place {
+        Some("app") => "another app",
+        Some("terminal") => "a terminal",
+        _ => "your PC",
+    };
+    format!("Still running in {at}. Stop it to carry on here.")
+}
 /// The link out is for a session that really started on claude.ai.
 pub fn is_claude_ai_session(url: &str) -> bool {
     url.starts_with("https://claude.ai/")
@@ -240,6 +247,9 @@ pub const PILL_MENU: &str = "Who answers, and more";
 pub const HIDE_PANEL: &str = "Hide panel ›";
 pub const SHOW_PANEL: &str = "‹ Show panel";
 pub const PILL_PC: &str = "This PC";
+/// The pill while the PC's model program isn't running.
+pub const PILL_PC_DOWN: &str = "Your PC's model is off";
+pub const PC_DOWN_LINE: &str = "Your PC's model isn't running. Try again in the chat.";
 pub const PILL_CLAUDE: &str = "Online · goes to Anthropic";
 
 /// The message box.
@@ -272,6 +282,11 @@ pub fn needs_you_waiting(minutes: u64) -> String {
 
 /// How wide the messages and the message box may get, in points.
 pub const LANE_WIDTH: f32 = 680.0;
+
+/// The side list's search found nothing.
+pub fn nothing_found(search: &str) -> String {
+    format!("Nothing found for “{search}”.")
+}
 
 #[cfg(test)]
 mod tests {

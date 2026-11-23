@@ -83,7 +83,7 @@ fn settings_models_has_every_model_and_the_weekly_look() {
         "Chats and look-ups:",
         "Project work:",
         "Online (your words go to Anthropic)",
-        "Optional: a Claude plan",
+        "Anthropic plan (optional)",
         "On this PC",
         "Model Store",
         "gpt-oss 20B",

@@ -1,5 +1,5 @@
 //! The optional Claude setup in Settings › Models: install and sign in to
-//! Claude Code, for people who want a Claude plan. Nothing here shows up
+//! Claude Code, for people who want an Anthropic plan. Nothing here shows up
 //! until a person opens that section.
 
 use crate::theme::{self, JADE, MUTED, RED};
@@ -22,7 +22,7 @@ struct Watch {
 /// How often, and for how long, to check while a sign-in is open.
 /// What the card says first: Claude is an option, and where the words go.
 pub(crate) const OPTIONAL_NOTE: &str =
-    "Optional: connect a Claude plan for heavy coding. Those words then go to Anthropic.";
+    "Optional: connect an Anthropic plan for heavy coding. Those words then go to Anthropic.";
 
 const WATCH_EVERY: Duration = Duration::from_secs(3);
 const WATCH_FOR: Duration = Duration::from_secs(15 * 60);
@@ -176,7 +176,7 @@ impl SetupPanel {
         theme::card().show(ui, |ui| {
             ui.set_width(ui.available_width());
             ui.horizontal(|ui| {
-                theme::heading(ui, "Optional: a Claude plan");
+                theme::heading(ui, "Anthropic plan (optional)");
 
                 if checking {
                     ui.spinner();
@@ -194,7 +194,7 @@ impl SetupPanel {
                         Some(v) => ui.label(format!("Installed: version {v}")),
                         None => ui.label(
                             RichText::new(
-                                "Not set up. Project work on your PC's own models also needs Claude Code installed here.",
+                                "Not set up. Project work on your PC's own models also needs Claude Code installed here. Chats don't.",
                             )
                             .color(MUTED),
                         ),
