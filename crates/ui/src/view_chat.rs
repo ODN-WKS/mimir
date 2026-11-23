@@ -607,7 +607,7 @@ impl App {
                         if ui
                             .add(
                                 theme::pill_button(
-                                    RichText::new(format!("{model_words} ▾"))
+                                    RichText::new(model_words.clone())
                                         .color(MUTED)
                                         .size(13.0)
                                         .into(),
@@ -639,7 +639,9 @@ impl App {
                     actions.push(Action::SendChat(open.clone(), draft.trim().to_string()));
                     draft.clear();
                 }
-                hint_line(ui, crate::labels::HINT_CHAT);
+                if empty {
+                    hint_line(ui, crate::labels::HINT_CHAT);
+                }
             });
         });
         for a in picked {

@@ -110,31 +110,32 @@ impl App {
                         ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
                     }
                     ui.spacing_mut().item_spacing.y = ROW_GAP;
-                    if nav_row(
-                        ui,
-                        "Needs you",
-                        Right::Badge(waiting, AMBER_BADGE, AMBER_ON),
-                        false,
-                    )
-                    .on_hover_text("Go to what is waiting for you (Ctrl+J)")
-                    .clicked()
+                    if waiting > 0
+                        && nav_row(
+                            ui,
+                            "Needs you",
+                            Right::Badge(waiting, AMBER_BADGE, AMBER_ON),
+                            false,
+                        )
+                        .on_hover_text("Go to what is waiting for you (Ctrl+J)")
+                        .clicked()
                     {
                         actions.push(Action::GoToWaiting);
                     }
-                    let up = usize::from(update_waiting);
-                    if nav_row(
-                        ui,
-                        "Updates",
-                        Right::Badge(up, BLUE_BADGE, egui::Color32::WHITE),
-                        false,
-                    )
-                    .on_hover_text("A new version of Mímir, when there is one")
-                    .clicked()
+                    if update_waiting
+                        && nav_row(
+                            ui,
+                            "Updates",
+                            Right::Badge(1, BLUE_BADGE, egui::Color32::WHITE),
+                            false,
+                        )
+                        .on_hover_text("A new version of Mímir is ready")
+                        .clicked()
                     {
                         actions.push(Action::OpenUpdates);
                     }
                     let paired = match phones {
-                        0 => "none".to_string(),
+                        0 => "not paired".to_string(),
                         1 => "1 phone".to_string(),
                         n => format!("{n} phones"),
                     };
@@ -144,9 +145,14 @@ impl App {
                     {
                         actions.push(Action::OpenPhones);
                     }
-                    if nav_row(ui, "Whisper", Right::Dim("never kept".into()), false)
-                        .on_hover_text(crate::labels::WHISPER_SWITCH)
-                        .clicked()
+                    if nav_row(
+                        ui,
+                        "Whisper",
+                        Right::Dim("a chat that's never kept".into()),
+                        false,
+                    )
+                    .on_hover_text(crate::labels::WHISPER_SWITCH)
+                    .clicked()
                     {
                         actions.push(Action::NewWhisper);
                     }
@@ -847,7 +853,7 @@ impl Side<'_> {
         if item(ui, "New task here", "") {
             actions.push(Action::NewTaskIn(project.clone()));
         }
-        if item(ui, "Continue an earlier session…", "") {
+        if item(ui, "Continue an earlier task…", "") {
             actions.push(Action::OpenPast(project.clone()));
         }
         sep(ui);
@@ -1426,7 +1432,7 @@ fn task_menu(
         actions.push(org(Organize::AskMove(t.id.clone())));
     }
     sep(ui);
-    if item(ui, "Copy the whole conversation", "") {
+    if item(ui, "Copy the whole chat", "") {
         let md =
             crate::extras::markdown(t, &project_name(t.home_project()), &crate::extras::today());
         ui.ctx().copy_text(md);
@@ -1703,7 +1709,7 @@ fn other_row(ui: &mut egui::Ui, o: &OtherSession, actions: &mut Vec<Action>) {
             .title
             .clone()
             .filter(|t| !mimir_core::task::system_like(t))
-            .unwrap_or_else(|| "A session".to_string());
+            .unwrap_or_else(|| "A task".to_string());
     }
     let resp = egui::Frame::new()
         .fill(CARD)

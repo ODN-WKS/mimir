@@ -551,20 +551,16 @@ impl Runner {
                     // A fresh session that starts from a short brief instead
                     // of re-reading the whole conversation.
                     let b = crate::auto::brief(t);
-                    let brief_tokens = b.len() / 4;
                     t.add_note(&format!(
-                        "{note} Handed over with a short brief (about {}k tokens) instead of the \
-                         whole {}k-token conversation, to save your limit. See it in ⋯ › Show \
-                         the handover brief.",
-                        (brief_tokens / 1000).max(1),
-                        t.context_used / 1000
+                        "{note} Mímir carried on with a short summary instead of the whole \
+                         chat, to save your limit. See it in ⋯ › Show the summary."
                     ));
                     t.session_id = None;
                     t.brief = Some(b);
                     t.brief_pending = true;
                 } else if switching {
                     t.add_note(&format!(
-                        "{note} Mímir re-reads the conversation once on it, which uses some \
+                        "{note} Mímir reads the whole chat again once on it, which uses some \
                          of your limit."
                     ));
                 } else {

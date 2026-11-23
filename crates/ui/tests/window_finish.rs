@@ -316,7 +316,7 @@ fn the_window_shows_what_the_pcs_truth_says() {
     );
     // Done in the truth, and in the window within a moment.
     assert!(
-        wait_for(&mut h, |h| shows(h, "Needs you") && !shows(h, "Working")),
+        wait_for(&mut h, |h| !shows(h, "Working")),
         "the Needs you row or the project still counts the task\n{}",
         screen_text(&h)
     );

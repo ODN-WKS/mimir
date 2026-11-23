@@ -30,15 +30,8 @@ fn task_rows(h: &Harness<'static, App>, title: &str) -> usize {
 fn the_menu_runs_in_the_designed_order() {
     let Some(home) = TestHome::new() else { return };
     let mut h = home.open();
-    let names = [
-        "Needs you",
-        "Updates",
-        "Phones",
-        "Whisper",
-        "Chats",
-        "Projects",
-        "Settings",
-    ];
+    // "Needs you" and "Updates" show only when there is something.
+    let names = ["Phones", "Whisper", "Chats", "Projects", "Settings"];
     assert!(
         wait_for(&mut h, |h| names.iter().all(|n| top(h, n).is_some())),
         "the menu is incomplete\n{}",

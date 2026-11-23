@@ -219,12 +219,19 @@ impl App {
                                         .color(MUTED)
                                         .size(13.0),
                                 )
-                                .on_hover_text("How much of this conversation Mímir can keep in mind at once. When it is nearly full, Compact sums up the earlier part.");
+                                .on_hover_text("How much of this chat Mímir can keep in mind at once. When it is nearly full, Compact sums up the earlier part.");
                     }
                     // On a Claude plan (weekly limits reported) it is not a bill.
-                    if t.cost_usd > 0.0 && r.weekly.is_none() {
-                        ui.label(RichText::new(format!("Estimated cost: ${:.2}", t.cost_usd)).color(MUTED).size(13.0))
-                                    .on_hover_text("An estimate from the tool. On an Anthropic plan this counts toward weekly use, not a bill.");
+                    if t.cost_usd > 0.0
+                        && r.weekly.is_none()
+                        && !mimir_core::models::is_free(t.model.as_deref())
+                    {
+                        ui.label(
+                            RichText::new(format!("Estimated cost: ${:.2}", t.cost_usd))
+                                .color(MUTED)
+                                .size(13.0),
+                        )
+                        .on_hover_text("A rough figure for this task, not a bill.");
                     }
                     // Only worth it once the memory is filling up.
                     let filling = t.context_window > 0

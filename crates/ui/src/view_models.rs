@@ -644,14 +644,14 @@ fn add_by_name(ui: &mut egui::Ui, working: bool) {
     let id = egui::Id::unique("add-free-model");
     let mut name: String = ui.data(|d| d.get_temp(id)).unwrap_or_default();
     ui.label(small(
-        "Not tested by us. Models are listed at ollama.com/library.",
+        "Not tested by us. Type the name of a free model to add it.",
     ));
     ui.horizontal(|ui| {
         let said = ui.label("Add a model:");
         let edit = ui
             .add(
                 egui::TextEdit::singleline(&mut name)
-                    .hint_text("model name, for example qwen3:4b")
+                    .hint_text("name of a free model")
                     .desired_width(240.0),
             )
             .labelled_by(said.id);
@@ -761,15 +761,6 @@ pub fn storage(ui: &mut egui::Ui) {
             "Models on the phone use the phone's space. See and delete them on the phone, under \
              Settings › Storage. One you don't use for 14 days is removed to save space.",
         ));
-    });
-    ui.add_space(10.0);
-    theme::card().show(ui, |ui| {
-        ui.set_width(ui.available_width());
-        theme::heading(ui, "Test leftovers");
-        ui.label(small(format!(
-            "Leftovers from tests nobody opened for {} days are removed once a week.",
-            mimir_core::keep_current::CACHE_UNUSED_DAYS
-        )));
     });
 }
 

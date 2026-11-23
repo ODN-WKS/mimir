@@ -493,13 +493,13 @@ fn a_task_and_a_project_in_the_left_menu_have_their_menus() {
             "Move up",
             "Move down",
             labels::MOVE_TO,
-            "Copy the whole conversation",
+            "Copy the whole chat",
             "Open its folder",
             "Archive",
             "Delete task…",
         ],
     );
-    let got = click_row(&mut h, "Copy the whole conversation");
+    let got = click_row(&mut h, "Copy the whole chat");
     assert!(
         got.len() == 1 && got[0].starts_with("# Sort the receipts"),
         "{got:?}"

@@ -19,24 +19,17 @@ impl App {
             ui.add_space((ui.available_height() * 0.25).max(16.0));
             ui.vertical_centered(|ui| {
                 ui.set_max_width(560.0);
-                ui.label(theme::title("Welcome to Mímir", 24.0));
+                ui.label(theme::title("Hi, I'm Mímir.", 24.0));
                 ui.add_space(10.0);
                 ui.label(
                     RichText::new(
-                        "Mímir works on the files in a folder on this PC. Pick a project folder to start. It asks before it changes anything.",
+                        "Ask anything. Answers come from your PC's model and stay on this PC.",
                     )
                     .color(MUTED),
                 );
                 ui.add_space(16.0);
                 if ui
-                    .add_sized([240.0, 40.0], theme::primary("Choose a project folder…"))
-                    .clicked()
-                {
-                    actions.push(Action::PickFolder);
-                }
-                ui.add_space(6.0);
-                if ui
-                    .add_sized([240.0, 34.0], theme::quiet("Just chat (no project)"))
+                    .add_sized([240.0, 40.0], theme::primary("Start a chat"))
                     .on_hover_text("Questions, writing and planning that are not about a folder")
                     .clicked()
                 {
@@ -44,10 +37,20 @@ impl App {
                         crate::places::chats_dir().display().to_string(),
                     ));
                 }
+                ui.add_space(6.0);
+                if ui
+                    .add_sized([240.0, 30.0], theme::quiet("Choose a project folder…"))
+                    .on_hover_text(
+                        "For work on the files in a folder. Mímir asks before it changes anything.",
+                    )
+                    .clicked()
+                {
+                    actions.push(Action::PickFolder);
+                }
                 ui.add_space(10.0);
                 ui.label(
                     RichText::new(
-                        "Sessions you had in the terminal or another app are listed on \
+                        "Tasks you had in the terminal or another app are listed on \
                          the left under From elsewhere.",
                     )
                     .color(MUTED)
@@ -172,8 +175,8 @@ impl App {
             }
             if let Some(p) = &self.new_project
                 && ui
-                    .link("Continue an earlier session…")
-                    .on_hover_text("Carry on a session from the terminal or another app")
+                    .link("Continue an earlier task…")
+                    .on_hover_text("Carry on a task from the terminal or another app")
                     .clicked()
             {
                 actions.push(Action::OpenPast(p.clone()));
@@ -326,9 +329,9 @@ impl App {
             ui.add_space(6.0);
             ui.checkbox(&mut self.new_separate, "Work in a separate copy")
                 .on_hover_text(
-                    "Mímir works in its own copy of the project (a separate branch), \
-                     so tasks running at the same time never edit the same files. \
-                     It starts from the last commit. Bring the changes in from the task's ⋯ menu.",
+                    "Mímir works in its own copy of the project, \
+                     so tasks running at the same time never change the same files. \
+                     The copy starts from your last saved version. Bring the changes in from the task's ⋯ menu.",
                 );
             if busy_here && !self.new_separate {
                 ui.label(
@@ -342,7 +345,7 @@ impl App {
             } else if self.new_separate {
                 ui.label(
                     RichText::new(
-                        "Starts from the last commit: uncommitted changes in the main folder are \
+                        "Starts from your last saved version: changes you haven't saved yet in the main folder are \
                          not in the copy.",
                     )
                     .color(MUTED)

@@ -106,7 +106,7 @@ pub fn run_checks(p: &dyn Probes) -> Vec<CheckLine> {
             "Models on this PC",
             Outcome::Problem,
             "Not answering",
-            Some("Start the model program, then run the checks again"),
+            Some("Start Mímir's model helper, then run the checks again"),
         )),
         Some((0, _)) => out.push(CheckLine::new(
             "Models on this PC",

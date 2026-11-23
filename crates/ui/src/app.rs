@@ -755,12 +755,16 @@ impl App {
             || self.rename_chat.is_some()
     }
 
-    /// Whether the side panel shows: the owner's choice, else only when
-    /// the window is wide enough for it.
+    /// Whether the side panel shows: the owner's choice, else only while
+    /// something runs and the window is wide enough for it.
     pub(crate) fn details_shown(&self, ctx: &egui::Context) -> bool {
-        self.settings
-            .details
-            .unwrap_or(ctx.content_rect().width() >= 1180.0)
+        self.settings.details.unwrap_or_else(|| {
+            ctx.content_rect().width() >= 1180.0
+                && self
+                    .station
+                    .as_ref()
+                    .is_ok_and(|r| r.tasks.iter().any(|l| l.busy()))
+        })
     }
 
     pub(crate) fn selected_project(&self) -> Option<String> {

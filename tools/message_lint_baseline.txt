@@ -3,4 +3,3 @@
 tech-word	android/app/src/main/java/io/github/odnwks/mimir/standalone/Engine.kt	%.0f tokens a second
 tech-word	crates/core/src/incognito.rs	no socket for loopback
 tech-word	crates/core/src/sockets.rs	no socket was handed over
-tech-word	crates/ui/src/view_models.rs	Not tested by us. Models are listed at ollama.com/library.

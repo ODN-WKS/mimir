@@ -49,7 +49,7 @@ impl App {
             let mut open = true;
             let screen = ctx.content_rect().size();
             let heading = if title == "the handover brief" {
-                "Handover brief".to_string()
+                "Summary".to_string()
             } else {
                 format!("Changes to {title}")
             };
@@ -72,7 +72,7 @@ impl App {
 
         if let Some((project, sessions)) = &self.past {
             let mut open = true;
-            egui::Window::new("Continue an earlier session")
+            egui::Window::new("Continue an earlier task")
                 .open(&mut open)
                 .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
                 .collapsible(false)
@@ -80,14 +80,14 @@ impl App {
                 .show(ctx, |ui| {
                     ui.label(
                         RichText::new(
-                            "Earlier sessions in this folder, newest first. Open one to carry on.",
+                            "Earlier tasks in this folder, newest first. Open one to carry on.",
                         )
                         .color(MUTED)
                         .size(13.0),
                     );
                     ui.add_space(6.0);
                     if sessions.is_empty() {
-                        ui.label("No earlier sessions in this folder.");
+                        ui.label("No earlier tasks in this folder.");
                     }
                     ScrollArea::vertical().show(ui, |ui| {
                         for s in sessions {
@@ -205,7 +205,7 @@ impl App {
                     });
                     ui.label(
                         RichText::new(
-                            "The conversation stays; Mímir is told with your next \
+                            "The chat stays; Mímir is told with your next \
                                  message. You can put the changes back afterwards.",
                         )
                         .color(MUTED)
@@ -277,8 +277,8 @@ impl App {
                 .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
                 .show(ctx, |ui| {
                     ui.label(
-                        "It disappears from Mímir. Changed files stay as they are. Its conversation stays in the tool's own history (the project's ⋯ \
-                         menu › Continue an earlier session).",
+                        "It disappears from Mímir. Changed files stay as they are. Its chat is kept, and you can carry on later (the project's ⋯ \
+                         menu › Continue an earlier task).",
                     );
                     ui.horizontal(|ui| {
                         if ui.add(theme::quiet("Cancel")).clicked() {
@@ -324,7 +324,7 @@ impl App {
                                     "Ctrl+Enter",
                                     "Start the new task; while Mímir works: send when it is done",
                                 ),
-                                ("Ctrl+F", "Find in this conversation"),
+                                ("Ctrl+F", "Find in this chat"),
                                 ("Ctrl+M", "Talk / voice typing (again to stop; Esc cancels)"),
                                 ("Ctrl+.", "Pause"),
                                 ("Esc", "Close what is open. Nothing else."),
@@ -650,7 +650,7 @@ impl App {
             .show(ctx, |ui| {
                 ui.set_max_width(440.0);
                 ui.label(
-                    "These folders beside your projects are git projects that aren't on \
+                    "These folders beside your projects are projects that aren't on \
                      the list yet.",
                 );
                 ui.add_space(6.0);

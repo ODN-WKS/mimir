@@ -85,7 +85,11 @@ fn the_box_is_the_phones_box_and_the_column_is_capped() {
     );
     assert!(has_button(&h, labels::SEND), "no send\n{}", screen_text(&h));
     assert!(shows(&h, "Effort"), "no effort chip\n{}", screen_text(&h));
-    assert!(shows(&h, "▾"), "no model chip\n{}", screen_text(&h));
+    assert!(
+        has_button(&h, "Auto-pick"),
+        "no model chip\n{}",
+        screen_text(&h)
+    );
     // No word buttons for what the icons do, and no Prompts button.
     for old in ["Talk", "🎤 Talk", "Attach", "Prompts ▾"] {
         assert!(!has_button(&h, old), "old button {old:?}");
@@ -122,7 +126,8 @@ fn a_task_box_adds_the_permission_chip_and_its_own_hint() {
     );
     assert!(has_button(&h, labels::ATTACH_FILES));
     assert!(has_button(&h, labels::DICTATE));
-    assert!(shows(&h, labels::HINT_TASK), "{}", screen_text(&h));
+    // A task with something said in it has no shortcut line.
+    assert!(!shows(&h, labels::HINT_TASK), "{}", screen_text(&h));
     assert!(!shows(&h, labels::HINT_CHAT));
     // The pill that says who answers, with the actions behind it.
     assert!(has_button(&h, labels::PILL_MENU), "{}", screen_text(&h));

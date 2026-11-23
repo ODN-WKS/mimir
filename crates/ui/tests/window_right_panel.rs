@@ -130,7 +130,7 @@ fn the_chat_box_chips_are_plain_words_and_the_old_pill_is_gone() {
     }
     assert!(shows(&h, "Effort: Medium"), "{}", screen_text(&h));
     assert!(!shows(&h, "Nothing needs you"));
-    assert!(shows(&h, "Needs you"), "{}", screen_text(&h));
+    assert!(!shows(&h, "Needs you"), "{}", screen_text(&h));
     close(h);
 }
 

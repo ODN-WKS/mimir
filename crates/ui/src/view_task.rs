@@ -96,7 +96,7 @@ impl App {
                     .button("Remote control in a terminal (shows a QR code)…")
                     .on_hover_text(
                         "Opens Remote Control for this folder in a terminal window, so you \
-                             can start and drive sessions from your phone",
+                             can start and drive tasks from your phone",
                     )
                     .clicked()
                 {
@@ -104,8 +104,8 @@ impl App {
                 }
                 if let Some(b) = &t.brief
                     && ui
-                        .button("Show the handover brief")
-                        .on_hover_text("What the Auto model was told when it took over")
+                        .button("Show the summary")
+                        .on_hover_text("What the next model was told when it took over")
                         .clicked()
                 {
                     actions.push(Action::ShowLines(
@@ -129,8 +129,8 @@ impl App {
                     if ui
                         .button(format!("Bring the changes into {name}"))
                         .on_hover_text(
-                            "Saves the copy's work on its branch and merges it into the main \
-                                 folder. If it cannot merge cleanly, nothing changes.",
+                            "Saves the copy's work and brings it into the main \
+                                 folder. If that can't be done cleanly, nothing changes.",
                         )
                         .clicked()
                     {
@@ -140,11 +140,11 @@ impl App {
                         actions.push(Action::ConfirmRemoveCopy(id.clone()));
                     }
                 }
-                if ui.button("Find in this conversation (Ctrl+F)").clicked() {
+                if ui.button("Find in this chat (Ctrl+F)").clicked() {
                     actions.push(Action::Find);
                 }
                 if ui
-                    .button("Save the conversation as a file…")
+                    .button("Save the chat as a file…")
                     .on_hover_text("A Markdown file in Documents › Mimir")
                     .clicked()
                 {
@@ -289,7 +289,7 @@ impl App {
                     }
                     if let Some(b) = &branch {
                         ui.label(RichText::new(format!("⎇ {b}")).color(MUTED).size(13.0))
-                            .on_hover_text("Where this work is saved (its branch)");
+                            .on_hover_text("Where this work is saved");
                     }
                     if t.from_phone.is_some() {
                         ui.label(
@@ -413,8 +413,8 @@ impl App {
                                 if ui
                                     .add(theme::primary(&format!("Bring the changes into {home}")))
                                     .on_hover_text(
-                                        "Saves the copy's work as one commit and merges it into the \
-                                         main folder. If it cannot merge cleanly, nothing changes.",
+                                        "Saves the copy's work and brings it into the \
+                                         main folder. If that can't be done cleanly, nothing changes.",
                                     )
                                     .clicked()
                                 {
@@ -593,7 +593,9 @@ impl App {
                                 .size(12.0),
                         );
                     }
-                    hint_line(ui, crate::labels::HINT_TASK);
+                    if t.entries.is_empty() {
+                        hint_line(ui, crate::labels::HINT_TASK);
+                    }
                     if t.incognito {
                         ui.horizontal_wrapped(|ui| {
                             theme::whisper_eye(ui, 22.0);
@@ -962,7 +964,7 @@ fn ok_bar(
 
 /// Shown next to the picker whenever Auto is on.
 pub(crate) const AUTO_NOTE: &str = "Auto picks Haiku, Sonnet, Opus or Fable for each message. \
-    A switch uses a little of your plan: on a short conversation it reads it again; on a long \
+    A switch uses a little of your plan: on a short chat it reads it again; on a long \
     one it gets a short summary instead. Auto only steps up within a task, never back down.";
 
 /// What each Auto style leans toward.
@@ -970,11 +972,11 @@ pub(crate) fn auto_style_note(style: mimir_core::auto::Style) -> &'static str {
     match style {
         mimir_core::auto::Style::Efficient => {
             "Efficient: the lightest model that suits (Haiku for quick questions and chats), \
-             Fable only when you ask. Uses the least of your plan. On a long conversation it switches to a short summary."
+             Fable only when you ask. Uses the least of your plan. On a long chat it switches to a short summary."
         }
         mimir_core::auto::Style::Capable => {
             "Capable: one step stronger (Sonnet for quick questions, Opus for coding, Fable for \
-             long hard requests). Uses more of your plan. Keeps the whole conversation for longer."
+             long hard requests). Uses more of your plan. Keeps the whole chat for longer."
         }
     }
 }
