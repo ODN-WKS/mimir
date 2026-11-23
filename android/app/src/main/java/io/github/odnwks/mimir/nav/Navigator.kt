@@ -42,6 +42,8 @@ sealed interface Screen {
     /** One model's page in the Model Store (Settings › Who answers). */
     data class ModelDetails(val id: String) : Screen
     data object PhonePc : Screen
+    /** Your PC › PC settings: its name, how phones reach it, the phones, Disconnect (a PC that lists its sessions). */
+    data object PcSettings : Screen
     data object Notifications : Screen
     data object IncognitoTask : Screen { override val bottomBar get() = false }
     data object Pair : Screen { override val bottomBar get() = false }
@@ -84,7 +86,7 @@ sealed interface Screen {
  */
 fun Screen.opensOnRight(left: Screen): Boolean = when (this) {
     is Screen.Task, is Screen.Change, is Screen.Project, Screen.NeedsYou -> left != this
-    Screen.General, Screen.Models, Screen.PhonePc, Screen.Notifications,
+    Screen.General, Screen.Models, Screen.PhonePc, Screen.PcSettings, Screen.Notifications,
     Screen.Storage, Screen.Voice, Screen.About, Screen.Help, Screen.Labs, Screen.GroundRules, Screen.PrivacyCheck -> left == Screen.Settings
     Screen.Voices, is Screen.HelpAnswer -> left == Screen.Settings
     else -> false

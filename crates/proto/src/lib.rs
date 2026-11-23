@@ -361,6 +361,9 @@ pub struct PcSession {
     /// Started in Mímir (its task is `task`), or elsewhere (a terminal, the
     /// Claude app, a scheduled run).
     pub here: bool,
+    /// Came from the Claude app (Remote Control), not a terminal.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub app: bool,
     /// The Mímir task for this session, when there is one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub task: Option<String>,

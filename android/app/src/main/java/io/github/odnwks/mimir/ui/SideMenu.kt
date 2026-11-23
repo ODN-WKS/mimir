@@ -149,6 +149,18 @@ fun projectState(p: io.github.odnwks.mimir.data.Project): Pair<String, ProjectTo
 
 enum class ProjectTone { Needs, Running, Idle }
 
+/** How many of the PC's Claude Code sessions are working right now (0 while the PC is away or says nothing). */
+fun pcRunning(state: io.github.odnwks.mimir.data.StationState): Int =
+    if (state.paired && state.pc.online) state.pcSessions?.count { it.state == io.github.odnwks.mimir.data.PcSessionState.Working } ?: 0 else 0
+
+/** What "Your PC" says on its right: "● 2 running" while sessions work, else whether it is connected. */
+fun pcMenuRight(state: io.github.odnwks.mimir.data.StationState): String {
+    val n = pcRunning(state)
+    return if (n > 0) "\u25cf $n running" else if (state.paired && state.pc.online) "connected" else "not connected"
+}
+
+private val PcGreen = Color(0xFF8FE0B4)
+
 const val MENU_SEARCH = "Search chats"
 const val MENU_NEW_CHAT = "New chat"
 const val MENU_NEEDS_YOU = "Needs you"
@@ -198,8 +210,10 @@ fun SideMenu(
             if (state.owner) item("needs") { MenuRow(MENU_NEEDS_YOU, badge = needs, badgeColor = MenuColors.AmberDeep) { go { nav.open(Screen.NeedsYou) } } }
             item("updates") { MenuRow(MENU_UPDATES, badge = unheard, badgeColor = MenuColors.Blue) { go { nav.selectTab(Tab.Updates) } } }
             item("pc") {
-                MenuRow(MENU_PC, right = if (state.paired && state.pc.online) "connected" else "not connected") {
-                    go { if (state.paired) nav.selectTab(Tab.Status) else nav.open(Screen.Pair) }
+                val running = pcRunning(state)
+                MenuRow(MENU_PC, right = pcMenuRight(state), rightColor = if (running > 0) PcGreen else MenuColors.Dim) {
+                    // A PC that lists its sessions has its own screen; an older one keeps the status page.
+                    go { if (!state.paired) nav.open(Screen.Pair) else if (state.pcSessions != null) nav.open(Screen.PhonePc) else nav.selectTab(Tab.Status) }
                 }
             }
             // Press and hold: a Whisper with internet (Mímir on this phone, through Tor), the old "New Whisper-O".

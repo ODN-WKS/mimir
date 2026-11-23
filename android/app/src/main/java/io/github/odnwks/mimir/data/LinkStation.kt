@@ -167,6 +167,8 @@ class LinkStation(
     private var pcModels: io.github.odnwks.mimir.link.LModels? = null
     /** The PC's update cards, newest first. */
     private var cards: List<io.github.odnwks.mimir.link.LCard> = emptyList()
+    /** The PC's Claude Code sessions (null until it says; only a PC with feature "pc_sessions" does). */
+    private var pcSessionList: List<io.github.odnwks.mimir.link.LPcSession>? = null
     private var playState = io.github.odnwks.mimir.audio.PlayState()
     /** Real lengths of played updates, by id. */
     private val lengths = HashMap<String, Int>()
@@ -416,6 +418,7 @@ class LinkStation(
                     val list = Held.asking(ev.items, data.answers) { it.askId }
                     after = { onItems?.invoke(list) }
                 }
+                is Ev.PcSessions -> if (Wire.PC_SESSIONS in pcFeatures) pcSessionList = ev.sessions
                 is Ev.Updates -> {
                     // One card per id: the PC can send the same update twice (same text in the same second), and a repeated key closes the Updates list.
                     cards = ev.cards.distinctBy { it.id }
@@ -1118,6 +1121,22 @@ class LinkStation(
         }
     }
 
+    override fun refreshPcSessions() {
+        if (Wire.PC_SESSIONS !in pcFeatures) return
+        call(Wire.pcSessions()) { ok, _ ->
+            val a = ok as? JSONArray ?: return@call
+            synchronized(lock) { pcSessionList = Wire.pcSessionList(a) }
+            publish()
+        }
+    }
+
+    override fun openPcSession(session: String, done: (String?) -> Unit) {
+        if (Wire.PC_SESSIONS !in pcFeatures || !call(Wire.openPcSession(session)) { ok, err ->
+                if (err != null) note(err)
+                done(if (err == null) ok as? String else null)
+            }) { note("Your PC is away: try again when it's back."); done(null) }
+    }
+
     private fun flushStops() {
         synchronized(pendingStops) { pendingStops.toList() }.forEach { id ->
             call(Wire.stop(id)) { _, err ->
@@ -1513,6 +1532,9 @@ class LinkStation(
             paidOn = t?.engine?.paidOn,
             pcTalks = data.pcTalks,
             pcFinished = Wire.FINISHED_EVENTS in pcFeatures,
+            pcSessions = if (Wire.PC_SESSIONS in pcFeatures && isOwner()) pcSessionList?.map { l ->
+                PcSession(l.id, l.title, l.project, l.here, l.app, l.task, PcSessionState.valueOf(l.state.name), l.last)
+            } else null,
             owner = isOwner(),
             pc = Pc(Mapping.pcName(pcName), online = connected, lastSeen = when { connected -> "now"; !failedOnce -> "not connected"; else -> seenWords(lastSeenAt, System.currentTimeMillis()) }, route = "private connection", tasksRunning = if (!connected) 0 else t?.working ?: tasks.values.count { Mapping.working(it) }),
             needsYou = needs,

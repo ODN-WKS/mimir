@@ -117,6 +117,11 @@ fun TaskScreen(taskId: String, state: StationState, station: Station, nav: Navig
     val scroll = rememberScrollState()
     // A step was still running when Stop was tapped here.
     var cutOff by rememberSaveable(task.id) { mutableStateOf(false) }
+    // A PC that lists its sessions: a task going on elsewhere is followed with a banner, Stop and Carry on here.
+    val listsSessions = state.pcSessions != null
+    var followed by rememberSaveable(task.id) { mutableStateOf(false) }
+    var carried by rememberSaveable(task.id) { mutableStateOf(false) }
+    if (listsSessions && task.liveElsewhere) followed = true
     val reduce = LocalReduceMotion.current
     val keyboard = WindowInsets.isImeVisible
     val focus = LocalFocusManager.current
@@ -175,6 +180,7 @@ fun TaskScreen(taskId: String, state: StationState, station: Station, nav: Navig
                     .padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
+                if (listsSessions && task.liveElsewhere) FollowBanner(followedIn(state, task.id))
                 if (task.steps.isNotEmpty()) Steps(task, stepsOpen) { stepsOpen = !stepsOpen }
                 if (task.freeModel) Panel(background = Palette.Bar) {
                     Text(
@@ -323,7 +329,11 @@ fun TaskScreen(taskId: String, state: StationState, station: Station, nav: Navig
                 transitionSpec = { fadeIn(Motion.spec(Motion.SCREEN_MS, reduce)) togetherWith fadeOut(Motion.spec(Motion.SCREEN_MS, reduce)) },
                 label = "reply box",
             ) { elsewhere ->
-                if (elsewhere) ElsewhereNote(Modifier.windowInsetsPadding(WindowInsets.navigationBars)
+                if (listsSessions && followed && !carried) FollowButtons(
+                    live = elsewhere, onStop = { station.stopTask(task.id) }, onCarryOn = { carried = true },
+                    modifier = Modifier.windowInsetsPadding(WindowInsets.navigationBars).padding(start = 12.dp, end = 12.dp, top = 10.dp, bottom = 16.dp),
+                )
+                else if (elsewhere) ElsewhereNote(Modifier.windowInsetsPadding(WindowInsets.navigationBars)
                     .padding(start = 12.dp, end = 12.dp, top = 10.dp, bottom = 16.dp))
                 else Column {
                     VoicePanel(voice, heard = { draft = withHeard(draft, it) }, Modifier.padding(top = 8.dp))
@@ -499,6 +509,39 @@ const val EDIT_TASK_NOTE = "Sending puts changed files back as they were, then t
 
 /** The note while a conversation goes on elsewhere (the PC window shows its own version of it). */
 const val FOLLOWS_ALONG = "Going on in a terminal or another app right now. Reply there; this view follows along live."
+
+/** Where a task going on elsewhere runs: "the Claude app", "a terminal", or "another app" when the PC's list doesn't say. */
+fun followedIn(state: StationState, taskId: String): String {
+    val s = state.pcSessions?.firstOrNull { it.task == taskId } ?: return "another app"
+    return if (s.app) "the Claude app" else "a terminal"
+}
+
+/** The words of the green banner over a task that is going on elsewhere. */
+fun followBannerText(where: String) = "Running in $where. You can follow it here."
+
+const val FOLLOW_STOP = "Stop"
+const val FOLLOW_CARRY_ON = "Carry on here"
+
+@Composable
+private fun FollowBanner(where: String) {
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Palette.GreenCard).border(1.dp, Palette.GreenBorder, RoundedCornerShape(14.dp)).padding(horizontal = 12.dp, vertical = 9.dp)
+            .semantics(mergeDescendants = true) { liveRegion = androidx.compose.ui.semantics.LiveRegionMode.Polite },
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Dot(Palette.Green)
+        Text(followBannerText(where), style = Type.Small, color = Palette.GreenText)
+    }
+}
+
+/** In place of the reply box while a session from the PC is followed: Stop works, and Carry on here lights up once it stops. */
+@Composable
+private fun FollowButtons(live: Boolean, onStop: () -> Unit, onCarryOn: () -> Unit, modifier: Modifier) {
+    Row(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Box(Modifier.weight(1f)) { if (live) BigButton("\u25a0 $FOLLOW_STOP", Look.Danger, onStop, height = 48.dp) else BigButton("\u25a0 $FOLLOW_STOP", Look.Outline, {}, height = 48.dp, enabled = false) }
+        Box(Modifier.weight(1f)) { BigButton(FOLLOW_CARRY_ON, if (live) Look.Outline else Look.Primary, onCarryOn, height = 48.dp, enabled = !live) }
+    }
+}
 
 /** In place of the reply box while the conversation goes on elsewhere. */
 @Composable

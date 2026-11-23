@@ -72,6 +72,7 @@ pub fn list(
             title: short(&title),
             project: crate::paths::project_name(&o.project.display().to_string()),
             here: task.is_some(),
+            app: sessions::from_remote(&o.session.path),
             task: task.map(|t| t.task.clone()),
             state,
             last: moved,
@@ -258,6 +259,24 @@ mod tests {
         assert_eq!(l[1].state, PcSessionState::Idle);
         assert_eq!(l[2].state, PcSessionState::Ended);
         assert!(l.iter().all(|s| !s.here && s.task.is_none()));
+    }
+
+    #[test]
+    fn a_session_from_the_claude_app_says_so() {
+        let h = home("app");
+        // Claude Code gives Remote Control sessions a version 5 id.
+        let app = "5f1c0a52-2222-5d2e-9a10-0123456789ab";
+        session(&h, app, "Plan the beds", None, 20);
+        session(
+            &h,
+            "5f1c0a52-3333-4d2e-9a10-0123456789ab",
+            "Fix a typo",
+            None,
+            30,
+        );
+        let l = list(&h.root, &set(&[]), &set(&[]), &[], now());
+        assert!(l.iter().find(|s| s.id == app).unwrap().app);
+        assert!(l.iter().filter(|s| s.id != app).all(|s| !s.app));
     }
 
     #[test]

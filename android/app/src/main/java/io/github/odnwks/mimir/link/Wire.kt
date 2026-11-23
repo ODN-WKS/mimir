@@ -20,7 +20,7 @@ object Wire {
      * The PC sends the new events (talk pieces, chat changes, the truth) only to a phone that lists
      * them; the phone sends the new calls only to a PC whose Welcome lists them.
      */
-    val FEATURES = listOf("search", "lookup", TALK, CHAT_SYNC, TRUTH, MODELS_CHANGED, FINISHED_EVENTS)
+    val FEATURES = listOf("search", "lookup", TALK, CHAT_SYNC, TRUTH, MODELS_CHANGED, FINISHED_EVENTS, PC_SESSIONS)
     const val TALK = "talk"
     const val CHAT_SYNC = "chat_sync"
     /** The PC understands a cut-away turn ([LChatTurn.gone]); an older one would keep it as an empty message. */
@@ -29,6 +29,8 @@ object Wire {
     /** The PC tells this phone when what its person may choose changed (online allowed or taken away): it asks Models again. */
     const val MODELS_CHANGED = "models_changed"
     const val FINISHED_EVENTS = "finished_events"
+    /** The PC lists every Claude Code session on it ([pcSessions], [openPcSession], [Ev.PcSessions]); the owner's phone only. */
+    const val PC_SESSIONS = "pc_sessions"
     /** The PC takes "answer this as a chat, not a project" (Talk.chat_only; Stage 1, 2.3). */
     const val CHAT_ONLY = "chat_only"
     /** The PC has Settings › Who answers' two lines: what answers chats, and what does project work (SetEngines). */
@@ -174,6 +176,20 @@ object Wire {
 
     fun projects(): String = JSONObject.quote("Projects")
 
+    /** The PC's Claude Code sessions (feature [PC_SESSIONS]); the reply is a list, as in [Ev.PcSessions]. */
+    fun pcSessions(): String = JSONObject.quote("PcSessions")
+
+    /** Opens one of them as a task; the reply is the task's id. */
+    fun openPcSession(session: String): String = obj("OpenPcSession") { put("session", session) }
+
+    fun pcSession(o: JSONObject): LPcSession = LPcSession(
+        o.getString("id"), o.optString("title"), o.optString("project"), o.optBoolean("here"), o.optBoolean("app"),
+        if (o.isNull("task") || !o.has("task")) null else o.optString("task"),
+        when (o.optString("state")) { "working" -> LPcState.Working; "idle" -> LPcState.Idle; else -> LPcState.Ended }, o.optLong("last"),
+    )
+
+    fun pcSessionList(a: JSONArray): List<LPcSession> = (0 until a.length()).map { pcSession(a.getJSONObject(it)) }
+
     /** A task from the phone always asks first. A message id makes sending it again harmless. */
     fun newTask(project: String, text: String, msgId: String? = null, model: String? = null, plan: Boolean = false, rules: String? = null): String = obj("NewTask") {
         put("project", project); put("text", text); put("pictures", JSONArray()); put("mode", if (plan) "Plan" else "Ask")
@@ -316,6 +332,7 @@ object Wire {
             "NeedsYou" -> (v as JSONObject).getJSONArray("items").let { a -> Ev.NeedsYou((0 until a.length()).map { item(a.getJSONObject(it)) }) }
             "Finished" -> Ev.Finished(finishedItem((v as JSONObject).getJSONObject("item")))
             "RecentFinished" -> (v as JSONObject).getJSONArray("items").let { a -> Ev.RecentFinished((0 until a.length()).map { finishedItem(a.getJSONObject(it)) }) }
+            "PcSessions" -> Ev.PcSessions(pcSessionList((v as JSONObject).getJSONArray("sessions")))
             "Usage" -> Ev.Other(name)
             "TestNotice" -> (v as JSONObject).let { Ev.TestNotice(it.getString("name"), it.optString("what"), it.optString("until")) }
             "TalkPiece" -> (v as JSONObject).let { Ev.TalkPiece(it.getString("chat_id"), it.getString("turn_id"), it.optInt("n"), it.optString("text"), it.optBoolean("thinking")) }
@@ -497,8 +514,19 @@ sealed interface Ev {
     data class Finished(val item: LFinished) : Ev
     /** The PC's last few finished items, sent with a snapshot (a phone shows each id once). */
     data class RecentFinished(val items: List<LFinished>) : Ev
+    /** Every Claude Code session on the PC, the whole list each time it changes (feature [Wire.PC_SESSIONS]). */
+    data class PcSessions(val sessions: List<LPcSession>) : Ev
     data class Other(val name: String) : Ev
 }
+
+/** Where a PC session is at. */
+enum class LPcState { Working, Idle, Ended }
+
+/** One Claude Code session on the PC: [here] started in Mímir (its task is [task]), [app] came from the Claude app, [last] is unix seconds. */
+data class LPcSession(
+    val id: String, val title: String, val project: String, val here: Boolean, val app: Boolean, val task: String?,
+    val state: LPcState, val last: Long,
+)
 
 /** How a task's work ended: [how] is "Ok", "Stopped" or "Failed". No words from the task. */
 data class LFinished(val id: String, val task: String, val how: String, val at: Long)

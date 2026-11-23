@@ -110,7 +110,9 @@ class WireTest {
         val expected = lines("calls.jsonl").map { parse(it) }
         val mine = listOf(
             Wire.hello("0.17", "Samsung EX-100", features = emptyList()),
-            Wire.hello("0.22", "Samsung EX-100"),
+            Wire.hello("0.22", "Samsung EX-100", features = listOf("search", "lookup", "talk", "chat_sync", "truth", "models_changed", "finished_events")),
+            Wire.pcSessions(),
+            Wire.openPcSession("5f1c0a52-1111-4d2e-9a10-0123456789ab"),
             Wire.sync(12),
             Wire.projects(),
             Wire.newTask("/home/me/p", "Fix it", "m-1"),

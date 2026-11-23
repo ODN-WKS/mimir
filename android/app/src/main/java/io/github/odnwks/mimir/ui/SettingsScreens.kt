@@ -157,10 +157,12 @@ fun SettingsFooter(version: String) {
 
 /** Settings › Your PC: the connection, the phones that can reach it, its name, and Disconnect this phone. */
 @Composable
-fun PhonePcScreen(state: StationState, station: Station, nav: Navigator) {
+fun PhonePcScreen(state: StationState, station: Station, nav: Navigator, settings: Boolean = false) {
+    // A PC that lists its Claude Code sessions: the list first, these settings one row away.
+    if (state.pcSessions != null && !settings) return PcSessionsScreen(state, station, nav)
     val standIn = LocalStandIn.current
     Column(Modifier.fillMaxSize().background(Palette.Ground)) {
-        BackHeader("Your PC", nav::back, backLabel = "Back to Settings")
+        BackHeader(if (settings) "PC settings" else "Your PC", nav::back, backLabel = if (settings) "Back" else "Back to Settings")
         Column(
             Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 20.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),

@@ -55,6 +55,10 @@ interface Station {
     /** How this phone stays in touch with the PC (Settings › Notifications). */
     fun setStayMode(mode: StayMode)
     fun stopTask(taskId: String)
+    /** Asks the PC for its Claude Code sessions again (pull to refresh); an older PC has none. */
+    fun refreshPcSessions() {}
+    /** Opens one PC session as a task and tells [done] its id (null when the PC couldn't). */
+    fun openPcSession(session: String, done: (String?) -> Unit) { done(null) }
     fun pauseTask(taskId: String)
     fun continueTask(taskId: String)
     fun renameTask(taskId: String, title: String)
@@ -196,6 +200,30 @@ data class KeptChat(val id: String, val name: String?, val at: Long, val log: St
 /** How an earlier conversation shows in the chats list. */
 data class PastChat(val id: String, val title: String, val at: Long, val messages: Int, val words: String = "")
 
+/** Where a session on the PC is at. */
+enum class PcSessionState { Working, Idle, Ended }
+
+/** One Claude Code session on the PC, wherever it was started: [here] a Mímir task ([task]), else [app] (the Claude app) or a terminal. */
+data class PcSession(
+    val id: String, val title: String, val project: String, val here: Boolean, val app: Boolean, val task: String?,
+    val state: PcSessionState, val lastUnix: Long,
+) {
+    /** "a Mímir task", "in the Claude app" or "in a terminal". */
+    val where: String get() = if (here) "a Mímir task" else if (app) "in the Claude app" else "in a terminal"
+    val line: String get() = listOf(project, where).filter { it.isNotBlank() }.joinToString(" \u00b7 ")
+}
+
+/** The short time in a session's row: "now", "2m", "11h", "1d". */
+fun pcAgo(lastUnix: Long, nowUnix: Long): String {
+    val s = (nowUnix - lastUnix).coerceAtLeast(0)
+    return when {
+        s < 60 -> "now"
+        s < 3600 -> "${s / 60}m"
+        s < 86_400 -> "${s / 3600}h"
+        else -> "${s / 86_400}d"
+    }
+}
+
 data class StationState(
     val pc: Pc,
     val chat: List<ChatEntry>,
@@ -237,6 +265,8 @@ data class StationState(
     val answersWaiting: Int = 0,
     /** The Mímir version on the PC ("" until it's said); the phone app ships with each one. */
     val pcVersion: String = "",
+    /** The PC's Claude Code sessions, newest first; null on a PC that doesn't list them (or for anyone but its owner). */
+    val pcSessions: List<PcSession>? = null,
     /** Phones reach the PC through relays when they can't connect directly (the PC's setting). */
     val relays: Boolean = true,
     /** The PC's "Allow YOLO from my phone": null until known (said by the PC, or by its answer to a try). */

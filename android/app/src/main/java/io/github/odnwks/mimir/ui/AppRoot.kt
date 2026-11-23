@@ -338,6 +338,7 @@ private fun ScreenFor(screen: Screen, state: io.github.odnwks.mimir.data.Station
             ModelDetailsScreen(screen.id, nav, phone)
         }
         Screen.PhonePc -> PhonePcScreen(state, station, nav)
+        Screen.PcSettings -> PhonePcScreen(state, station, nav, settings = true)
         Screen.Notifications -> NotificationsScreen(state, station, nav)
         Screen.IncognitoTask -> IncognitoTaskScreen(state, station, nav)
         Screen.Pair -> PairScreen(station, nav, state.screenLock)
