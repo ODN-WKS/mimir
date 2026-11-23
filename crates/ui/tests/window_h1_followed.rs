@@ -90,7 +90,7 @@ fn a_followed_session_can_be_stopped_here_and_says_one_thing() {
         screen_text(&h)
     );
     // P1: the line that says to stop it has a Stop beside it.
-    assert!(has_button(&h, "Stop it"), "{}", screen_text(&h));
+    assert!(has_button(&h, "Stop"), "{}", screen_text(&h));
     // P2: no "send a message" line while nothing can be sent.
     assert!(
         !shows(&h, "Send a message to carry on"),

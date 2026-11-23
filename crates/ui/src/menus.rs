@@ -112,7 +112,13 @@ pub fn item(ui: &mut egui::Ui, label: &str, hint: &str) -> bool {
 
 /// A row that is there but cannot be used now.
 pub fn item_if(ui: &mut egui::Ui, on: bool, label: &str, hint: &str) -> bool {
-    row(ui, label, hint, if on { Kind::Normal } else { Kind::Off })
+    // The hint says why it can't be used, so it shows only then.
+    row(
+        ui,
+        label,
+        if on { "" } else { hint },
+        if on { Kind::Normal } else { Kind::Off },
+    )
 }
 
 /// A destructive row: red, and last in its menu.

@@ -395,7 +395,9 @@ impl App {
             )));
             ui.add_space(4.0);
             let models = mimir_core::models::cached();
-            if models.is_empty() {
+            if mimir_core::models::program_off() {
+                program_off_line(ui, !models.is_empty());
+            } else if models.is_empty() {
                 ui.label(small(
                     "No models on your PC yet. Download one \
                      from the Model Store below.",
@@ -601,6 +603,12 @@ fn store_card(ui: &mut egui::Ui) {
             .into_iter()
             .map(|m| m.name)
             .collect();
+        // Off with nothing known: what is installed can't be told, so
+        // nothing is offered to download.
+        let off = mimir_core::models::program_off();
+        if off {
+            program_off_line(ui, !installed.is_empty());
+        }
         let vram = mimir_core::models::graphics_memory();
         let working = busy();
         for p in mimir_core::models::STORE.iter().filter(|p| !p.engine_only) {
@@ -640,7 +648,7 @@ fn store_card(ui: &mut egui::Ui) {
                         } else if downloading {
                             ui.label(small("Downloading…"));
                         } else if ui
-                            .add_enabled(!working, theme::primary("Download"))
+                            .add_enabled(!working && !off, theme::primary("Download"))
                             .on_hover_text(gb(p.bytes).to_string())
                             .clicked()
                         {
@@ -701,6 +709,21 @@ fn add_by_name(ui: &mut egui::Ui, working: bool) {
     ui.data_mut(|d| d.insert_temp(id, name));
 }
 
+/// Your PC's model program doesn't answer: say so, with the way to start it.
+/// `known` when a list from before is still shown.
+fn program_off_line(ui: &mut egui::Ui, known: bool) {
+    ui.horizontal_wrapped(|ui| {
+        ui.label(small(if known {
+            "Your PC's model program is off. These are the models it had."
+        } else {
+            "Your PC's model program is off, so its models can't be listed. Start it to see them."
+        }));
+        if ui.add(theme::quiet("Start it")).clicked() {
+            mimir_core::models::start_program();
+        }
+    });
+}
+
 fn phone_models_card(ui: &mut egui::Ui) {
     theme::card().show(ui, |ui| {
         ui.set_width(ui.available_width());
@@ -737,7 +760,11 @@ pub fn storage(ui: &mut egui::Ui) {
         let sizes = sizes();
         let working = busy();
         if models.is_empty() {
-            ui.label(small("None on this PC."));
+            ui.label(small(if mimir_core::models::program_off() {
+                "Not known while your PC's model program is off."
+            } else {
+                "None on this PC."
+            }));
         }
         let mut total = 0;
         let names = crate::models::show_names(&models);

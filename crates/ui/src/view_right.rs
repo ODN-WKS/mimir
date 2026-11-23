@@ -158,8 +158,9 @@ impl App {
             );
         }
         ui.add_space(10.0);
+        let down = self.pc_model_down();
         ui.label(
-            RichText::new(if self.pc_model_down() {
+            RichText::new(if down {
                 crate::labels::PC_DOWN_LINE_ELSEWHERE
             } else if self.stats.model_loaded() {
                 "Your PC's model is ready, so the first answer is quick."
@@ -169,6 +170,9 @@ impl App {
             .color(theme::DIM)
             .size(12.5),
         );
+        if down && ui.add(theme::quiet(crate::labels::TRY_AGAIN)).clicked() {
+            mimir_core::models::start_program();
+        }
     }
 
     /// "This task", its changes and its permission.
@@ -295,10 +299,12 @@ impl App {
         }
         if l.running() || outside || l.shown_state() == TaskState::NeedsYou {
             ui.add_space(6.0);
-            let b = egui::Button::new(RichText::new("Stop this task").color(RED))
-                .fill(egui::Color32::TRANSPARENT)
-                .stroke(egui::Stroke::new(1.0, RED))
-                .corner_radius(egui::CornerRadius::same(theme::RADIUS));
+            let b = egui::Button::new(
+                RichText::new(if outside { "Stop" } else { "Stop this task" }).color(RED),
+            )
+            .fill(egui::Color32::TRANSPARENT)
+            .stroke(egui::Stroke::new(1.0, RED))
+            .corner_radius(egui::CornerRadius::same(theme::RADIUS));
             if ui.add_sized([ui.available_width(), 34.0], b).clicked() {
                 actions.push(Action::Stop(t.id.clone()));
             }
@@ -325,7 +331,9 @@ impl App {
                         .size(13.0),
                 );
             }
-            if let Some((at, _)) = t.checkpoints.first()
+            // Nothing changed: nothing to undo.
+            if n > 0
+                && let Some((at, _)) = t.checkpoints.first()
                 && ui
                     .add(
                         egui::Button::new(

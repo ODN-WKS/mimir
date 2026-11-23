@@ -37,6 +37,7 @@ impl App {
             Some(format!("{home_name} › {}", t.title))
         };
         let model_down = self.pc_model_down();
+        let following = l.outside_now() || t.from_phone.is_some();
         let crumb_resp = crate::view_top::mid_top(
             ui,
             &crate::view_top::MidTop {
@@ -55,14 +56,17 @@ impl App {
             },
             actions,
             |ui, actions| {
-                crate::extras::prompts_menu(
-                    ui,
-                    &self.settings,
-                    t.home_project(),
-                    &mut self.draft,
-                    actions,
-                );
-                ui.separator();
+                // Nothing can be sent to a session that runs elsewhere.
+                if !following {
+                    crate::extras::prompts_menu(
+                        ui,
+                        &self.settings,
+                        t.home_project(),
+                        &mut self.draft,
+                        actions,
+                    );
+                    ui.separator();
+                }
                 if ui.button("Rename").clicked() {
                     self.renaming = Some((id.clone(), t.title.clone(), 0));
                 }
@@ -202,7 +206,7 @@ impl App {
                 // A session to carry on, or (never started) the request again.
                 let again = match (&t.session_id, last_request(&t.entries)) {
                     (Some(_), _) => Some(Action::Continue(id.clone())),
-                    (None, Some(text)) => Some(Action::Send(id.clone(), text, vec![])),
+                    (None, Some(_)) => Some(Action::Continue(id.clone())),
                     (None, None) => None,
                 };
                 if let Some(a) = again

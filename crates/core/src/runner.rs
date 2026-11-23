@@ -581,6 +581,12 @@ impl Runner {
 
     /// Sends a message with pictures.
     pub fn send_with(&mut self, id: &str, text: &str, pictures: &[Picture]) {
+        self.send_inner(id, text, pictures, true);
+    }
+
+    /// `show`: the message is added to the conversation as the person's own
+    /// words (not for a Continue that has to hand the request over again).
+    fn send_inner(&mut self, id: &str, text: &str, pictures: &[Picture], show: bool) {
         let Some(i) = self.index(id) else { return };
         // The person carries on here: the task is theirs from now on.
         if self.tasks[i].task.outside {
@@ -657,7 +663,12 @@ impl Runner {
             let at = self.tasks[i].task.entries.len();
             self.tasks[i].task.checkpoints.push((at, snap));
         }
-        self.tasks[i].task.add_you(&shown);
+        if show {
+            self.tasks[i].task.add_you(&shown);
+        } else {
+            self.tasks[i].task.status = Status::Working;
+            self.tasks[i].task.failed = false;
+        }
         for n in &file_notes {
             self.tasks[i].task.add_note(n);
         }
@@ -1573,7 +1584,25 @@ impl Runner {
     }
 
     pub fn resume(&mut self, id: &str) {
-        self.send(id, CONTINUE_TEXT);
+        // A run that never got a conversation has nothing to carry on: it
+        // gets the person's request again, without a second copy of their
+        // message in the conversation.
+        let again = self.index(id).and_then(|i| {
+            let t = &self.tasks[i].task;
+            if t.session_id.is_some() {
+                return None;
+            }
+            t.entries.iter().rev().find_map(|e| match e {
+                crate::task::Entry::You(x) if !x.trim().is_empty() && x.trim() != CONTINUE_TEXT => {
+                    Some(x.clone())
+                }
+                _ => None,
+            })
+        });
+        match again {
+            Some(text) => self.send_inner(id, &text, &[], false),
+            None => self.send(id, CONTINUE_TEXT),
+        }
     }
 
     fn data_dir(&self) -> PathBuf {

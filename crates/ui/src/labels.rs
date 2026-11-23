@@ -219,7 +219,7 @@ pub fn running_state(place: Option<&str>) -> &'static str {
     }
 }
 /// The button beside that line: ends the session where it runs.
-pub const STOP_ELSEWHERE: &str = "Stop it";
+pub const STOP_ELSEWHERE: &str = "Stop";
 
 /// A task's row while Claude works on it (here or elsewhere).
 pub const WORKING: &str = "Working";
@@ -262,7 +262,8 @@ pub const PILL_PC: &str = "This PC";
 pub const PILL_PC_DOWN: &str = "Your PC's model is off";
 pub const PC_DOWN_LINE: &str = "Your PC's model isn't running. Try again in the chat.";
 /// The same line on a page that has no chat to try again in.
-pub const PC_DOWN_LINE_ELSEWHERE: &str = "Your PC's model isn't running. Check your PC.";
+/// A "Try again" button next to it starts the model program.
+pub const PC_DOWN_LINE_ELSEWHERE: &str = "Your PC's model isn't running. Press Try again.";
 /// The pill menu's line while the PC's model is off: "Try again" only where a chat is.
 pub fn pc_down_line(on_chat: bool) -> &'static str {
     if on_chat {
@@ -325,7 +326,7 @@ mod tests {
         assert!(pc_down_line(true).contains("Try again in the chat"));
         assert_eq!(
             pc_down_line(false),
-            "Your PC's model isn't running. Check your PC."
+            "Your PC's model isn't running. Press Try again."
         );
     }
 

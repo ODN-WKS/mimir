@@ -51,9 +51,41 @@ pub struct Record {
     pub child_pid: Option<i32>,
     /// The child ended (its exit code, None by a signal), and all it
     /// printed is on disk.
+    #[serde(default, with = "exit_wire")]
     pub exit: Option<Option<i32>>,
     /// The service saved up to here.
     pub out_offset_saved: u64,
+}
+
+/// How `Record::exit` is written. A plain `Option<Option<i32>>` writes an end
+/// by a signal (`Some(None)`) as null, which reads back as "not ended": the
+/// run would look alive until its host went. Not ended is left out; ended by
+/// a signal is `"signal"`; an exit code is the number.
+mod exit_wire {
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+    #[derive(Serialize, Deserialize)]
+    #[serde(untagged)]
+    enum Wire {
+        Code(i32),
+        Signal(String),
+    }
+
+    pub fn serialize<S: Serializer>(v: &Option<Option<i32>>, s: S) -> Result<S::Ok, S::Error> {
+        match v {
+            None => s.serialize_none(),
+            Some(Some(c)) => Wire::Code(*c).serialize(s),
+            Some(None) => Wire::Signal("signal".into()).serialize(s),
+        }
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Option<Option<i32>>, D::Error> {
+        Ok(match Option::<Wire>::deserialize(d)? {
+            None => None,
+            Some(Wire::Code(c)) => Some(Some(c)),
+            Some(Wire::Signal(_)) => Some(None),
+        })
+    }
 }
 
 pub fn state_dir() -> PathBuf {
@@ -638,5 +670,59 @@ fn serve(
         if v["collected"].as_bool() == Some(true) {
             collected.store(true, std::sync::atomic::Ordering::SeqCst);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_end_by_signal_is_saved_as_ended() {
+        for exit in [None, Some(None), Some(Some(0)), Some(Some(137))] {
+            let r = Record {
+                exit,
+                ..Default::default()
+            };
+            let back: Record = serde_json::from_str(&serde_json::to_string(&r).unwrap()).unwrap();
+            assert_eq!(back.exit, exit);
+        }
+    }
+
+    /// A real host whose process dies by a signal (what Mimir's own stop
+    /// does after the grace time): the record says it ended, at once.
+    #[test]
+    fn a_host_whose_process_dies_by_signal_records_the_end() {
+        let dir = std::env::temp_dir().join(format!("mimir-host-sig-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        // SAFETY: the only test that sets these; no other thread reads them yet.
+        unsafe {
+            std::env::set_var("XDG_STATE_HOME", dir.join("state"));
+            std::env::set_var("XDG_RUNTIME_DIR", &dir);
+            std::env::set_var("STATION_HOST_LINGER_SECS", "0");
+        }
+        private_dir(&state_dir()).unwrap();
+        private_dir(&socket_dir()).unwrap();
+        let key = "tsig-1";
+        write_record(
+            key,
+            &Record {
+                proto: PROTO,
+                job: Job {
+                    kind: "task".into(),
+                    task_id: "t".into(),
+                    program: "/bin/sh".into(),
+                    args: vec!["-c".into(), "kill -TERM $$".into()],
+                    cwd: dir.clone(),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+        );
+        run(key).unwrap();
+        let r = read_record(key).expect("record kept");
+        assert_eq!(r.exit, Some(None), "ended by a signal, and saved as ended");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

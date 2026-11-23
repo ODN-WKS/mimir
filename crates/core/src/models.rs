@@ -167,7 +167,7 @@ pub fn plain_note(note: &str) -> std::borrow::Cow<'_, str> {
         && !id.contains(' ')
     {
         return format!(
-            "Answered by {}, a model on your PC. Your chats stay on this PC.",
+            "Answered by {}, a model on your PC. Your work stays here.",
             plain_name(id)
         )
         .into();
@@ -185,10 +185,15 @@ pub fn plain_note(note: &str) -> std::borrow::Cow<'_, str> {
         )
         .into();
     }
-    // Notes saved by the last version said "a free model on your PC".
-    if note.starts_with("Answered by ") && note.contains(", a free model on your PC.") {
+    // Notes saved by earlier versions said "a free model on your PC" and
+    // "Your chats stay on this PC" (a task is not a chat).
+    if note.starts_with("Answered by ")
+        && (note.contains(", a free model on your PC.")
+            || note.contains("Your chats stay on this PC."))
+    {
         return note
             .replacen(", a free model on your PC.", ", a model on your PC.", 1)
+            .replacen("Your chats stay on this PC.", "Your work stays here.", 1)
             .into();
     }
     note.into()
@@ -475,8 +480,13 @@ pub fn remove(name: &str) -> bool {
 
 /// The next look at the free models asks Ollama afresh.
 pub fn forget_cached() {
-    if let Ok(mut g) = CACHE.lock() {
-        *g = None;
+    if let Ok(mut g) = CACHE.lock()
+        && let Some((t, _)) = g.as_mut()
+    {
+        // Old enough to be looked at again; the list shows meanwhile.
+        *t = Instant::now()
+            .checked_sub(Duration::from_secs(60))
+            .unwrap_or(*t);
     }
 }
 
@@ -636,6 +646,35 @@ pub fn default_free(models: &[FreeModel]) -> Option<&FreeModel> {
 /// What the window shows (read again at most every 30 s, off its thread).
 static CACHE: Mutex<Option<(Instant, Vec<FreeModel>)>> = Mutex::new(None);
 static LOOKING: Mutex<bool> = Mutex::new(false);
+/// The last look found the PC's model program not answering. The list then
+/// stays as it was last seen, and is not "empty".
+static OFF: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Whether the last look found the PC's model program off.
+pub fn program_off() -> bool {
+    OFF.load(std::sync::atomic::Ordering::SeqCst)
+}
+
+/// Starts the PC's model program (without waiting) and has the next look
+/// come soon, keeping the last known list meanwhile.
+pub fn start_program() {
+    start_unit();
+    forget_cached();
+}
+
+/// Keeps what a look found: a program that doesn't answer leaves the list as
+/// it was (never an empty list that reads "nothing installed").
+fn keep_look(found: Result<Vec<String>, String>) {
+    let off = found.is_err();
+    OFF.store(off, std::sync::atomic::Ordering::SeqCst);
+    if let Ok(mut g) = CACHE.lock() {
+        let list = match found {
+            Ok(n) => catalogue(&n),
+            Err(_) => g.take().map(|(_, l)| l).unwrap_or_default(),
+        };
+        *g = Some((Instant::now(), list));
+    }
+}
 
 /// The free models as last seen; starts a look when older than 30 s.
 pub fn cached() -> Vec<FreeModel> {
@@ -655,10 +694,7 @@ pub fn cached() -> Vec<FreeModel> {
             busy = std::thread::Builder::new()
                 .name("free-models".into())
                 .spawn(|| {
-                    let l = installed().map(|n| catalogue(&n)).unwrap_or_default();
-                    if let Ok(mut g) = CACHE.lock() {
-                        *g = Some((Instant::now(), l));
-                    }
+                    keep_look(installed());
                     if let Ok(mut g) = LOOKING.lock() {
                         *g = false;
                     }
@@ -742,6 +778,18 @@ pub fn out_of_room(error: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_program_that_is_off_keeps_the_last_list() {
+        super::keep_look(Ok(vec!["gpt-oss:20b".into()]));
+        assert!(!super::program_off());
+        let had = super::cached();
+        assert!(!had.is_empty(), "the look found a model");
+        super::keep_look(Err("Ollama isn't running".into()));
+        assert!(super::program_off());
+        assert_eq!(super::cached(), had, "still the last known list");
+        super::keep_look(Ok(vec!["gpt-oss:20b".into()]));
+        assert!(!super::program_off());
+    }
     use super::*;
 
     #[test]
@@ -816,13 +864,13 @@ mod plain_note_tests {
             plain_note(
                 "Answered by Qwen 3.6 coding, a free model on your PC. Your chats stay on this PC."
             ),
-            "Answered by Qwen 3.6 coding, a model on your PC. Your chats stay on this PC."
+            "Answered by Qwen 3.6 coding, a model on your PC. Your work stays here."
         );
         assert_eq!(
             plain_note(
                 "On qwen3.6:35b-a3b-coding, a free model on this PC (Settings \u{203a} Models \u{203a} What powers your tasks)."
             ),
-            "Answered by Qwen 3.6 coding, a model on your PC. Your chats stay on this PC."
+            "Answered by Qwen 3.6 coding, a model on your PC. Your work stays here."
         );
         assert_eq!(
             plain_note(

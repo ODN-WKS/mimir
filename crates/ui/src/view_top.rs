@@ -504,6 +504,14 @@ pub(crate) fn mid_top(
                     .color(MUTED)
                     .size(12.5),
                 );
+                if down
+                    && !top.outside
+                    && !top.paid
+                    && !top.on_chat
+                    && ui.button(crate::labels::TRY_AGAIN).clicked()
+                {
+                    mimir_core::models::start_program();
+                }
                 if !top.outside && ui.button("Choose who answers…").clicked() {
                     actions.push(Action::OpenModels);
                     ui.close();

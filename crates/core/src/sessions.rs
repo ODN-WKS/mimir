@@ -1124,6 +1124,11 @@ pub fn follow(t: &mut Task, path: &Path, from: u64) -> std::io::Result<u64> {
             }
         }
     }
+    // "Send a message to carry on" belongs under the last line, never between
+    // lines that came after it.
+    if at > from && t.drop_note(OPENED_NOTE) {
+        t.add_note(OPENED_NOTE);
+    }
     Ok(at)
 }
 
@@ -1395,6 +1400,15 @@ fn copy_all(src: &Path, dst: &Path) -> std::io::Result<()> {
     }
 }
 
+/// When a transcript began (its first dated line), in seconds.
+fn first_time(text: &str) -> Option<i64> {
+    text.lines().take(50).find_map(|l| {
+        let v: Value = serde_json::from_str(l).ok()?;
+        let ms = crate::devlog::parse_iso(v.get("timestamp")?.as_str()?)?;
+        i64::try_from(ms / 1000).ok()
+    })
+}
+
 /// Rebuilds a past session as a task, ready to continue.
 pub fn to_task(s: &PastSession, project: &Path, task_id: String) -> std::io::Result<Task> {
     let text = std::fs::read_to_string(&s.path)?;
@@ -1407,7 +1421,8 @@ pub fn to_task(s: &PastSession, project: &Path, task_id: String) -> std::io::Res
         task_id,
         title,
         project.display().to_string(),
-        s.modified_unix,
+        // When it began (its first line says), not when it last changed.
+        first_time(&text).unwrap_or(s.modified_unix),
     );
     for line in text.lines() {
         add_line(&mut t, &without_images(line));
@@ -1432,6 +1447,46 @@ pub fn to_task(s: &PastSession, project: &Path, task_id: String) -> std::io::Res
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// N7: a followed session shows when it began, and its "send a message to
+    /// carry on" line stays under the last line.
+    #[test]
+    fn an_opened_session_starts_when_it_began_and_keeps_its_note_last() {
+        let dir = std::env::temp_dir().join(format!("station-open-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("s9.jsonl");
+        let u = |ts: &str, text: &str| {
+            format!(
+                r#"{{"type":"user","timestamp":"{ts}","message":{{"role":"user","content":"{text}"}}}}"#
+            )
+        };
+        std::fs::write(
+            &path,
+            format!("{}\n", u("2026-11-20T10:00:00.000Z", "first")),
+        )
+        .unwrap();
+        let s = PastSession {
+            id: "s9".into(),
+            path: path.clone(),
+            first: "first".into(),
+            modified_unix: 1_800_000_000,
+            messages: 1,
+        };
+        let mut t = to_task(&s, Path::new("/p"), "t9".into()).unwrap();
+        assert_eq!(t.created_unix, 1_795_168_800, "the first line's time");
+        let from = std::fs::metadata(&path).unwrap().len();
+        let mut all = std::fs::read_to_string(&path).unwrap();
+        all.push_str(&format!("{}\n", u("2026-11-20T10:05:00.000Z", "later")));
+        std::fs::write(&path, all).unwrap();
+        follow(&mut t, &path, from).unwrap();
+        assert!(
+            matches!(t.entries.last(), Some(crate::task::Entry::Note(n)) if n == OPENED_NOTE),
+            "{:?}",
+            t.entries
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn a_followed_session_keeps_the_tail_and_no_picture_data() {

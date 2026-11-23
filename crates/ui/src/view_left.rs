@@ -257,13 +257,19 @@ impl App {
                                 *open = !*open;
                             }
                         };
-                        if !archived.is_empty() {
-                            quiet(ui, crate::labels::archived(archived.len()), &mut arch_open);
-                            if !elsewhere.is_empty() {
+                        // A dot goes only between two links, never first.
+                        let mut any = false;
+                        let dot = |ui: &mut egui::Ui, any: &mut bool| {
+                            if std::mem::replace(any, true) {
                                 ui.label(RichText::new("·").color(MUTED).size(12.5));
                             }
+                        };
+                        if !archived.is_empty() {
+                            dot(ui, &mut any);
+                            quiet(ui, crate::labels::archived(archived.len()), &mut arch_open);
                         }
                         if !elsewhere.is_empty() {
+                            dot(ui, &mut any);
                             quiet(
                                 ui,
                                 crate::labels::from_elsewhere(elsewhere.len()),
@@ -271,7 +277,7 @@ impl App {
                             );
                         }
                         if !projects.is_empty() {
-                            ui.label(RichText::new("·").color(MUTED).size(12.5));
+                            dot(ui, &mut any);
                             let mut open = false;
                             quiet(ui, "Open a project folder".to_string(), &mut open);
                             if open {
@@ -280,7 +286,7 @@ impl App {
                         }
                         // Git projects beside the others that aren't listed.
                         if !repos.is_empty() {
-                            ui.label(RichText::new("·").color(MUTED).size(12.5));
+                            dot(ui, &mut any);
                             let mut open = false;
                             quiet(ui, crate::labels::add_projects(repos.len()), &mut open);
                             if open {

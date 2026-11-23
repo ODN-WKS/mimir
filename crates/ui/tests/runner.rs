@@ -263,3 +263,28 @@ fn missing_claude_is_explained() {
     r.remove(&id);
     assert!(r.tasks.is_empty());
 }
+
+/// N8: Continue on a task whose run never got a conversation hands the
+/// request over again, without a second copy of the person's message.
+#[test]
+fn continue_without_a_conversation_does_not_repeat_the_message() {
+    let env = Env::new("cont-dup");
+    let mut r = env.runner("plan_approve.jsonl");
+    let id = r.new_task(&env.proj(), "Make a plan");
+    until(&mut r, "a question", |r| status(r) == Status::NeedsYou);
+    r.stop(&id);
+    until(&mut r, "process gone", |r| !r.tasks[0].running());
+    r.tasks[0].task.session_id = None;
+    r.resume(&id);
+    let you: Vec<_> = r.tasks[0]
+        .task
+        .entries
+        .iter()
+        .filter_map(|e| match e {
+            Entry::You(t) => Some(t.clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(you, vec!["Make a plan".to_string()], "one bubble only");
+    assert_eq!(status(&r), Status::Working);
+}

@@ -1339,8 +1339,7 @@ impl Service {
                         _ => self.runner.note(
                             &id,
                             &format!(
-                                "Answered by {}, a model on your PC. Your chats stay on \
-                                 this PC.",
+                                "Answered by {}, a model on your PC. Your work stays here.",
                                 crate::models::plain_name(&name)
                             ),
                         ),
