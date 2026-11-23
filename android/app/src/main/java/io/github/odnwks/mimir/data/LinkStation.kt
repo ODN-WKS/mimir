@@ -362,8 +362,6 @@ class LinkStation(
                 is Ev.Snapshot -> { tasks.clear(); entries.clear(); live.clear(); liveAt.clear(); problem = null }
                 Ev.Ready -> after = {
                     talkers().forEach { it.back() }
-                    // "Your PC is away" lines are no longer true: they go by themselves.
-                    synchronized(lock) { chat.removeAll { it is ChatEntry.Note && it.text.startsWith("Your PC is away") } }
                     refreshProjects {
                         expireOld()
                         flush()
@@ -681,8 +679,8 @@ class LinkStation(
         publish()
     }
 
-    private fun note(text: String, problem: Boolean = true, action: NoteAction? = null) {
-        synchronized(lock) { chat += ChatEntry.Note("n-${UUID.randomUUID()}", text, problem, action) }
+    private fun note(text: String, problem: Boolean = true, action: NoteAction? = null, tag: String = "") {
+        synchronized(lock) { chat += ChatEntry.Note("n-$tag${UUID.randomUUID()}", text, problem, action) }
         publish()
     }
 
@@ -1079,37 +1077,49 @@ class LinkStation(
         }
         if (!sent) {
             pendingStops += taskId
-            note("Your PC is away: Stop goes out when it's back.")
+            note("Your PC is away: Stop goes out when it's back.", tag = STOP_TAG)
         }
     }
 
     private fun flushStops() {
         synchronized(pendingStops) { pendingStops.toList() }.forEach { id ->
-            call(Wire.stop(id)) { _, err -> if (err == null) pendingStops -= id else note(err) }
+            call(Wire.stop(id)) { _, err ->
+                if (err == null) {
+                    pendingStops -= id
+                    // The Stop went out: its "goes out when it's back" line is no longer true.
+                    if (pendingStops.isEmpty()) { synchronized(lock) { chat.removeAll { it is ChatEntry.Note && it.id.startsWith("n-$STOP_TAG") } }; publish() }
+                } else note(err)
+            }
         }
     }
 
+    @Volatile private var startWhy = ""
+    override fun startProblem(): String = startWhy
+
     override fun startTask(text: String, project: String, incognito: Boolean, plan: Boolean, model: String?): String {
+        startWhy = ""
         // Nothing to do: no empty task is made on the PC.
-        if (text.isBlank()) return ""
+        if (text.isBlank()) { startWhy = "Write what the task should do first."; return "" }
         if (incognito) {
             val path = pathOf(project) ?: synchronized(lock) { projects.firstOrNull()?.first }
             val free = synchronized(lock) {
                 chosenModel.takeIf { it.startsWith("ollama:") } ?: pcModels?.freeModel ?: pcModels?.free?.firstOrNull()?.id
             }
             if (path == null || free == null) {
-                note(if (free == null) "Whisper mode needs a free model on your PC, and none is set up." else "Pick a project first.")
+                startWhy = if (free == null) "Whisper mode needs a free model on your PC, and none is set up." else "Pick a project first."
+                note(startWhy)
                 return ""
             }
             if (!call(Wire.newIncognito(path, text, free, GroundRules.current)) { _, err -> if (err != null) note(err) }) {
-                note("Your PC is away: this Whisper can't wait. Start it again when your PC is back.")
+                startWhy = "Your PC is away: this Whisper can't wait. Start it again when your PC is back."
+                note(startWhy)
                 return ""
             }
             return FakeStation.INCOGNITO
         }
         val path = pathOf(project) ?: synchronized(lock) { projects.firstOrNull()?.first }
         val model = respectPower(model ?: synchronized(lock) { chosenModel }).takeIf { it != "auto" }
-        if (path == null) { note("Pick a project first."); return "" }
+        if (path == null) { startWhy = "Pick a project first."; note(startWhy); return "" }
         // The screen opens on this name at once and becomes the real task when the PC answers.
         // The task is kept on this phone first: started while the PC is away, it waits and starts
         // once (the id is what the PC dedupes on, so a resend never makes a second task).
@@ -1124,28 +1134,49 @@ class LinkStation(
         return pending
     }
 
-    /** Starts the new tasks waiting on this phone, oldest first, each once. */
+    /** Starts the new tasks waiting on this phone, oldest first, each once (never one that failed or was cancelled meanwhile). */
     private fun flushNewTasks() {
         val waiting = synchronized(lock) { data.newTasks.takeIf { connected } } ?: return
         for (w in waiting) {
-            val sent = delivery.start(w.id, { cb -> call(Wire.newTask(w.project, w.text, w.id, w.model, w.plan, w.rules), cb) }) { ok, err ->
-                synchronized(lock) {
-                    data = data.copy(newTasks = data.newTasks.filterNot { it.id == w.id }); saveData()
-                    started[w.id] = if (err == null) (ok as? String).orEmpty() else ""
+            // Checked and handed over under one lock, so a Cancel never slips in between.
+            val sent = synchronized(lock) {
+                if (data.newTasks.none { it.id == w.id && it.failed.isEmpty() }) return@synchronized null
+                delivery.start(w.id, { cb -> call(Wire.newTask(w.project, w.text, w.id, w.model, w.plan, w.rules), cb) }) { ok, err ->
+                    synchronized(lock) {
+                        if (err == null) {
+                            data = data.copy(newTasks = data.newTasks.filterNot { it.id == w.id })
+                            started[w.id] = (ok as? String).orEmpty()
+                        } else {
+                            // The PC said no: the task stays, with its words, to try again or remove.
+                            data = data.copy(newTasks = data.newTasks.map { if (it.id == w.id) it.copy(failed = err) else it })
+                        }
+                        saveData()
+                    }
+                    publish()
                 }
-                if (err != null) note(err)
-                publish()
             }
             if (sent == false) return
         }
     }
 
     override fun cancelWaitingTask(taskId: String) {
-        synchronized(lock) {
+        val onItsWay = synchronized(lock) {
             if (data.newTasks.none { it.id == taskId }) return
-            data = data.copy(newTasks = data.newTasks.filterNot { it.id == taskId }); saveData()
+            if (delivery.active(taskId)) true
+            else { data = data.copy(newTasks = data.newTasks.filterNot { it.id == taskId }); saveData(); false }
+        }
+        if (onItsWay) note("It already went to your PC.", problem = false)
+        publish()
+    }
+
+    override fun retryWaitingTask(taskId: String) {
+        val now = synchronized(lock) {
+            if (data.newTasks.none { it.id == taskId }) return
+            data = data.copy(newTasks = data.newTasks.map { if (it.id == taskId) it.copy(failed = "") else it }); saveData()
+            connected
         }
         publish()
+        if (now) Thread({ flushNewTasks(); publish() }, "mimir-newtask").start()
     }
 
     override fun newProject(name: String, done: (String?, String) -> Unit) {
@@ -1515,8 +1546,10 @@ class LinkStation(
         id = w.id, title = taskTitle(w.text), project = name(w.project), model = Mapping.modelName(w.model.takeIf { it != "auto" }),
         age = "", steps = emptyList(), messages = listOf(TaskMessage("${w.id}-0", false, w.text, waiting = true)),
         question = null, permission = null, change = null,
-        status = if (connected) "Working" else WAITING_WORDS, busy = connected, running = false,
+        status = when { w.failed.isNotEmpty() -> "Didn't start"; connected -> "Working"; else -> WAITING_WORDS },
+        busy = connected && w.failed.isEmpty(), running = false,
         plan = w.plan, mode = if (w.plan) "Plan" else "Ask", waitingToStart = true,
+        canCancel = !delivery.active(w.id), failedWhy = w.failed,
     )
 
     private fun task(t: LinkTask, needs: List<NeedsYouItem>): Task {
@@ -1709,3 +1742,5 @@ internal const val ONLINE_WITHDRAWN = "Your PC's owner turned off Online for you
 /** Online was chosen before and is not offered to this person now (the owner's own phone always keeps it). */
 internal fun onlineWithdrawn(before: String?, now: String?, owner: Boolean): Boolean =
     !owner && before == "paid" && now != "paid"
+
+private const val STOP_TAG = "stop-"

@@ -38,6 +38,10 @@ interface Station {
     fun reply(taskId: String, text: String)
     /** Takes back a new task that is still waiting on this phone (nothing is sent). */
     fun cancelWaitingTask(taskId: String) {}
+    /** Sends a new task that the PC didn't start once more. */
+    fun retryWaitingTask(taskId: String) {}
+    /** Why the last [startTask] gave no task, in plain words. */
+    fun startProblem(): String = ""
     /** An answer to a needs-you item: a permission, a question, a fix to check, a design. */
     fun answer(itemId: String, answer: Answer)
     /** One of a needs-you item's choices (a question's listed options, an ask's choices). */
@@ -401,6 +405,10 @@ data class Task(
     val whisper: Boolean = false,
     /** Started on this phone and not yet on the PC: kept here, starts by itself (Cancel is offered while the PC is away). */
     val waitingToStart: Boolean = false,
+    /** A waiting task that isn't out with the PC: Cancel is offered (never while it is on its way). */
+    val canCancel: Boolean = false,
+    /** Why the PC didn't start it ("" if nothing went wrong): the words stay, with Try again and Remove. */
+    val failedWhy: String = "",
 ) {
     /** A mode that does things without asking, in words for its chip; null when it asks first. */
     val riskyMode: String? get() = when (mode) {

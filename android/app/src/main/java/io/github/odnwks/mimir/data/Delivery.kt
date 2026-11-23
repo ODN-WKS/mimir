@@ -36,6 +36,9 @@ class Delivery {
      * refuses). [finished] runs when the PC answered, with its answer or its error, but not when the link
      * went away: the item stays then. Returns null if it is already on its way, else what [call] gave.
      */
+    /** Whether item [id] is out with the link right now (handed over, not yet answered). */
+    fun active(id: String): Boolean = synchronized(this) { id in onItsWay }
+
     fun start(id: String, call: ((Any?, String?) -> Unit) -> Boolean, finished: (Any?, String?) -> Unit): Boolean? {
         synchronized(this) { if (!onItsWay.add(id)) return null }
         val handed = call { ok, err ->

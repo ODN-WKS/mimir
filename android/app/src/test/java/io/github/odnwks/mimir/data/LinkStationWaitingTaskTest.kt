@@ -57,6 +57,7 @@ class LinkStationWaitingTaskTest {
         override fun networkChanged(handle: Long) {}
         override fun endedBecause(handle: Long) = ""
         fun reply(id: Long, ok: String) { events.add("""{"seq":${seq.incrementAndGet()},"event":{"Reply":{"call_id":$id,"result":{"Ok":$ok}}}}""") }
+        fun refuse(id: Long, why: String) { events.add("""{"seq":${seq.incrementAndGet()},"event":{"Reply":{"call_id":$id,"result":{"Err":"$why"}}}}""") }
         fun ready() {
             pcUp = true
             events.add("""{"seq":1,"event":{"Welcome":{"proto":2,"pc_name":"Test PC","pc_version":"0.21","min_app":"","run_id":"r1","features":["talk","chat_sync","truth","chat_only","engines"]}}}""")
@@ -188,6 +189,75 @@ class LinkStationWaitingTaskTest {
         link.ready()
         Thread.sleep(300)
         assertTrue(link.callsOf("{\"NewIncognito\"").isEmpty())
+        st.close()
+    }
+
+    @Test fun cancelCannotTakeBackATaskThatAlreadyWentToThePc() {
+        val link = FakeLink(); val st = away(link)
+        val id = st.startTask("on its way", "Garden planner", incognito = false)
+        link.ready()
+        assertTrue(until { newTaskCalls(link).size == 1 })
+        assertFalse("not offered while it is on its way", st.state.value.task(id)!!.canCancel)
+        st.cancelWaitingTask(id)
+        assertEquals("still kept", listOf(id), waitingIds())
+        assertTrue(until { notes(st).any { it.contains("already went to your PC") } })
+        link.reply(newTaskCalls(link).single().first, "\"real-1\"")
+        assertTrue(until { waitingIds().isEmpty() })
+        st.close()
+    }
+
+    @Test fun aTaskThePcRefusesStaysAsAFailedItemWithItsWordsAndCanBeTriedAgainOrRemoved() {
+        val link = FakeLink(); val st = away(link)
+        val id = st.startTask("lost project", "Garden planner", incognito = false)
+        link.ready()
+        assertTrue(until { newTaskCalls(link).size == 1 })
+        link.refuse(newTaskCalls(link).single().first, "That project isn't on your PC.")
+        assertTrue(until { st.state.value.task(id)?.failedWhy?.isNotEmpty() == true })
+        assertEquals("That project isn't on your PC.", st.state.value.task(id)!!.failedWhy)
+        assertEquals("words kept", "lost project", vault().load().newTasks.single().text)
+        assertEquals("words kept on the screen", "lost project", st.state.value.task(id)!!.messages.single().text)
+        st.retryWaitingTask(id)
+        assertTrue("sent again", until { newTaskCalls(link).size == 2 })
+        link.refuse(newTaskCalls(link).last().first, "That project isn't on your PC.")
+        assertTrue(until { st.state.value.task(id)?.failedWhy?.isNotEmpty() == true })
+        st.cancelWaitingTask(id)
+        assertTrue(waitingIds().isEmpty())
+        st.close()
+    }
+
+    @Test fun aTaskThatCouldNotBeHandedToTheLinkWhileConnectedCanStillBeCancelled() {
+        val link = FakeLink(); val st = away(link)
+        val id = st.startTask("stuck", "Garden planner", incognito = false)
+        link.ready()
+        assertTrue(until { newTaskCalls(link).size == 1 })
+        link.reply(newTaskCalls(link).single().first, "\"x\"")
+        val id2 = run { link.dropped = true; st.startTask("second", "Garden planner", incognito = false) }
+        Thread.sleep(300)
+        assertTrue("not in flight, so it can be cancelled", st.state.value.task(id2)!!.canCancel)
+        st.cancelWaitingTask(id2)
+        assertFalse(waitingIds().contains(id2))
+        st.close()
+    }
+
+    @Test fun startTaskSaysWhyItCouldNotStart() {
+        val link = FakeLink()
+        vaultFile = File(tmp.root, "link.vault")
+        val v = vault(); v.save(v.load().copy(pcId = "pc-1", pcName = "Test PC"))
+        val st = LinkStation(vault(), "0.21", relays = false, hints = emptyList(), secure = { true }, api = link)
+        assertEquals("", st.startTask("words", "Nowhere", incognito = false))
+        assertEquals("Pick a project first.", st.startProblem())
+        st.close()
+    }
+
+    @Test fun theStopLineGoesOnlyOnceTheStopWentOutAndAWhisperLineStays() {
+        val link = FakeLink(); val st = away(link, "ollama:tiny")
+        st.startTask("secret", "Garden planner", incognito = true)
+        st.stopTask("t1")
+        assertTrue(until { notes(st).any { it.contains("Stop goes out") } })
+        link.ready()
+        assertTrue(until { link.callsOf("{\"Stop\"").size == 1 })
+        assertTrue("the Stop line goes", until { notes(st).none { it.contains("Stop goes out") } })
+        assertTrue("the Whisper line stays", notes(st).any { it.contains("can't wait") })
         st.close()
     }
 

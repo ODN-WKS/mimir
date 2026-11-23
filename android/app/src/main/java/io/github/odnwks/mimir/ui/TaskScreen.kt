@@ -281,9 +281,17 @@ fun TaskScreen(taskId: String, state: StationState, station: Station, nav: Navig
             // Going on in a terminal or the Claude app right now: replies go there (one from here
             // would start a second Claude on it), so a note, as on the PC, takes the box's place.
             if (task.waitingToStart) Panel(background = Palette.Bar, modifier = Modifier.windowInsetsPadding(WindowInsets.navigationBars).padding(start = 12.dp, end = 12.dp, top = 10.dp, bottom = 16.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(if (state.pcAway) "Waiting for your PC ·" else "Starting…", style = Type.Label, color = Palette.TextDim)
-                    if (state.pcAway) LinkText("Cancel this task", { station.cancelWaitingTask(task.id); nav.back() }, bold = true)
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    if (task.failedWhy.isNotEmpty()) {
+                        Text("This task didn't start: ${task.failedWhy} Your words are kept.", style = Type.Label, color = Palette.AmberNote)
+                        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                            LinkText("Try again", { station.retryWaitingTask(task.id) }, bold = true)
+                            LinkText("Remove", { station.cancelWaitingTask(task.id); nav.back() }, bold = true)
+                        }
+                    } else Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(if (state.pcAway) "Waiting for your PC ·" else "Starting…", style = Type.Label, color = Palette.TextDim)
+                        if (task.canCancel) LinkText("Cancel this task", { station.cancelWaitingTask(task.id); nav.back() }, bold = true)
+                    }
                 }
             } else androidx.compose.animation.AnimatedContent(
                 task.liveElsewhere,
