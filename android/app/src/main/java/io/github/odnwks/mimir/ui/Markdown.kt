@@ -6,6 +6,22 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
@@ -52,13 +68,37 @@ object Markdown {
         /** One list item; [number] is null for a bullet. */
         data class Item(val number: String?, val depth: Int, val text: String) : Block
         data class Quote(val text: String) : Block
-        data class Code(val text: String) : Block
+        data class Code(val text: String, val lang: String = "") : Block
+        /** A table: the header cells and the rows, each row padded or cut to the header's width. */
+        data class Table(val header: List<String>, val rows: List<List<String>>) : Block
         data object Rule : Block
     }
 
     private val heading = Regex("^(#{1,6})\\s+(.*?)\\s*#*\\s*$")
     private val bullet = Regex("^(\\s*)[-*+]\\s+(.*)$")
     private val numbered = Regex("^(\\s*)(\\d{1,3})[.)]\\s+(.*)$")
+    private val tableSep = Regex("^\\s*\\|?\\s*:?-+:?\\s*(\\|\\s*:?-+:?\\s*)*\\|?\\s*$")
+
+    private fun cells(line: String): List<String> {
+        var t = line.trim()
+        if (t.startsWith("|")) t = t.substring(1)
+        if (t.endsWith("|") && !t.endsWith("\\|")) t = t.dropLast(1)
+        val out = mutableListOf<String>()
+        val cur = StringBuilder()
+        var i = 0
+        while (i < t.length) {
+            if (t[i] == '\\' && i + 1 < t.length && t[i + 1] == '|') { cur.append('|'); i += 2; continue }
+            if (t[i] == '|') { out += cur.toString().trim(); cur.clear() } else cur.append(t[i])
+            i++
+        }
+        out += cur.toString().trim()
+        return out
+    }
+
+    private fun isTableStart(lines: List<String>, i: Int): Boolean =
+        i + 1 < lines.size && lines[i].contains('|') && lines[i + 1].contains('-') && lines[i + 1].contains('|') && tableSep.matches(lines[i + 1]) &&
+            cells(lines[i]).size == cells(lines[i + 1]).size
+
     private val rule = Regex("^\\s*([-*_])(\\s*\\1){2,}\\s*$")
 
     /** The text's blocks, in order. An unclosed code fence (a reply still arriving) runs to the end. */
@@ -74,12 +114,25 @@ object Markdown {
             when {
                 t.startsWith("```") -> {
                     flush()
+                    val lang = t.removePrefix("```").trim().takeWhile { !it.isWhitespace() }
                     val code = StringBuilder()
                     i++
                     while (i < lines.size && !lines[i].trim().startsWith("```")) { if (code.isNotEmpty()) code.append('\n'); code.append(lines[i]); i++ }
-                    out += Block.Code(code.toString())
+                    out += Block.Code(code.toString(), lang)
                 }
                 t.isEmpty() -> flush()
+                isTableStart(lines, i) -> {
+                    flush()
+                    val head = cells(line)
+                    val rows = mutableListOf<List<String>>()
+                    i += 2
+                    while (i < lines.size && lines[i].isNotBlank() && lines[i].contains('|')) {
+                        rows += cells(lines[i]).let { r -> List(head.size) { c -> r.getOrElse(c) { "" } } }
+                        i++
+                    }
+                    out += Block.Table(head, rows)
+                    continue
+                }
                 rule.matches(line) && para.isEmpty() -> { flush(); out += Block.Rule }
                 heading.matches(t) -> { flush(); heading.find(t)!!.let { out += Block.Heading(it.groupValues[1].length, it.groupValues[2]) } }
                 bullet.matches(line) -> { flush(); bullet.find(line)!!.let { out += Block.Item(null, it.groupValues[1].length / 2, it.groupValues[2]) } }
@@ -88,7 +141,7 @@ object Markdown {
                 // A line under a list item that isn't a new item carries on that item.
                 out.lastOrNull() is Block.Item && para.isEmpty() && line.startsWith(" ") ->
                     (out.last() as Block.Item).let { out[out.lastIndex] = it.copy(text = it.text + " " + t) }
-                else -> { if (para.isNotEmpty()) para.append(' '); para.append(t) }
+                else -> { if (para.isNotEmpty()) para.append('\n'); para.append(t) }
             }
             i++
         }
@@ -161,6 +214,7 @@ object Markdown {
             is Block.Item -> "  ".repeat(b.depth) + (if (b.number != null) "${b.number}. " else "• ") + inline(b.text).text
             is Block.Quote -> inline(b.text).text
             is Block.Code -> b.text
+            is Block.Table -> b.rows.joinToString("\n") { r -> b.header.indices.joinToString(", ") { c -> inline(b.header[c]).text + ": " + inline(r[c]).text } }
             Block.Rule -> ""
         }
     }.trim()
@@ -180,30 +234,77 @@ fun MarkdownText(md: String, style: TextStyle, color: Color, modifier: Modifier 
         else -> Markdown.Links.System
     }
     val blocks = remember(md) { Markdown.blocks(md) }
-    val code = SpanStyle(fontFamily = FontFamily.Monospace, background = Palette.Bar)
+    val codeSpan = SpanStyle(fontFamily = FontFamily.Monospace, background = Palette.Bar)
     val link = SpanStyle(color = Palette.BlueText, textDecoration = TextDecoration.Underline)
-    Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
         blocks.forEach { b ->
             when (b) {
-                is Markdown.Block.Para -> Text(Markdown.inline(b.text, code, link, links), style = style, color = color)
+                is Markdown.Block.Para -> Text(Markdown.inline(b.text, codeSpan, link, links), style = style, color = color)
                 is Markdown.Block.Heading -> Text(
-                    Markdown.inline(b.text, code, link, links),
+                    Markdown.inline(b.text, codeSpan, link, links),
                     style = style.copy(fontWeight = FontWeight.Bold, fontSize = style.fontSize * (if (b.level <= 1) 1.2f else if (b.level == 2) 1.1f else 1f)),
                     color = color, modifier = Modifier.semantics { heading() },
                 )
-                is Markdown.Block.Item -> Row(Modifier.padding(start = (b.depth * 16).dp)) {
-                    Text(if (b.number != null) "${b.number}." else "•", style = style, color = color, modifier = Modifier.width(if (b.number != null) 26.dp else 16.dp))
-                    Text(Markdown.inline(b.text, code, link, links), style = style, color = color)
+                // A fixed gutter for the number or bullet, so "9." and "10." line up and never touch the words.
+                is Markdown.Block.Item -> Row(Modifier.padding(start = (b.depth * 20).dp)) {
+                    Text(
+                        if (b.number != null) "${b.number}." else "•", style = style, color = color,
+                        modifier = Modifier.width(if (b.number != null) 36.dp else 20.dp), textAlign = if (b.number != null) TextAlign.End else TextAlign.Start,
+                    )
+                    Spacer(Modifier.width(if (b.number != null) 8.dp else 0.dp))
+                    Text(Markdown.inline(b.text, codeSpan, link, links), style = style, color = color, modifier = Modifier.weight(1f))
                 }
                 is Markdown.Block.Quote -> Row {
                     Box(Modifier.width(3.dp).padding(vertical = 2.dp).background(Palette.Outline))
-                    Text(Markdown.inline(b.text, code, link, links), style = style.copy(fontStyle = FontStyle.Italic), color = color, modifier = Modifier.padding(start = 10.dp))
+                    Text(Markdown.inline(b.text, codeSpan, link, links), style = style.copy(fontStyle = FontStyle.Italic), color = color, modifier = Modifier.padding(start = 10.dp))
                 }
-                is Markdown.Block.Code -> Box(
-                    Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Palette.Bar)
-                        .horizontalScroll(rememberScrollState()).padding(horizontal = 10.dp, vertical = 8.dp),
-                ) { Text(b.text, style = style.copy(fontFamily = FontFamily.Monospace, fontSize = style.fontSize * 0.9f), color = color, softWrap = false) }
+                is Markdown.Block.Code -> CodeBlock(b, style, color)
+                is Markdown.Block.Table -> TableBlock(b, style, color, codeSpan, link, links)
                 Markdown.Block.Rule -> Box(Modifier.fillMaxWidth().padding(vertical = 4.dp).background(Palette.Line).padding(top = 1.dp))
+            }
+        }
+    }
+}
+
+/** A code block: a small language label and Copy on top, the code below, scrolling sideways if long. */
+@Composable
+private fun CodeBlock(b: Markdown.Block.Code, style: TextStyle, color: Color) {
+    val clip = LocalClipboardManager.current
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Palette.Bar)) {
+        Row(Modifier.fillMaxWidth().padding(start = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(b.lang.ifEmpty { "code" }, style = style.copy(fontSize = 12.sp), color = Palette.TextDim, modifier = Modifier.weight(1f))
+            Box(
+                Modifier.heightIn(min = 48.dp).clickable(role = Role.Button) { clip.setText(AnnotatedString(b.text)) }
+                    .semantics { contentDescription = "Copy this code" }.padding(horizontal = 14.dp),
+                contentAlignment = Alignment.Center,
+            ) { Text("Copy", style = style.copy(fontSize = 13.sp), color = Palette.BlueText) }
+        }
+        Box(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(start = 10.dp, end = 10.dp, bottom = 10.dp)) {
+            Text(b.text, style = style.copy(fontFamily = FontFamily.Monospace, fontSize = style.fontSize * 0.9f), color = color, softWrap = false)
+        }
+    }
+}
+
+/** A table as a grid: a bold header row, padded cells, thin lines; a wide one scrolls sideways inside the answer. */
+@Composable
+private fun TableBlock(b: Markdown.Block.Table, style: TextStyle, color: Color, code: SpanStyle, link: SpanStyle, links: Markdown.Links) {
+    val widths = b.header.indices.map { c ->
+        val longest = (listOf(b.header[c]) + b.rows.map { it[c] }).maxOf { Markdown.inline(it).text.length }
+        (longest * 8 + 24).coerceIn(64, 220).dp
+    }
+    Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).border(1.dp, Palette.Line, RoundedCornerShape(8.dp)).horizontalScroll(rememberScrollState())) {
+        Column(Modifier.testTag("md-table")) {
+            (listOf(b.header) + b.rows).forEachIndexed { r, row ->
+                Row(Modifier.height(IntrinsicSize.Min).then(if (r == 0) Modifier.background(Palette.Bar) else Modifier)) {
+                    row.forEachIndexed { c, cell ->
+                        Text(
+                            Markdown.inline(cell, code, link, links),
+                            style = style.copy(fontWeight = if (r == 0) FontWeight.Bold else style.fontWeight, fontSize = style.fontSize * 0.95f),
+                            color = color,
+                            modifier = Modifier.width(widths[c]).fillMaxHeight().border(0.5.dp, Palette.Line).padding(horizontal = 10.dp, vertical = 8.dp),
+                        )
+                    }
+                }
             }
         }
     }

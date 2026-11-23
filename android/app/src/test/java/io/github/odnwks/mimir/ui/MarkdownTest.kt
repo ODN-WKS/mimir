@@ -2,6 +2,8 @@ package io.github.odnwks.mimir.ui
 
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.text.font.FontWeight
 import io.github.odnwks.mimir.ui.theme.MimirTheme
 import io.github.odnwks.mimir.ui.theme.Palette
@@ -62,5 +64,42 @@ class MarkdownTest {
         val plain = Markdown.inline(md, links = Markdown.Links.Plain)
         assertEquals(0, plain.getLinkAnnotations(0, plain.length).size)
         assertEquals("See the page (https://example.com/a) now.", plain.text)
+    }
+
+    @Test fun aTableHasHeaderRowsAndRaggedRowsArePadded() {
+        val b = Markdown.blocks("Prices:\n\n| Fruit | Price |\n|:--|--:|\n| Apple | 1 |\n| Pear |\n| Fig | 3 | extra |\n\nDone.")
+        assertEquals(Markdown.Block.Table(listOf("Fruit", "Price"), listOf(listOf("Apple", "1"), listOf("Pear", ""), listOf("Fig", "3"))), b[1])
+        assertEquals(Markdown.Block.Para("Done."), b[2])
+        assertEquals("Fruit: Apple, Price: 1", Markdown.plain("| Fruit | Price |\n|---|---|\n| **Apple** | 1 |"))
+    }
+
+    @Test fun aPipeInCodeOrProseIsNotATable() {
+        assertEquals(listOf(Markdown.Block.Code("a | b\n--|--")), Markdown.blocks("```\na | b\n--|--\n```"))
+        assertEquals(listOf(Markdown.Block.Para("use a | b here\nand - then")), Markdown.blocks("use a | b here\nand - then"))
+    }
+
+    @Test fun codeKeepsItsLanguageAndAnUnclosedFenceStillWorks() {
+        assertEquals(Markdown.Block.Code("print(1)", "python"), Markdown.blocks("```python\nprint(1)\n```")[0])
+        assertEquals(Markdown.Block.Code("x = 1\ny", "py"), Markdown.blocks("```py\nx = 1\ny")[0])
+    }
+
+    @Test fun aSingleNewlineStaysInAParagraph() {
+        assertEquals(listOf(Markdown.Block.Para("Ingredients: a\nSteps: b")), Markdown.blocks("Ingredients: a\nSteps: b"))
+    }
+
+    @Test fun twoDigitNumbersAndNestedItemsAreRead() {
+        val b = Markdown.blocks("9. Nine\n10. Cats\n  - nested")
+        assertEquals(Markdown.Block.Item("10", 0, "Cats"), b[1])
+        assertEquals(Markdown.Block.Item(null, 1, "nested"), b[2])
+    }
+
+    @Test fun aTableAndCodeShowAndCopyCopiesExactlyTheCode() {
+        compose.setContent { MimirTheme { MarkdownText("| A | B |\n|---|---|\n| one | two |\n\n```python\nprint('hi')\n```", Type.Body, Palette.Text) } }
+        compose.onNodeWithText("one").assertExists()
+        compose.onNodeWithText("python").assertExists()
+        compose.onNodeWithText("print('hi')").assertExists()
+        compose.onNodeWithContentDescription("Copy this code").performClick()
+        val cm = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>().getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+        assertEquals("print('hi')", cm.primaryClip!!.getItemAt(0).text.toString())
     }
 }
