@@ -59,6 +59,8 @@ b="$T/pre/build"
 mkdir -p "$b/files/bin" "$b/export"
 printf '#!/bin/sh\necho stand-in\n' > "$b/files/bin/hello"; chmod +x "$b/files/bin/hello"
 printf '[Application]\nname=io.github.odnwks.Mimir\nruntime=org.freedesktop.Platform/x86_64/26.08\nsdk=org.freedesktop.Sdk/x86_64/26.08\ncommand=hello\n' > "$b/metadata"
+mkdir -p "$b/files/share/metainfo"
+printf '<component><releases><release version="9.1" date="2026-01-01"/></releases></component>\n' > "$b/files/share/metainfo/io.github.odnwks.Mimir.metainfo.xml"
 printf 'phone app\n' > "$T/pre/app.apk"
 cat > "$T/pre/mimir-release" <<'SIGN'
 #!/usr/bin/env bash
@@ -73,6 +75,14 @@ reset() { rm -rf "$T/gh"; mkdir -p "$T/gh"; echo "${1:-none}" > "$T/gh/state"; :
 run() { (cd "$R" && tools/release.sh "$@") > "$T/out" 2>&1; }
 head="$(git -C "$R" rev-parse HEAD)"
 echo "Release script tests"
+
+# A Flatpak whose own metadata carries another version than VERSION is refused.
+reset
+sed -i 's/version="9.1"/version="9.0"/' "$b/files/share/metainfo/io.github.odnwks.Mimir.metainfo.xml"
+run --dry-run && bad "a Flatpak with the wrong metadata version was accepted"
+grep -q "Flatpak's own version isn't 9.1" "$T/out" || bad "wrong metadata version: no reason given"
+sed -i 's/version="9.0"/version="9.1"/' "$b/files/share/metainfo/io.github.odnwks.Mimir.metainfo.xml"
+ok "the Flatpak's metadata version must equal VERSION"
 
 reset
 run --dry-run || bad "dry run failed"

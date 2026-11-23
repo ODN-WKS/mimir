@@ -97,6 +97,11 @@ if hits="$(grep -a -r -i -l -E "$words" "$work/build/files" "$work/build/metadat
     fail "Stopped: private words in the files above. Nothing was uploaded."
 fi
 
+# ---- the Flatpak's own version (what `flatpak remote-info` shows) -------------------------------
+mi="$work/build/files/share/metainfo/io.github.odnwks.Mimir.metainfo.xml"
+grep -q "<release version=\"$v\"" "$mi" 2>/dev/null ||
+    fail "The Flatpak's own version isn't $v (its metadata says '$(grep -o '<release version="[^"]*"' "$mi" 2>/dev/null | head -1)'). Nothing was uploaded."
+
 # ---- the Flatpak source ----------------------------------------------------------------------
 # Adds this build to the signed repository (its own key, made once), keeps the last 3 versions,
 # and writes the offline file and the two small files people add the source with.

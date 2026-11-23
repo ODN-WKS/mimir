@@ -54,7 +54,7 @@ replace-with = "vendored-sources"
 [source.vendored-sources]
 directory = "vendor"
 TOML
-cp "$here/$id.yml" "$S/$id.yml"
+sed -e "s/@VERSION@/$v/" "$here/$id.yml" > "$S/$id.yml"
 sed -e "s/@VERSION@/$v/" -e "s/@DATE@/$(date +%F)/" "$here/$id.metainfo.xml.in" > "$S/src/packaging/flatpak/$id.metainfo.xml"
 
 # ---- build ---------------------------------------------------------------------------------
@@ -70,6 +70,9 @@ if [ -n "${MIMIR_PRIVATE_WORDS:-}" ]; then
     fi
     say "No private words in the Flatpak's files." >&2
 fi
+# The finished build's metadata must carry this release's version.
+mi="$W/build/files/share/metainfo/$id.metainfo.xml"
+grep -q "<release version=\"$v\"" "$mi" || { say "The build's metadata isn't version $v ($mi)." >&2; exit 1; }
 [ -z "${2:-}" ] || cp "$W/build/files/bin/mimir" "$2"
 
 # ---- hand over the build; nothing else stays ---------------------------------------------------

@@ -56,6 +56,9 @@ modules:
         CARGO_HOME: /run/build/mimir/cargo-home
         CARGO_BUILD_JOBS: '12'
         CARGO_NET_OFFLINE: 'true'
+        # Changes with every release, so flatpak-builder never reuses an older release's
+        # cached build (and its metadata) for a new one. build.sh fills it in.
+        MIMIR_RELEASE_VERSION: '@VERSION@'
         # The compiler needs a bigger stack inside the sandbox (egui crashes without).
         RUST_MIN_STACK: '67108864'
     build-commands:
