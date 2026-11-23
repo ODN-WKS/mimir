@@ -36,6 +36,8 @@ interface Station {
     fun retryMessage(messageId: String)
     /** A reply typed into one task. */
     fun reply(taskId: String, text: String)
+    /** Takes back a new task that is still waiting on this phone (nothing is sent). */
+    fun cancelWaitingTask(taskId: String) {}
     /** An answer to a needs-you item: a permission, a question, a fix to check, a design. */
     fun answer(itemId: String, answer: Answer)
     /** One of a needs-you item's choices (a question's listed options, an ask's choices). */
@@ -397,6 +399,8 @@ data class Task(
     val mode: String = "Ask",
     /** A Whisper task (YOLO is never offered there). */
     val whisper: Boolean = false,
+    /** Started on this phone and not yet on the PC: kept here, starts by itself (Cancel is offered while the PC is away). */
+    val waitingToStart: Boolean = false,
 ) {
     /** A mode that does things without asking, in words for its chip; null when it asks first. */
     val riskyMode: String? get() = when (mode) {
@@ -572,7 +576,7 @@ data class Project(
 data class Check(val name: String, val ok: Boolean)
 
 enum class Chip(val label: String) {
-    Running("Working"), Idea("Idea"), Done("Done"), Stopped("Stopped");
+    Running("Working"), Idea("Idea"), Done("Done"), Stopped("Stopped"), Waiting("Waiting");
 
     companion object {
         /** A task's chip from the PC's status words: a stopped or denied task isn't "Done". */

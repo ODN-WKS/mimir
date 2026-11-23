@@ -280,7 +280,12 @@ fun TaskScreen(taskId: String, state: StationState, station: Station, nav: Navig
             val voice = rememberVoiceInput(station, task.id)
             // Going on in a terminal or the Claude app right now: replies go there (one from here
             // would start a second Claude on it), so a note, as on the PC, takes the box's place.
-            androidx.compose.animation.AnimatedContent(
+            if (task.waitingToStart) Panel(background = Palette.Bar, modifier = Modifier.windowInsetsPadding(WindowInsets.navigationBars).padding(start = 12.dp, end = 12.dp, top = 10.dp, bottom = 16.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(if (state.pcAway) "Waiting for your PC ·" else "Starting…", style = Type.Label, color = Palette.TextDim)
+                    if (state.pcAway) LinkText("Cancel this task", { station.cancelWaitingTask(task.id); nav.back() }, bold = true)
+                }
+            } else androidx.compose.animation.AnimatedContent(
                 task.liveElsewhere,
                 transitionSpec = { fadeIn(Motion.spec(Motion.SCREEN_MS, reduce)) togetherWith fadeOut(Motion.spec(Motion.SCREEN_MS, reduce)) },
                 label = "reply box",

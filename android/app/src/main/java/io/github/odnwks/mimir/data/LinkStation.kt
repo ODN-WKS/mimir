@@ -11,6 +11,7 @@ import io.github.odnwks.mimir.link.LStatus
 import io.github.odnwks.mimir.link.LinkTask
 import io.github.odnwks.mimir.link.Native
 import io.github.odnwks.mimir.link.Vault
+import io.github.odnwks.mimir.link.WaitingTask
 import io.github.odnwks.mimir.link.Wire
 import kotlin.concurrent.withLock
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -361,10 +362,13 @@ class LinkStation(
                 is Ev.Snapshot -> { tasks.clear(); entries.clear(); live.clear(); liveAt.clear(); problem = null }
                 Ev.Ready -> after = {
                     talkers().forEach { it.back() }
+                    // "Your PC is away" lines are no longer true: they go by themselves.
+                    synchronized(lock) { chat.removeAll { it is ChatEntry.Note && it.text.startsWith("Your PC is away") } }
                     refreshProjects {
                         expireOld()
                         flush()
                         flushRecordings()
+                        flushNewTasks()
                         flushReplies()
                         flushAnswers()
                         flushStops()
@@ -684,7 +688,7 @@ class LinkStation(
 
     private fun forget(why: String) {
         synchronized(lock) {
-            data = data.copy(pcId = null, pcName = null, outbox = emptyList(), replies = emptyList(), answers = emptyList(), recordings = emptyList(), past = "[]", chatAt = 0)
+            data = data.copy(pcId = null, pcName = null, outbox = emptyList(), newTasks = emptyList(), replies = emptyList(), answers = emptyList(), recordings = emptyList(), past = "[]", chatAt = 0)
             past.clear(); pastShown = emptyList()
             recordDir?.listFiles()?.forEach { it.delete() }
             saveData()
@@ -1098,7 +1102,7 @@ class LinkStation(
                 return ""
             }
             if (!call(Wire.newIncognito(path, text, free, GroundRules.current)) { _, err -> if (err != null) note(err) }) {
-                note("Your PC is away: start the Whisper when it's back.")
+                note("Your PC is away: this Whisper can't wait. Start it again when your PC is back.")
                 return ""
             }
             return FakeStation.INCOGNITO
@@ -1107,16 +1111,41 @@ class LinkStation(
         val model = respectPower(model ?: synchronized(lock) { chosenModel }).takeIf { it != "auto" }
         if (path == null) { note("Pick a project first."); return "" }
         // The screen opens on this name at once and becomes the real task when the PC answers.
+        // The task is kept on this phone first: started while the PC is away, it waits and starts
+        // once (the id is what the PC dedupes on, so a resend never makes a second task).
         val pending = "t-${UUID.randomUUID()}"
-        val sent = call(Wire.newTask(path, text, pending, model ?: "auto", plan, GroundRules.current)) { ok, err ->
-            // The PC may have started it before the link went: its task turns up in the next snapshot.
-            if (err == WENT_AWAY) return@call
-            synchronized(lock) { started[pending] = if (err == null) (ok as? String).orEmpty() else "" }
-            if (err != null) note(err)
-            publish()
+        val now = synchronized(lock) {
+            data = data.copy(newTasks = data.newTasks + WaitingTask(pending, path, text, model ?: "auto", plan, GroundRules.current))
+            saveData()
+            connected
         }
-        if (!sent) { note("Your PC is away: start the task again when it's back."); return "" }
+        publish()
+        if (now) Thread({ flushNewTasks(); publish() }, "mimir-newtask").start()
         return pending
+    }
+
+    /** Starts the new tasks waiting on this phone, oldest first, each once. */
+    private fun flushNewTasks() {
+        val waiting = synchronized(lock) { data.newTasks.takeIf { connected } } ?: return
+        for (w in waiting) {
+            val sent = delivery.start(w.id, { cb -> call(Wire.newTask(w.project, w.text, w.id, w.model, w.plan, w.rules), cb) }) { ok, err ->
+                synchronized(lock) {
+                    data = data.copy(newTasks = data.newTasks.filterNot { it.id == w.id }); saveData()
+                    started[w.id] = if (err == null) (ok as? String).orEmpty() else ""
+                }
+                if (err != null) note(err)
+                publish()
+            }
+            if (sent == false) return
+        }
+    }
+
+    override fun cancelWaitingTask(taskId: String) {
+        synchronized(lock) {
+            if (data.newTasks.none { it.id == taskId }) return
+            data = data.copy(newTasks = data.newTasks.filterNot { it.id == taskId }); saveData()
+        }
+        publish()
     }
 
     override fun newProject(name: String, done: (String?, String) -> Unit) {
@@ -1404,7 +1433,8 @@ class LinkStation(
         val needs = Mapping.needs(Held.asking(items, data.answers) { it.askId }, ::name, now)
         // The PC's rule: most recent activity first (a live conversation on top).
         val all = tasks.values.filter { !it.incognito }.sortedByDescending { maxOf(it.activeUnix, it.createdUnix) }
-        val ts = all.filter { !it.archived }.map { t -> task(t, needs) }
+        val waitingTasks = data.newTasks.map { waitingTask(it) }
+        val ts = waitingTasks + all.filter { !it.archived }.map { t -> task(t, needs) }
         val inc = tasks.values.firstOrNull { it.incognito }
         val base = flow.value
         // The truth, when the PC sends it, is the one source for states, counts, projects and usage.
@@ -1433,6 +1463,10 @@ class LinkStation(
                         ProjectTask(it.id, it.title, if (Mapping.working(it) && connected) "Working" else it.status, Chip.of(Mapping.working(it) && connected, it.status))
                     }, tasks.values.count { it.project == path && Mapping.working(it) && connected })
                 }
+            }.map { pr ->
+                // A task still waiting on this phone shows in its project at once.
+                val mine = data.newTasks.filter { name(it.project) == pr.name }
+                if (mine.isEmpty()) pr else pr.copy(tasks = mine.map { w -> ProjectTask(w.id, taskTitle(w.text), if (connected) "Starting…" else WAITING_WORDS, Chip.Waiting) } + pr.tasks)
             },
             usage = if (p != null) Mapping.usage(p, now) else base.usage,
             pairWords = pairWords,
@@ -1473,6 +1507,17 @@ class LinkStation(
             chatAt = data.chatAt,
         )
     }
+
+    private fun taskTitle(text: String): String = text.trim().lines().first().trim().let { if (it.length > 40) it.take(40).trimEnd() + "…" else it }
+
+    /** A new task not yet on the PC: its words, shown as waiting (or starting, once the PC is there). */
+    private fun waitingTask(w: WaitingTask): Task = Task(
+        id = w.id, title = taskTitle(w.text), project = name(w.project), model = Mapping.modelName(w.model.takeIf { it != "auto" }),
+        age = "", steps = emptyList(), messages = listOf(TaskMessage("${w.id}-0", false, w.text, waiting = true)),
+        question = null, permission = null, change = null,
+        status = if (connected) "Working" else WAITING_WORDS, busy = connected, running = false,
+        plan = w.plan, mode = if (w.plan) "Plan" else "Ask", waitingToStart = true,
+    )
 
     private fun task(t: LinkTask, needs: List<NeedsYouItem>): Task {
         val es = entries[t.id].orEmpty()

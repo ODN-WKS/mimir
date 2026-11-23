@@ -1,6 +1,8 @@
 package io.github.odnwks.mimir.data
 
 /** What a call that was waiting for the PC is told when the link goes away before the PC answered. */
+/** What a new task kept on the phone says while the PC is away. */
+const val WAITING_WORDS = "Waiting for your PC"
 const val WENT_AWAY = "Your PC went away, try again."
 
 /** The calls sent to the PC that have not been answered yet, by call id. */

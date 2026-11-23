@@ -82,6 +82,7 @@ fun ProjectScreen(name: String, state: StationState, station: Station, nav: Navi
                     Chip.Idea -> Palette.Text to Palette.Track
                     Chip.Done -> Palette.Ground to Palette.GreenText
                     Chip.Stopped -> Palette.Text to Palette.Track
+                    Chip.Waiting -> Palette.Text to Palette.Track
                 }
                 ListRow(
                     t.name, t.meta,
@@ -103,7 +104,7 @@ fun ProjectScreen(name: String, state: StationState, station: Station, nav: Navi
             label = "New task in ${p.name}", voice = voice, micLabel = "Talk (voice typing): speak a new task",
             onSend = {
                 val id = station.startTask(draft.trim(), p.name, incognito = false)
-                if (id.isEmpty()) problem = "The task couldn't start: your PC is away. Your words are kept here."
+                if (id.isEmpty()) problem = "The task couldn't start: this project isn't on your PC. Your words are kept here."
                 else { draft = ""; problem = ""; nav.open(Screen.Task(id)) }
             },
             modifier = Modifier.padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 10.dp),

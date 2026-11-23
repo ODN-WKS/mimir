@@ -43,6 +43,8 @@ class Vault(
         val outbox: List<Pair<String, String>> = emptyList(),
         /** Replies typed inside a task while the PC was away: (id, task, text). */
         val replies: List<Triple<String, String, String>> = emptyList(),
+        /** New tasks started while the PC was away, oldest first: they start once when it's back. */
+        val newTasks: List<WaitingTask> = emptyList(),
         /** Answers given while the PC was away: (the ask's id, the call to send). */
         val answers: List<Pair<String, String>> = emptyList(),
         /** The general chat (the newest entries), so it's still there after the app closes. */
@@ -97,6 +99,7 @@ class Vault(
         val o = JSONObject(text)
         val box = o.optJSONArray("outbox") ?: JSONArray()
         val rs = o.optJSONArray("replies") ?: JSONArray()
+        val nts = o.optJSONArray("new_tasks") ?: JSONArray()
         val ans = o.optJSONArray("answers") ?: JSONArray()
         val rec = o.optJSONArray("recordings") ?: JSONArray()
         return Data(
@@ -105,6 +108,9 @@ class Vault(
             pcName = o.optString("pc_name").ifEmpty { null },
             outbox = (0 until box.length()).map { box.getJSONObject(it).let { m -> m.getString("id") to m.getString("text") } },
             replies = (0 until rs.length()).map { rs.getJSONObject(it).let { m -> Triple(m.getString("id"), m.getString("task"), m.getString("text")) } },
+            newTasks = (0 until nts.length()).map { nts.getJSONObject(it).let { m ->
+                WaitingTask(m.getString("id"), m.getString("project"), m.getString("text"), m.optString("model", "auto"), m.optBoolean("plan"), m.optString("rules").ifEmpty { null })
+            } },
             answers = (0 until ans.length()).map { ans.getJSONObject(it).let { m -> m.getString("ask") to m.getString("call") } },
             chat = (o.optJSONArray("chat") ?: JSONArray()).toString(),
             recordings = (0 until rec.length()).map { rec.getJSONObject(it).let { m -> Triple(m.getString("id"), m.optString("task"), m.optInt("seconds")) } },
@@ -129,6 +135,7 @@ class Vault(
             .put("pc_name", d.pcName ?: "")
             .put("outbox", JSONArray(d.outbox.map { JSONObject().put("id", it.first).put("text", it.second) }))
             .put("replies", JSONArray(d.replies.map { JSONObject().put("id", it.first).put("task", it.second).put("text", it.third) }))
+            .put("new_tasks", JSONArray(d.newTasks.map { JSONObject().put("id", it.id).put("project", it.project).put("text", it.text).put("model", it.model).put("plan", it.plan).put("rules", it.rules ?: "") }))
             .put("answers", JSONArray(d.answers.map { JSONObject().put("ask", it.first).put("call", it.second) }))
             .put("chat", runCatching { JSONArray(d.chat) }.getOrDefault(JSONArray()))
             .put("recordings", JSONArray(d.recordings.map { JSONObject().put("id", it.first).put("task", it.second).put("seconds", it.third) }))
@@ -149,3 +156,6 @@ class KeystoreVaultCodec : Vault.Codec {
     override fun seal(text: String): ByteArray = envelope.seal(text)
     override fun open(bytes: ByteArray): String = envelope.open(bytes)
 }
+
+/** A new task started while the PC was away: kept until the PC has it ([id] is also what the PC dedupes on). */
+data class WaitingTask(val id: String, val project: String, val text: String, val model: String, val plan: Boolean, val rules: String?)
