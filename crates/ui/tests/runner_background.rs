@@ -171,20 +171,67 @@ fn a_helper_started_mid_turn_does_not_keep_the_task_working() {
 }
 
 #[test]
-fn the_note_is_said_once() {
+fn the_note_is_said_once_and_goes_when_nothing_runs() {
     let env = Env::new("bg-note");
     let mut r = env.runner("background.jsonl");
     r.new_task(&env.proj(), "start a sleep in the background");
+    let count = |r: &Runner| {
+        r.tasks[0]
+            .task
+            .entries
+            .iter()
+            .filter(|e| matches!(e, Entry::Note(n) if n.contains("in the background")))
+            .count()
+    };
+    until(&mut r, "working in the background", |r| {
+        status(r) == Status::Done && r.tasks[0].working_now()
+    });
+    assert_eq!(count(&r), 1, "said once while it runs");
     until(&mut r, "done by itself", |r| {
         status(r) == Status::Done && !r.tasks[0].running()
     });
-    let notes = r.tasks[0]
-        .task
-        .entries
-        .iter()
-        .filter(|e| matches!(e, Entry::Note(n) if n.contains("in the background")))
-        .count();
-    assert_eq!(notes, 1);
+    // T4/F1: nothing runs any more, so the line is not there to disagree.
+    assert_eq!(count(&r), 0, "the line stays after nothing runs");
+}
+
+/// T4 / P5: its Claude Code is killed while it still runs something in the
+/// background: not Done. It is Stopped unexpectedly (a different thing from a
+/// stop the owner made), and the background line is gone.
+#[test]
+fn a_killed_claude_is_stopped_unexpectedly_not_done() {
+    let env = Env::new("bg-killed");
+    let mut r = env.runner("background-long.jsonl");
+    r.new_task(&env.proj(), "start a long sleep");
+    until(&mut r, "working in the background", |r| {
+        status(r) == Status::Done && r.tasks[0].working_now()
+    });
+    let kids = env.children();
+    assert_eq!(kids.len(), 1);
+    // Its Claude Code is the sleep's parent.
+    let stat = std::fs::read_to_string(format!("/proc/{}/stat", kids[0])).unwrap();
+    let after = &stat[stat.rfind(')').unwrap() + 2..];
+    let parent: i32 = after.split_whitespace().nth(1).unwrap().parse().unwrap();
+    // SAFETY: the fake Claude Code this check started.
+    unsafe { libc::kill(parent, libc::SIGKILL) };
+    until(&mut r, "stopped unexpectedly", |r| {
+        r.tasks[0].task.stopped_unexpectedly()
+    });
+    let t = &r.tasks[0].task;
+    assert_eq!(t.status, Status::Stopped);
+    assert_eq!(t.status_words(), "Stopped unexpectedly");
+    assert!(
+        !t.entries
+            .iter()
+            .any(|e| matches!(e, Entry::Note(n) if n.contains("in the background"))),
+        "the background line is still there"
+    );
+    // The owner's own stop is a different thing.
+    let id = t.id.clone();
+    r.stop(&id);
+    assert!(!r.tasks[0].task.stopped_unexpectedly());
+    // Cleanup: the sleep.
+    // SAFETY: the sleep this check started.
+    unsafe { libc::kill(kids[0] as i32, libc::SIGKILL) };
 }
 
 #[test]

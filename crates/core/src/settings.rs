@@ -238,6 +238,30 @@ impl Settings {
         );
     }
 
+    /// A new project task on `model` is moved to the PC's own model: the
+    /// project work setting is "your PC's model", or Claude's limit is out and
+    /// the owner didn't ask to be asked first.
+    pub fn moves_to_free(&self, model: Option<&str>, claude_out: bool) -> bool {
+        let power = self.power();
+        !crate::models::is_free(model)
+            && (power == Power::FreeOnly
+                || (power == Power::Backup && claude_out && !self.ask_before_free))
+    }
+
+    /// Where the words of a new project task go: online (Anthropic) or not.
+    /// The one answer for the pill before sending, the service when it starts
+    /// the task, and the line the task says afterwards. `free_model_here`:
+    /// the PC has a model to move it to.
+    pub fn task_goes_online(
+        &self,
+        model: Option<&str>,
+        claude_out: bool,
+        free_model_here: bool,
+    ) -> bool {
+        !crate::models::is_free(model)
+            && !(self.moves_to_free(model, claude_out) && free_model_here)
+    }
+
     /// Online (Anthropic) is set up: chats or project work use it.
     pub fn online_set_up(&self) -> bool {
         self.chats_paid() || !self.project_free()
@@ -730,5 +754,44 @@ mod tests {
         for k in ["power", "switch_to_free", "ask_before_free", "free_model"] {
             assert!(out.get(k).is_none(), "{k} is still written");
         }
+    }
+
+    /// P3: the pill before sending, the service and the task's own line all
+    /// ask the same rule, for every combination of the settings.
+    #[test]
+    fn where_the_words_go_is_one_rule_for_every_combination() {
+        for engine in ["free", "claude"] {
+            for model in [None, Some("ollama:qwen"), Some("claude-sonnet-5-5")] {
+                for out in [false, true] {
+                    for ask_first in [false, true] {
+                        for free_here in [false, true] {
+                            let s = Settings {
+                                project_engine: Some(engine.into()),
+                                ask_before_free: ask_first,
+                                ..Settings::default()
+                            };
+                            let free_model = model.is_some_and(|m| m.starts_with("ollama:"));
+                            // What the service does with a new task.
+                            let moved = !free_model
+                                && (engine == "free" || (out && !ask_first))
+                                && free_here;
+                            let online = !free_model && !moved;
+                            assert_eq!(
+                                s.task_goes_online(model, out, free_here),
+                                online,
+                                "{engine} {model:?} out={out} ask={ask_first} free={free_here}"
+                            );
+                        }
+                    }
+                }
+            }
+        }
+        // The settings line "Your PC's model" never leaves a new task online
+        // while a model is there to take it.
+        let free = Settings::default();
+        assert!(free.project_free());
+        assert!(!free.task_goes_online(None, false, true));
+        // With nothing to move it to, it is honest: online.
+        assert!(free.task_goes_online(None, false, false));
     }
 }

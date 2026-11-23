@@ -55,6 +55,25 @@ pub struct Live {
 }
 
 impl Live {
+    /// Tests only: a task with nothing running.
+    #[cfg(test)]
+    pub fn for_test(task: Task) -> Live {
+        Live {
+            task,
+            session: None,
+            asks: VecDeque::new(),
+            sent: 0,
+            finished: 0,
+            dirty: false,
+            background: false,
+            baseline: Vec::new(),
+            bg_checked: None,
+            freeze: false,
+            bg_seen: 0,
+            bg_noted: false,
+        }
+    }
+
     pub fn running(&self) -> bool {
         self.session.is_some()
     }
@@ -70,6 +89,11 @@ impl Live {
     pub fn background_pending(&self) -> bool {
         (self.background || self.bg_seen > 0)
             && !matches!(self.task.status, Status::Stopped | Status::Paused)
+    }
+
+    /// Something it started in the background is running (seen twice).
+    pub fn in_background(&self) -> bool {
+        self.background
     }
 
     /// Claude works on it right now, here or in a session followed from
@@ -153,12 +177,11 @@ const BACKGROUND_LOOK: std::time::Duration = std::time::Duration::from_millis(20
 /// What the task says when the owner stops it.
 pub const STOPPED_NOTE: &str = "You stopped this task.";
 
-const BACKGROUND_NOTE: &str = "Still running something it started in the background.";
+pub const BACKGROUND_NOTE: &str = "Still running something it started in the background.";
 
 const STOP_GRACE: std::time::Duration = std::time::Duration::from_secs(5);
 
-const HOST_LOST: &str =
-    "Mímir's helper for this task stopped unexpectedly. Press Continue to carry on.";
+const HOST_LOST: &str = "This task stopped unexpectedly. Press Continue to carry on.";
 const CLOSED_WHILE_WORKING: &str =
     "Mímir restarted while this task was working. Press Continue to carry on.";
 /// Why a working task can't move yet.
@@ -209,6 +232,7 @@ impl Runner {
                         dirty = true;
                         if matches!(t.status, Status::Working | Status::NeedsYou) {
                             t.status = Status::Stopped;
+                            t.failed = true;
                             t.add_note(HOST_LOST);
                         }
                     }
@@ -301,6 +325,7 @@ impl Runner {
                 l.task.host = None;
                 if matches!(l.task.status, Status::Working | Status::NeedsYou) {
                     l.task.status = Status::Stopped;
+                    l.task.failed = true;
                     l.task.add_note(HOST_LOST);
                 }
                 l.dirty = true;
@@ -858,6 +883,7 @@ impl Runner {
         let l = &mut self.tasks[i];
         l.task.add_note(why);
         l.task.status = Status::Stopped;
+        l.task.failed = true;
         l.dirty = true;
     }
 
@@ -889,6 +915,8 @@ impl Runner {
             p.answer(Answer::Halted);
         }
         l.task.status = status;
+        l.task.failed = false;
+        l.task.drop_note(BACKGROUND_NOTE);
         // The reply it was writing comes first, then the note.
         if !l.task.live.trim().is_empty() {
             let text = std::mem::take(&mut l.task.live);
@@ -1915,6 +1943,7 @@ impl Runner {
                     Output::HostLost => {
                         l.task.add_note(HOST_LOST);
                         l.task.status = Status::Stopped;
+                        l.task.failed = true;
                     }
                     Output::Exited(code) => {
                         exited = true;
@@ -1964,7 +1993,10 @@ impl Runner {
                         }
                     }
                     l.bg_seen = 0;
-                    l.bg_noted = false;
+                    if std::mem::take(&mut l.bg_noted) {
+                        l.task.drop_note(BACKGROUND_NOTE);
+                        l.dirty = true;
+                    }
                     if l.background {
                         l.background = false;
                         l.dirty = true;
@@ -1983,6 +2015,9 @@ impl Runner {
                         }
                         if !now_bg {
                             l.freeze = false;
+                            l.bg_noted = false;
+                            // Nothing runs any more: the line is no longer true.
+                            l.task.drop_note(BACKGROUND_NOTE);
                         }
                         l.dirty = true;
                     }
@@ -1997,16 +2032,28 @@ impl Runner {
             }
             if exited {
                 let ended_early = l.finished < l.sent;
+                // Its Claude Code ended while something it started was still
+                // running, and nobody stopped it: it died, the work is not done.
+                let died_busy = (l.background || l.bg_seen > 0)
+                    && !matches!(l.task.status, Status::Stopped | Status::Paused);
                 l.session = None;
                 self.own_ended
                     .insert(l.task.id.clone(), crate::needs::now());
                 l.background = false;
+                l.bg_seen = 0;
+                l.bg_noted = false;
+                l.task.drop_note(BACKGROUND_NOTE);
                 l.task.host = None;
                 if ended_early && matches!(l.task.status, Status::Working | Status::NeedsYou) {
                     l.task.status = Status::Stopped;
+                    l.task.failed = true;
                     l.task.add_note(
                         "Project work closed before it finished. Press Continue to try again.",
                     );
+                } else if died_busy {
+                    l.task.status = Status::Stopped;
+                    l.task.failed = true;
+                    l.task.add_note(HOST_LOST);
                 }
                 while let Some(p) = l.asks.pop_front() {
                     p.answer(Answer::Halted);

@@ -528,6 +528,14 @@ pub fn running_sessions() -> std::collections::HashSet<String> {
 static APP_IDS: std::sync::Mutex<Option<std::collections::HashSet<String>>> =
     std::sync::Mutex::new(None);
 
+/// Tests only: these sessions count as started from the Claude app.
+#[cfg(test)]
+pub fn mark_app_sessions_for_test(ids: &[&str]) {
+    if let Ok(mut g) = APP_IDS.lock() {
+        *g = Some(ids.iter().map(|s| s.to_string()).collect());
+    }
+}
+
 /// Whether a running session was started from the Claude app.
 pub fn started_in_app(id: &str) -> bool {
     APP_IDS

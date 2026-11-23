@@ -33,6 +33,9 @@ const OUTSIDE_SCAN: Duration = Duration::from_secs(1);
 const PROCESS_SCAN: Duration = Duration::from_secs(5);
 /// A followed conversation unchanged this long has finished its turn.
 const KEEPER_QUIET: Duration = Duration::from_secs(90);
+/// A followed conversation with no Claude Code process on it, silent this long
+/// (seconds), has ended: it stops reading "running" (P1).
+const GONE_SECS: i64 = 10;
 
 /// How often the service looks at its timers while something is going on
 /// (a window or phone connected, a task working or waiting).
@@ -307,6 +310,8 @@ struct Service {
     checks_cache: HashMap<String, mimir_proto::CheckFacts>,
     /// The engine's line, read again every 10 s.
     engine_words: Option<(Instant, String, bool)>,
+    /// Whether the PC's model program is down, and when that was looked at.
+    model_down: Option<(Instant, bool)>,
     /// The chats kept on this PC, opened when first needed (talk_store.rs).
     chats: Option<crate::talk_store::TalkStore>,
     chats_unlock: crate::talk_store::Unlock,
@@ -551,6 +556,7 @@ impl Service {
             truth_at: None,
             checks_cache: HashMap::new(),
             engine_words: None,
+            model_down: None,
             engine_looked: None,
             started: Instant::now(),
             engine_busy: Arc::default(),
@@ -1276,11 +1282,7 @@ impl Service {
                 let out = self.claude_out_until.filter(|t| *t > now);
                 let power = self.settings.power();
                 let mut on_free = None;
-                if !crate::models::is_free(model.as_deref())
-                    && (power == settings::Power::FreeOnly
-                        || (power == settings::Power::Backup
-                            && out.is_some()
-                            && !self.settings.ask_before_free))
+                if self.settings.moves_to_free(model.as_deref(), out.is_some())
                     && let Some(f) = self.free_choice()
                 {
                     on_free = Some(f.name.clone());
@@ -3782,7 +3784,9 @@ impl Service {
                 && !self.runner.own_recent(&id, unix)
                 && (in_proc
                     || (self.outside_followed.contains(&id)
-                        && talk.is_some_and(|t| unix - t < crate::task::LIVE_SECS)));
+                        && talk.is_some_and(|t| unix - t < GONE_SECS)));
+            // No Claude Code on it and silent: the program ended.
+            let ended = !in_proc && written.is_some_and(|w| unix - w >= GONE_SECS);
             if self.runner.set_elsewhere(&id, elsewhere) {
                 self.touched.insert(id.clone());
             }
@@ -3808,7 +3812,7 @@ impl Service {
             }
             // Quiet a while: the turn there has finished.
             if self.outside_followed.contains(&id)
-                && written.is_some_and(|w| unix - w >= KEEPER_QUIET.as_secs() as i64)
+                && (ended || written.is_some_and(|w| unix - w >= KEEPER_QUIET.as_secs() as i64))
                 && self.runner.settle_followed(&id)
             {
                 self.touched.insert(id.clone());
@@ -3831,6 +3835,11 @@ impl Service {
                 self.outside_seen.insert(id.clone(), at);
                 self.outside_followed.insert(id.clone());
                 self.runner.fix_title(&id);
+                // Read afresh after a restart: what was going on has ended
+                // already, so it never reads "running" again.
+                if ended {
+                    self.runner.settle_followed(&id);
+                }
                 self.touched.insert(id);
             }
         }
@@ -4876,13 +4885,9 @@ impl Service {
         match call {
             Call::NewIncognito { .. } => true,
             Call::NewTask { model, .. } => {
-                let power = self.settings.power();
                 let out = self.claude_out_until.filter(|t| *t > crate::needs::now());
                 crate::models::is_free(model.as_deref())
-                    || power == settings::Power::FreeOnly
-                    || (power == settings::Power::Backup
-                        && out.is_some()
-                        && !self.settings.ask_before_free)
+                    || self.settings.moves_to_free(model.as_deref(), out.is_some())
             }
             Call::ContinueOnFree { .. } => true,
             Call::Send { task, .. } | Call::Continue { task } | Call::SendQueued { task } => {
@@ -5208,6 +5213,8 @@ impl Service {
                     needs_you: t.needs_owner(),
                     live_elsewhere: t.live_elsewhere,
                     stopped: matches!(t.status, Status::Stopped | Status::Paused),
+                    failed: t.stopped_unexpectedly(),
+                    elsewhere_in: elsewhere_in(t),
                     archived: t.archived,
                     background: t.live_elsewhere && !l.busy(),
                     since: self
@@ -5246,6 +5253,16 @@ impl Service {
                 (w, has)
             }
         };
+        // A try to start the PC's model program failed and it still doesn't
+        // answer: said until it does. Looked at every 10 s at most.
+        let model_down = match self.model_down {
+            Some((at, down)) if at.elapsed() < Duration::from_secs(10) => down,
+            _ => {
+                let down = crate::models::down();
+                self.model_down = Some((Instant::now(), down));
+                down
+            }
+        };
         let pc = shown_pc_name(&self.settings);
         let engine = mimir_proto::TruthEngine {
             chats_where: if paid || has_pick {
@@ -5266,6 +5283,7 @@ impl Service {
             },
             answering: self.talk.answering(),
             paid_on: paid || !self.settings.project_free(),
+            model_down,
         };
         crate::truth::build(crate::truth::Input {
             run_id: &self.run_id,
@@ -5486,7 +5504,23 @@ fn header(l: &runner::Live, queued: &HashMap<String, QueuedMessage>) -> TaskHead
         placed_why: t.placement_note.as_deref().and_then(crate::placement::why),
         active_unix: t.active_unix,
         live_elsewhere: t.live_elsewhere,
+        elsewhere_in: elsewhere_in(t),
+        failed: t.stopped_unexpectedly(),
+        background: l.in_background(),
     }
+}
+
+/// Where a task that goes on outside Mímir runs: "app" (the Claude app) or
+/// "terminal" (None when it doesn't).
+fn elsewhere_in(t: &crate::task::Task) -> Option<String> {
+    if !t.live_elsewhere {
+        return None;
+    }
+    let app = t
+        .session_id
+        .as_deref()
+        .is_some_and(crate::sessions::started_in_app);
+    Some(if app { "app" } else { "terminal" }.into())
 }
 
 /// A few lines to look at before answering a permission request: the
@@ -6254,5 +6288,39 @@ mod pc_name_tests {
             ..Settings::default()
         };
         assert_eq!(pc_name(&blank), pc_name(&Settings::default()));
+    }
+
+    /// T1 / P4 (PC side): a task that goes on outside Mímir says where, so both
+    /// sides can explain Carry on here; a task that doesn't says nothing.
+    #[test]
+    fn a_task_going_on_elsewhere_says_where() {
+        let mut t = crate::task::Task::new("1-1-1".into(), "T".into(), "/p".into(), 1);
+        t.session_id = Some("sess-app".into());
+        assert_eq!(elsewhere_in(&t), None, "not live: nothing to say");
+        t.live_elsewhere = true;
+        assert_eq!(elsewhere_in(&t).as_deref(), Some("terminal"));
+        crate::sessions::mark_app_sessions_for_test(&["sess-app"]);
+        assert_eq!(elsewhere_in(&t).as_deref(), Some("app"));
+        // It is in the task's header for the phone, and in the truth.
+        let l = crate::runner::Live::for_test(t.clone());
+        let h = header(&l, &HashMap::new());
+        assert_eq!(h.elsewhere_in.as_deref(), Some("app"));
+        assert!(h.live_elsewhere && !h.failed);
+        t.live_elsewhere = false;
+        assert_eq!(elsewhere_in(&t), None);
+    }
+
+    /// T4 / P5: the header and truth carry "stopped unexpectedly" only for a
+    /// stop nobody asked for.
+    #[test]
+    fn a_stop_nobody_asked_for_is_flagged_in_the_header() {
+        let mut t = crate::task::Task::new("1-1-2".into(), "T".into(), "/p".into(), 1);
+        t.status = Status::Stopped;
+        t.failed = true;
+        let l = crate::runner::Live::for_test(t.clone());
+        assert!(header(&l, &HashMap::new()).failed);
+        t.failed = false;
+        let l = crate::runner::Live::for_test(t);
+        assert!(!header(&l, &HashMap::new()).failed, "the owner's stop");
     }
 }

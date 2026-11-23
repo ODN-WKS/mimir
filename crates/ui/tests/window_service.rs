@@ -103,10 +103,7 @@ fn a_task_whose_host_dies_stops_and_continue_carries_on() {
     // SAFETY: a host this check's service started.
     unsafe { libc::kill(host, libc::SIGKILL) };
     assert!(
-        wait_for(&mut h, |h| shows(
-            h,
-            "helper for this task stopped unexpectedly"
-        )),
+        wait_for(&mut h, |h| shows(h, "This task stopped unexpectedly")),
         "the lost host wasn't said\n{}",
         screen_text(&h)
     );

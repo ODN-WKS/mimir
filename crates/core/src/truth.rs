@@ -24,6 +24,10 @@ pub struct TaskIn {
     pub needs_you: bool,
     pub live_elsewhere: bool,
     pub stopped: bool,
+    /// Stopped unexpectedly (see `TruthTask::failed`).
+    pub failed: bool,
+    /// Where it runs while live elsewhere: "app" or "terminal".
+    pub elsewhere_in: Option<String>,
     pub archived: bool,
     /// Claude works on it through another session (Phone too, a followed
     /// session): Stop shows, the reply box doesn't.
@@ -78,6 +82,11 @@ pub fn build(i: Input) -> Truth {
             background: t.background,
             since: t.since,
             from_phone: t.from_phone,
+            failed: t.failed && state(t) == TaskState::Stopped,
+            elsewhere_in: t
+                .elsewhere_in
+                .clone()
+                .filter(|_| state(t) == TaskState::LiveElsewhere),
         })
         .collect();
     // Every task that isn't done, and the newest done ones of the last day.
@@ -160,6 +169,8 @@ pub fn seen(t: &Truth) -> u64 {
             format!("{:?}", x.state),
             x.background,
             x.from_phone,
+            x.failed,
+            &x.elsewhere_in,
         )
             .hash(&mut h);
     }
@@ -176,6 +187,7 @@ pub fn seen(t: &Truth) -> u64 {
         &t.engine.chats_model_words,
         t.engine.answering,
         t.engine.paid_on,
+        t.engine.model_down,
     )
         .hash(&mut h);
     if let Some(u) = &t.usage {
@@ -242,6 +254,8 @@ mod tests {
             needs_you: false,
             live_elsewhere: false,
             stopped: false,
+            failed: false,
+            elsewhere_in: None,
             archived: false,
             background: false,
             since: Some(1000),
@@ -359,6 +373,8 @@ mod tests {
             background: false,
             since: None,
             from_phone: false,
+            failed: false,
+            elsewhere_in: None,
         };
         let truth = |tasks: Vec<TruthTask>| Truth {
             tasks,

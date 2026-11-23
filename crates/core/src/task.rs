@@ -161,6 +161,18 @@ pub struct Task {
     /// replies go there (Claude Code has one writer). Not saved.
     #[serde(skip)]
     pub live_elsewhere: bool,
+    /// With `live_elsewhere`: "app" (the Claude app) or "terminal". Not saved.
+    #[serde(skip)]
+    pub elsewhere_in: Option<String>,
+    /// It stopped unexpectedly (its Claude Code died or ended with a
+    /// problem), which is not a stop the owner made. Only meant while
+    /// `status` is Stopped.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub failed: bool,
+    /// Something it started in the background runs (a client's copy; the
+    /// service's own is in `runner::Live`). Not saved.
+    #[serde(skip)]
+    pub background: bool,
     /// Whether the last reply asks the owner something, kept so the window
     /// doesn't look again every frame. Not saved.
     #[serde(skip)]
@@ -340,6 +352,9 @@ impl Task {
             active_unix: None,
             host: None,
             live_elsewhere: false,
+            elsewhere_in: None,
+            failed: false,
+            background: false,
             yolo: None,
             asks_memo: AsksMemo::default(),
             summary_enabled: false,
@@ -384,6 +399,9 @@ impl Task {
         self.placed_why = h.placed_why.clone();
         self.active_unix = h.active_unix;
         self.live_elsewhere = h.live_elsewhere;
+        self.elsewhere_in = h.elsewhere_in.clone();
+        self.failed = h.failed;
+        self.background = h.background;
     }
 
     /// Percent of the plan that is done, if there is a plan.
@@ -434,6 +452,37 @@ impl Task {
     pub fn add_you(&mut self, text: &str) {
         self.entries.push(Entry::You(text.to_string()));
         self.status = Status::Working;
+        self.failed = false;
+    }
+
+    /// It stopped by itself with a problem (not by the owner's Stop).
+    pub fn stopped_unexpectedly(&self) -> bool {
+        self.failed && self.status == Status::Stopped
+    }
+
+    /// Takes the last note that says `text` out (a line that was true only
+    /// while something ran). Entries after it move up one place, so the
+    /// numbers that point at entries move with them.
+    pub fn drop_note(&mut self, text: &str) -> bool {
+        let Some(at) = self
+            .entries
+            .iter()
+            .rposition(|e| matches!(e, Entry::Note(n) if n == text))
+        else {
+            return false;
+        };
+        self.entries.remove(at);
+        for (i, _) in &mut self.checkpoints {
+            if *i > at {
+                *i -= 1;
+            }
+        }
+        if let Some(q) = &mut self.question_dismissed
+            && *q > at
+        {
+            *q -= 1;
+        }
+        true
     }
 
     /// The owner just answered a question: time the waiting step from now,
@@ -679,6 +728,7 @@ impl Task {
             Status::Paused | Status::Stopped => {}
             _ if f.is_error && f.terminal_reason != "aborted_tools" => {
                 self.status = Status::Stopped;
+                self.failed = true;
                 let why = f.text.clone().unwrap_or_else(|| f.subtype.clone());
                 // Claude's last message may already say it.
                 let said =
@@ -792,6 +842,8 @@ impl Task {
             "Question for you"
         } else if self.live_elsewhere && self.status != Status::Working {
             "Live elsewhere"
+        } else if self.stopped_unexpectedly() {
+            "Stopped unexpectedly"
         } else {
             self.status.words()
         }

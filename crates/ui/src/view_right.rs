@@ -182,8 +182,11 @@ impl App {
         theme::caps(ui, "This task");
         card(ui, |ui| {
             let (state, color) = match l.shown_state() {
-                TaskState::NeedsYou => ("Waiting for your answer", ORANGE),
+                TaskState::NeedsYou => ("Needs you", ORANGE),
                 TaskState::Working => ("Working", TEAL),
+                TaskState::Stopped if t.stopped_unexpectedly() => {
+                    ("Stopped unexpectedly", crate::theme::AMBER)
+                }
                 TaskState::Stopped => ("Stopped", MUTED),
                 TaskState::LiveElsewhere => ("Going on in another window", MUTED),
                 _ => ("Done", MUTED),

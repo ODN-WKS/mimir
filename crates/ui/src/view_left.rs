@@ -1373,6 +1373,15 @@ fn mark(ui: &egui::Ui, c: egui::Pos2, l: &TaskView) {
                     );
                 }
             }
+            // Stopped by itself: an outline in amber, not the owner's solid grey square.
+            Status::Stopped if l.task.stopped_unexpectedly() => {
+                p.rect_stroke(
+                    egui::Rect::from_center_size(c, egui::vec2(8.0, 8.0)),
+                    egui::CornerRadius::same(1),
+                    egui::Stroke::new(1.6, crate::theme::AMBER),
+                    egui::StrokeKind::Inside,
+                );
+            }
             Status::Stopped => {
                 p.rect_filled(
                     egui::Rect::from_center_size(c, egui::vec2(8.0, 8.0)),

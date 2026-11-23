@@ -485,6 +485,11 @@ pub fn unit_path() -> PathBuf {
     crate::paths::home().join(".config/systemd/user/mimir-ollama.service")
 }
 
+/// What a chat says when the PC's model program isn't running and could not
+/// be started: one plain line, and the way out is to try again.
+pub const MODEL_DOWN: &str =
+    "Your PC's model isn't running and didn't start. Try again in a moment.";
+
 /// Whether Ollama would have to be woken first (its unit is there, and it
 /// isn't answering): what a call must not wait for on the service's thread.
 pub fn sleeping() -> bool {
@@ -519,6 +524,30 @@ fn start_unit() {
 /// Starts Ollama (its user unit) if it isn't answering, and waits up to
 /// `wait` for it. True when it answers.
 pub fn ensure_running(wait: Duration) -> bool {
+    let up = ensure_running_inner(wait);
+    DOWN.store(!up, std::sync::atomic::Ordering::SeqCst);
+    up
+}
+
+/// The last try to start the PC's model program failed (and nothing has
+/// answered since): what the top pill and the chat say. Starting it on
+/// demand is normal; only a failed start is "down".
+static DOWN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Whether the PC's model program is down: a start failed and it still isn't
+/// answering. Looks (a short call) only while a failure is on record.
+pub fn down() -> bool {
+    if !DOWN.load(std::sync::atomic::Ordering::SeqCst) {
+        return false;
+    }
+    if installed().is_ok() {
+        DOWN.store(false, std::sync::atomic::Ordering::SeqCst);
+        return false;
+    }
+    true
+}
+
+fn ensure_running_inner(wait: Duration) -> bool {
     if installed().is_ok() {
         return true;
     }

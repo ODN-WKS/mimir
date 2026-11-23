@@ -17,7 +17,7 @@ impl Status {
     pub fn words(self) -> &'static str {
         match self {
             Status::Working => "Working",
-            Status::NeedsYou => "Needs your OK",
+            Status::NeedsYou => "Needs you",
             Status::Paused => "Paused",
             Status::Stopped => "Stopped",
             Status::Done => "Done",
@@ -551,6 +551,15 @@ pub struct TruthTask {
     #[serde(default)]
     pub since: Option<i64>,
     pub from_phone: bool,
+    /// With `state` Stopped: it stopped unexpectedly (its Claude Code died or
+    /// ended with a problem), not because the owner stopped it. One name for
+    /// both sides: "Stopped unexpectedly", with Continue.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub failed: bool,
+    /// With `state` LiveElsewhere: where it still runs, "app" (the Claude
+    /// app) or "terminal".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub elsewhere_in: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -584,6 +593,11 @@ pub struct TruthEngine {
     pub answering: bool,
     /// A paid model (Claude) is chosen for something.
     pub paid_on: bool,
+    /// Your PC's model program is set up but isn't running, and starting it
+    /// has not worked yet: nothing on this PC can answer. The top pill is
+    /// not the green "This PC" while this is true.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub model_down: bool,
 }
 
 /// Claude's usage, in percent, only while a paid Claude choice is on.
@@ -676,6 +690,19 @@ pub struct TaskHeader {
     /// terminal, the Claude app): replies go there, not from here.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub live_elsewhere: bool,
+    /// With `live_elsewhere`: where it still runs, "app" (the Claude app) or
+    /// "terminal". Absent from an older PC: say "your PC".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub elsewhere_in: Option<String>,
+    /// With `status` Stopped: it stopped unexpectedly (its Claude Code died
+    /// or ended with a problem), not by the owner's Stop. Shown as "Stopped
+    /// unexpectedly" with Continue; it never reads Done.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub failed: bool,
+    /// Something it started in the background is still running (Stop shows).
+    /// False once nothing runs.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub background: bool,
 }
 
 /// One change "Tidy projects…" proposes, shown before anything is done.

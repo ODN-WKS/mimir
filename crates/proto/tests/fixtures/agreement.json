@@ -2,12 +2,12 @@
   "note": "What the PC window and the phone must both show for the same data. Read by crates/proto/tests/agreement.rs (the PC side) and AgreementTest.kt (the phone side). known_differences lists status words the two say differently today: the check fails when a new difference appears and also when one is fixed (then remove it from the list).",
   "statuses": [
     {"status": "Working", "pc": "Working", "phone": "Working"},
-    {"status": "NeedsYou", "pc": "Needs your OK", "phone": "Needs you"},
+    {"status": "NeedsYou", "pc": "Needs you", "phone": "Needs you"},
     {"status": "Paused", "pc": "Paused", "phone": "Paused"},
     {"status": "Stopped", "pc": "Stopped", "phone": "Stopped"},
     {"status": "Done", "pc": "Done", "phone": "Done"}
   ],
-  "known_differences": ["NeedsYou"],
+  "known_differences": [],
   "weekly_percent": 62,
   "finished_how": ["Ok", "Stopped", "Failed"],
   "finished_feature": "finished_events",

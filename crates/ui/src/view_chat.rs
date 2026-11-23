@@ -562,11 +562,7 @@ impl App {
                     ui.horizontal_wrapped(|ui| {
                         if let Some((task, project)) = &waiting_task {
                             let name = crate::places::display_name(&self.settings, project);
-                            if starter_chip(
-                                ui,
-                                &format!("Answer {name}'s question"),
-                                "Waiting for you",
-                            ) {
+                            if starter_chip(ui, &format!("Answer {name}'s question"), "Needs you") {
                                 actions.push(Action::Select(task.clone()));
                             }
                         }

@@ -65,7 +65,8 @@ impl App {
         // Top: who answers, and the saved prompts (they used to sit in
         // the box's row).
         let panel = Some(self.details_shown(ui.ctx()));
-        let paid = !mimir_core::models::is_free(self.new_model.as_deref());
+        // Exactly where the words go once sent: the same rule the service uses.
+        let paid = new_task_goes_online(&self.settings, self.new_model.as_deref());
         {
             let project = self.new_project.clone().unwrap_or_default();
             let settings = &self.settings;
@@ -408,4 +409,14 @@ impl App {
             Placement::None => None,
         }
     }
+}
+
+/// Whether a new project task on `model` goes online (Anthropic), by the one
+/// rule the PC uses when it starts the task (Settings › Models › Project work).
+pub(crate) fn new_task_goes_online(
+    settings: &mimir_core::settings::Settings,
+    model: Option<&str>,
+) -> bool {
+    let free_here = mimir_core::models::default_free(&mimir_core::models::cached()).is_some();
+    settings.task_goes_online(model, false, free_here)
 }

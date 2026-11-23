@@ -567,7 +567,7 @@ impl Talk {
         if ollama::get_at(&base, "/api/version").is_err()
             && !crate::models::ensure_running(Duration::from_secs(30))
         {
-            return Err("Your PC's model isn't running, and it didn't start by itself. Open Settings › Models to set it up, then try again.".into());
+            return Err(crate::models::MODEL_DOWN.into());
         }
         let users: Vec<usize> = job
             .messages

@@ -50,6 +50,9 @@ fn header() -> TaskHeader {
         placed_why: None,
         active_unix: None,
         live_elsewhere: false,
+        elsewhere_in: None,
+        failed: false,
+        background: false,
     }
 }
 
@@ -99,6 +102,8 @@ fn truth() -> Truth {
             background: false,
             since: Some(1_794_000_100),
             from_phone: true,
+            failed: false,
+            elsewhere_in: None,
         }],
         counts: TruthCounts {
             working: 1,
@@ -118,6 +123,7 @@ fn truth() -> Truth {
                 .into(),
             answering: false,
             paid_on: true,
+            model_down: false,
         },
         usage: Some(TruthUsage {
             weekly: Some(WeeklyUse {
