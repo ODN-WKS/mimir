@@ -17,6 +17,15 @@ impl Env {
         unsafe { std::env::set_var("MIMIR_HOSTS", hosts) };
         let dir = std::env::temp_dir().join(format!("mimir-stoppc-{tag}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
+        // Hosts must start the real program, not this test (which would run
+        // the whole suite again, and again, from each host it starts), and
+        // keep their records and sockets inside this check's folder.
+        // SAFETY: as above.
+        unsafe {
+            std::env::set_var("MIMIR_TEST_PROGRAM", env!("CARGO_BIN_EXE_mimir"));
+            std::env::set_var("XDG_STATE_HOME", dir.join("state"));
+            std::env::set_var("XDG_RUNTIME_DIR", dir.join("run"));
+        }
         std::fs::create_dir_all(dir.join("proj")).unwrap();
         // One message in, then a long silence: a task that keeps working.
         let stream = dir.join("long.jsonl");
@@ -79,8 +88,33 @@ impl Env {
     }
 }
 
+/// Ends every host this check started (found by the records in its own state folder).
+fn end_hosts(dir: &std::path::Path) {
+    let Ok(rd) = std::fs::read_dir(dir.join("state/mimir/hosts")) else {
+        return;
+    };
+    for e in rd.flatten() {
+        let Ok(text) = std::fs::read_to_string(e.path()) else {
+            continue;
+        };
+        let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) else {
+            continue;
+        };
+        for k in ["host_pid", "child_pid"] {
+            if let Some(p) = v[k].as_i64().filter(|p| *p > 1) {
+                // SAFETY: ends a process this check started.
+                unsafe {
+                    libc::kill(-(p as i32), libc::SIGKILL);
+                    libc::kill(p as i32, libc::SIGKILL);
+                }
+            }
+        }
+    }
+}
+
 impl Drop for Env {
     fn drop(&mut self) {
+        end_hosts(&self.dir);
         if let Some(p) = self.pid() {
             // SAFETY: tidies the stand-in this check started.
             unsafe { libc::kill(p, libc::SIGKILL) };
