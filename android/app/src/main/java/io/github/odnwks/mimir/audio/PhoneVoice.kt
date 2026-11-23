@@ -134,7 +134,15 @@ class PhoneVoice internal constructor(context: Context, private val voices: Voic
         systemName = l.getDisplayName(Locale.UK)
     }
 
+    private var lastToggle = Long.MIN_VALUE / 2
+    /** Milliseconds, any clock that only goes forward (checks move it). */
+    internal var clock: () -> Long = { System.nanoTime() / 1_000_000 }
+
     override fun toggle(id: String, text: String) {
+        // Taps in quick succession count once: a second tap while it starts or stops is ignored, never queued.
+        val now = clock()
+        if (now - lastToggle < 400) return
+        lastToggle = now
         if (_reading.value == id) { stop(); return }
         say(id, text)
     }
@@ -142,12 +150,17 @@ class PhoneVoice internal constructor(context: Context, private val voices: Voic
     /** Plays (or stops) [voiceId]'s sample, even before it's the chosen voice. */
     fun sample(voiceId: String) {
         val id = "sample-$voiceId"
+        val now = clock()
+        if (now - lastToggle < 400) return
+        lastToggle = now
         if (_reading.value == id) { stop(); return }
         val v = voices.store.byId(voiceId) ?: return
+        PcReading.stop()
         speakNatural(id, v.sample, v)
     }
 
     private fun say(id: String, text: String) {
+        PcReading.stop()
         val natural = voices.store.state.value.active
         if (natural != null) { speakNatural(id, text, natural); return }
         sayWithPhone(id, text)

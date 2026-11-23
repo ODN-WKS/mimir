@@ -24,6 +24,28 @@ val LocalReadAloud = staticCompositionLocalOf<ReadAloud?> { null }
 /** True while the player is running (checks can override this). */
 val LocalPlayerRuns = compositionLocalOf { false }
 
+/** Whether [id] is being read now, by the phone's voice or the PC's. */
+@Composable
+fun readingNow(voice: ReadAloud, id: String): Boolean {
+    val phone by voice.reading.collectAsStateWithLifecycle()
+    val pcId by io.github.odnwks.mimir.audio.PcReading.id.collectAsStateWithLifecycle()
+    return phone == id || pcId == id
+}
+
+/**
+ * One tap on a Listen control: it stops [id] if it is being read (either voice, at once), else
+ * starts it ([pc]'s voice when given). Taps in quick succession count once.
+ */
+fun tapRead(voice: ReadAloud, id: String, text: String, pc: (() -> Unit)?) {
+    val pcr = io.github.odnwks.mimir.audio.PcReading
+    if (voice.reading.value == id) { voice.toggle(id, text); return }
+    if (pcr.id.value == id) { if (!pcr.tooSoon()) pcr.stop(); return }
+    if (pc == null) { voice.toggle(id, text); return }
+    if (pcr.tooSoon()) return
+    voice.stop()
+    pc()
+}
+
 @Composable
 fun rememberReadAloud(): ReadAloud {
     val given = LocalReadAloud.current
@@ -38,12 +60,10 @@ fun rememberReadAloud(): ReadAloud {
 @Composable
 fun ReadAloudButton(id: String, text: String, pc: (() -> Unit)? = null) {
     val voice = rememberReadAloud()
-    val reading by voice.reading.collectAsStateWithLifecycle()
     val getting by voice.gettingReady.collectAsStateWithLifecycle()
-    val on = reading == id
+    val on = readingNow(voice, id)
     androidx.compose.foundation.layout.Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-        if (pc != null && !on) RoundButton(Glyphs.Speaker, "Read aloud", pc, size = 48.dp, iconSize = 18.dp)
-        else RoundButton(if (on) Glyphs.Stop else Glyphs.Speaker, if (on) "Stop reading" else "Read aloud", { voice.toggle(id, text) }, size = 48.dp, iconSize = 18.dp)
+        RoundButton(if (on) Glyphs.Stop else Glyphs.Speaker, if (on) "Stop reading" else "Read aloud", { tapRead(voice, id, text, pc) }, size = 48.dp, iconSize = 18.dp)
         // The first read after the app starts may wait for the voice to load: it says so, rather than going quiet.
         if (on && getting == id) androidx.compose.material3.Text(
             "Getting ${voice.voiceName ?: "the voice"} ready…", style = io.github.odnwks.mimir.ui.theme.Type.Small,
@@ -60,12 +80,12 @@ const val LOOK_IT_UP = "Look it up"
 @Composable
 fun ReplyMenu(open: Boolean, onClose: () -> Unit, id: String, text: String, pc: (() -> Unit)? = null, lookUp: (() -> Unit)? = null) {
     val voice = rememberReadAloud()
-    val reading by voice.reading.collectAsStateWithLifecycle()
+    val on = readingNow(voice, id)
     val clip = LocalClipboardManager.current
     DropdownMenu(open, onClose) {
-        DropdownMenuItem({ Text(if (reading == id) "Stop reading" else "Read aloud") }, {
+        DropdownMenuItem({ Text(if (on) "Stop reading" else "Read aloud") }, {
             onClose()
-            if (pc != null && reading != id) pc() else voice.toggle(id, text)
+            tapRead(voice, id, text, pc)
         })
         DropdownMenuItem({ Text("Copy") }, { onClose(); clip.setText(AnnotatedString(text)) })
         // Normal mode: search the web for the question, and answer again from what's found.

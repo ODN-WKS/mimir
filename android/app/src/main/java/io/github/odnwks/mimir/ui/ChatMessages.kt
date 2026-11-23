@@ -249,14 +249,13 @@ fun QuietButton(text: String, description: String = text, icon: androidx.compose
 @Composable
 fun ListenButton(id: String, plain: String, pc: (() -> Unit)? = null) {
     val voice = rememberReadAloud()
-    val reading by voice.reading.collectAsStateWithLifecycle()
     val getting by voice.gettingReady.collectAsStateWithLifecycle()
-    val on = reading == id
+    val on = readingNow(voice, id)
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         QuietButton(
             if (on) STOP_LISTENING else LISTEN, if (on) "Stop reading" else "Read aloud",
             if (on) Glyphs.Stop else Glyphs.Play,
-            { if (pc != null && !on) pc() else voice.toggle(id, plain) },
+            { tapRead(voice, id, plain, pc) },
         )
         if (on && getting == id) Text(
             "Getting ${voice.voiceName ?: "the voice"} ready…", style = Type.Small, color = Palette.TextDim,
@@ -305,7 +304,7 @@ fun MessageMenuHost(
     var menu by remember { mutableStateOf(false) }
     var selecting by remember { mutableStateOf(false) }
     val voice = rememberReadAloud()
-    val reading by voice.reading.collectAsStateWithLifecycle()
+    val on = readingNow(voice, id)
     val clip = LocalClipboardManager.current
     val ctx = LocalContext.current
     Box {
@@ -318,9 +317,9 @@ fun MessageMenuHost(
                 menu = false
                 sharePlain(ctx, plain)
             })
-            DropdownMenuItem({ Text(if (reading == id) "Stop reading" else LISTEN_ITEM) }, {
+            DropdownMenuItem({ Text(if (on) "Stop reading" else LISTEN_ITEM) }, {
                 menu = false
-                if (pc != null && reading != id) pc() else voice.toggle(id, plain)
+                tapRead(voice, id, plain, pc)
             })
             if (lookUp != null) DropdownMenuItem({ Text(LOOK_IT_UP) }, { menu = false; lookUp() })
         }

@@ -117,6 +117,12 @@ class Speaker private constructor(context: Context) : Playback {
         player.play()
     }
 
+    override fun stop() = onMain {
+        main.removeCallbacks(release)
+        player.pause()
+        release.run()
+    }
+
     override fun toggle() = onMain { if (player.isPlaying) player.pause() else player.play() }
     override fun next() = onMain { if (player.hasNextMediaItem()) player.seekToNextMediaItem() else player.pause() }
     override fun back10() = onMain { player.seekTo((player.currentPosition - 10_000).coerceAtLeast(0)) }

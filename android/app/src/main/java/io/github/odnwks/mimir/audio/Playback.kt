@@ -25,6 +25,8 @@ interface Playback {
     fun next()
     fun back10()
     fun setSpeed(speed: Float)
+    /** Stops at once and lets go of the media notification. */
+    fun stop() {}
     /** Called on every change (and while playing, about twice a second). */
     var onState: ((PlayState) -> Unit)?
 

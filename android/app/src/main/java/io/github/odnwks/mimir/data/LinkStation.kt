@@ -210,7 +210,9 @@ class LinkStation(
     /** This phone belongs to the PC's owner (an older PC does not say, and has only the owner). */
     private fun isOwner(): Boolean = synchronized(lock) { data.person.isNullOrEmpty() || data.person == OWNER_PERSON }
     init {
+        io.github.odnwks.mimir.audio.PcReading.stopper = { playback.stop() }
         playback.onState = { ps ->
+            io.github.odnwks.mimir.audio.PcReading.onPlayer(ps.trackId, ps.playing)
             synchronized(lock) {
                 playState = ps
                 ps.trackId?.let { id ->
@@ -1527,14 +1529,21 @@ class LinkStation(
 
     override fun playMessage(taskId: String, messageId: String) {
         val entry = messageId.substringAfterLast('-').toIntOrNull() ?: return
-        call(Wire.speak(taskId, entry)) { ok, err ->
+        // The Listen buttons' id for this reply: they show Stop while it reads, and a second ask is ignored.
+        val key = "task-$taskId-$messageId"
+        val ticket = io.github.odnwks.mimir.audio.PcReading.begin(key)
+        if (ticket == 0) return
+        val reading = io.github.odnwks.mimir.audio.PcReading
+        val sent = call(Wire.speak(taskId, entry)) { ok, err ->
             val name = ok as? String
-            if (err != null || name == null) { note(err ?: "That message can't be read aloud just now. Try again.", action = NoteAction("Try again") { playMessage(taskId, messageId) }); return@call }
+            if (!reading.wanted(ticket)) return@call
+            if (err != null || name == null) { reading.end(ticket); note(err ?: "That message can't be read aloud just now. Try again.", action = NoteAction("Try again") { playMessage(taskId, messageId) }); return@call }
             val f = audioFile(name)
             val go = {
-                if (f != null && f.isFile) {
-                    playback.play(listOf(io.github.odnwks.mimir.audio.Track("msg:$messageId", "Reply", io.github.odnwks.mimir.ui.AI_NAME, f)), "msg:$messageId")
-                }
+                if (!reading.wanted(ticket)) { /* stopped while it was coming */ }
+                else if (f != null && f.isFile) {
+                    playback.play(listOf(io.github.odnwks.mimir.audio.Track("msg:$key", "Reply", io.github.odnwks.mimir.ui.AI_NAME, f)), "msg:$key")
+                } else reading.end(ticket)
             }
             if (f?.isFile == true) go() else call(Wire.getFile(name)) { o, _ ->
                 val b = (o as? JSONObject)?.optString("base64")
@@ -1545,6 +1554,7 @@ class LinkStation(
                 go()
             }
         }
+        if (!sent) reading.end(ticket)
     }
 
     override fun listen(wav: ByteArray, done: (String?, String?) -> Unit) {
