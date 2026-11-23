@@ -111,9 +111,11 @@ class E2pRound2Test {
         val phone = chip("On this phone")
         val pc = chip("Your PC")
         val online = chip("Online")
-        // Reading order: this phone, then your PC, then Online (a later chip may wrap to the next line).
-        assertTrue(phone.top < pc.top || phone.left < pc.left)
-        assertTrue(pc.top < online.top || pc.left < online.left)
+        // One row, in reading order: this phone, then your PC, then Online, all the same width.
+        assertEquals(phone.top, pc.top); assertEquals(pc.top, online.top)
+        assertTrue(phone.left < pc.left && pc.left < online.left)
+        fun w(r: androidx.compose.ui.unit.DpRect) = r.right.value - r.left.value
+        assertEquals(w(phone), w(pc), 1f); assertEquals(w(pc), w(online), 1f)
         for (b in listOf(phone, pc, online)) assertTrue("a chip is cut off", b.right.value <= 390f && b.left.value >= 0f)
     }
 

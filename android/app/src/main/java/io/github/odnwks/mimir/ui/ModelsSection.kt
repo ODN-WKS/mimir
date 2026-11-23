@@ -18,6 +18,8 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -148,14 +150,14 @@ fun ModelsSection(state: StationState, station: Station, nav: Navigator, phone: 
     val order = listOf("phone" to onPhone, "free" to free, "claude" to claude)
     Column(modifier.fillMaxWidth().background(Palette.Ground)) {
         // The three groups at a glance; a chip brings its group into view.
-        // They wrap onto a second line when the screen is narrow or the text is large; nothing is cut off.
-        FlowRow(
-            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp),
+        // One row of three equal chips; a label that can't fit goes to two lines inside its chip.
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp).height(androidx.compose.foundation.layout.IntrinsicSize.Min),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             val names = mapOf("claude" to "Online", "free" to "Your PC", "phone" to "On this phone")
             order.forEach { (key, _) ->
-                JumpChip(names.getValue(key)) {
+                JumpChip(names.getValue(key), Modifier.weight(1f).fillMaxHeight()) {
                     val y = tops[key] ?: return@JumpChip
                     scope.launch { if (reduce) scroll.scrollTo(y) else scroll.animateScrollTo(y) }
                 }
@@ -201,15 +203,15 @@ private fun WeeklyCheck(state: StationState, station: Station) {
 
 /** A chip at the top of Models that brings a group into view. */
 @Composable
-private fun JumpChip(text: String, onClick: () -> Unit) {
+private fun JumpChip(text: String, modifier: Modifier, onClick: () -> Unit) {
     Box(
-        Modifier.heightIn(min = 48.dp).clickable(role = Role.Button, onClickLabel = "Show $text", onClick = onClick),
+        modifier.heightIn(min = 48.dp).clip(RoundedCornerShape(12.dp)).border(1.dp, Palette.BlueBorder, RoundedCornerShape(12.dp))
+            .clickable(role = Role.Button, onClickLabel = "Show $text", onClick = onClick).padding(horizontal = 6.dp, vertical = 6.dp),
         contentAlignment = Alignment.Center,
     ) {
         Text(
             text, style = Type.Label.copy(fontWeight = FontWeight.SemiBold), color = Palette.BlueText,
-            modifier = Modifier.clip(RoundedCornerShape(12.dp)).border(1.dp, Palette.BlueBorder, RoundedCornerShape(12.dp))
-                .padding(horizontal = 12.dp, vertical = 6.dp),
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.fillMaxWidth(),
         )
     }
 }
