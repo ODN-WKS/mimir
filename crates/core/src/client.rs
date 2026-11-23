@@ -622,6 +622,8 @@ impl Station {
             Event::Updates { cards } => self.updates = cards,
             // Labs: only phones show the test notice.
             Event::TestNotice { .. } | Event::TestNoticeOff => {}
+            // The phone's alerts; the window has nothing to show for them.
+            Event::Finished { .. } | Event::RecentFinished { .. } => {}
             Event::Activity { state } => self.activity = state,
             Event::Truth { truth } => {
                 if crate::truth::newer(self.truth.as_ref(), &truth) {

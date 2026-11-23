@@ -15,7 +15,7 @@ serde_json.workspace = true
 libc.workspace = true
 ed25519-dalek.workspace = true
 sha2.workspace = true
-# Signs the token request for wake-up pushes (RS256); already used by the link.
+# RS256 signing; also used by the link.
 ring = "0.17"
 base64 = "0.22"
 # Reads the text of PDFs, and the zip and XML inside Word, Excel and other documents (readfile.rs).

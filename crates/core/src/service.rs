@@ -247,7 +247,11 @@ const OFFERED: &[&str] = &[
     "chat_pictures",
     "chat_files",
     "task_files",
+    "finished_events",
 ];
+
+/// How many ends of work a snapshot lists.
+const FINISHED_KEPT: usize = 20;
 
 /// What a client was last told about a task.
 #[derive(Default)]
@@ -363,8 +367,11 @@ struct Service {
     outside: Vec<Outside>,
     /// The needs-you list clients were last sent.
     needs_sent: Vec<NeedsYouItem>,
-    /// Serious items phones were already woken for (None: not looked yet).
-    woken: Option<HashSet<String>>,
+    /// Whether each task was working at the last look (None: not looked
+    /// yet, so a restart tells nobody about work that ended before it).
+    was_working: Option<HashMap<String, bool>>,
+    /// The last few ends of work, newest last (a Whisper is never kept).
+    finished: std::collections::VecDeque<mimir_proto::FinishedItem>,
     /// Message ids already done, and their replies.
     msg_ids: crate::chat::MsgIds,
     /// The general chat's previous message.
@@ -462,7 +469,8 @@ impl Service {
             ask_waiters: HashMap::new(),
             outside: vec![],
             needs_sent: vec![],
-            woken: None,
+            was_working: None,
+            finished: std::collections::VecDeque::new(),
             msg_ids: crate::chat::MsgIds::load(),
             last_chat: None,
             finished_at: HashMap::new(),
@@ -971,6 +979,9 @@ impl Service {
         }
         events.push(Event::NeedsYou {
             items: self.needs_items(),
+        });
+        events.push(Event::RecentFinished {
+            items: self.finished.iter().cloned().collect(),
         });
         if let Some(t) = self.truth_now() {
             events.push(Event::Truth { truth: Box::new(t) });
@@ -2192,7 +2203,7 @@ impl Service {
                     text: r.words(),
                     preview,
                     choices: vec![],
-                    // Incognito never causes a wake-up push.
+                    // A Whisper is never marked serious (no sound on a phone).
                     serious: !t.incognito,
                     created,
                     link: None,
@@ -2292,8 +2303,65 @@ impl Service {
         }
     }
 
-    /// Sends the needs-you list when it changed, and wakes the phones for
-    /// serious items they haven't been woken for.
+    /// Tasks whose work ended since the last look: one item for each, kept
+    /// for the snapshot's recent list. Nothing for a Whisper, and nothing
+    /// for a task that only waits for a permission (that is a needs-you item).
+    fn note_finished(&mut self) -> Vec<mimir_proto::FinishedItem> {
+        use mimir_proto::{FinishedHow, FinishedItem};
+        let now: HashMap<String, bool> = self
+            .runner
+            .tasks
+            .iter()
+            .map(|l| {
+                (
+                    l.task.id.clone(),
+                    l.working_now() || l.task.status == Status::NeedsYou,
+                )
+            })
+            .collect();
+        let Some(before) = self.was_working.replace(now) else {
+            return vec![];
+        };
+        let at = crate::needs::now();
+        let mut out = vec![];
+        for l in &self.runner.tasks {
+            let t = &l.task;
+            if t.incognito || !before.get(&t.id).copied().unwrap_or(false) {
+                continue;
+            }
+            if l.working_now() || t.status == Status::NeedsYou {
+                continue;
+            }
+            let how = match t.status {
+                Status::Done => FinishedHow::Ok,
+                Status::Stopped => {
+                    if matches!(t.entries.last(), Some(Entry::Note(n)) if n == "You stopped this task.")
+                    {
+                        FinishedHow::Stopped
+                    } else {
+                        FinishedHow::Failed
+                    }
+                }
+                _ => continue,
+            };
+            out.push(FinishedItem {
+                id: format!("fin:{}:{}", t.id, t.entries_dropped + t.entries.len()),
+                task: t.id.clone(),
+                how,
+                at,
+            });
+        }
+        out.retain(|i| !self.finished.iter().any(|f| f.id == i.id));
+        for i in &out {
+            self.finished.push_back(i.clone());
+            if self.finished.len() > FINISHED_KEPT {
+                self.finished.pop_front();
+            }
+        }
+        out
+    }
+
+    /// Sends the needs-you list when it changed.
     fn publish_needs(&mut self) -> bool {
         let items = self.needs_items();
         let ids: Vec<&String> = items.iter().map(|i| &i.ask_id).collect();
@@ -2304,21 +2372,6 @@ impl Service {
                 .iter()
                 .zip(&self.needs_sent)
                 .any(|(a, b)| a.text != b.text || a.choices != b.choices || a.title != b.title);
-        let serious: HashSet<String> = items
-            .iter()
-            .filter(|i| i.serious)
-            .map(|i| i.ask_id.clone())
-            .collect();
-        match &mut self.woken {
-            None => self.woken = Some(serious),
-            Some(woken) => {
-                let new = serious.iter().any(|id| !woken.contains(id));
-                woken.retain(|id| serious.contains(id));
-                if new {
-                    woken.extend(serious);
-                }
-            }
-        }
         if changed {
             self.needs_sent = items.clone();
             self.broadcast(Event::NeedsYou { items });
@@ -5131,6 +5184,11 @@ impl Service {
             }
         }
         let needs_changed = self.publish_needs();
+        events.extend(
+            self.note_finished()
+                .into_iter()
+                .map(|item| Event::Finished { item }),
+        );
         if events.is_empty() {
             if needs_changed {
                 self.wake_clients();

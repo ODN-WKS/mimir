@@ -11,7 +11,7 @@
 //!     in-memory ones, forwards 127.0.0.1:11434 to `ollama.sock`, checks the
 //!     seal, then starts Claude Code as the normal user (`unshare -U`).
 //! *   Nothing of it is saved: no task file, no undo snapshots, no updates,
-//!     no wake-up push. Ending it ends process 1 (and with it every process
+//!     no finished alert. Ending it ends process 1 (and with it every process
 //!     in its space) and deletes its folder.
 
 use std::io::{Read, Write};

@@ -9,5 +9,7 @@
   ],
   "known_differences": ["NeedsYou"],
   "weekly_percent": 62,
+  "finished_how": ["Ok", "Stopped", "Failed"],
+  "finished_feature": "finished_events",
   "project_names": ["Tune-Sorter"]
 }

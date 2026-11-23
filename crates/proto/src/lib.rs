@@ -329,6 +329,7 @@ pub const FEATURES: &[&str] = &[
     "chat_pictures",
     "chat_files",
     "task_files",
+    "finished_events",
 ];
 
 /// What `ConfirmPair.person` says for the owner's own phone. Anything else
@@ -706,6 +707,29 @@ pub struct RanOut {
     pub on_free: bool,
 }
 
+/// How a task's work ended.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum FinishedHow {
+    /// It finished its work.
+    Ok,
+    /// The owner stopped it.
+    Stopped,
+    /// It stopped with a problem.
+    Failed,
+}
+
+/// A task's work ended. Carries no words from the task: the phone makes
+/// its own generic ones.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct FinishedItem {
+    /// Stable for this end of work; a phone shows each id once.
+    pub id: String,
+    pub task: String,
+    pub how: FinishedHow,
+    /// Seconds since 1970.
+    pub at: i64,
+}
+
 /// What a needs-you item is about.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum NeedsKind {
@@ -726,7 +750,8 @@ pub enum NeedsKind {
 }
 
 impl NeedsKind {
-    /// Serious items reach a sleeping phone at once (a wake-up push).
+    /// Serious items are the ones a phone tells its person about with a
+    /// sound (the others show quietly).
     pub fn serious(self) -> bool {
         matches!(
             self,
@@ -1707,6 +1732,17 @@ pub enum Event {
     Truth {
         truth: Box<Truth>,
     },
+    /// A task's work ended (the owner's phones only; never for a Whisper).
+    /// Feature "finished_events".
+    Finished {
+        item: FinishedItem,
+    },
+    /// The last few `Finished` items, sent with a snapshot so a phone that
+    /// connects late shows each once (it dedupes by `id`). Feature
+    /// "finished_events".
+    RecentFinished {
+        items: Vec<FinishedItem>,
+    },
     /// What this person may choose changed (the owner allowed or took away
     /// their use of the online plan): the phone asks `Models` again.
     ModelsChanged,
@@ -1737,6 +1773,8 @@ impl Event {
                 | Event::ChatChanged { .. }
                 | Event::Truth { .. }
                 | Event::ModelsChanged
+                | Event::Finished { .. }
+                | Event::RecentFinished { .. }
         )
     }
 
@@ -1763,6 +1801,7 @@ impl Event {
             Event::ChatChanged { .. } => Some("chat_sync"),
             Event::Truth { .. } => Some("truth"),
             Event::ModelsChanged => Some("models_changed"),
+            Event::Finished { .. } | Event::RecentFinished { .. } => Some("finished_events"),
             _ => None,
         }
     }
@@ -1779,6 +1818,8 @@ impl Event {
                 | Event::TestNotice { .. }
                 | Event::TestNoticeOff
                 | Event::Activity { .. }
+                // Sent with each snapshot.
+                | Event::RecentFinished { .. }
                 // Caught up by `TalkTurn`, `ChatsSince` and the truth sent on connect.
                 | Event::TalkPiece { .. }
                 | Event::TalkDone { .. }

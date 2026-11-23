@@ -463,6 +463,30 @@ fn write_the_examples() {
             .unwrap()),
         },
         Event::ModelsChanged,
+        Event::Finished {
+            item: FinishedItem {
+                id: "fin:1794-1-1:4".into(),
+                task: "1794-1-1".into(),
+                how: FinishedHow::Ok,
+                at: 1_794_000_400,
+            },
+        },
+        Event::RecentFinished {
+            items: vec![
+                FinishedItem {
+                    id: "fin:1794-1-1:4".into(),
+                    task: "1794-1-1".into(),
+                    how: FinishedHow::Ok,
+                    at: 1_794_000_400,
+                },
+                FinishedItem {
+                    id: "fin:1794-1-2:9".into(),
+                    task: "1794-1-2".into(),
+                    how: FinishedHow::Failed,
+                    at: 1_794_000_500,
+                },
+            ],
+        },
     ];
     let lines: Vec<String> = events
         .into_iter()
@@ -498,6 +522,7 @@ fn write_the_examples() {
                 "chat_sync".into(),
                 "truth".into(),
                 "models_changed".into(),
+                "finished_events".into(),
             ],
         },
         Call::Sync { since: 12 },

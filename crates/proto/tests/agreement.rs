@@ -66,3 +66,35 @@ fn the_pc_shows_the_weekly_percent_and_project_names_of_the_fixture() {
     let want = strings(&agreement()["project_names"]);
     assert_eq!(names, want);
 }
+
+/// What the PC sends for the end of a task's work, the same words the phone
+/// reads (`AgreementTest.kt`), and the feature a phone lists to get them.
+#[test]
+fn the_pc_names_the_ends_of_work_the_way_the_agreement_lists() {
+    use mimir_proto::{FinishedHow, FinishedItem};
+    let how = |h| serde_json::to_value(h).unwrap();
+    assert_eq!(
+        agreement()["finished_how"],
+        serde_json::json!([
+            how(FinishedHow::Ok),
+            how(FinishedHow::Stopped),
+            how(FinishedHow::Failed)
+        ])
+    );
+    assert!(mimir_proto::FEATURES.contains(&agreement()["finished_feature"].as_str().unwrap()));
+    // The recent list of the fixtures is what the snapshot carries, with ids.
+    let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/events.jsonl");
+    let text = std::fs::read_to_string(p).unwrap();
+    let recent: Vec<FinishedItem> = text
+        .lines()
+        .filter_map(|l| serde_json::from_str::<serde_json::Value>(l).ok())
+        .find_map(|v| v["event"]["RecentFinished"]["items"].as_array().cloned())
+        .map(|a| {
+            a.into_iter()
+                .map(|i| serde_json::from_value(i).unwrap())
+                .collect()
+        })
+        .expect("no recent-finished list in the fixtures");
+    assert_eq!(recent.len(), 2);
+    assert!(recent.iter().all(|i| i.id.starts_with("fin:") && i.at > 0));
+}

@@ -33,3 +33,5 @@
 {"seq":33,"event":{"Reply":{"call_id":27,"result":{"Ok":{"deleted":false,"seq":43}}}}}
 {"seq":34,"event":{"Reply":{"call_id":28,"result":{"Ok":{"at":1794000000000,"text":"Be brief."}}}}}
 {"seq":35,"event":"ModelsChanged"}
+{"seq":36,"event":{"Finished":{"item":{"id":"fin:1794-1-1:4","task":"1794-1-1","how":"Ok","at":1794000400}}}}
+{"seq":37,"event":{"RecentFinished":{"items":[{"id":"fin:1794-1-1:4","task":"1794-1-1","how":"Ok","at":1794000400},{"id":"fin:1794-1-2:9","task":"1794-1-2","how":"Failed","at":1794000500}]}}}
