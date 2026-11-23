@@ -119,6 +119,9 @@ prove() {
     local mine
     mine="$cache/prove/$(git rev-parse --show-toplevel | sha256sum | cut -c1-8)"
     local run="$mine/run-$$"
+    # Where the proof builds go: memory by default; MIMIR_PROVE_DIR moves them
+    # (for example to a spare drive when several builds share /tmp).
+    local prove_dir="${MIMIR_PROVE_DIR:-/tmp/mimir-build/target-prove}"
     mkdir -p "$run"
     # One proof run at a time on this PC: the slots and their build folders are
     # shared by every copy of the code, and two runs at once (two workers, or a
@@ -139,13 +142,16 @@ prove() {
                 { git worktree remove --force "$slot" 2>/dev/null; git worktree prune; git worktree add -q --detach "$slot" HEAD; }
             for ((i = s; i < n; i += slots)); do
                 local c="${want[$i]}"
-                prove_one "$slot" "/tmp/mimir-build/target-prove/slot-$s" "$jobs" "$c" "${test_of[$c]}" "$run/$c"
+                prove_one "$slot" "$prove_dir/slot-$s" "$jobs" "$c" "${test_of[$c]}" "$run/$c"
             done
             git worktree remove --force "$slot"
         ) &
     done
     wait
     git worktree prune
+    # The proof builds are large (about 2-3 GB per slot); empty them so the
+    # memory-backed /tmp quota stays free for everything else.
+    rm -rf "$prove_dir"
     local -a outcomes=()
     for c in "${want[@]}"; do
         local o
