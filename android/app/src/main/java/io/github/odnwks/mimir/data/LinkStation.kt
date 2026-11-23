@@ -177,8 +177,9 @@ class LinkStation(
     /** Called with the needs-you items each time the PC's list changes (for notifications). */
     @Volatile var onItems: ((List<LItem>) -> Unit)? = null
     /** Called with how many tasks Claude works on, each time it changes (the "working" note). */
-    @Volatile var onWorking: ((Int) -> Unit)? = null
+    @Volatile var onWorking: ((List<String>) -> Unit)? = null
     private var lastWorking = -1
+    private var lastWorkingTitles: List<String> = emptyList()
     /** Called with finished items, each time the PC says some (new ones, or its recent list on connect). */
     @Volatile var onFinished: ((List<io.github.odnwks.mimir.link.LFinished>) -> Unit)? = null
     /** True while the link-keeping service runs: the link reconnects as on screen. */
@@ -188,7 +189,10 @@ class LinkStation(
     /** Called when this phone forgets its PC or pairs with one (what it remembered about finished items goes). */
     @Volatile var onPairingChanged: (() -> Unit)? = null
     fun workingCount(): Int = synchronized(lock) { maxOf(lastWorking, 0) }
-    fun waitingCount(): Int = synchronized(lock) { items.size }
+    /** Items that wait for the person; sessions running outside Mímir never keep the link open. */
+    fun waitingCount(): Int = synchronized(lock) { items.count { !io.github.odnwks.mimir.alerts.OutsideTasks.contains(it.task) } }
+    /** Whether [task] runs outside Mímir (a terminal, the Claude app) and isn't carried on from this phone. */
+    fun isOutside(task: String?): Boolean = io.github.odnwks.mimir.alerts.OutsideTasks.contains(task)
     /** The PC sends finished items (an older one doesn't: today's 5-minute check only). */
     fun pcFinishedEvents(): Boolean = synchronized(lock) { Wire.FINISHED_EVENTS in pcFeatures }
 
@@ -306,7 +310,7 @@ class LinkStation(
                     talkers().forEach { it.lost() }
                     // PHD-06: clear the "Claude is working on N tasks" notification within 5 s
                     // of detecting the PC is offline (not on the main thread, so this is safe).
-                    onWorking?.invoke(0)
+                    onWorking?.invoke(emptyList())
                     publish()
                 }
                 if (withLink("") { api.endedBecause(it) } == "not paired") {
@@ -397,7 +401,7 @@ class LinkStation(
                     if (Wire.TALK in pcFeatures || Wire.CHAT_SYNC in pcFeatures) io.github.odnwks.mimir.standalone.Engine.made()?.linkUp()
                     sendGroundRules()
                 }
-                is Ev.TaskHeader -> tasks[ev.task.id] = ev.task
+                is Ev.TaskHeader -> { tasks[ev.task.id] = ev.task; io.github.odnwks.mimir.alerts.OutsideTasks.seen(ev.task.id, ev.task.liveElsewhere) }
                 is Ev.Removed -> { tasks.remove(ev.task); entries.remove(ev.task) }
                 is Ev.Entries -> entries.getOrPut(ev.task) { ArrayList() }.let { l ->
                     while (l.size > ev.from) l.removeAt(l.size - 1)
@@ -962,6 +966,7 @@ class LinkStation(
     override fun reply(taskId: String, text: String) {
         if (text.isBlank()) return
         val id = "s-${UUID.randomUUID()}"
+        io.github.odnwks.mimir.alerts.OutsideTasks.mine(taskId)
         // A Whisper's words are never kept on the phone to wait: sent now, or not at all (PHD-11).
         if (!Expiry.mayWait(synchronized(lock) { tasks[taskId] })) {
             val sent = synchronized(lock) { connected } && call(Wire.send(taskId, text, id)) { _, err -> if (err != null) note(err) }
@@ -1527,8 +1532,13 @@ class LinkStation(
         }
         flow.value = s
         // Known only while connected: away, the last count stands until the PC says otherwise.
-        val working = s.tasks.count { it.busy }
-        if (s.pc.online && working != lastWorking) { lastWorking = working; onWorking?.invoke(working) }
+        // Sessions running outside Mímir never count: they are not this person's work to follow here.
+        val mine = s.tasks.filter { it.busy && !it.liveElsewhere && !io.github.odnwks.mimir.alerts.OutsideTasks.contains(it.id) }
+        val working = mine.size
+        val titles = mine.map { it.title }
+        if (s.pc.online && (working != lastWorking || titles != lastWorkingTitles)) {
+            lastWorking = working; lastWorkingTitles = titles; onWorking?.invoke(titles)
+        }
     }
 
     private fun build(): StationState {

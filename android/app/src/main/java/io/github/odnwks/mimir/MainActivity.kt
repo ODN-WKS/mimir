@@ -197,6 +197,7 @@ class MainActivity : FragmentActivity() {
         if (!check) io.github.odnwks.mimir.ui.AppLock.back(this, android.os.SystemClock.elapsedRealtime())
         if (io.github.odnwks.mimir.ui.AppLock.locked.value) shield?.visibility = android.view.View.VISIBLE
         Notifier.foreground = true
+        Notifier.clearFinished(this)
         Notifier.refreshWorking(this)
         // Android cuts an app's network soon after it leaves the screen; back in front, the link
         // is told and tries again at once.

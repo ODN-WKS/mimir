@@ -72,7 +72,7 @@ class LinkKeepService : Service() {
         fun maybeStart(context: Context) {
             if (running) return
             val s = Stations.current() ?: return
-            if (!Keep.shouldStart(s.paired, s.pcFinishedEvents(), s.workingCount(), s.waitingCount())) return
+            if (!Keep.shouldStart(s.paired, s.pcFinishedEvents(), s.workingCount(), s.waitingCount(), AlertRules.showWorking(AlertStore.get(context)))) return
             try {
                 androidx.core.content.ContextCompat.startForegroundService(context, Intent(context, LinkKeepService::class.java))
             } catch (_: Exception) {

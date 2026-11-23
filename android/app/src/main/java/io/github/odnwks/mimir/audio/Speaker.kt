@@ -31,6 +31,36 @@ class Speaker private constructor(context: Context) : Playback {
         .setHandleAudioBecomingNoisy(true)
         .build()
     private var controller: MediaController? = null
+    private var binding = false
+
+    /** Lets go of the media session and its notification (nothing plays; it may start again later). */
+    private val release = Runnable {
+        if (player.isPlaying) return@Runnable
+        player.stop()
+        player.clearMediaItems()
+        controller?.release()
+        controller = null
+        binding = false
+        app.stopService(android.content.Intent(app, PlaybackService::class.java))
+        report()
+    }
+
+    private fun scheduleRelease() {
+        main.removeCallbacks(release)
+        val delay = ReleasePolicy.delayMs(player.playbackState, player.playWhenReady, player.mediaItemCount > 0) ?: return
+        // Nothing was ever played: nothing to let go of.
+        if (controller == null && !binding) return
+        main.postDelayed(release, delay)
+    }
+
+    /** Binds a controller, which starts the media session's service (lock screen controls). */
+    private fun bind() {
+        if (controller != null || binding) return
+        binding = true
+        val token = SessionToken(app, ComponentName(app, PlaybackService::class.java))
+        val f = MediaController.Builder(app, token).setApplicationLooper(Looper.getMainLooper()).buildAsync()
+        f.addListener({ controller = runCatching { f.get() }.getOrNull(); scheduleRelease() }, { main.post(it) })
+    }
     override var onState: ((PlayState) -> Unit)? = null
 
     private val tick = object : Runnable {
@@ -46,14 +76,9 @@ class Speaker private constructor(context: Context) : Playback {
                 report()
                 main.removeCallbacks(tick)
                 if (p.isPlaying) main.postDelayed(tick, 500)
+                scheduleRelease()
             }
         })
-        // Binding a controller starts the media session's service (lock screen controls).
-        main.post {
-            val token = SessionToken(app, ComponentName(app, PlaybackService::class.java))
-            val f = MediaController.Builder(app, token).setApplicationLooper(Looper.getMainLooper()).buildAsync()
-            f.addListener({ controller = runCatching { f.get() }.getOrNull() }, { main.post(it) })
-        }
     }
 
     private fun report() {
@@ -72,6 +97,8 @@ class Speaker private constructor(context: Context) : Playback {
     private fun onMain(f: () -> Unit) = if (Looper.myLooper() == Looper.getMainLooper()) f() else { main.post(f); Unit }
 
     override fun play(tracks: List<Track>, startId: String) = onMain {
+        main.removeCallbacks(release)
+        bind()
         val items = tracks.map { t ->
             MediaItem.Builder().setMediaId(t.id).setUri(t.file.toURI().toString())
                 .setMediaMetadata(MediaMetadata.Builder().setTitle(t.title).setArtist(t.artist).build())

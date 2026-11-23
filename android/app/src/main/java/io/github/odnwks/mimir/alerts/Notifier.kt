@@ -33,8 +33,8 @@ object Notifier {
     const val CHECK_ID = 1
     const val KEEP_ID = 2
 
-    /** How many tasks Claude is working on, as last heard from the PC. */
-    @Volatile private var workingOn = 0
+    /** The titles of the person's own tasks Claude is working on, as last heard from the PC. */
+    @Volatile private var workingOn: List<String> = emptyList()
 
     /** True while the app is on screen (then the app itself shows what's new). */
     @Volatile var foreground = false
@@ -68,13 +68,17 @@ object Notifier {
         )
     }
 
-    /** The words of the "working" note: "Claude is working on 2 tasks". */
+    /** The words of the "working" note: "Working on 2 tasks". */
     fun workingWords(n: Int) = if (n == 1) "Working on 1 task" else "Working on $n tasks"
 
-    /** Claude now works on [n] tasks: the silent ongoing note shows, changes or goes. */
-    fun working(context: Context, n: Int) {
-        if (n == workingOn) return
-        workingOn = n
+    /** The note's title: the task's own title for one task ("Working on: Garden planner"), a count for more. */
+    fun workingTitle(titles: List<String>): String =
+        if (titles.size == 1 && titles[0].isNotBlank()) "Working on: ${titles[0]}" else workingWords(titles.size)
+
+    /** Claude now works on these tasks of the person's: the silent ongoing note shows, changes or goes. */
+    fun working(context: Context, titles: List<String>) {
+        if (titles == workingOn) return
+        workingOn = titles
         refreshWorking(context)
     }
 
@@ -84,8 +88,9 @@ object Notifier {
      */
     fun refreshWorking(context: Context) {
         val nm = NotificationManagerCompat.from(context)
-        val n = workingOn
-        if (n == 0 || foreground || !allowed(context)) return nm.cancel(WORKING, 0)
+        val titles = workingOn
+        val n = titles.size
+        if (n == 0 || foreground || !allowed(context) || !AlertRules.showWorking(AlertStore.get(context))) return nm.cancel(WORKING, 0)
         val open = PendingIntent.getActivity(
             context, WORKING.hashCode(),
             Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP),
@@ -93,7 +98,7 @@ object Notifier {
         )
         val note = NotificationCompat.Builder(context, WORKING)
             .setSmallIcon(io.github.odnwks.mimir.R.drawable.ic_notify)
-            .setContentTitle(workingWords(n))
+            .setContentTitle(if (io.github.odnwks.mimir.ui.AppLock.on(context)) workingWords(n) else workingTitle(titles))
             .setOngoing(true)
             .setSilent(true)
             .setOnlyAlertOnce(true)
@@ -115,7 +120,7 @@ object Notifier {
      * Shows a notification for each item not shown before, and takes away the ones answered
      * elsewhere. While the app is on screen it only takes them away.
      */
-    fun show(context: Context, items: List<LItem>) {
+    fun show(context: Context, items: List<LItem>, outside: (String?) -> Boolean = OutsideTasks::contains) {
         val prefs = shown(context)
         val before = prefs.getStringSet("ids", emptySet()).orEmpty()
         val now = items.map { it.askId }.toSet()
@@ -123,7 +128,8 @@ object Notifier {
         for (gone in before - now) nm.cancel(gone, 0)
         val fresh = items.filter { it.askId !in before }
         if (!foreground && allowed(context)) {
-            for (i in fresh) post(context, i)
+            val choices = AlertStore.get(context)
+            for (i in fresh) if (AlertRules.postNeeds(choices, Mapping.kind(i.kind), outside(i.task))) post(context, i)
         }
         prefs.edit().putStringSet("ids", now).apply()
     }
@@ -136,10 +142,29 @@ object Notifier {
      * list a pairing ever hears only seeds the ids. While the app is on screen nothing is posted.
      */
     @Synchronized
-    fun showFinished(context: Context, items: List<io.github.odnwks.mimir.link.LFinished>) {
+    fun showFinished(context: Context, items: List<io.github.odnwks.mimir.link.LFinished>, outside: (String?) -> Boolean = OutsideTasks::contains) {
         val fresh = FinishedSeen(context).take(items, System.currentTimeMillis() / 1000)
         if (foreground || !allowed(context)) return
-        for (f in fresh) postFinished(context, f)
+        val choices = AlertStore.get(context)
+        // One note per task: a task that ran several turns shows one, the newest replacing the earlier.
+        for (f in fresh.groupBy { it.task }.values.map { it.last() }) {
+            if (AlertRules.postFinished(choices, outside(f.task))) postFinished(context, f)
+        }
+    }
+
+    /** The tag of a task's one "finished" note: the next one for the same task replaces it. */
+    fun finishedTag(task: String) = "fin:$task"
+
+    /** Takes the "finished" notes away: of one task (it was opened), or all (the app came to the screen). */
+    fun clearFinished(context: Context, task: String? = null) {
+        val nm = NotificationManagerCompat.from(context)
+        if (task != null) return nm.cancel(finishedTag(task), 0)
+        if (Build.VERSION.SDK_INT >= 23) {
+            for (a in context.getSystemService(NotificationManager::class.java).activeNotifications) {
+                val tag = a.tag
+                if (tag != null && tag.startsWith("fin:")) nm.cancel(tag, a.id)
+            }
+        }
     }
 
     private fun postFinished(context: Context, f: io.github.odnwks.mimir.link.LFinished) {
@@ -158,10 +183,11 @@ object Notifier {
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
             .setSilent(true)
+            .setOnlyAlertOnce(true)
             .setAutoCancel(true)
             .setContentIntent(open)
             .build()
-        try { NotificationManagerCompat.from(context).notify(f.id, 0, n) } catch (_: SecurityException) {}
+        try { NotificationManagerCompat.from(context).notify(finishedTag(f.task), 0, n) } catch (_: SecurityException) {}
     }
 
     /** What one notification says. */

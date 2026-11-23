@@ -28,9 +28,10 @@ class Keep(private val now: () -> Long = System::currentTimeMillis) {
 
         /**
          * Whether to start the service: paired, the PC sends finished events (an older PC keeps
-         * today's way: the 5-minute check only), and something works or waits.
+         * today's way: the 5-minute check only), the person kept "Show Working while a task runs" on (Android
+         * needs the ongoing note for an instant link), and something of theirs works or waits.
          */
-        fun shouldStart(paired: Boolean, pcFinishedEvents: Boolean, working: Int, waiting: Int): Boolean =
-            paired && pcFinishedEvents && (working > 0 || waiting > 0)
+        fun shouldStart(paired: Boolean, pcFinishedEvents: Boolean, working: Int, waiting: Int, showWorking: Boolean = true): Boolean =
+            paired && pcFinishedEvents && showWorking && (working > 0 || waiting > 0)
     }
 }
