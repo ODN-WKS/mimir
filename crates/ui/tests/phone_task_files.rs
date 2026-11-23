@@ -452,3 +452,166 @@ fn the_kept_folders_are_private_and_odd_names_are_made_plain() {
     }
     home.stop_service();
 }
+
+#[test]
+fn m1b_6d_a_task_shows_what_was_done_to_each_file_and_keeps_unclean_ones_off_online_models() {
+    let Some(home) = TestHome::new() else { return };
+    home.play("run-1.jsonl", "live.jsonl");
+    let mut st = home.service();
+    let file = |name: &str, bytes: &[u8]| SentFile {
+        name: name.into(),
+        media_type: String::new(),
+        base64: b64(bytes),
+    };
+    // Online (no free model chosen): a file that still has hidden details is
+    // not sent, and the person is told in plain words.
+    let r = st.call_wait(new_task(
+        &home,
+        "Read this",
+        vec![],
+        vec![file("data.bin", b"abc")],
+    ));
+    assert!(
+        r.is_err_and(
+            |e| e == "This file still has hidden details, so it wasn't sent to the online model."
+        ),
+        "an unclean file went to the online model"
+    );
+    // A cleaned file: the task says what was done under the message.
+    let id = st
+        .call_wait(new_task(
+            &home,
+            "See this",
+            vec![],
+            vec![file("Lease.pdf", &tiny_pdf())],
+        ))
+        .expect("the task didn't start");
+    let id = id.as_str().unwrap().to_string();
+    assert!(
+        service_until(&mut st, |s| {
+            s.tasks.iter().any(|v| v.task.id == id
+            && v.task.entries.iter().any(|e| matches!(
+                e,
+                mimir_core::task::Entry::Note(n) if n.starts_with("Lease.pdf: ") && n.ends_with("details removed.")
+            )))
+        }),
+        "the task never showed what was done to the file"
+    );
+    home.stop_service();
+}
+
+/// A small PDF that names its writer in the Info dictionary.
+fn pdf_with_author() -> Vec<u8> {
+    let objs = [
+        "<</Type/Catalog/Pages 2 0 R>>",
+        "<</Type/Pages/Kids[]/Count 0>>",
+        "<</Author(Secret Writer)>>",
+    ];
+    let mut out = b"%PDF-1.4\n".to_vec();
+    let mut at = vec![];
+    for (i, o) in objs.iter().enumerate() {
+        at.push(out.len());
+        out.extend(format!("{} 0 obj\n{o}\nendobj\n", i + 1).bytes());
+    }
+    let xref = out.len();
+    out.extend(format!("xref\n0 {}\n0000000000 65535 f \n", objs.len() + 1).bytes());
+    for a in at {
+        out.extend(format!("{a:010} 00000 n \n").bytes());
+    }
+    out.extend(
+        format!(
+            "trailer\n<</Size {} /Root 1 0 R /Info 3 0 R>>\nstartxref\n{xref}\n%%EOF\n",
+            objs.len() + 1
+        )
+        .bytes(),
+    );
+    out
+}
+
+#[test]
+fn m1b_7_queued_files_of_the_persons_own_reach_an_online_model_only_as_cleaned_copies() {
+    let Some(home) = TestHome::new() else { return };
+    home.play("run-1.jsonl", "live.jsonl");
+    let mut st = home.service();
+    let id = st
+        .call_wait(new_task(&home, "First", vec![], vec![]))
+        .expect("the task didn't start");
+    let id = id.as_str().unwrap().to_string();
+    assert!(service_until(&mut st, |s| !s.tasks.iter().any(|v| v
+        .task
+        .id
+        == id
+        && v.busy())));
+    let pdf = home.root.join("Lease.pdf");
+    let odd = home.root.join("data.bin");
+    std::fs::write(&pdf, pdf_with_author()).unwrap();
+    std::fs::write(&odd, b"abc").unwrap();
+    st.call_wait(Call::Queue {
+        task: id.clone(),
+        text: "Read these".into(),
+        files: vec![pdf.clone(), odd.clone()],
+    })
+    .expect("not queued");
+    st.call_wait(Call::SendQueued { task: id.clone() })
+        .expect("not sent");
+    let mut you = String::new();
+    let mut notes: Vec<String> = vec![];
+    assert!(service_until(&mut st, |s| {
+        let t = s.tasks.iter().find(|v| v.task.id == id).map(|v| &v.task);
+        you = t
+            .and_then(|t| {
+                t.entries.iter().find_map(|e| match e {
+                    mimir_core::task::Entry::You(x) if x.contains("Read these") => Some(x.clone()),
+                    _ => None,
+                })
+            })
+            .unwrap_or_default();
+        notes = t
+            .map(|t| {
+                t.entries
+                    .iter()
+                    .filter_map(|e| match e {
+                        mimir_core::task::Entry::Note(n) => Some(n.clone()),
+                        _ => None,
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        !you.is_empty()
+    }));
+    let named = you.clone();
+    assert!(
+        !you.contains(&pdf.display().to_string()),
+        "the original was named: {you}"
+    );
+    let copy = std::path::PathBuf::from(
+        you.split("\n\n")
+            .find_map(|p| {
+                p.strip_prefix("Attached file: ")
+                    .filter(|p| p.contains("Lease.pdf"))
+            })
+            .expect("the cleaned copy isn't named"),
+    );
+    assert!(copy.exists() && copy != pdf);
+    assert!(
+        !has(&std::fs::read(&copy).unwrap(), b"Secret Writer"),
+        "the copy kept the writer"
+    );
+    assert!(
+        has(&std::fs::read(&pdf).unwrap(), b"Secret Writer"),
+        "the original was changed"
+    );
+    assert!(you.contains("data.bin (not shared)"), "{named}");
+    assert!(
+        notes
+            .iter()
+            .any(|n| n == "Lease.pdf: Hidden details removed."),
+        "{notes:?}"
+    );
+    assert!(
+        notes.iter().any(|n| n
+            == "data.bin: This file still has hidden details, so it wasn't sent to the online model."),
+        "{notes:?}"
+    );
+    home.stop_service();
+}

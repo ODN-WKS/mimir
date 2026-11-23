@@ -431,13 +431,25 @@ struct Service {
 /// A chat message's files (the first few), cleaned of hidden details before
 /// anything reads or keeps them. A file that can't be cleaned is not read:
 /// its refusal goes into `notes`. Returns the cleaned files and the line for each.
+#[cfg(test)]
 pub(crate) fn wiped_chat_files(
     files: &[mimir_proto::SentFile],
     notes: &mut Vec<mimir_proto::FileNote>,
 ) -> (Vec<mimir_proto::SentFile>, Vec<String>) {
+    wiped_chat_files_for(files, notes, false)
+}
+
+/// The same, for an answer that may come from an online model: a file that
+/// still has hidden details (a kind Mímir can't clean yet) is not sent then,
+/// and the person is told. The PC's own model may still read it.
+pub(crate) fn wiped_chat_files_for(
+    files: &[mimir_proto::SentFile],
+    notes: &mut Vec<mimir_proto::FileNote>,
+    online: bool,
+) -> (Vec<mimir_proto::SentFile>, Vec<String>) {
     let (mut sent, mut lines) = (vec![], vec![]);
     for f in files.iter().take(crate::readfile::MAX_FILES) {
-        match crate::wipe::wipe_sent(f) {
+        match crate::wipe::wipe_sent_for(f, online) {
             Ok((clean, line)) => {
                 sent.push(clean);
                 lines.push(line);
@@ -4114,7 +4126,7 @@ impl Service {
             }
         }
         if let Some(t) = turns.iter_mut().find(|t| t.id == a.turn_id) {
-            let (sent, lines) = wiped_chat_files(&t.files, &mut notes);
+            let (sent, lines) = wiped_chat_files_for(&t.files, &mut notes, paid);
             if !sent.is_empty() {
                 let read: Vec<rf::Extracted> = sent.iter().map(|f| rf::extract(f, sees)).collect();
                 let fitted = rf::fit(&read, if paid { rf::PAID_CHARS } else { rf::FREE_CHARS });

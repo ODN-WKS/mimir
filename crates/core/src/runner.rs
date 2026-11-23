@@ -368,12 +368,17 @@ impl Runner {
         model: Option<String>,
         effort: Option<String>,
     ) -> Result<String, String> {
+        // A file that still has hidden details never goes to an online model.
+        if attached.has_uncleaned() && !crate::models::is_free(model.as_deref()) {
+            return Err(crate::wipe::NOT_SENT_ONLINE.into());
+        }
         let id = self.new_id();
         let dir = crate::task_files::dir_for(&self.data_dir(), &id, false);
         let kept = crate::task_files::write(&dir, attached)?;
         self.make_task(&id, project, text, mode, model, effort);
         let text = crate::task_files::named(text.trim(), &kept.paths);
         self.send_with(&id, &text, &kept.pictures);
+        self.note_cleaned(&id, attached);
         Ok(id)
     }
 
@@ -434,11 +439,62 @@ impl Runner {
         }
         let incognito = self.index(id).is_some_and(|i| self.tasks[i].task.incognito);
         let prepared = crate::task_files::prepare(pictures, files)?;
+        let online = self
+            .index(id)
+            .is_none_or(|i| !crate::models::is_free(self.tasks[i].task.model.as_deref()));
+        if prepared.has_uncleaned() && online {
+            return Err(crate::wipe::NOT_SENT_ONLINE.into());
+        }
         let dir = crate::task_files::dir_for(&self.data_dir(), id, incognito);
         let kept = crate::task_files::write(&dir, &prepared)?;
         let text = crate::task_files::named(text.trim(), &kept.paths);
         self.send_with(id, &text, &kept.pictures);
+        self.note_cleaned(id, &prepared);
         Ok(())
+    }
+
+    /// The message with each "Attached file: <path>" line pointing at a
+    /// cleaned copy, when the task runs on an online model; a file that can't
+    /// be cleaned is not named at all. Also the line to show for each.
+    fn cleaned_attached_files(&self, i: usize, id: &str, text: &str) -> (String, Vec<String>) {
+        let task = &self.tasks[i].task;
+        let tag = format!("\n{}", crate::queue::ATTACHED);
+        if crate::models::is_free(task.model.as_deref()) || !format!("\n{text}").contains(&tag) {
+            return (text.to_string(), vec![]);
+        }
+        let dir = crate::task_files::dir_for(&self.data_dir(), id, task.incognito);
+        let mut notes = vec![];
+        let lines: Vec<String> = text
+            .split('\n')
+            .map(|line| {
+                let Some(p) = line.strip_prefix(crate::queue::ATTACHED) else {
+                    return line.to_string();
+                };
+                let path = Path::new(p.trim());
+                let name = path
+                    .file_name()
+                    .map_or_else(|| p.to_string(), |n| n.to_string_lossy().into_owned());
+                match crate::task_files::cleaned_copy(&dir, path) {
+                    Ok((copy, note)) => {
+                        notes.push(format!("{name}: {note}"));
+                        format!("{}{}", crate::queue::ATTACHED, copy.display())
+                    }
+                    Err(why) => {
+                        notes.push(format!("{name}: {why}"));
+                        format!("{}{name} (not shared)", crate::queue::ATTACHED)
+                    }
+                }
+            })
+            .collect();
+        (lines.join("\n"), notes)
+    }
+
+    /// Says under the message what was done to each file ("Lease.pdf: Hidden
+    /// details removed.").
+    fn note_cleaned(&mut self, id: &str, p: &crate::task_files::Prepared) {
+        for (name, line) in p.notes() {
+            self.note(id, &format!("{name}: {line}"));
+        }
     }
 
     /// At start-up: deletes the attachments of tasks that no longer exist.
@@ -450,7 +506,10 @@ impl Runner {
     /// Sends a message with pictures.
     pub fn send_with(&mut self, id: &str, text: &str, pictures: &[Picture]) {
         let Some(i) = self.index(id) else { return };
-        let text = text.trim();
+        // Files of the person's own, named in the message: an online model
+        // reads a cleaned copy, never the original.
+        let (cleaned, file_notes) = self.cleaned_attached_files(i, id, text);
+        let text = cleaned.trim();
         if text.is_empty() {
             return;
         }
@@ -518,6 +577,9 @@ impl Runner {
             self.tasks[i].task.checkpoints.push((at, snap));
         }
         self.tasks[i].task.add_you(&shown);
+        for n in &file_notes {
+            self.tasks[i].task.add_note(n);
+        }
         self.tasks[i].task.plan_doc = None;
         self.tasks[i].dirty = true;
         // After an undo, Claude hears about it with this message.

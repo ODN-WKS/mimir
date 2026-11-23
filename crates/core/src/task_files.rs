@@ -134,6 +134,8 @@ pub struct Prepared {
     pictures: Vec<Picture>,
     /// The line to show under each file: (file name, what was done).
     notes: Vec<(String, String)>,
+    /// Files that still have hidden details (a kind Mímir can't clean yet).
+    uncleaned: Vec<String>,
 }
 
 impl Prepared {
@@ -143,6 +145,11 @@ impl Prepared {
     }
     pub fn is_empty(&self) -> bool {
         self.items.is_empty()
+    }
+    /// Whether some file still has hidden details, so it must not go to an
+    /// online model.
+    pub fn has_uncleaned(&self) -> bool {
+        !self.uncleaned.is_empty()
     }
 }
 
@@ -200,10 +207,45 @@ pub fn prepare(pictures: &[Picture], files: &[SentFile]) -> Result<Prepared, Str
             // one that can't be cleaned is not kept.
             let w = crate::wipe::wipe(&name, &bytes)?;
             out.notes.push((name.clone(), w.note()));
+            if w.kept_as_it_was.is_some() {
+                out.uncleaned.push(name.clone());
+            }
             out.items.push((name, w.bytes));
         }
     }
     Ok(out)
+}
+
+/// A cleaned copy of one of the person's own files, kept for the task: what
+/// an online model reads instead of the original. Returns where it is and the
+/// line to show; a file that can't be cleaned is refused in plain words.
+pub fn cleaned_copy(dir: &Path, path: &Path) -> Result<(PathBuf, String), String> {
+    let name = safe_name(
+        &path
+            .file_name()
+            .map_or_else(|| "file".to_string(), |n| n.to_string_lossy().into_owned()),
+    );
+    let big = || "A file is over 10 MB. Send a smaller part of it.".to_string();
+    if std::fs::metadata(path)
+        .map_err(|_| "A file couldn't be read. Pick another one.")?
+        .len()
+        > MAX_FILE_BYTES as u64
+    {
+        return Err(big());
+    }
+    let bytes = std::fs::read(path)
+        .map_err(|_| "A file couldn't be read. Pick another one.".to_string())?;
+    let w = crate::wipe::wipe(&name, &bytes)?;
+    if w.kept_as_it_was.is_some() {
+        return Err(crate::wipe::NOT_SENT_ONLINE.into());
+    }
+    let one = Prepared {
+        items: vec![(name, w.bytes.clone())],
+        ..Default::default()
+    };
+    let mut kept = write(dir, &one)?;
+    let at = kept.paths.pop().ok_or(KEEP_FAILED)?;
+    Ok((at, w.note()))
 }
 
 /// What was kept: the pictures to give Claude Code and the saved paths to
@@ -388,5 +430,20 @@ mod tests {
             !n.contains('\u{202E}') && !n.contains(',') && !n.contains('\u{2028}'),
             "{n}"
         );
+    }
+
+    #[test]
+    fn m1b_6c_a_file_that_could_not_be_cleaned_is_marked() {
+        let b64 = base64::engine::general_purpose::STANDARD;
+        let f = |name: &str, b: &[u8]| SentFile {
+            name: name.into(),
+            media_type: String::new(),
+            base64: b64.encode(b),
+        };
+        let p = prepare(&[], &[f("Lease.pdf", &crate::wipe::tests::sample_pdf())]).unwrap();
+        assert!(!p.has_uncleaned());
+        let p = prepare(&[], &[f("data.bin", b"abc")]).unwrap();
+        assert!(p.has_uncleaned());
+        assert!(p.notes()[0].1.starts_with("Kept as it was:"));
     }
 }

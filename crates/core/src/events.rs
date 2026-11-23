@@ -281,22 +281,18 @@ pub use mimir_proto::Picture;
 /// Reads a picture file; None for other kinds of file.
 pub fn picture_from_file(path: &std::path::Path) -> Option<Picture> {
     let ext = path.extension()?.to_str()?.to_ascii_lowercase();
-    let media_type = match ext.as_str() {
-        "png" => "image/png",
-        "jpg" | "jpeg" => "image/jpeg",
-        "gif" => "image/gif",
-        "webp" => "image/webp",
-        _ => return None,
-    };
+    if !matches!(ext.as_str(), "png" | "jpg" | "jpeg" | "gif" | "webp") {
+        return None;
+    }
     let bytes = std::fs::read(path).ok()?;
     // Claude accepts pictures up to about 5 MB.
     if bytes.len() > 5 * 1024 * 1024 {
         return None;
     }
-    Some(Picture {
-        media_type: media_type.to_string(),
-        base64: base64(&bytes),
-    })
+    // Redrawn from its pixels, so no location or camera details go on. One
+    // that can't be cleaned (a GIF) is not passed on as a picture; the file
+    // path goes through the file wiper instead.
+    crate::pictures::clean(&bytes)
 }
 
 /// Standard base64 with padding.

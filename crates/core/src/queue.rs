@@ -45,6 +45,10 @@ pub fn wants_summary(entries: &[Entry]) -> bool {
         .any(|e| matches!(e, Entry::Step(s) if !s.refused))
 }
 
+/// The line a message uses to name a file of the person's own for Claude
+/// Code to read (after a blank line).
+pub const ATTACHED: &str = "Attached file: ";
+
 /// Splits attachments into pictures (sent to Claude) and other files
 /// (named in the message, so Claude can read them).
 pub fn with_files(
@@ -56,7 +60,7 @@ pub fn with_files(
     for f in files {
         match crate::events::picture_from_file(f) {
             Some(p) => pictures.push(p),
-            None => text.push_str(&format!("\n\nAttached file: {}", f.display())),
+            None => text.push_str(&format!("\n\n{ATTACHED}{}", f.display())),
         }
     }
     (text, pictures)
