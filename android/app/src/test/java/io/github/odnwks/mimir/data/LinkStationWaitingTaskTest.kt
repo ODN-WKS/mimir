@@ -64,7 +64,7 @@ class LinkStationWaitingTaskTest {
             events.add("""{"seq":2,"event":{"Snapshot":{"run_id":"r1"}}}""")
             events.add("""{"seq":3,"event":"Ready"}""")
         }
-        fun callsOf(prefix: String) = calls.filter { it.second.startsWith(prefix) }
+        fun callsOf(prefix: String) = synchronized(calls) { calls.filter { it.second.startsWith(prefix) } }
     }
 
     private fun until(ms: Long = 8_000, cond: () -> Boolean): Boolean {
