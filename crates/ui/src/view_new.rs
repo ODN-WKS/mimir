@@ -86,6 +86,7 @@ impl App {
                     crumb: None,
                     paid,
                     model_down,
+                    on_chat: false,
                     panel,
                     menu_name: "new-menu",
                 },

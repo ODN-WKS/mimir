@@ -511,6 +511,7 @@ impl App {
                 crumb: None,
                 paid,
                 model_down,
+                on_chat: true,
                 panel,
                 menu_name: "chat-menu",
             },

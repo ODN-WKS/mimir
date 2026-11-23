@@ -43,6 +43,7 @@ impl App {
                 crumb,
                 paid: !mimir_core::models::is_free(t.model.as_deref()),
                 model_down,
+                on_chat: false,
                 panel: Some(details),
                 menu_name: "task-menu",
             },

@@ -370,6 +370,8 @@ pub(crate) struct MidTop<'a> {
     pub paid: bool,
     /// The PC's model program isn't running (the pill is then not the green "This PC").
     pub model_down: bool,
+    /// This page is a chat (where "Try again" is).
+    pub on_chat: bool,
     /// The side panel's state, when this page has one to toggle.
     pub panel: Option<bool>,
     /// The shot name for the pill's menu (debug pictures).
@@ -465,7 +467,7 @@ pub(crate) fn mid_top(
                     RichText::new(if top.paid {
                         "Answers go to Anthropic (your Anthropic plan)"
                     } else if down {
-                        crate::labels::PC_DOWN_LINE
+                        crate::labels::pc_down_line(top.on_chat)
                     } else {
                         "Answers are made on this PC"
                     })

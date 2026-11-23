@@ -250,6 +250,16 @@ pub const PILL_PC: &str = "This PC";
 /// The pill while the PC's model program isn't running.
 pub const PILL_PC_DOWN: &str = "Your PC's model is off";
 pub const PC_DOWN_LINE: &str = "Your PC's model isn't running. Try again in the chat.";
+/// The same line on a page that has no chat to try again in.
+pub const PC_DOWN_LINE_ELSEWHERE: &str = "Your PC's model isn't running. Check your PC.";
+/// The pill menu's line while the PC's model is off: "Try again" only where a chat is.
+pub fn pc_down_line(on_chat: bool) -> &'static str {
+    if on_chat {
+        PC_DOWN_LINE
+    } else {
+        PC_DOWN_LINE_ELSEWHERE
+    }
+}
 pub const PILL_CLAUDE: &str = "Online · goes to Anthropic";
 
 /// The message box.
@@ -291,6 +301,15 @@ pub fn nothing_found(search: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn try_again_is_said_only_where_a_chat_is() {
+        assert!(pc_down_line(true).contains("Try again in the chat"));
+        assert_eq!(
+            pc_down_line(false),
+            "Your PC's model isn't running. Check your PC."
+        );
+    }
 
     #[test]
     fn the_claude_ai_link_is_for_a_claude_ai_session_only() {
