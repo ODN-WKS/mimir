@@ -109,6 +109,17 @@ fun PcSessionsScreen(
                 style = Type.Small, color = Palette.TextDim,
             )
         }
+        // Under the connection line, where it is seen first (not below a long list).
+        Row(
+            Modifier.fillMaxWidth().background(Palette.Ground).clickable(role = Role.Button) { nav.open(Screen.PcSettings) }.heightIn(min = 52.dp).padding(horizontal = 22.dp),
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text(PC_SETTINGS_ROW, style = Type.BodyTight, color = Palette.Text, maxLines = 1, softWrap = false)
+            Spacer(Modifier.width(12.dp))
+            // The hint takes what is left on one line (cut with "…"), the arrow stays at the right edge.
+            Text(PC_SETTINGS_HINT, style = Type.Small, color = Palette.TextDim, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = androidx.compose.ui.text.style.TextAlign.End, modifier = Modifier.weight(1f))
+            Text(" ›", style = Type.Small, color = Palette.TextDim, maxLines = 1, softWrap = false)
+        }
         Row(
             Modifier.padding(horizontal = 16.dp).fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Palette.Card).border(1.dp, Palette.Line, RoundedCornerShape(14.dp)).padding(3.dp),
         ) {
@@ -132,16 +143,6 @@ fun PcSessionsScreen(
                     }
                 }
             }
-        }
-        Row(
-            Modifier.fillMaxWidth().background(Palette.Ground).clickable(role = Role.Button) { nav.open(Screen.PcSettings) }.heightIn(min = 52.dp).padding(horizontal = 22.dp),
-            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Text(PC_SETTINGS_ROW, style = Type.BodyTight, color = Palette.Text, maxLines = 1, softWrap = false)
-            Spacer(Modifier.width(12.dp))
-            // The hint takes what is left on one line (cut with "…"), the arrow stays at the right edge.
-            Text(PC_SETTINGS_HINT, style = Type.Small, color = Palette.TextDim, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = androidx.compose.ui.text.style.TextAlign.End, modifier = Modifier.weight(1f))
-            Text(" ›", style = Type.Small, color = Palette.TextDim, maxLines = 1, softWrap = false)
         }
         NeedsYouBar(state.needsYou.size, { nav.open(Screen.NeedsYou) }, Modifier.padding(start = 12.dp, end = 12.dp, top = 4.dp, bottom = 4.dp))
     }

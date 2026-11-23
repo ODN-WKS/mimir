@@ -153,7 +153,7 @@ object Wire {
             pc = LTruthPc(pc.optString("name"), pc.optString("level", "Free"), pc.optString("line")),
             tasks = (0 until tasks.length()).map { i ->
                 val t = tasks.getJSONObject(i)
-                LTruthTask(t.getString("id"), t.optString("project"), t.optString("title"), t.optString("state", "Done"), t.optBoolean("background"), long(t, "since"), t.optBoolean("from_phone"))
+                LTruthTask(t.getString("id"), t.optString("project"), t.optString("title"), t.optString("state", "Done"), t.optBoolean("background"), long(t, "since"), t.optBoolean("from_phone"), t.optBoolean("failed"))
             },
             working = counts.optInt("working"),
             needsYou = counts.optInt("needs_you"),
@@ -470,6 +470,7 @@ object Wire {
                 LongNotice(very = l.optBoolean("very"), own = l.optString("why") == "Own", elsewhere = l.optBoolean("elsewhere"), pages = l.optInt("pages"))
             },
             elsewhereIn = h.optString("elsewhere_in"),
+            failed = h.optBoolean("failed"),
         )
     }
 
@@ -684,7 +685,7 @@ sealed interface LTalkState {
 data class LTruthPc(val name: String, val level: String, val line: String)
 
 /** A task's state, worked out once on the PC: [state] is "Working", "NeedsYou", "LiveElsewhere", "Stopped" or "Done". */
-data class LTruthTask(val id: String, val project: String, val title: String, val state: String, val background: Boolean, val since: Long?, val fromPhone: Boolean)
+data class LTruthTask(val id: String, val project: String, val title: String, val state: String, val background: Boolean, val since: Long?, val fromPhone: Boolean, val failed: Boolean = false)
 
 data class LTruthProject(val path: String, val name: String, val lastActivity: Long?, val working: Int, val needsYou: Int, val checks: LChecks?)
 data class LTruthEngine(val chatsWhere: String, val chatsModelWords: String, val answering: Boolean, val paidOn: Boolean)
@@ -763,6 +764,8 @@ data class LinkTask(
     val long: LongNotice? = null,
     /** Where it goes on, when the PC says: "app" (the Claude app) or "terminal"; "" from an older PC. */
     val elsewhereIn: String = "",
+    /** With status Stopped: it stopped unexpectedly (its Claude Code died), not by the owner's Stop. */
+    val failed: Boolean = false,
     /** A Claude Code process of the task runs on the PC: something there can be stopped (true when an older PC doesn't say). */
     val running: Boolean = true,
 )

@@ -1649,7 +1649,7 @@ class LinkStation(
             outOfRoom = es.takeLast(3).any { it is LEntry.Note && isOutOfRoomNote(it.text) },
             refusalsRemoved = t.model?.let { m -> listOf("abliterated", "heretic", "uncensored").any { m.lowercase().contains(it) } } == true,
             // PHW-06: "Answering…" while a Live heartbeat came in within 4 s (PC sends every 2 s).
-            status = said?.let { Mapping.truthWords(it.state) }
+            status = said?.let { Mapping.truthWords(it.state, it.failed) }
                 ?: if (liveAt[t.id]?.let { System.currentTimeMillis() - it < 4_000L } == true) "Answering…"
                 else Mapping.taskWords(t, asks = perm != null || question != null, connected = connected),
             busy = said?.let { it.state == "Working" } ?: (Mapping.working(t) && connected),

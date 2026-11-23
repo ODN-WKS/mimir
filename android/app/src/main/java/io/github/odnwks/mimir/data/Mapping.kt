@@ -43,6 +43,8 @@ object Mapping {
         t.status == "NeedsYou" -> "Needs you"
         t.archived -> "Archived"
         connected && t.liveElsewhere -> "Live"
+        // A stop nobody asked for reads differently from the owner's own Stop.
+        t.status == "Stopped" && t.failed -> "Stopped unexpectedly"
         else -> t.status
     }
 
@@ -134,11 +136,11 @@ object Mapping {
     // ---- The PC's one truth (Stage 1, section 3): every surface reads it, none works a state out ----
 
     /** A task's state from the truth, in the words every screen uses (the same as [taskWords]). */
-    fun truthWords(state: String): String = when (state) {
+    fun truthWords(state: String, failed: Boolean = false): String = when (state) {
         "Working" -> "Working"
         "NeedsYou" -> "Needs you"
         "LiveElsewhere" -> "Live"
-        "Stopped" -> "Stopped"
+        "Stopped" -> if (failed) "Stopped unexpectedly" else "Stopped"
         else -> "Done"
     }
 

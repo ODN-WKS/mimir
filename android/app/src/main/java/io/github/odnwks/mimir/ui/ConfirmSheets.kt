@@ -323,8 +323,8 @@ fun chatSentLine(sentToPc: Long, lookups: Int, online: String? = null): String =
 
 private fun lookupsWords(n: Int) = if (n == 1) "1 lookup" else "$n lookups"
 
-/** A small count of bytes in plain words ("620 bytes", "4 KB"). */
-fun bytesWords(b: Long): String = if (b < 1000) "$b bytes" else sizeWords(b)
+/** A small count of bytes in plain words ("under 1 KB", "4 KB"). */
+fun bytesWords(b: Long): String = if (b < 1000) "under 1 KB" else sizeWords(b)
 
 /** What one chat sent, line by line: to the PC, to an online model, and each lookup with the words searched. */
 fun chatSentLines(chat: io.github.odnwks.mimir.standalone.LocalChat, pcAnswers: Boolean, online: String? = null): List<String> = buildList {

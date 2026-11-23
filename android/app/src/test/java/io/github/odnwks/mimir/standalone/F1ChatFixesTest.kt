@@ -96,11 +96,11 @@ class F1ChatFixesTest {
             Turn(false, "Cloudy.", sources = listOf(Source("met.no", "https://met.no/", "Paris"))),
         ), sentToPc = 620)
         val lines = chatSentLines(chat, pcAnswers = true)
-        assertEquals("Sent to your PC for this chat: 620 bytes. Only your PC gets it.", lines[0])
+        assertEquals("Sent to your PC for this chat: under 1 KB. Only your PC gets it.", lines[0])
         assertEquals("1 lookup was made in this chat:", lines[1])
         assertEquals("• met.no: Paris", lines[2])
         assertEquals("nothing left this phone", chatSentLine(0, 0))
-        assertEquals("620 bytes to your PC, 1 lookup", chatSentLine(620, 1))
+        assertEquals("under 1 KB to your PC, 1 lookup", chatSentLine(620, 1))
         assertEquals("No lookups were made in this chat.", chatSentLines(LocalChat("d", "m", emptyList()), false)[1])
     }
 

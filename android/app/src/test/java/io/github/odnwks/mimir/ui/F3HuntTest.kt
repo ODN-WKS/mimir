@@ -191,3 +191,23 @@ class F3HuntTest {
         gone("Paused. Press Continue to carry on.")
     }
 }
+
+/** More from the hunt (coordinator's list): R14 and the PC lines. */
+@RunWith(RobolectricTestRunner::class)
+@Config(qualifiers = "w390dp-h844dp-xhdpi")
+class F3MoreHuntTest {
+    @org.junit.Test fun r14_aSmallSizeIsNeverInBytes() {
+        assertEquals("under 1 KB", bytesWords(688))
+        assertEquals("under 1 KB", bytesWords(1))
+        assertTrue(!bytesWords(4096).contains("bytes"))
+    }
+
+    // T4 from the PC's own field: a Stopped task with failed = true reads Stopped unexpectedly
+    @org.junit.Test fun t4_theFailedFieldMakesItStoppedUnexpectedly() {
+        val h = io.github.odnwks.mimir.link.LinkTask("t", "T", "/p", "Stopped", false, null, 0L, emptyList(), failed = true)
+        assertEquals("Stopped unexpectedly", io.github.odnwks.mimir.data.Mapping.taskWords(h, asks = false, connected = true))
+        assertEquals("Stopped", io.github.odnwks.mimir.data.Mapping.taskWords(h.copy(failed = false), asks = false, connected = true))
+        assertEquals("Stopped unexpectedly", io.github.odnwks.mimir.data.Mapping.truthWords("Stopped", failed = true))
+        assertEquals("Stopped", io.github.odnwks.mimir.data.Mapping.truthWords("Stopped"))
+    }
+}
