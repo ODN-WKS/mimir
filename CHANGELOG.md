@@ -2,6 +2,9 @@
 
 Every Mímir version, newest first. Full notes for each are in `docs/release-notes/`.
 
+## 0.06
+Your PC's own model first and Claude only an option; literal answers by default; hidden details removed from documents, recordings and zips, and files that can't be cleaned never go online; see what runs on your PC from the phone and stop it; Copy, Listen, Share, Try again and Edit in phone tasks; tables and code in answers; calmer, plainer screens on both sides. See `docs/release-notes/0.06.md`.
+
 ## 0.05
 Alerts when a task finishes or needs you, even while the phone sleeps; Stop always there and really stops; honest task status; new tasks wait while the PC is away; New project in the side menu; pictures and files in tasks on the PC; a new bronze icon; PDF reader security fix. See `docs/release-notes/0.05.md`.
 
