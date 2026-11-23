@@ -49,6 +49,10 @@ pub struct Record {
     pub host_pid: i32,
     pub host_started: Option<u64>,
     pub child_pid: Option<i32>,
+    /// In a Flatpak: the number Claude Code has on the PC itself (its
+    /// process group is the run). `child_pid` there is only the portal helper.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub real_pid: Option<i32>,
     /// The child ended (its exit code, None by a signal), and all it
     /// printed is on disk.
     #[serde(default, with = "exit_wire")]
@@ -176,6 +180,11 @@ pub fn kill_run(key: &str) {
         && let Some(p) = r.child_pid
         && p > 1
     {
+        if let Some(real) = r.real_pid {
+            // In a Flatpak the child is only the portal helper: end the run
+            // on the PC, then the helper.
+            crate::flatpak::end_host_group(real, Duration::from_secs(3));
+        }
         // SAFETY: plain kill(2) on the group of a run whose host is alive
         // (so the id is still that run's).
         unsafe {
@@ -489,7 +498,7 @@ pub(crate) fn job_command(job: &Job, in_flatpak: bool) -> std::process::Command 
         cmd.env(k, v);
     }
     if in_flatpak {
-        crate::flatpak::wrap_for_host(cmd)
+        crate::flatpak::wrap_for_host_tracked(cmd)
     } else {
         cmd
     }
@@ -510,7 +519,11 @@ fn run(key: &str) -> std::io::Result<()> {
     let mut cmd = job_command(&job, crate::flatpak::active());
     cmd.stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::null())
+        .stderr(if crate::flatpak::active() {
+            Stdio::piped()
+        } else {
+            Stdio::null()
+        })
         .process_group(0);
     // SAFETY: prctl is async-signal-safe: the child never runs on with
     // nobody holding its pipes.
@@ -528,6 +541,30 @@ fn run(key: &str) -> std::io::Result<()> {
     write_record(key, &rec);
     log(key, &format!("started {} ({pid})", job.program.display()));
     let stdin = Arc::new(Mutex::new(child.stdin.take()));
+    // In a Flatpak: the PC's own number for the run, reported first on
+    // stderr; the rest of stderr is read and dropped.
+    let real = Arc::new(std::sync::atomic::AtomicI32::new(0));
+    if let Some(mut err) = child.stderr.take() {
+        let (real, k) = (real.clone(), key.to_string());
+        std::thread::spawn(move || {
+            let mut r = BufReader::new(&mut err);
+            let mut first = String::new();
+            if r.read_line(&mut first).is_ok()
+                && let Some(n) = first
+                    .trim()
+                    .strip_prefix(crate::flatpak::PID_MARK)
+                    .and_then(|n| n.parse::<i32>().ok())
+                && n > 1
+            {
+                real.store(n, std::sync::atomic::Ordering::SeqCst);
+                if let Some(mut rec) = read_record(&k) {
+                    rec.real_pid = Some(n);
+                    write_record(&k, &rec);
+                }
+            }
+            let _ = std::io::copy(&mut r, &mut std::io::sink());
+        });
+    }
     let mut out = child.stdout.take().expect("piped");
     // The child's output, to the chunk files.
     let k = key.to_string();
@@ -574,6 +611,7 @@ fn run(key: &str) -> std::io::Result<()> {
         let stdin = stdin.clone();
         let collected = collected.clone();
         let saved = saved.clone();
+        let real = real.clone();
         let k = key.to_string();
         let me = unsafe { libc::getuid() };
         std::thread::spawn(move || {
@@ -581,15 +619,22 @@ fn run(key: &str) -> std::io::Result<()> {
                 if peer_uid(&c) != Some(me) {
                     continue;
                 }
-                let (stdin, collected, saved, k) =
-                    (stdin.clone(), collected.clone(), saved.clone(), k.clone());
-                std::thread::spawn(move || serve(c, pid, &stdin, &collected, &saved, &k));
+                let (stdin, collected, saved, real, k) = (
+                    stdin.clone(),
+                    collected.clone(),
+                    saved.clone(),
+                    real.clone(),
+                    k.clone(),
+                );
+                std::thread::spawn(move || serve(c, pid, &real, &stdin, &collected, &saved, &k));
             }
         });
     }
     let status = child.wait();
     let _ = copier.join();
-    let code = status.ok().and_then(|s| s.code());
+    let code = status
+        .ok()
+        .and_then(|s| exit_code(s.code(), crate::flatpak::active()));
     let mut rec = read_record(key).unwrap_or(rec);
     rec.exit = Some(code);
     write_record(key, &rec);
@@ -627,9 +672,22 @@ fn peer_uid(s: &UnixStream) -> Option<u32> {
 
 type Input = Arc<Mutex<Option<std::process::ChildStdin>>>;
 
+/// What a finished child's end is saved as (None: it died by a signal).
+/// Through `flatpak-spawn` a signal death comes back as the shell's number
+/// for it (143 for TERM, 137 for KILL; measured on this PC, also when the
+/// program on the PC is the one signalled): read that as a signal, so a stop
+/// stays "You stopped this task".
+pub(crate) fn exit_code(code: Option<i32>, in_flatpak: bool) -> Option<i32> {
+    match code {
+        Some(c) if in_flatpak && (129..=192).contains(&c) => None,
+        c => c,
+    }
+}
+
 fn serve(
     mut c: UnixStream,
     pid: i32,
+    real: &std::sync::atomic::AtomicI32,
     stdin: &Input,
     collected: &std::sync::atomic::AtomicBool,
     saved: &Mutex<u64>,
@@ -656,10 +714,29 @@ fn serve(
             *g = None;
         }
         if let Some(sig) = v["signal"].as_i64() {
-            // SAFETY: a signal to the child this host started.
-            unsafe { libc::kill(pid, sig as i32) };
+            let r = real.load(std::sync::atomic::Ordering::SeqCst);
+            if r > 1 {
+                // The program on the PC itself (the portal helper only
+                // passes some signals on).
+                crate::flatpak::host_cmd("kill")
+                    .arg(format!("-{sig}"))
+                    .arg(r.to_string())
+                    .stdin(std::process::Stdio::null())
+                    .stdout(std::process::Stdio::null())
+                    .stderr(std::process::Stdio::null())
+                    .status()
+                    .ok();
+            } else {
+                // SAFETY: a signal to the child this host started.
+                unsafe { libc::kill(pid, sig as i32) };
+            }
         }
         if v["kill"].as_bool() == Some(true) {
+            let r = real.load(std::sync::atomic::Ordering::SeqCst);
+            if r > 1 {
+                // The run on the PC: TERM to its group, wait, then KILL.
+                crate::flatpak::end_host_group(r, Duration::from_secs(3));
+            }
             // SAFETY: the child's own process group.
             unsafe { libc::kill(-pid, libc::SIGTERM) };
             std::thread::sleep(Duration::from_millis(500));
@@ -723,6 +800,47 @@ mod tests {
         let d = job_command(&job, false);
         assert_eq!(d.get_program(), "/home/p/.local/bin/claude");
         assert_eq!(d.get_current_dir().unwrap().to_str(), Some("/home/p/proj"));
+    }
+
+    /// In a Flatpak the run is watched over the portal (a KILLed helper
+    /// takes the program with it) and reports its own number on the PC.
+    #[test]
+    fn a_flatpak_run_is_watched_and_reports_its_pc_number() {
+        let job = Job {
+            kind: "task".into(),
+            task_id: "t".into(),
+            program: "/p/claude".into(),
+            args: vec!["-p".into()],
+            cwd: "/p".into(),
+            ..Default::default()
+        };
+        let c = job_command(&job, true);
+        let a: Vec<String> = c
+            .get_args()
+            .map(|s| s.to_string_lossy().to_string())
+            .collect();
+        assert!(a.contains(&"--watch-bus".to_string()));
+        let i = a.iter().position(|w| w == "sh").expect("shell wrapper");
+        assert!(a[i + 2].contains(crate::flatpak::PID_MARK.trim_end()));
+        assert!(a[i + 2].contains("exec"));
+    }
+
+    /// Through flatpak-spawn a signal death arrives as 128 + the signal.
+    #[test]
+    fn a_signal_death_through_the_portal_reads_as_a_signal() {
+        assert_eq!(exit_code(Some(143), true), None);
+        assert_eq!(exit_code(Some(137), true), None);
+        assert_eq!(exit_code(Some(2), true), Some(2));
+        assert_eq!(exit_code(Some(0), true), Some(0));
+        assert_eq!(exit_code(Some(143), false), Some(143));
+        assert_eq!(exit_code(None, true), None);
+        // And saved, it reads back as ended by a signal.
+        let r = Record {
+            exit: Some(exit_code(Some(143), true)),
+            ..Default::default()
+        };
+        let back: Record = serde_json::from_str(&serde_json::to_string(&r).unwrap()).unwrap();
+        assert_eq!(back.exit, Some(None));
     }
 
     #[test]

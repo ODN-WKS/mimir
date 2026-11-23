@@ -88,8 +88,29 @@ pub fn to_host(cmd: Command) -> Command {
 /// process is in a sandbox (the host part of a Flatpak build needs it, and
 /// tests check it).
 pub(crate) fn wrap_for_host(cmd: Command) -> Command {
+    wrap(cmd, false)
+}
+
+/// Like [`wrap_for_host`] for a long run that must be ended for real:
+/// `--watch-bus` (the PC's process goes when the portal link breaks, which a
+/// plain `flatpak-spawn` does not do on SIGKILL) and a one-line report of
+/// the process number the program has on the PC, on stderr, before it
+/// starts. Measured on this PC: signalling `flatpak-spawn` reaches only the
+/// program, never what it started, and the portal gives the program a
+/// process group of its own, so the PC's number is what a stop must signal.
+pub(crate) fn wrap_for_host_tracked(cmd: Command) -> Command {
+    wrap(cmd, true)
+}
+
+/// The words a tracked command prints first: `MIMIR-PID <number>`.
+pub const PID_MARK: &str = "MIMIR-PID ";
+
+fn wrap(cmd: Command, tracked: bool) -> Command {
     let mut c = Command::new("flatpak-spawn");
     c.arg("--host");
+    if tracked {
+        c.arg("--watch-bus");
+    }
     if let Some(dir) = cmd.get_current_dir() {
         c.arg(format!("--directory={}", dir.display()));
     }
@@ -103,9 +124,53 @@ pub(crate) fn wrap_for_host(cmd: Command) -> Command {
             None => c.arg(format!("--unset-env={}", k.to_string_lossy())),
         };
     }
+    if tracked {
+        c.args(["sh", "-c", "echo \"MIMIR-PID $$\" >&2; exec \"$@\"", "sh"]);
+    }
     c.arg(cmd.get_program());
     c.args(cmd.get_args());
     c
+}
+
+/// Signals the PC's process `pid` and everything in its group (`sig` is a
+/// number or name such as "TERM"). True if the PC took the signal.
+pub fn signal_host_group(pid: i32, sig: &str) -> bool {
+    pid > 1
+        && host_cmd("kill")
+            .arg(format!("-{sig}"))
+            .arg("--")
+            .arg(format!("-{pid}"))
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .is_ok_and(|s| s.success())
+}
+
+/// Whether anything of the PC's group `pid` still runs.
+pub fn host_group_alive(pid: i32) -> bool {
+    pid > 1
+        && host_cmd("kill")
+            .args(["-0", "--"])
+            .arg(format!("-{pid}"))
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .is_ok_and(|s| s.success())
+}
+
+/// Ends a run on the PC: TERM to its group, a wait for it to go (up to
+/// `grace`), then KILL to what is left.
+pub fn end_host_group(pid: i32, grace: std::time::Duration) {
+    signal_host_group(pid, "TERM");
+    let until = std::time::Instant::now() + grace;
+    while host_group_alive(pid) && std::time::Instant::now() < until {
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    if host_group_alive(pid) {
+        signal_host_group(pid, "KILL");
+    }
 }
 
 /// The programs running on the PC: the process number and the words each
