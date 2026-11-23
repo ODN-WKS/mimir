@@ -320,7 +320,7 @@ LazyColumn(
     WhoAnswersSheet(
         open = whoOpen && !whispering,
         chosen = if (state.models.chatsEngine == "paid") Answerer.Claude else Answerer.Pc,
-        phoneCan = phoneCanRun, paired = true, claudeOffered = state.models.chatsEngine != null,
+        phoneCan = phoneCanRun, paired = true, claudeOffered = state.models.chatsEngine != null, pcOnline = !state.pcAway,
         onChoose = { who ->
             whoOpen = false
             when (who) {
