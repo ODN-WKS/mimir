@@ -36,7 +36,11 @@ class PendingAttachments(private val dir: File?, private val codec: Vault.Codec)
         }.isSuccess
     }
 
-    fun load(id: String): Held {
+    /**
+     * What is kept for message [id]: an empty [Held] when nothing was kept, or null when something was
+     * kept but can't be read back (the message must not go without its pictures).
+     */
+    fun read(id: String): Held? {
         val f = dir?.let { File(it, "$id.att") }?.takeIf { it.isFile } ?: return Held(emptyList(), emptyList())
         return runCatching {
             val o = JSONObject(codec.open(f.readBytes()))
@@ -45,8 +49,11 @@ class PendingAttachments(private val dir: File?, private val codec: Vault.Codec)
                 (0 until ps.length()).map { ps.getJSONObject(it).let { p -> LPicture(p.getString("t"), p.getString("b")) } },
                 (0 until fs.length()).map { fs.getJSONObject(it).let { x -> LFile(x.getString("n"), x.getString("t"), x.getString("b")) } },
             )
-        }.getOrDefault(Held(emptyList(), emptyList()))
+        }.getOrNull()
     }
+
+    /** For showing only (the words under a waiting message): empty when nothing is kept or it is unreadable. */
+    fun load(id: String): Held = read(id) ?: Held(emptyList(), emptyList())
 
     fun has(id: String): Boolean = dir?.let { File(it, "$id.att").isFile } == true
 

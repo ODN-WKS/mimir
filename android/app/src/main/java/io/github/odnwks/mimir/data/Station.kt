@@ -39,6 +39,11 @@ interface Station {
      * A reply typed into one task, with the pictures and files chosen for it (the PC wipes their hidden details).
      * False when it was not taken (nothing to send, or the pictures and files couldn't be kept): the box keeps what was in it.
      */
+    /** [reply] with the heavy work off the main thread: [done] says whether it was taken (the box keeps its content until then). */
+    fun replyAsync(taskId: String, text: String, pictures: List<io.github.odnwks.mimir.standalone.TurnPicture> = emptyList(), files: List<io.github.odnwks.mimir.standalone.TurnFile> = emptyList(), done: (Boolean) -> Unit) { done(reply(taskId, text, pictures, files)) }
+    /** A reply the PC refused (or whose pictures can't be read back) stays with its words: send it again, or remove it. */
+    fun retryReply(replyId: String) {}
+    fun removeReply(replyId: String) {}
     fun reply(taskId: String, text: String, pictures: List<io.github.odnwks.mimir.standalone.TurnPicture> = emptyList(), files: List<io.github.odnwks.mimir.standalone.TurnFile> = emptyList()): Boolean
     /** This PC takes pictures and files on a task's message ("task_files"); an older one doesn't, and the box offers none. */
     fun canAttachToTasks(): Boolean = false
@@ -93,6 +98,13 @@ interface Station {
         text: String, project: String, incognito: Boolean, plan: Boolean = false, model: String? = null,
         pictures: List<io.github.odnwks.mimir.standalone.TurnPicture> = emptyList(), files: List<io.github.odnwks.mimir.standalone.TurnFile> = emptyList(), effort: String? = null,
     ): String
+
+    /** [startTask] with the heavy work off the main thread: [done] gets the id ("" if it didn't start). */
+    fun startTaskAsync(
+        text: String, project: String, incognito: Boolean, plan: Boolean = false, model: String? = null,
+        pictures: List<io.github.odnwks.mimir.standalone.TurnPicture> = emptyList(), files: List<io.github.odnwks.mimir.standalone.TurnFile> = emptyList(), effort: String? = null,
+        done: (String) -> Unit,
+    ) { done(startTask(text, project, incognito, plan, model, pictures, files, effort)) }
 
     /**
      * Makes a project folder on the PC (or picks it if it's already there). [done] gets the
@@ -521,6 +533,8 @@ data class TaskMessage(
     val waiting: Boolean = false,
     /** A short line from the PC (not said by you or Claude): drawn small and dim. */
     val note: Boolean = false,
+    /** The PC refused this waiting reply (or its pictures can't be read back): why; it stays to try again or remove. */
+    val failedWhy: String = "",
 )
 
 data class Question(

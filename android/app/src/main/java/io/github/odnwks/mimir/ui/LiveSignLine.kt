@@ -21,7 +21,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
@@ -37,20 +37,24 @@ import io.github.odnwks.mimir.ui.theme.Type
  * time it has worked counts up and a long silence shows.
  */
 @Composable
-fun LiveSignLine(sign: LiveSign?, modifier: Modifier = Modifier) {
-    if (sign == null) return
+fun LiveSignLine(sign: LiveSign?, modifier: Modifier = Modifier, fallback: @Composable () -> Unit = {}) {
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     LaunchedEffect(sign) { while (true) { now = System.currentTimeMillis(); kotlinx.coroutines.delay(1000) } }
-    val line = sign.line(now) ?: return
+    // The live line only when it has something to say; otherwise the plainer line of an older PC.
+    val shown = sign?.shown(now)
+    if (shown == null) { fallback(); return }
     val pulse by rememberInfiniteTransition(label = "live-sign").animateFloat(
         initialValue = 0.35f, targetValue = 1f,
         animationSpec = infiniteRepeatable(tween(900, easing = LinearEasing), RepeatMode.Reverse), label = "pulse",
     )
     Row(
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
-        modifier = modifier.padding(top = 4.dp).semantics { liveRegion = LiveRegionMode.Polite },
+        modifier = modifier.padding(top = 4.dp),
     ) {
-        androidx.compose.foundation.layout.Box(Modifier.size(8.dp).alpha(pulse).background(Palette.TextSoft, CircleShape))
-        Text(line, style = Type.Small, color = Palette.TextSoft, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        // Read at draw time: the pulse never recomposes the line.
+        androidx.compose.foundation.layout.Box(Modifier.size(8.dp).graphicsLayer { alpha = pulse }.background(Palette.TextSoft, CircleShape))
+        // Only the state words are announced; the ticking time is not read out every second.
+        Text(shown.words, style = Type.Small, color = Palette.TextSoft, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
+        if (shown.timer.isNotEmpty()) Text(shown.timer, style = Type.Small, color = Palette.TextSoft, maxLines = 1)
     }
 }

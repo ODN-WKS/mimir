@@ -141,6 +141,13 @@ class LinkStation(
     private val newsAt = HashMap<String, Long>()
     /** When the PC answered Ok to a message of a task. */
     private val gotItAt = HashMap<String, Long>()
+    /** When a task's header last came in (a header newer than the PC's Ok says whether the turn is on). */
+    private val headerAt = HashMap<String, Long>()
+    /** Where each turn's clock starts, so a PC clock that is off does not skew the time worked. */
+    private val turnClock = TurnClock()
+    /** Replies the PC refused or that can't be read back: kept with their pictures, with the reason, to try again or remove. */
+    private val failedReplies = HashMap<String, String>()
+    private fun forgetTiming(id: String) { newsAt.remove(id); gotItAt.remove(id); headerAt.remove(id); turnClock.forget(id) }
     private var items: List<LItem> = emptyList()
     private var page: LStatus? = null
     /** The PC's one truth about its work (Stage 1, 3.1), newest by (run, revision). */
@@ -391,7 +398,7 @@ class LinkStation(
                 }
                 // The PC sends everything again, its problems that still stand among it: one
                 // that's gone is no longer shown.
-                is Ev.Snapshot -> { tasks.clear(); entries.clear(); live.clear(); liveAt.clear(); newsAt.clear(); problem = null; io.github.odnwks.mimir.alerts.OutsideTasks.newConnection() }
+                is Ev.Snapshot -> { tasks.clear(); entries.clear(); live.clear(); liveAt.clear(); newsAt.clear(); gotItAt.clear(); headerAt.clear(); turnClock.clear(); problem = null; io.github.odnwks.mimir.alerts.OutsideTasks.newConnection() }
                 Ev.Ready -> after = {
                     talkers().forEach { it.back() }
                     refreshProjects {
@@ -416,6 +423,8 @@ class LinkStation(
                 is Ev.TaskHeader -> {
                     tasks[ev.task.id] = ev.task
                     newsAt[ev.task.id] = System.currentTimeMillis()
+                    headerAt[ev.task.id] = newsAt[ev.task.id]!!
+                    turnClock.header(ev.task.id, Mapping.working(ev.task), ev.task.turnUnix, newsAt[ev.task.id]!!)
                     io.github.odnwks.mimir.alerts.OutsideTasks.header(ev.task.id, ev.task.liveElsewhere, ev.task.outside)
                     // What waited for this header (a finished or a question) is judged now.
                     val t = ev.task
@@ -426,7 +435,7 @@ class LinkStation(
                     }
                 }
                 is Ev.Removed -> {
-                    tasks.remove(ev.task); entries.remove(ev.task)
+                    tasks.remove(ev.task); entries.remove(ev.task); forgetTiming(ev.task)
                     io.github.odnwks.mimir.alerts.OutsideTasks.removed(ev.task)
                     io.github.odnwks.mimir.alerts.FinishedGate.removed(ev.task)
                 }
@@ -1028,6 +1037,28 @@ class LinkStation(
         return true
     }
 
+    /** [reply] with the picture and file work (base64, sealing, the disk) off the main thread; [done] says whether it was taken, and the box keeps its content until then. */
+    override fun replyAsync(taskId: String, text: String, pictures: List<io.github.odnwks.mimir.standalone.TurnPicture>, files: List<io.github.odnwks.mimir.standalone.TurnFile>, done: (Boolean) -> Unit) {
+        if (pictures.isEmpty() && files.isEmpty()) return done(reply(taskId, text, pictures, files))
+        Thread({ done(reply(taskId, text, pictures, files)) }, "mimir-reply-keep").start()
+    }
+
+    override fun retryReply(replyId: String) {
+        val now = synchronized(lock) { if (failedReplies.remove(replyId) == null) return; connected }
+        publish()
+        if (now) Thread({ flushReplies(); publish() }, "mimir-reply").start()
+    }
+
+    override fun removeReply(replyId: String) {
+        synchronized(lock) {
+            if (delivery.active(replyId)) return
+            failedReplies.remove(replyId)
+            data = data.copy(replies = data.replies.filterNot { it.first == replyId }); saveData()
+        }
+        attachments.drop(replyId)
+        publish()
+    }
+
     /**
      * Edit: the edited words go out as a normal new message in the same task (kept and sent when the link is
      * back, like any reply). The phone never calls the PC's Undo (it refuses phones); earlier replies stay.
@@ -1042,15 +1073,25 @@ class LinkStation(
     private fun flushReplies() {
         val waiting = synchronized(lock) { data.replies.takeIf { connected } } ?: return
         for ((id, task, text) in waiting) {
+            if (synchronized(lock) { id in failedReplies }) continue
             // Kept until the PC answers; a link that went away leaves it for the next connect.
-            val held = attachments.load(id)
+            // Read before anything goes: pictures that can't be read back never leave the message without them.
+            val held = attachments.read(id)
+            if (held == null) {
+                synchronized(lock) { failedReplies[id] = UNREADABLE_PICTURES }
+                note(UNREADABLE_PICTURES)
+                publish()
+                continue
+            }
             val sent = delivery.start(id, { cb -> call(Wire.send(task, text, id, held.pictures, held.files), cb) }) { _, err ->
                 synchronized(lock) {
-                    data = data.copy(replies = data.replies.filterNot { it.first == id }); saveData()
-                    if (err == null) gotItAt[task] = System.currentTimeMillis()
+                    if (err == null) {
+                        data = data.copy(replies = data.replies.filterNot { it.first == id }); saveData()
+                        gotItAt[task] = System.currentTimeMillis()
+                    } else failedReplies[id] = err
                 }
-                attachments.drop(id)
-                if (err != null) note(err)
+                // A refusal keeps the words and the pictures, to try again or remove.
+                if (err == null) attachments.drop(id) else note(err)
                 publish()
             }
             if (sent == false) return
@@ -1266,14 +1307,29 @@ class LinkStation(
         return pending
     }
 
+    /** [startTask] with the picture and file work off the main thread; [done] gets the id ("" if it didn't start), and the box keeps its content until then. */
+    override fun startTaskAsync(
+        text: String, project: String, incognito: Boolean, plan: Boolean, model: String?,
+        pictures: List<io.github.odnwks.mimir.standalone.TurnPicture>, files: List<io.github.odnwks.mimir.standalone.TurnFile>, effort: String?,
+        done: (String) -> Unit,
+    ) {
+        if (pictures.isEmpty() && files.isEmpty()) return done(startTask(text, project, incognito, plan, model, pictures, files, effort))
+        Thread({ done(startTask(text, project, incognito, plan, model, pictures, files, effort)) }, "mimir-newtask-keep").start()
+    }
+
     /** Starts the new tasks waiting on this phone, oldest first, each once (never one that failed or was cancelled meanwhile). */
     private fun flushNewTasks() {
         val waiting = synchronized(lock) { data.newTasks.takeIf { connected } } ?: return
         for (w in waiting) {
+            // The pictures are read off the lock, before anything goes; ones that can't be read back stop the task, with its words kept.
+            val held = attachments.read(w.id)
             // Checked and handed over under one lock, so a Cancel never slips in between.
             val sent = synchronized(lock) {
                 if (data.newTasks.none { it.id == w.id && it.failed.isEmpty() }) return@synchronized null
-                val held = attachments.load(w.id)
+                if (held == null) {
+                    data = data.copy(newTasks = data.newTasks.map { if (it.id == w.id) it.copy(failed = UNREADABLE_PICTURES) else it }); saveData()
+                    return@synchronized null
+                }
                 delivery.start(w.id, { cb -> call(Wire.newTask(w.project, w.text, w.id, w.model, w.plan, w.rules, held.pictures, held.files, w.effort), cb) }) { ok, err ->
                     synchronized(lock) {
                         if (err == null) {
@@ -1383,7 +1439,7 @@ class LinkStation(
         call(Wire.endIncognito(id)) { _, err ->
             if (err != null) note(err)
             // Nothing of it stays on this phone either.
-            synchronized(lock) { tasks.remove(id); entries.remove(id); live.remove(id) }
+            synchronized(lock) { tasks.remove(id); entries.remove(id); live.remove(id); forgetTiming(id) }
             publish()
         }
     }
@@ -1720,7 +1776,7 @@ class LinkStation(
         // PHD-29(c): disable Play while the task is live-streaming; enable once the message is complete.
         val streaming = live[t.id]?.isNotBlank() == true
         val messages = es.mapIndexedNotNull { i, e -> taskMessageOf(t.id, i, e, streaming && i == es.lastIndex) } + listOfNotNull(live[t.id]?.takeIf { it.isNotBlank() }?.let { TaskMessage("${t.id}-live", true, it) }) +
-            data.replies.filter { it.second == t.id }.map { (id, _, text) -> TaskMessage(id, false, text.ifBlank { attachments.words(id) }, waiting = true) } +
+            data.replies.filter { it.second == t.id }.map { (id, _, text) -> TaskMessage(id, false, text.ifBlank { attachments.words(id) }, waiting = true, failedWhy = failedReplies[id].orEmpty()) } +
             data.recordings.filter { it.second == t.id }.map { (id, _, secs) -> TaskMessage(id, false, recordingWords(secs), waiting = true) }
         val ask = t.asks.firstOrNull()
         val change = ask?.let { change(it) }
@@ -1756,9 +1812,11 @@ class LinkStation(
             liveElsewhere = t.liveElsewhere,
             long = t.long,
             sign = LiveSign(
-                sending = data.replies.any { it.second == t.id && delivery.active(it.first) },
-                gotItAt = gotItAt[t.id] ?: 0, doing = t.doing, turnUnix = t.turnUnix,
+                sending = data.replies.any { it.second == t.id && delivery.active(it.first) && it.first !in failedReplies },
+                gotItAt = gotItAt[t.id] ?: 0, doing = t.doing, turnUnix = turnClock.start(t.id, t.turnUnix),
                 newsAt = newsAt[t.id] ?: 0, linkUp = connected,
+                needsYou = perm != null || question != null,
+                turnEnded = (headerAt[t.id] ?: 0) > (gotItAt[t.id] ?: 0) && !Mapping.working(t),
             ),
             plan = t.plan,
             mode = t.mode,
@@ -1903,6 +1961,8 @@ internal fun personChanged(earlier: String?, now: String): Boolean =
     if (earlier != null) earlier != now else now != "owner"
 
 /** What the PC calls the owner's own phones. */
+/** Said when the pictures or files kept for a message can't be read back: nothing is sent without them, the words stay. */
+internal const val UNREADABLE_PICTURES = "The pictures or files kept for this message couldn't be read, so it wasn't sent. Your words are kept: remove it and send again."
 internal const val OWNER_PERSON = "owner"
 
 /** Said once when the PC's owner takes Online away from this phone's person while it was chosen. */

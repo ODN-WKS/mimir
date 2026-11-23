@@ -181,8 +181,9 @@ fun TaskScreen(taskId: String, state: StationState, station: Station, nav: Navig
                     }
                     // What it's doing right now, in words.
                     // Always a sign of life: sending, got it, the step and how long, or the silence said plainly.
-                    if (task.sign?.let { it.doing.isNotEmpty() || it.sending || it.gotItAt > 0 } == true) LiveSignLine(task.sign)
-                    else if (task.stateWords == "Working" && task.stateLine != "Working on it") Text(task.stateLine, style = Type.Small, color = Palette.TextSoft, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    LiveSignLine(task.sign) {
+                        if (task.stateWords == "Working" && task.stateLine != "Working on it") Text(task.stateLine, style = Type.Small, color = Palette.TextSoft, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
                 },
                 action = {
                     IconTarget(Glyphs.Search, if (finding) "Close find" else "Find in this task", { finding = !finding; if (!finding) find = "" })
@@ -266,7 +267,13 @@ fun TaskScreen(taskId: String, state: StationState, station: Station, nav: Navig
                     } else if (m.waiting) OwnMessage(
                         m.text, bubble = Palette.QueuedBubble, dashed = true, id = "task-${task.id}-${m.id}",
                         under = {
-                            StatusWords(
+                            if (m.failedWhy.isNotEmpty()) Column {
+                                StatusWords(Glyphs.Clock, "Didn't send: ${m.failedWhy} Your words are kept.", Palette.AmberNote)
+                                Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                                    LinkText("Try again", { station.retryReply(m.id) }, bold = true)
+                                    LinkText("Remove it", { station.removeReply(m.id) })
+                                }
+                            } else StatusWords(
                                 Glyphs.Clock,
                                 if (!state.phoneOnline) "This phone is offline: sends when it's back" else if (task.sign?.sending == true) "Sending…" else "Waiting: sends when your PC is back",
                                 Palette.TextDim,
@@ -400,7 +407,8 @@ fun TaskScreen(taskId: String, state: StationState, station: Station, nav: Navig
                     VoicePanel(voice, heard = { draft = withHeard(draft, it) }, Modifier.padding(top = 8.dp))
                     // Only the composer rides the keyboard; the dock above it goes up with it.
                     // Pictures and files go to the PC with the reply (a PC that takes them); the model and effort are chosen beside the box.
-                    val attach = rememberAttach(bigPictures = true, pcReadsFiles = true)
+                    val attach = rememberAttach(bigPictures = true, pcReadsFiles = true, key = "task-${task.id}")
+                    var sendingReply by remember { mutableStateOf(false) }
                     val canAttach = station.canAttachToTasks()
                     val canOptions = station.canSetReplyOptions()
                     Composer(
@@ -411,7 +419,16 @@ fun TaskScreen(taskId: String, state: StationState, station: Station, nav: Navig
                         optionsNote = UPDATE_PC_FOR_OPTIONS.takeIf { !canOptions && state.paired },
                         hint = if (state.pcAway) "Reply (${state.waitsUntil})" else "Reply to Mímir",
                         label = "Reply to this task", voice = voice, micLabel = "Talk (voice typing): speak a reply",
-                        onSend = { if (station.reply(task.id, draft.trim(), attach.pictures.toList(), attach.files.toList())) { draft = ""; attach.clear() } },
+                        onSend = {
+                            // The pictures are saved off the main thread; the box keeps its content until they are.
+                            if (!sendingReply) {
+                                sendingReply = true
+                                station.replyAsync(task.id, draft.trim(), attach.pictures.toList(), attach.files.toList()) { taken ->
+                                    sendingReply = false
+                                    if (taken) { draft = ""; attach.clear() }
+                                }
+                            }
+                        },
                         // While Claude works, an empty box's button is Stop.
                         working = task.showsStop && !task.stopPending,
                         onStop = { cutOff = task.steps.lastOrNull()?.startsWith("…") == true; station.stopTask(task.id) },

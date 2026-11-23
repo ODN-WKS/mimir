@@ -110,7 +110,7 @@ fun PhoneChat(
     // When the PC answers, any file goes to the PC to be read (PDFs, documents, sheets, recordings), never limited by this phone's model.
     val pcFiles = pcReady && engine.pcFiles()
     // Text files and pictures to go with the next message (pictures for a model that sees): one piece, shared with a task's reply box.
-    val attach = rememberAttach(pcSight == true, pcFiles)
+    val attach = rememberAttach(pcSight == true, pcFiles, key = "phone-chat")
     val files = attach.files
     val pictures = attach.pictures
     var attachNote by attach::note

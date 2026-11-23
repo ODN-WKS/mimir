@@ -15,7 +15,7 @@ class LiveSignTest {
     @Test fun yourPcGotItForAMoment() {
         val s = LiveSign(gotItAt = now - 1_000)
         assertEquals("Your PC got it", s.line(now))
-        assertNull("it goes after a while if nothing else is said", s.line(now + 5_000))
+        assertNull("it goes after a while if nothing else is said", s.line(now + 20_000))
     }
 
     @Test fun theStepAndHowLongItWorked() {
@@ -25,8 +25,8 @@ class LiveSignTest {
     }
 
     @Test fun silenceIsSaidPlainly() {
-        val s = LiveSign(doing = "Running a command", turnUnix = now / 1000 - 40, newsAt = now - 25_000)
-        assertEquals("Still working; no news from your PC for 25 s", s.line(now))
+        val s = LiveSign(doing = "Running a command", turnUnix = now / 1000 - 40, newsAt = now - 65_000)
+        assertEquals("Still working; no news from your PC for 1 min 5 s", s.line(now))
     }
 
     @Test fun aDownLinkIsSaid() {

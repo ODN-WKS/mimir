@@ -103,17 +103,24 @@ fun ProjectScreen(name: String, state: StationState, station: Station, nav: Navi
         if (problem.isNotEmpty()) Text(problem, style = Type.Small, color = Palette.AmberNote, modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp))
         val voice = rememberVoiceInput(station)
         VoicePanel(voice, heard = { draft = withHeard(draft, it) }, Modifier.padding(top = 4.dp))
-        val attach = rememberAttach(bigPictures = true, pcReadsFiles = true)
+        val attach = rememberAttach(bigPictures = true, pcReadsFiles = true, key = "project-${p.name}")
         var effort by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf("") }
+        var starting by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
         val canOptions = station.canSetReplyOptions()
         Composer(
             draft, { draft = it },
             hint = if (state.pcAway) "Message Mímir (${state.waitsUntil})" else "New task in ${p.name}",
             label = "New task in ${p.name}", voice = voice, micLabel = "Talk (voice typing): speak a new task",
             onSend = {
-                val id = station.startTask(draft.trim(), p.name, incognito = false, pictures = attach.pictures.toList(), files = attach.files.toList(), effort = effort.ifEmpty { null })
-                if (id.isEmpty()) problem = station.startProblem().ifEmpty { "The task couldn't start." } + " Your words are kept here."
-                else { draft = ""; problem = ""; attach.clear(); effort = ""; nav.open(Screen.Task(id)) }
+                // The pictures are saved off the main thread; the box keeps its content until they are.
+                if (!starting) {
+                    starting = true
+                    station.startTaskAsync(draft.trim(), p.name, incognito = false, pictures = attach.pictures.toList(), files = attach.files.toList(), effort = effort.ifEmpty { null }) { id ->
+                        starting = false
+                        if (id.isEmpty()) problem = station.startProblem().ifEmpty { "The task couldn't start." } + " Your words are kept here."
+                        else { draft = ""; problem = ""; attach.clear(); effort = ""; nav.open(Screen.Task(id)) }
+                    }
+                }
             },
             modifier = Modifier.padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 10.dp),
             chip = p.name, chipLabel = "To: ${p.name}",

@@ -36,9 +36,11 @@ import kotlinx.coroutines.withContext
  * picker or pasted, and the line that says why one wasn't taken. The chat's box and a task's reply box
  * share this one piece, so a picture is read, shrunk and wiped of hidden details the same way in both.
  */
-class AttachState(private val scope: CoroutineScope, private val ctx: Context, var bigPictures: Boolean, var pcReadsFiles: Boolean) {
-    val files = mutableStateListOf<TurnFile>()
-    val pictures = mutableStateListOf<TurnPicture>()
+class AttachState(
+    private val scope: CoroutineScope, private val ctx: Context, var bigPictures: Boolean, var pcReadsFiles: Boolean,
+    val files: androidx.compose.runtime.snapshots.SnapshotStateList<TurnFile> = mutableStateListOf(),
+    val pictures: androidx.compose.runtime.snapshots.SnapshotStateList<TurnPicture> = mutableStateListOf(),
+) {
     var note by mutableStateOf<String?>(null)
     /** The one button under a note (Try again, Open settings), when there is a fix to offer. */
     var fix by mutableStateOf<Pair<String, () -> Unit>?>(null)
@@ -130,14 +132,29 @@ internal const val CAMERA_FAILED = "The camera couldn't be opened. Close other a
 internal const val CAMERA_REFUSED = "The camera isn't allowed for this app. Allow it in Android settings, or pick a photo instead."
 
 /**
+ * What was chosen for a message box and not yet sent, kept per box ([key]) in memory: a rotation, a font
+ * change, or leaving the screen and coming back does not lose the pictures. It goes when the message is
+ * sent ([AttachState.clear]) or the app's process ends.
+ */
+object AttachStore {
+    private val boxes = HashMap<String, Pair<androidx.compose.runtime.snapshots.SnapshotStateList<TurnFile>, androidx.compose.runtime.snapshots.SnapshotStateList<TurnPicture>>>()
+    @Synchronized fun of(key: String) = boxes.getOrPut(key) { mutableStateListOf<TurnFile>() to mutableStateListOf<TurnPicture>() }
+    @Synchronized fun forget(key: String) { boxes.remove(key) }
+    @Synchronized fun count() = boxes.size
+}
+
+/**
  * The pickers and the camera for one message box. [bigPictures]: the PC reads them (larger pictures);
  * [pcReadsFiles]: any file goes to the PC to be read, not only text files.
  */
 @Composable
-fun rememberAttach(bigPictures: Boolean, pcReadsFiles: Boolean): AttachState {
+fun rememberAttach(bigPictures: Boolean, pcReadsFiles: Boolean, key: String? = null): AttachState {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
-    val a = remember { AttachState(scope, ctx, bigPictures, pcReadsFiles) }.also { it.bigPictures = bigPictures; it.pcReadsFiles = pcReadsFiles }
+    val a = remember(key) {
+        val kept = key?.let { AttachStore.of(it) }
+        if (kept != null) AttachState(scope, ctx, bigPictures, pcReadsFiles, kept.first, kept.second) else AttachState(scope, ctx, bigPictures, pcReadsFiles)
+    }.also { it.bigPictures = bigPictures; it.pcReadsFiles = pcReadsFiles }
     val pick = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> if (uri != null) scope.launch { a.addFile(uri) } }
     val pickMedia = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(Pictures.MAX)) { uris -> if (uris.isNotEmpty()) scope.launch { a.addMedia(uris) } }
     // A camera shot waits in the app's cache only until it's read in, then it's deleted.

@@ -20,11 +20,18 @@ data class LiveSign(
     val newsAt: Long = 0,
     /** The link to the PC is up. */
     val linkUp: Boolean = true,
+    /** The task waits for the person (a question or a permission): silence is then expected. */
+    val needsYou: Boolean = false,
+    /** The PC has since said the turn is over (a newer header says it is not busy). */
+    val turnEnded: Boolean = false,
 ) {
     companion object {
-        const val QUIET_AFTER_MS = 20_000L
-        /** "Your PC got it" shows at least this long, and until the first real step. */
+        /** Long thinking or a long command is quiet for this long on a healthy task. */
+        const val QUIET_AFTER_MS = 60_000L
+        /** "Your PC got it" shows at least this long. */
         const val GOT_IT_MS = 2_500L
+        /** It stays up until the first step or the end of the turn, but never longer than this (an old PC sends no steps). */
+        const val GOT_IT_HOLD_MS = 15_000L
 
         /** How long it has worked: "5 s", "1 min 20 s", "12 min". */
         fun workedFor(secs: Long): String = when {
@@ -34,18 +41,28 @@ data class LiveSign(
         }
     }
 
+    /** What is shown: the state [words] (announced when they change) and a ticking [timer] (never announced). */
+    data class Shown(val words: String, val timer: String = "") {
+        override fun toString(): String = if (timer.isEmpty()) words else "$words$timer"
+    }
+
     /** The one line to show at [nowMs], or null when there is nothing to say. */
-    fun line(nowMs: Long): String? {
+    fun line(nowMs: Long): String? = shown(nowMs)?.toString()
+
+    fun shown(nowMs: Long): Shown? {
         val working = doing.isNotEmpty()
-        if (sending && linkUp) return "Sending…"
-        if (working && !linkUp) return "Not connected to your PC. It shows again when it is back."
+        if (sending && linkUp) return Shown("Sending…")
+        if (working && !linkUp) return Shown("Not connected to your PC. It shows again when it is back.")
         if (working) {
+            val waitingForPerson = needsYou || doing.startsWith("Waiting for your")
             val quiet = if (newsAt > 0) (nowMs - newsAt) / 1000 else 0
-            if (quiet * 1000 >= QUIET_AFTER_MS) return "Still working; no news from your PC for $quiet s"
+            if (!waitingForPerson && quiet * 1000 >= QUIET_AFTER_MS) return Shown("Still working; no news from your PC", " for ${workedFor(quiet)}")
             val took = if (turnUnix > 0) nowMs / 1000 - turnUnix else -1
-            return if (took >= 0) "$doing · ${workedFor(took)}" else doing
+            return if (took >= 0) Shown(doing, " · ${workedFor(took)}") else Shown(doing)
         }
-        if (gotItAt > 0 && nowMs - gotItAt < GOT_IT_MS) return "Your PC got it"
+        // After a reply: held until the first step shows or the turn ends (a first step after 2.5 s leaves no blank gap).
+        if (gotItAt > 0 && !turnEnded && nowMs - gotItAt < GOT_IT_HOLD_MS) return Shown("Your PC got it")
+        if (gotItAt > 0 && nowMs - gotItAt < GOT_IT_MS) return Shown("Your PC got it")
         return null
     }
 }
