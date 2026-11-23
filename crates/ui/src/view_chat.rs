@@ -573,10 +573,10 @@ impl App {
                                 actions.push(Action::Select(task.clone()));
                             }
                         }
-                        if has_projects {
-                            if starter_chip(ui, "Start a task", "In one of your projects") {
-                                actions.push(Action::NewTask);
-                            }
+                        if has_projects
+                            && starter_chip(ui, "Start a task", "In one of your projects")
+                        {
+                            actions.push(Action::NewTask);
                         }
                     });
                     ui.add_space(8.0);
