@@ -587,7 +587,7 @@ data class Check(val name: String, val ok: Boolean)
 
 enum class Chip(val label: String) {
     Running("Working"), Idea("Idea"), Done("Done"), Stopped("Stopped"), Waiting("Waiting"),
-    NeedsYou("Needs you"), WaitingForYou("Waiting for you"), Paused("Paused"), Starting("Starting");
+    NeedsYou("Needs you"), WaitingForYou("Waiting for you"), Paused("Paused"), Starting("Starting"), Live("Live");
 
     companion object {
         /** A task's chip from the PC's status words: a stopped or denied task isn't "Done". */
@@ -605,6 +605,7 @@ enum class Chip(val label: String) {
             "Starting" -> Starting
             "Working" -> Running
             "Stopped" -> Stopped
+            "Live" -> Live
             else -> Done
         }
     }

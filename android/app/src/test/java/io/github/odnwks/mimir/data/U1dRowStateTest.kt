@@ -40,6 +40,11 @@ class U1dRowStateTest {
         }
     }
 
+    @Test fun aLiveTaskRowIsLiveNotDone() {
+        assertEquals(Chip.Live, Chip.ofWords("Live"))
+        assertEquals("Live", Chip.Live.label)
+    }
+
     @Test fun pairingCodeKeyboardDoesNotCorrect() {
         assertFalse(PAIR_CODE_KEYBOARD.autoCorrectEnabled ?: true)
         assertEquals(KeyboardCapitalization.None, PAIR_CODE_KEYBOARD.capitalization)
