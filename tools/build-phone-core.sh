@@ -8,6 +8,11 @@ cd "$(dirname "$0")/.."
 target="/tmp/mimir-build/android-target/$(pwd -P | sha256sum | cut -c1-12)"
 # Dev and benchmark builds also get x86_64 (MIMIR_ABIS, set by Gradle), for the PC's emulators.
 abis=${MIMIR_ABIS:-arm64-v8a}
+# A folder for an ABI not wanted now (an older build) must not be packaged.
+for d in android/app/src/main/jniLibs/*/; do
+    [ -d "$d" ] || continue
+    case ",$abis," in *",$(basename "$d"),"*) ;; *) rm -rf "$d" ;; esac
+done
 targets=""; for a in ${abis//,/ }; do targets="$targets -t $a"; done
 build="export ANDROID_NDK_HOME=\$HOME/Android/Sdk/ndk/29.0.14206865 && \
   CARGO_TARGET_DIR=$target \

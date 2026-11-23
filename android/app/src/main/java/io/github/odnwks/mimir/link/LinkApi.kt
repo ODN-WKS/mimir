@@ -13,12 +13,15 @@ interface LinkApi {
     fun connected(handle: Long): Boolean
     fun networkChanged(handle: Long)
     fun endedBecause(handle: Long): String
+    /** False when this phone has no phone core (the link can never open). */
+    val available: Boolean get() = true
 }
 
 /** The real link. With no phone core on this phone it stays closed and says so in one line. */
 object NativeLink : LinkApi {
     private val off = io.github.odnwks.mimir.NativeGuard.LINK_OFF
     private val on get() = Native.available
+    override val available get() = on
     override fun start(key: ByteArray, relays: Boolean) = if (on) Native.start(key, relays) else 0L
     override fun stop(handle: Long) { if (on) Native.stop(handle) }
     override fun addHint(handle: Long, addr: String) { if (on) Native.addHint(handle, addr) }

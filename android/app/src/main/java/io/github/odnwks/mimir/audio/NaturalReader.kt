@@ -112,6 +112,9 @@ class TrackSink : Sink {
     }
 }
 
+/** Failures the reader hands to the phone's voice: a missing library or an ordinary error; out of memory and the like surface. */
+private fun survivable(e: Throwable) = e is Exception || e is LinkageError
+
 /**
  * Reads aloud with the built-in voice: phrase by phrase, each played as soon as it's made while
  * the next one is made, with the PC's pauses between them. The voice stays loaded for a little
@@ -162,6 +165,7 @@ class NaturalReader(
                 engineFor(voice, dir)
                 Log.i(TAG, "${voice.id}: loaded ahead in ${SystemClock.elapsedRealtime() - t0} ms")
             } catch (e: Throwable) {
+                if (!survivable(e)) throw e
                 Log.e(TAG, "${voice.id} wouldn't load ahead; a read will try again", e)
             } finally {
                 runCatching { android.os.Process.setThreadPriority(was) }
@@ -206,7 +210,7 @@ class NaturalReader(
             val t0 = SystemClock.elapsedRealtime()
             var tFiles = t0
             val engine = runCatching { check(prepare()) { "the voice's files aren't ready" }; tFiles = SystemClock.elapsedRealtime(); engineFor(voice, dir) }
-                .onFailure { Log.e(TAG, "${voice.id} wouldn't load; reading with the phone's own voice", it) }.getOrNull()
+                .onFailure { if (!survivable(it)) { Log.e(TAG, "out of memory or worse while loading ${voice.id}", it); throw it }; Log.e(TAG, "${voice.id} wouldn't load; reading with the phone's own voice", it) }.getOrNull()
             if (engine == null) {
                 giveUp.cancel(false)
                 if (session.get() == mine && state.compareAndSet(WAITING, HANDED_OVER)) failed()
@@ -239,6 +243,7 @@ class NaturalReader(
                     }
                     if (session.get() == mine && state.get() != HANDED_OVER) { s.drain(); Log.i(TAG, "${voice.id}: read in ${SystemClock.elapsedRealtime() - asked} ms") }
                 } catch (e: Throwable) {
+                if (!survivable(e)) throw e
                     Log.w(TAG, "playing stopped", e)
                 } finally {
                     s.stop()
@@ -258,6 +263,7 @@ class NaturalReader(
                     queue.put(if (silence > 0) sound.copyOf(sound.size + silence) else sound)
                 }
             } catch (e: Throwable) {
+                if (!survivable(e)) throw e
                 Log.w(TAG, "making speech stopped", e)
             } finally {
                 queue.put(end)

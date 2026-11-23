@@ -223,10 +223,12 @@ dependencies {
     testImplementation("io.github.takahirom.roborazzi:roborazzi-junit-rule:1.77.0")
 }
 
-// Which native parts get built: x86_64 as well when a debug or benchmark build is asked for (the PC's
-// emulators); a release-only run builds ARM only. The abiFilters decide what each APK carries.
-val wantedAbis: String = if (gradle.startParameter.taskNames.any { it.contains("debug", true) || it.contains("benchmark", true) || it.endsWith("androidTest", true) })
-    "arm64-v8a,x86_64" else "arm64-v8a"
+// Which native parts get built: both ABIs (x86_64 is for the PC's emulators) unless every task asked
+// for is a release one, which builds ARM only. The abiFilters decide what each APK carries.
+val wantedAbis: String = gradle.startParameter.taskNames.let { names ->
+    if (names.isNotEmpty() && names.all { it.contains("release", true) && !it.contains("debug", true) && !it.contains("benchmark", true) }) "arm64-v8a"
+    else "arm64-v8a,x86_64"
+}
 
 // The phone core (Rust, over JNI) is built before every app build, so an APK
 // can never carry a core older than the Kotlin that calls it.

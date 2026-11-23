@@ -287,7 +287,9 @@ class LinkStation(
                 continue
             }
             if (!openLink()) {
-                Thread.sleep(3000)
+                // No phone core on this phone: asking again every 3 s can't help; look again only rarely.
+                if (!api.available) { LinkLog.i("link off: no phone core on this phone"); var i = 0; while (running && i++ < 100) Thread.sleep(300) }
+                else Thread.sleep(3000)
                 continue
             }
             if (dropNow || !withLink(false) { api.connected(it) }) {
@@ -726,7 +728,8 @@ class LinkStation(
         publish()
         Thread({
             if (!openLink()) {
-                synchronized(lock) { pairing = PairProgress.Failed("This phone couldn't connect. Check your internet and try again.") }
+                val why = if (api.available) "This phone couldn't connect. Check your internet and try again." else io.github.odnwks.mimir.NativeGuard.LINK_OFF
+                synchronized(lock) { pairing = PairProgress.Failed(why) }
                 publish()
                 return@Thread
             }

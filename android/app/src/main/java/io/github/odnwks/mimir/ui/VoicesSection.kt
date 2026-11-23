@@ -61,7 +61,11 @@ fun rememberVoices(): VoicesUi {
 fun VoiceCards(ui: VoicesUi) {
     val s by ui.state.collectAsStateWithLifecycle()
     // Ingrid's library missing on this phone: said once here; reading uses the phone's own voice.
-    if (!io.github.odnwks.mimir.NativeGuard.available(io.github.odnwks.mimir.NativeGuard.VOICE))
+    // Loaded off the main thread; nothing is said until it's known.
+    val engine by androidx.compose.runtime.produceState(io.github.odnwks.mimir.NativeGuard.known(io.github.odnwks.mimir.NativeGuard.VOICE)) {
+        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { io.github.odnwks.mimir.NativeGuard.available(io.github.odnwks.mimir.NativeGuard.VOICE) }
+    }
+    if (engine == false)
         Text(io.github.odnwks.mimir.NativeGuard.VOICE_OFF, style = Type.Label, color = Palette.TextSoft)
     VoiceCatalog.all.forEach { v ->
         val playing = s.sampling == v.id

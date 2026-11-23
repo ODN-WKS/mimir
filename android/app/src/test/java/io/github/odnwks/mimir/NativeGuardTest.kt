@@ -32,10 +32,26 @@ class NativeGuardTest {
         NativeGuard.loader = { throw UnsatisfiedLinkError("dlopen failed: library \"lib$it.so\" not found") }
     }
 
-    @After fun restore() { NativeGuard.loader = original; NativeGuard.reset() }
+    @After fun restore() { NativeGuard.loader = original; NativeGuard.now = { System.nanoTime() / 1_000_000 }; NativeGuard.reset() }
 
     @Test fun aMissingLibraryIsReportedNotThrown() {
         assertFalse(NativeGuard.available("anything"))
+    }
+
+    @Test fun aFailureIsRetriedAfterTheBackOff() {
+        var t = 0L; var calls = 0
+        NativeGuard.now = { t }
+        NativeGuard.loader = { calls++; if (calls == 1) throw UnsatisfiedLinkError("busy") }
+        assertFalse(NativeGuard.available("x")); assertFalse(NativeGuard.available("x")); assertEquals(1, calls)
+        t = 31_000
+        assertTrue(NativeGuard.available("x")); assertEquals(2, calls)
+    }
+
+    @Test fun outOfMemoryInTheVoiceIsNotHandedToThePhonesVoice() {
+        val r = NaturalReader({ _, _ -> throw OutOfMemoryError("x") }, { error("unused") }, soundLimitMs = 60_000)
+        val handed = CountDownLatch(1)
+        r.speak("Hello.", VoiceCatalog.ingrid, tmp.root, 1f, {}, { handed.countDown() })
+        assertFalse("not quietly swallowed", handed.await(1, TimeUnit.SECONDS))
     }
 
     @Test fun voiceThatCannotLoadHandsBackToThePhonesVoice() {
@@ -66,7 +82,8 @@ class NativeGuardTest {
 
     @Test fun theModelRunnerIsOffWhenItsLibraryIsMissing() {
         val cpu = tmp.newFile("cpuinfo").apply { writeText("Features: asimddp i8mm") }
-        assertFalse(Llm.usable(cpu))
+        assertTrue("optimistic until tried", Llm.usable(cpu))
         assertEquals(0L, Llm.open("m", 1, 1, 0f))
+        assertFalse(Llm.usable(cpu))
     }
 }

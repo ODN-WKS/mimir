@@ -12,7 +12,7 @@ fun interface PieceSink {
  * model, and only on phones whose CPU has the instructions it was built for.
  */
 object Llm {
-    private val loaded by lazy { io.github.odnwks.mimir.NativeGuard.available(io.github.odnwks.mimir.NativeGuard.STANDALONE) }
+    private fun loaded() = io.github.odnwks.mimir.NativeGuard.available(io.github.odnwks.mimir.NativeGuard.STANDALONE)
 
     /** Whether this phone's CPU can run it (dot product and int8 matrix instructions). */
     fun supported(cpuinfo: File = File("/proc/cpuinfo")): Boolean {
@@ -20,11 +20,16 @@ object Llm {
         return text.contains("asimddp") && text.contains("i8mm")
     }
 
-    /** [supported], and the runner's library is on this phone (an x86_64 build has none). */
-    fun usable(cpuinfo: File = File("/proc/cpuinfo")): Boolean = supported(cpuinfo) && loaded
+    /**
+     * [supported], and the runner's library hasn't been found missing. Loads nothing (it runs at
+     * start-up on the main thread): the library loads at the first model open, and a missing one
+     * shows there as a model that won't open.
+     */
+    fun usable(cpuinfo: File = File("/proc/cpuinfo")): Boolean =
+        supported(cpuinfo) && io.github.odnwks.mimir.NativeGuard.known(io.github.odnwks.mimir.NativeGuard.STANDALONE) != false
 
     fun open(path: String, context: Int, threads: Int, temperature: Float): Long {
-        if (!loaded) return 0L
+        if (!loaded()) return 0L
         return load(path.toByteArray(), context, threads, temperature)
     }
 

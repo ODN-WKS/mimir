@@ -6,7 +6,7 @@ package io.github.odnwks.mimir.link
  */
 object Native {
     /** False when this phone has no build of the core: the link and Tor then stay off (see [NativeLink]). */
-    val available: Boolean = io.github.odnwks.mimir.NativeGuard.available(io.github.odnwks.mimir.NativeGuard.PHONE_CORE)
+    val available: Boolean get() = io.github.odnwks.mimir.NativeGuard.available(io.github.odnwks.mimir.NativeGuard.PHONE_CORE)
 
     @JvmStatic external fun generateKey(): ByteArray
     /** A handle, or 0 if the network side can't open. */
