@@ -28,17 +28,8 @@ fn outside_session(home: &TestHome) -> PathBuf {
         ),
     ];
     std::fs::write(&file, lines.join("\n") + "\n").unwrap();
-    let store = mimir_core::store::Store::new(mimir_core::store::Store::default_dir()).unwrap();
-    let mut t = mimir_core::task::Task::new(
-        "1700000000-1-1".into(),
-        "Fix the garden gate latch".into(),
-        project,
-        1_700_000_000,
-    );
-    t.session_id = Some(SESSION.into());
-    t.status = mimir_core::task::Status::Done;
-    t.add_note(mimir_core::sessions::OPENED_NOTE);
-    store.save(&t).unwrap();
+    // Not a task yet: it is listed under From elsewhere, and opening it
+    // makes the task (the way every session from an earlier time opens).
     file
 }
 
@@ -66,11 +57,35 @@ fn open_row(h: &mut egui_kittest::Harness<'static, station_ui::App>, title: &str
 #[test]
 fn a_followed_session_can_be_stopped_here_and_says_one_thing() {
     let Some(home) = TestHome::new() else { return };
-    outside_session(&home);
+    let file = outside_session(&home);
     let mut h = home.open();
+    assert!(
+        wait_for(&mut h, |h| shows(h, "From elsewhere")),
+        "{}",
+        screen_text(&h)
+    );
     open_row(&mut h, "Fix the garden gate latch");
     assert!(
         wait_for(&mut h, |h| shows(h, "Still running in")),
+        "{}",
+        screen_text(&h)
+    );
+    // The session goes on: a new line in its transcript, followed here.
+    {
+        use std::io::Write;
+        let at = iso(0);
+        let mut f = std::fs::OpenOptions::new()
+            .append(true)
+            .open(&file)
+            .unwrap();
+        writeln!(
+            f,
+            r#"{{"type":"assistant","message":{{"role":"assistant","content":[{{"type":"text","text":"Sanding the latch."}}],"stop_reason":"end_turn"}},"uuid":"a2","timestamp":"{at}"}}"#
+        )
+        .unwrap();
+    }
+    assert!(
+        wait_for(&mut h, |h| shows(h, "Sanding the latch.")),
         "{}",
         screen_text(&h)
     );
@@ -92,8 +107,10 @@ fn a_followed_session_can_be_stopped_here_and_says_one_thing() {
     ] {
         assert!(!shows(&h, gone), "{gone}\n{}", screen_text(&h));
     }
-    // P4: Online is not set up, and Mimir does not answer this session.
-    assert!(!shows(&h, "goes to Anthropic"), "{}", screen_text(&h));
+    // P4: Online is not set up, and Mimir does not answer this session: the
+    // pill's menu says so, not "Answers go to Anthropic".
+    click(&mut h, station_ui::labels::PILL_MENU);
+    assert!(!shows(&h, "Answers go to Anthropic"), "{}", screen_text(&h));
     close(h);
 }
 
@@ -126,6 +143,12 @@ fn a_task_that_stopped_by_itself_has_the_continue_button_its_line_names() {
 #[test]
 fn new_task_opens_a_task_page_not_a_chat_page() {
     let Some(home) = TestHome::new() else { return };
+    // The last thing done was a chat: Chats is the project picked.
+    let chats = home.root.join(".local/share/mimir/chats");
+    home.write_settings(serde_json::json!({
+        "projects": [home.project.display().to_string()],
+        "last_project": chats.display().to_string(),
+    }));
     let mut h = home.open();
     settle(&mut h);
     click(&mut h, "+  New task");

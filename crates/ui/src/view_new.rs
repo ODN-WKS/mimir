@@ -120,7 +120,13 @@ impl App {
         }
         let chat = self.new_project.as_deref()
             == Some(crate::places::chats_dir().display().to_string().as_str());
-        ui.heading(if chat { "New chat" } else { "New task" });
+        // Titled for the button pressed: "+ New task" is a task page even when
+        // the last thing done was a chat (then Chats is only the project picked).
+        ui.heading(if chat && self.new_project_by_hand {
+            "New chat"
+        } else {
+            "New task"
+        });
         ui.add_space(8.0);
         if self
             .new_project
