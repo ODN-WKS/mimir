@@ -132,17 +132,23 @@ pub struct Prepared {
     items: Vec<(String, Vec<u8>)>,
     /// The cleaned pictures to give Claude Code.
     pictures: Vec<Picture>,
+    /// The line to show under each file: (file name, what was done).
+    notes: Vec<(String, String)>,
 }
 
 impl Prepared {
+    /// The dim line for each file ("Hidden details removed.").
+    pub fn notes(&self) -> &[(String, String)] {
+        &self.notes
+    }
     pub fn is_empty(&self) -> bool {
         self.items.is_empty()
     }
 }
 
 /// Checks counts and sizes, and cleans every picture (also one sent as a
-/// file) so no location or camera details are kept. A picture that can't be
-/// cleaned is refused in one plain line.
+/// file) and every file so no location, camera or author details are kept.
+/// Anything that can't be cleaned is refused in one plain line.
 pub fn prepare(pictures: &[Picture], files: &[SentFile]) -> Result<Prepared, String> {
     if pictures.len() > MAX_PICTURES {
         return Err("Four pictures at most in one message.".into());
@@ -190,7 +196,11 @@ pub fn prepare(pictures: &[Picture], files: &[SentFile]) -> Result<Prepared, Str
             out.items.push((format!("{}.jpg", safe_name(stem)), kept));
             out.pictures.push(clean);
         } else {
-            out.items.push((name, bytes));
+            // Every other file loses its author, dates and comments first;
+            // one that can't be cleaned is not kept.
+            let w = crate::wipe::wipe(&name, &bytes)?;
+            out.notes.push((name.clone(), w.note()));
+            out.items.push((name, w.bytes));
         }
     }
     Ok(out)
@@ -293,7 +303,7 @@ mod tests {
         let file = SentFile {
             name: "../Lease.pdf".into(),
             media_type: "application/pdf".into(),
-            base64: b64.encode(b"%PDF-1"),
+            base64: b64.encode(crate::wipe::tests::sample_pdf()),
         };
         let p = prepare(&[pic], &[file]).unwrap();
         let k = write(&dir_for(&d, "t-1", false), &p).unwrap();
@@ -309,6 +319,29 @@ mod tests {
         remove(&d, "t-1");
         assert!(!dir_for(&d, "t-1", false).exists());
         let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn task_files_are_wiped_and_one_that_cant_be_is_refused() {
+        let b64 = base64::engine::general_purpose::STANDARD;
+        let f = |name: &str, b: &[u8]| SentFile {
+            name: name.into(),
+            media_type: String::new(),
+            base64: b64.encode(b),
+        };
+        let p = prepare(&[], &[f("Lease.pdf", &crate::wipe::tests::sample_pdf())]).unwrap();
+        assert_eq!(
+            p.notes(),
+            [(
+                "Lease.pdf".to_string(),
+                "Hidden details removed.".to_string()
+            )]
+        );
+        assert!(!String::from_utf8_lossy(&p.items[0].1).contains("Alice Example"));
+        let e = prepare(&[], &[f("Bad.pdf", b"%PDF-1.4 broken")])
+            .err()
+            .unwrap();
+        assert_eq!(e, crate::wipe::FAILED);
     }
 
     #[test]

@@ -1484,7 +1484,7 @@ fn d1_files_are_read_on_the_pc_and_are_never_another_persons() {
         files_read,
         vec![mimir_core::proto::FileNote {
             name: "Plan.docx".into(),
-            note: "Read all of it".into()
+            note: "Read all of it. Hidden details removed.".into()
         }]
     );
     // Ana asks in a chat with the same ids and the owner's message in her turns.

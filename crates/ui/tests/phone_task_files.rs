@@ -19,6 +19,33 @@ fn tiny() -> image::RgbImage {
 }
 
 /// A real JPEG with a pretend location in an APP1 block.
+/// A small real PDF (files that aren't real are refused now).
+fn tiny_pdf() -> Vec<u8> {
+    let objs = [
+        "<</Type/Catalog/Pages 2 0 R>>",
+        "<</Type/Pages/Kids[]/Count 0>>",
+    ];
+    let mut out = b"%PDF-1.4\n".to_vec();
+    let mut at = vec![];
+    for (i, o) in objs.iter().enumerate() {
+        at.push(out.len());
+        out.extend(format!("{} 0 obj\n{o}\nendobj\n", i + 1).bytes());
+    }
+    let xref = out.len();
+    out.extend(format!("xref\n0 {}\n0000000000 65535 f \n", objs.len() + 1).bytes());
+    for a in at {
+        out.extend(format!("{a:010} 00000 n \n").bytes());
+    }
+    out.extend(
+        format!(
+            "trailer\n<</Size {} /Root 1 0 R>>\nstartxref\n{xref}\n%%EOF\n",
+            objs.len() + 1
+        )
+        .bytes(),
+    );
+    out
+}
+
 fn photo() -> Vec<u8> {
     let mut out = Vec::new();
     tiny()
@@ -111,7 +138,7 @@ fn a_task_message_with_a_picture_and_a_file_reaches_claude_and_goes_with_the_tas
             files: vec![SentFile {
                 name: "Lease.pdf".into(),
                 media_type: "application/pdf".into(),
-                base64: b64(b"%PDF-1.4 pretend"),
+                base64: b64(&tiny_pdf()),
             }],
             mode: Mode::Ask,
             model: None,

@@ -60,6 +60,7 @@ pub mod truth;
 pub mod update;
 pub mod usage;
 pub mod voice;
+pub mod wipe;
 pub mod yolo;
 
 pub use mimir_proto as proto;

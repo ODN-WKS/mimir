@@ -428,6 +428,29 @@ struct Service {
     answer_person: HashMap<String, (String, Option<Instant>)>,
 }
 
+/// A chat message's files (the first few), cleaned of hidden details before
+/// anything reads or keeps them. A file that can't be cleaned is not read:
+/// its refusal goes into `notes`. Returns the cleaned files and the line for each.
+pub(crate) fn wiped_chat_files(
+    files: &[mimir_proto::SentFile],
+    notes: &mut Vec<mimir_proto::FileNote>,
+) -> (Vec<mimir_proto::SentFile>, Vec<String>) {
+    let (mut sent, mut lines) = (vec![], vec![]);
+    for f in files.iter().take(crate::readfile::MAX_FILES) {
+        match crate::wipe::wipe_sent(f) {
+            Ok((clean, line)) => {
+                sent.push(clean);
+                lines.push(line);
+            }
+            Err(why) => notes.push(mimir_proto::FileNote {
+                name: f.name.clone(),
+                note: why,
+            }),
+        }
+    }
+    (sent, lines)
+}
+
 impl Service {
     fn new(
         runner: Runner,
@@ -4091,8 +4114,7 @@ impl Service {
             }
         }
         if let Some(t) = turns.iter_mut().find(|t| t.id == a.turn_id) {
-            let sent: Vec<mimir_proto::SentFile> =
-                t.files.iter().take(rf::MAX_FILES).cloned().collect();
+            let (sent, lines) = wiped_chat_files(&t.files, &mut notes);
             if !sent.is_empty() {
                 let read: Vec<rf::Extracted> = sent.iter().map(|f| rf::extract(f, sees)).collect();
                 let fitted = rf::fit(&read, if paid { rf::PAID_CHARS } else { rf::FREE_CHARS });
@@ -4110,12 +4132,16 @@ impl Service {
                 let _ = self
                     .chats()
                     .put_files(&a.person, &a.chat_id, &a.turn_id, &kept);
-                for f in &fitted {
+                for (k, f) in fitted.iter().enumerate() {
                     if !t.text.trim().is_empty() {
                         t.text.push_str("\n\n");
                     }
                     t.text.push_str(&f.for_model());
-                    notes.push(f.file_note());
+                    let mut note = f.file_note();
+                    if let Some(line) = lines.get(k).filter(|_| fitted.len() == lines.len()) {
+                        note.note = format!("{}. {line}", note.note.trim_end_matches('.'));
+                    }
+                    notes.push(note);
                 }
             }
             for f in t.files.iter().skip(rf::MAX_FILES) {
