@@ -201,10 +201,25 @@ pub fn ai_title(path: &Path) -> Option<String> {
         }
     }
     if let Ok(mut g) = SEEN.lock() {
-        g.get_or_insert_with(HashMap::new)
-            .insert(path.to_path_buf(), (from, title.clone()));
+        remember(
+            g.get_or_insert_with(HashMap::new),
+            path.to_path_buf(),
+            (from, title.clone()),
+        );
     }
     title
+}
+
+/// Most entries a remembered-per-file cache keeps; past that it starts over
+/// (a long-running service must not grow without end).
+const CACHE_MAX: usize = 4000;
+
+/// Adds to a per-file cache, starting it over when it is full.
+fn remember<V>(map: &mut std::collections::HashMap<PathBuf, V>, key: PathBuf, value: V) {
+    if map.len() >= CACHE_MAX && !map.contains_key(&key) {
+        map.clear();
+    }
+    map.insert(key, value);
 }
 
 /// A session from any project on this PC, for the "On this PC" list.
@@ -237,8 +252,11 @@ fn head(path: &Path) -> Option<(PathBuf, String)> {
     }
     let found = read_head(path)?;
     if let Ok(mut g) = FOUND.lock() {
-        g.get_or_insert_with(HashMap::new)
-            .insert(path.to_path_buf(), found.clone());
+        remember(
+            g.get_or_insert_with(HashMap::new),
+            path.to_path_buf(),
+            found.clone(),
+        );
     }
     Some(found)
 }
@@ -273,17 +291,27 @@ pub fn recent(limit: usize) -> Vec<OtherSession> {
 }
 
 fn recent_in(root: &Path, limit: usize) -> Vec<OtherSession> {
-    recent_keeping(root, limit, &Default::default())
+    recent_keeping(root, limit, &Default::default(), &Default::default())
 }
 
 /// The newest `limit` sessions, and also every one whose id is in `keep`
-/// (the running ones), newest first.
+/// (the running ones), newest first. Ids in `skip` are left out before the
+/// limit is counted.
 pub(crate) fn recent_keeping(
     root: &Path,
     limit: usize,
     keep: &std::collections::HashSet<String>,
+    skip: &std::collections::HashSet<String>,
 ) -> Vec<OtherSession> {
-    let mut files: Vec<(i64, PathBuf)> = vec![];
+    use std::collections::HashMap;
+    use std::sync::Mutex;
+    use std::time::{Duration, Instant};
+    /// Files left out (no folder or first message, a temporary folder, a
+    /// folder that is gone): by size and time, and when they were decided.
+    type Rejected = HashMap<PathBuf, (u64, i64, Instant)>;
+    static REJECTED: Mutex<Option<Rejected>> = Mutex::new(None);
+    const REJECT_FOR: Duration = Duration::from_secs(60);
+    let mut files: Vec<(i64, u64, PathBuf)> = vec![];
     for dir in std::fs::read_dir(root).into_iter().flatten().flatten() {
         for e in std::fs::read_dir(dir.path())
             .into_iter()
@@ -294,6 +322,11 @@ pub(crate) fn recent_keeping(
             if path.extension().and_then(|x| x.to_str()) != Some("jsonl") {
                 continue;
             }
+            // Folders under /tmp are named "-tmp-…": left out unread.
+            if dir.file_name().to_string_lossy().starts_with("-tmp-") {
+                continue;
+            }
+            let size = e.metadata().map(|m| m.len()).unwrap_or(0);
             let modified = e
                 .metadata()
                 .and_then(|m| m.modified())
@@ -301,12 +334,12 @@ pub(crate) fn recent_keeping(
                 .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
                 .map(|d| d.as_secs() as i64)
                 .unwrap_or(0);
-            files.push((modified, path));
+            files.push((modified, size, path));
         }
     }
-    files.sort_by_key(|(m, _)| std::cmp::Reverse(*m));
+    files.sort_by_key(|(m, _, _)| std::cmp::Reverse(*m));
     let mut out: Vec<OtherSession> = vec![];
-    for (modified_unix, path) in files {
+    for (modified_unix, size, path) in files {
         let Some(id) = path
             .file_stem()
             .and_then(|s| s.to_str())
@@ -314,15 +347,29 @@ pub(crate) fn recent_keeping(
         else {
             continue;
         };
-        if out.len() >= limit && !keep.contains(&id) {
+        if skip.contains(&id) || (out.len() >= limit && !keep.contains(&id)) {
             continue;
         }
-        let Some((project, first)) = head(&path) else {
+        if REJECTED.lock().ok().is_some_and(|g| {
+            g.as_ref()
+                .and_then(|m| m.get(&path))
+                .is_some_and(|(s, m, at)| {
+                    *s == size && *m == modified_unix && at.elapsed() < REJECT_FOR
+                })
+        }) {
+            continue;
+        }
+        let found = head(&path).filter(|(p, _)| !p.starts_with("/tmp") && p.is_dir());
+        let Some((project, first)) = found else {
+            if let Ok(mut g) = REJECTED.lock() {
+                remember(
+                    g.get_or_insert_with(HashMap::new),
+                    path,
+                    (size, modified_unix, Instant::now()),
+                );
+            }
             continue;
         };
-        if project.starts_with("/tmp") || !project.is_dir() {
-            continue;
-        }
         let title = ai_title(&path);
         out.push(OtherSession {
             project,
@@ -524,8 +571,11 @@ pub fn last_talk(path: &Path) -> Option<i64> {
                 .and_then(iso_unix)
         });
     if let Ok(mut g) = SEEN.lock() {
-        g.get_or_insert_with(HashMap::new)
-            .insert(path.to_path_buf(), (size, found));
+        remember(
+            g.get_or_insert_with(HashMap::new),
+            path.to_path_buf(),
+            (size, found),
+        );
     }
     found
 }

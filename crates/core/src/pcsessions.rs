@@ -35,24 +35,23 @@ pub fn list(
     tasks: &[TaskRef],
     now: i64,
 ) -> Vec<PcSession> {
-    let secret: HashSet<&str> = tasks
-        .iter()
-        .filter(|t| t.whisper)
-        .filter_map(|t| t.session.as_deref())
-        .collect();
+    let mut skip: HashSet<String> = hidden.clone();
+    skip.extend(
+        tasks
+            .iter()
+            .filter(|t| t.whisper)
+            .filter_map(|t| t.session.clone()),
+    );
     let mut keep = running.clone();
     keep.extend(
         tasks
             .iter()
-            .filter(|t| t.busy || t.elsewhere)
+            .filter(|t| t.busy)
             .filter_map(|t| t.session.clone()),
     );
     let mut out: Vec<PcSession> = vec![];
-    for o in sessions::recent_keeping(&home.join("projects"), LISTED, &keep) {
+    for o in sessions::recent_keeping(&home.join("projects"), LISTED, &keep, &skip) {
         let id = o.session.id.clone();
-        if hidden.contains(&id) || secret.contains(id.as_str()) {
-            continue;
-        }
         let task = tasks.iter().find(|t| t.session.as_deref() == Some(&id));
         let title = match task {
             Some(t) if !t.title.trim().is_empty() => t.title.clone(),
@@ -62,15 +61,12 @@ pub fn list(
                 .unwrap_or_else(|| crate::runner::title_from(&o.session.first)),
         };
         let moved = o.session.modified_unix;
-        let state = if task.is_some_and(|t| t.busy || t.elsewhere)
-            || now - moved < crate::task::LIVE_SECS
-        {
-            PcSessionState::Working
-        } else if running.contains(&id) {
-            PcSessionState::Idle
-        } else {
-            PcSessionState::Ended
-        };
+        let state = state_of(
+            task.is_some_and(|t| t.busy),
+            running.contains(&id),
+            moved,
+            now,
+        );
         out.push(PcSession {
             id,
             title: short(&title),
@@ -82,6 +78,23 @@ pub fn list(
         });
     }
     out
+}
+
+/// A session written to this recently, with a Claude process on it, is at
+/// work.
+pub const WRITE_SECS: i64 = 120;
+
+/// One rule for every place: working = Mímir's own Claude is on it, or a
+/// Claude process has it and it was written to just now; idle = a process
+/// has it and it is quiet; ended = nothing has it.
+pub fn state_of(busy: bool, process: bool, modified: i64, now: i64) -> PcSessionState {
+    if busy || (process && now - modified < WRITE_SECS) {
+        PcSessionState::Working
+    } else if process {
+        PcSessionState::Idle
+    } else {
+        PcSessionState::Ended
+    }
 }
 
 /// What opening a session did.
@@ -96,9 +109,11 @@ pub struct Opened {
 /// What the task of a session working elsewhere says.
 pub const FOLLOW_NOTE: &str = "Running in another app; you can follow it here.";
 
-/// Opens a session as a task: one that is idle or ended continues (as the
-/// PC window does), one working elsewhere is followed live. A session that
-/// already is a task gives that task. `None` for a Whisper's session.
+/// Opens a session as a task: one that is idle or ended becomes a normal
+/// task that continues it (as the PC window does), one working elsewhere is
+/// followed live. A session that already is a task gives that task, and
+/// follows if the session is working elsewhere (so the phone never starts a
+/// second Claude on it).
 pub fn open(
     runner: &mut crate::runner::Runner,
     home: &Path,
@@ -107,6 +122,13 @@ pub fn open(
     now: i64,
 ) -> Result<Opened, String> {
     let gone = || "That session could not be opened. It may have been removed.".to_string();
+    let keep: HashSet<String> = [session.to_string()].into();
+    let found = sessions::recent_keeping(&home.join("projects"), 0, &keep, &HashSet::new())
+        .into_iter()
+        .find(|o| o.session.id == session);
+    let working_elsewhere = |modified: i64| {
+        state_of(false, running.contains(session), modified, now) == PcSessionState::Working
+    };
     if let Some(l) = runner
         .tasks
         .iter()
@@ -115,29 +137,26 @@ pub fn open(
         if l.task.incognito {
             return Err(gone());
         }
-        return Ok(Opened {
-            task: l.task.id.clone(),
-            follow: false,
-        });
+        let id = l.task.id.clone();
+        // Mímir's own Claude on it is no "elsewhere".
+        let own = l.running() || l.busy();
+        let modified = found.as_ref().map(|o| o.session.modified_unix).unwrap_or(0);
+        let follow = !own && working_elsewhere(modified);
+        if follow && runner.set_elsewhere(&id, true) {
+            runner.note(&id, FOLLOW_NOTE);
+        }
+        return Ok(Opened { task: id, follow });
     }
-    let keep: HashSet<String> = [session.to_string()].into();
-    let found = sessions::recent_keeping(&home.join("projects"), 0, &keep)
-        .into_iter()
-        .find(|o| o.session.id == session)
-        .ok_or_else(gone)?;
-    let working =
-        running.contains(session) || now - found.session.modified_unix < crate::task::LIVE_SECS;
+    let found = found.ok_or_else(gone)?;
+    let follow = working_elsewhere(found.session.modified_unix);
     let id = runner
         .open_past(&found.project, &found.session)
         .map_err(|_| gone())?;
-    if working {
+    if follow {
         runner.set_elsewhere(&id, true);
         runner.note(&id, FOLLOW_NOTE);
     }
-    Ok(Opened {
-        task: id,
-        follow: working,
-    })
+    Ok(Opened { task: id, follow })
 }
 
 /// A title short enough for a phone row.
@@ -229,7 +248,7 @@ mod tests {
         );
         session(&h, "b", "Add a pie recipe", None, 3600);
         session(&h, "c", "Rename the folders", Some("Rename folders"), 10);
-        let l = list(&h.root, &set(&["b"]), &set(&[]), &[], now());
+        let l = list(&h.root, &set(&["b", "c"]), &set(&[]), &[], now());
         let ids: Vec<&str> = l.iter().map(|s| s.id.as_str()).collect();
         assert_eq!(ids, ["c", "b", "a"]);
         assert_eq!(l[0].title, "Rename folders");
@@ -312,6 +331,99 @@ mod tests {
         let l = list(&h.root, &set(&[]), &set(&["b"]), &tasks, now());
         let ids: Vec<&str> = l.iter().map(|s| s.id.as_str()).collect();
         assert_eq!(ids, ["c"]);
+    }
+
+    #[test]
+    fn working_needs_a_process_and_a_fresh_write() {
+        let h = home("rule");
+        session(&h, "fresh", "Ask one", None, 10);
+        session(&h, "quiet", "Ask two", None, 600);
+        let l = list(&h.root, &set(&["quiet"]), &set(&[]), &[], now());
+        let st = |id: &str| l.iter().find(|s| s.id == id).unwrap().state;
+        // Written just now, but no process on it: not at work.
+        assert_eq!(st("fresh"), PcSessionState::Ended);
+        // A process, quiet for ten minutes: open but idle.
+        assert_eq!(st("quiet"), PcSessionState::Idle);
+        let l = list(&h.root, &set(&["fresh"]), &set(&[]), &[], now());
+        assert_eq!(
+            l.iter().find(|s| s.id == "fresh").unwrap().state,
+            PcSessionState::Working
+        );
+        // A task that says "elsewhere" is no reason to call it working.
+        let t = TaskRef {
+            task: "t".into(),
+            session: Some("quiet".into()),
+            title: "x".into(),
+            busy: false,
+            elsewhere: true,
+            whisper: false,
+        };
+        let l = list(&h.root, &set(&[]), &set(&[]), &[t], now());
+        assert_eq!(
+            l.iter().find(|s| s.id == "quiet").unwrap().state,
+            PcSessionState::Ended
+        );
+    }
+
+    #[test]
+    fn the_limit_counts_after_hidden_and_whisper_are_left_out() {
+        let h = home("skip");
+        for i in 0..32 {
+            session(
+                &h,
+                &format!("s{i:02}"),
+                &format!("Ask {i}"),
+                None,
+                1000 + i * 10,
+            );
+        }
+        let hidden = set(&["s00", "s01"]);
+        let l = list(&h.root, &set(&[]), &hidden, &[], now());
+        assert_eq!(l.len(), 30);
+        assert_eq!(l[0].id, "s02");
+    }
+
+    #[test]
+    fn an_idle_session_opens_as_a_normal_task_and_a_task_working_elsewhere_follows() {
+        let h = home("idle");
+        session(&h, "i", "Sort the notes", None, 30);
+        let mut r = runner(&h);
+        // A process has it but it is quiet enough? No: written 30 s ago is
+        // fresh, so use an old one for idle.
+        session(&h, "q", "Old notes", None, 900);
+        let o = open(&mut r, &h.root, "q", &set(&["q"]), now()).unwrap();
+        assert!(!o.follow);
+        let t = &r.tasks.iter().find(|l| l.task.id == o.task).unwrap().task;
+        assert!(!t.live_elsewhere);
+        // The same session is later written to by another app.
+        session(&h, "q", "Old notes", None, 5);
+        let again = open(&mut r, &h.root, "q", &set(&["q"]), now()).unwrap();
+        assert_eq!(again.task, o.task);
+        assert!(again.follow);
+        let t = &r.tasks.iter().find(|l| l.task.id == o.task).unwrap().task;
+        assert!(t.live_elsewhere);
+        // No second note when asked again.
+        let notes = |t: &crate::task::Task| format!("{:?}", t.entries).matches(FOLLOW_NOTE).count();
+        let _ = open(&mut r, &h.root, "q", &set(&["q"]), now()).unwrap();
+        let t = &r.tasks.iter().find(|l| l.task.id == o.task).unwrap().task;
+        assert_eq!(notes(t), 1);
+    }
+
+    #[test]
+    fn following_from_the_current_size_keeps_the_note() {
+        let h = home("seed");
+        session(&h, "w", "Sort the photos", None, 5);
+        // The runner finds transcripts through the Claude folder (each test
+        // runs in its own process).
+        unsafe { std::env::set_var("CLAUDE_CONFIG_DIR", &h.root) };
+        let mut r = runner(&h);
+        let o = open(&mut r, &h.root, "w", &set(&["w"]), now()).unwrap();
+        let size = std::fs::metadata(r.transcript(&o.task).unwrap())
+            .unwrap()
+            .len();
+        r.follow_session(&o.task, size).unwrap();
+        let t = &r.tasks.iter().find(|l| l.task.id == o.task).unwrap().task;
+        assert!(format!("{:?}", t.entries).contains(FOLLOW_NOTE));
     }
 
     fn runner(h: &Home) -> crate::runner::Runner {

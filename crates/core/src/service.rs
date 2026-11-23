@@ -3815,10 +3815,11 @@ impl Service {
         }
         // Nobody to tell and nobody asking: not looked at.
         if !force
-            && !self
-                .clients
-                .values()
-                .any(|c| c.ready && c.features.iter().any(|f| f == "pc_sessions"))
+            && !self.clients.values().any(|c| {
+                c.ready
+                    && c.person == crate::people::OWNER
+                    && c.features.iter().any(|f| f == "pc_sessions")
+            })
         {
             return;
         }
@@ -3852,6 +3853,14 @@ impl Service {
         )?;
         if opened.follow {
             self.outside_followed.insert(opened.task.clone());
+            // Read on from here, so the note and what the task shows stay.
+            let size = self
+                .runner
+                .transcript(&opened.task)
+                .and_then(|p| std::fs::metadata(p).ok())
+                .map(|m| m.len())
+                .unwrap_or(0);
+            self.outside_seen.insert(opened.task.clone(), size);
         }
         self.touched.insert(opened.task.clone());
         self.refresh_pc_sessions(true);
