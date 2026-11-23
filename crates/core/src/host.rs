@@ -825,6 +825,49 @@ mod tests {
         assert!(a[i + 2].contains("exec"));
     }
 
+    /// The window's PATH and D-Bus address are the sandbox's: a task that runs
+    /// on the PC through the portal never gets them (nor the sandbox's XDG
+    /// folders); the PC's own stand. Desktop variables that are the same on
+    /// both sides still go.
+    #[test]
+    fn a_flatpak_task_never_gets_the_sandbox_environment() {
+        let job = Job {
+            kind: "task".into(),
+            task_id: "t".into(),
+            program: "/p/claude".into(),
+            cwd: "/p".into(),
+            env: vec![
+                ("PATH".into(), "/app/bin:/usr/bin".into()),
+                (
+                    "DBUS_SESSION_BUS_ADDRESS".into(),
+                    "unix:path=/run/flatpak/bus".into(),
+                ),
+                ("XDG_RUNTIME_DIR".into(), "/run/user/1000".into()),
+                ("XDG_DATA_HOME".into(), "/home/p/.var/app/x/data".into()),
+                ("FLATPAK_ID".into(), "x".into()),
+                ("WAYLAND_DISPLAY".into(), "wayland-0".into()),
+                ("MIMIR_TASK".into(), "1".into()),
+            ],
+            ..Default::default()
+        };
+        let a: Vec<String> = job_command(&job, true)
+            .get_args()
+            .map(|s| s.to_string_lossy().to_string())
+            .collect();
+        for bad in ["--env=PATH", "--env=DBUS", "--env=XDG_", "--env=FLATPAK_"] {
+            assert!(!a.iter().any(|w| w.starts_with(bad)), "{bad}: {a:?}");
+        }
+        assert!(
+            !a.iter()
+                .any(|w| w.contains("/app/bin") || w.contains("/run/flatpak"))
+        );
+        assert!(a.contains(&"--env=WAYLAND_DISPLAY=wayland-0".to_string()));
+        assert!(a.contains(&"--env=MIMIR_TASK=1".to_string()));
+        // Outside a Flatpak nothing is dropped.
+        let d = job_command(&job, false);
+        assert!(d.get_envs().any(|(k, _)| k == "PATH"));
+    }
+
     /// Through flatpak-spawn a signal death arrives as 128 + the signal.
     #[test]
     fn a_signal_death_through_the_portal_reads_as_a_signal() {

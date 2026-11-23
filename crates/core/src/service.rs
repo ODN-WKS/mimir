@@ -704,7 +704,7 @@ impl Service {
                         ("models", models.into()),
                         (
                             "engine",
-                            crate::engine::words(crate::engine::load().as_ref()).into(),
+                            crate::engine::words_shown(crate::engine::load().as_ref()).into(),
                         ),
                         ("settings", snapshot),
                         ("phones", phones.into()),
@@ -5337,7 +5337,7 @@ impl Service {
             _ => {
                 let e = crate::engine::load();
                 let has = e.as_ref().is_some_and(|e| e.chat.is_some());
-                let w = crate::engine::words(e.as_ref());
+                let w = crate::engine::words_shown(e.as_ref());
                 self.engine_words = Some((Instant::now(), w.clone(), has));
                 (w, has)
             }
@@ -6226,7 +6226,7 @@ fn wake_for_limit(power: settings::Power, ask_before_free: bool, claude_task_hit
 /// owner gets the setup hint, anyone else is told what is missing.
 fn no_model_words(owner: bool, e: Option<&crate::engine::EngineFile>) -> String {
     if owner {
-        crate::engine::words(e)
+        crate::engine::words_shown(e)
     } else {
         crate::people::NO_FREE_MODEL.to_string()
     }

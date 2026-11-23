@@ -621,6 +621,28 @@ pub fn words(e: Option<&EngineFile>) -> String {
     }
 }
 
+/// [`words`] as the window and the truth show it: with no model that fits,
+/// it says what to do (the old "run on your phone" line named a phone that
+/// may not be paired, with nothing to press).
+pub fn words_shown(e: Option<&EngineFile>) -> String {
+    match e {
+        Some(e) if e.chat.is_none() && e.why.is_some() => {
+            let why = e.why.clone().unwrap_or_default();
+            let why = why.trim();
+            let stop = if why.ends_with(['.', '!', '?']) {
+                ""
+            } else {
+                "."
+            };
+            format!(
+                "{why}{stop} Pick or download a smaller model in Settings › Models, or pair a \
+                 phone to answer from it."
+            )
+        }
+        _ => words(e),
+    }
+}
+
 /// The model chats use now, if any. With no test result yet (a new PC, or
 /// the PC was busy), the first chat still gets an answer: the smallest
 /// chat model already on the PC, until the test picks a better one.
@@ -1231,5 +1253,20 @@ mod tests {
             ..Default::default()
         };
         assert!(words(Some(&none)).starts_with("Chats run on your phone: "));
+    }
+
+    #[test]
+    fn with_no_model_that_fits_the_shown_words_say_what_to_do() {
+        let none = EngineFile {
+            why: Some("No downloaded model runs fully on this PC's memory.".into()),
+            ..Default::default()
+        };
+        let w = words_shown(Some(&none));
+        assert!(!w.contains("your phone:"), "{w}");
+        assert!(
+            w.contains("Settings › Models") && w.contains("pair a phone"),
+            "{w}"
+        );
+        assert_eq!(words_shown(None), words(None));
     }
 }

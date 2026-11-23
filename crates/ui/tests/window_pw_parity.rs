@@ -139,7 +139,7 @@ fn the_chat_box_has_a_model_picker_that_sets_who_answers() {
     // The chip is a real picker now, not a link to another page.
     pick(
         &mut h,
-        "Auto-pick",
+        station_ui::labels::CHIP_PC_MODEL,
         "Online: Quick  ·  Short answers, fastest",
     );
     assert!(

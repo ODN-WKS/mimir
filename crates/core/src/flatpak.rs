@@ -102,6 +102,15 @@ pub(crate) fn wrap_for_host_tracked(cmd: Command) -> Command {
     wrap(cmd, true)
 }
 
+/// Variables that describe the sandbox and are never handed to the PC.
+pub fn sandbox_only(name: &str) -> bool {
+    matches!(
+        name,
+        "PATH" | "DBUS_SESSION_BUS_ADDRESS" | "LD_LIBRARY_PATH" | "HOME" | "PWD" | "TMPDIR"
+    ) || name.starts_with("XDG_")
+        || name.starts_with("FLATPAK_")
+}
+
 /// The words a tracked command prints first: `MIMIR-PID <number>`.
 pub const PID_MARK: &str = "MIMIR-PID ";
 
@@ -116,6 +125,10 @@ fn wrap(cmd: Command, tracked: bool) -> Command {
     }
     for (k, v) in cmd.get_envs() {
         match v {
+            // The sandbox's own paths mean nothing on the PC: its PATH has
+            // no adb, claude or ~/.local/bin, and its D-Bus address points
+            // at a socket the PC doesn't have. The PC's own stand.
+            Some(_) if sandbox_only(&k.to_string_lossy()) => continue,
             Some(v) => c.arg(format!(
                 "--env={}={}",
                 k.to_string_lossy(),

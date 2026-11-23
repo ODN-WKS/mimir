@@ -217,6 +217,23 @@ pub(crate) struct ComposerOut {
     pub later: bool,
 }
 
+/// What the chat box's model chip says: the Claude model when chats are
+/// online; else the PC's model by name, or "Your PC's model" when none is
+/// named (never "Auto-pick": that is an online choice).
+fn chip_words(paid: bool, alias: Option<&str>, engine_line: Option<&str>) -> String {
+    if paid {
+        return mimir_core::talk::claude_choice_name(alias.unwrap_or("auto")).to_string();
+    }
+    let name = engine_line
+        .and_then(|w| w.split(" · ").next())
+        .unwrap_or(crate::labels::CHIP_PC_MODEL);
+    if name.chars().count() > 24 || name == "Auto-pick" {
+        crate::labels::CHIP_PC_MODEL.to_string()
+    } else {
+        name.to_string()
+    }
+}
+
 /// The chat box's model choice: the PC's own model, or an online one. It is
 /// the same setting as Settings › Models › Who answers (it applies to all chats).
 fn chat_model_chip(
@@ -647,21 +664,11 @@ impl App {
                 }
                 let mode = if busy { SendMode::Stop } else { SendMode::Send };
                 let new_effort = self.new_effort.clone();
-                let model_words = engine_line
-                    .and_then(|w| w.split(" · ").next())
-                    .unwrap_or("Auto-pick")
-                    .to_string();
-                let model_words = if self.settings.chats_paid() {
-                    // Claude answers: the model it is set to ("Auto-pick" when Claude Code chooses).
-                    mimir_core::talk::claude_choice_name(
-                        self.settings.chats_model_alias().unwrap_or("auto"),
-                    )
-                    .to_string()
-                } else if model_words.chars().count() > 24 {
-                    "Auto-pick".to_string()
-                } else {
-                    model_words
-                };
+                let model_words = chip_words(
+                    self.settings.chats_paid(),
+                    self.settings.chats_model_alias(),
+                    engine_line,
+                );
                 if let Some(note) = &pics_note {
                     ui.label(RichText::new(note).color(ORANGE).size(12.5));
                     ui.add_space(4.0);
@@ -1187,5 +1194,32 @@ mod sources_tests {
 
     fn t_default() -> ChatTurn {
         serde_json::from_str(r#"{"id":"x","user":false,"text":"","at":0}"#).unwrap()
+    }
+}
+
+#[cfg(test)]
+mod chip_tests {
+    use super::chip_words;
+
+    /// A private chat's chip never says "Auto-pick" (an online choice): it names
+    /// the PC's model, or says "Your PC's model".
+    #[test]
+    fn a_private_chats_chip_names_what_answers() {
+        assert_eq!(chip_words(false, None, None), "Your PC's model");
+        assert_eq!(
+            chip_words(false, None, Some("Auto-pick")),
+            "Your PC's model"
+        );
+        assert_eq!(
+            chip_words(
+                false,
+                None,
+                Some("Chats run on your PC's graphics card · 40")
+            ),
+            "Your PC's model"
+        );
+        assert_eq!(chip_words(false, None, Some("Qwen 3 · fast")), "Qwen 3");
+        assert_eq!(chip_words(true, None, None), "Auto-pick");
+        assert_eq!(chip_words(true, Some("sonnet"), None), "Balanced");
     }
 }

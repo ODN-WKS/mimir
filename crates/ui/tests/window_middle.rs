@@ -86,7 +86,7 @@ fn the_box_is_the_phones_box_and_the_column_is_capped() {
     assert!(has_button(&h, labels::SEND), "no send\n{}", screen_text(&h));
     assert!(shows(&h, "Effort"), "no effort chip\n{}", screen_text(&h));
     assert!(
-        has_button(&h, "Auto-pick"),
+        has_button(&h, labels::CHIP_PC_MODEL),
         "no model chip\n{}",
         screen_text(&h)
     );

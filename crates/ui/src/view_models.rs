@@ -127,7 +127,7 @@ fn chats_card(ui: &mut egui::Ui) {
 /// Where chats run. The coding check under "On this PC" is another test:
 /// until the chat check has run, say so instead of "hasn't tested".
 fn chats_words(e: Option<&mimir_core::engine::EngineFile>) -> String {
-    let words = mimir_core::engine::words(e);
+    let words = mimir_core::engine::words_shown(e);
     if words == "Your PC hasn't tested its models yet" {
         "Not checked for chats yet".into()
     } else {

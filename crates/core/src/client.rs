@@ -975,6 +975,7 @@ impl Station {
                 if !answering {
                     self.asking.remove(&chat_id);
                 }
+                let mut keep = false;
                 let note = self.chat_notes.entry(chat_id.clone()).or_default();
                 match result {
                     Err(e) => note.problem = Some(e),
@@ -989,9 +990,16 @@ impl Station {
                         Ok(Filed::OnPhone { why }) => {
                             note.problem =
                                 Some(format!("Your PC can't answer this one now. {why}"));
+                            keep = true;
                         }
                         Ok(Filed::Inbox { .. }) | Err(_) => {}
                     },
+                }
+                // The PC only keeps a chat it began to answer: one it could
+                // not answer is saved there now, so it is still in the list
+                // after a restart.
+                if keep {
+                    self.keep_chat(&chat_id);
                 }
             }
             ChatCall::Turn {
@@ -1183,6 +1191,27 @@ impl Station {
             },
         );
         Ok(chat_id)
+    }
+
+    /// Saves a chat's own messages on the PC (without pictures), so a chat
+    /// the PC could not answer stays in the list.
+    fn keep_chat(&mut self, chat: &str) {
+        let Some(c) = self.chats.get(chat) else {
+            return;
+        };
+        let mut turns = c.turns.clone();
+        for t in &mut turns {
+            t.pictures.clear();
+        }
+        if turns.is_empty() {
+            return;
+        }
+        self.call(Call::ChatPut {
+            chat_id: chat.to_string(),
+            name: c.name.clone(),
+            turns,
+            deleted: false,
+        });
     }
 
     /// Stops the answer being written in a chat.
@@ -2150,6 +2179,31 @@ mod tests {
             })),
         );
         assert!(s.chat_busy("c"));
+    }
+
+    /// A chat the PC could not answer (no model fits) is saved on the PC, so it
+    /// is still in the list after a restart.
+    #[test]
+    fn a_chat_the_pc_could_not_answer_is_saved_there() {
+        let (mut s, other) = connected();
+        with_message(&mut s);
+        other
+            .set_read_timeout(Some(std::time::Duration::from_secs(2)))
+            .unwrap();
+        s.chat_reply(
+            ChatCall::Talk {
+                chat_id: "c".into(),
+            },
+            Ok(serde_json::to_value(Filed::OnPhone { why: "x".into() }).unwrap()),
+        );
+        let mut other = other;
+        let frame = crate::sockets::read_frame(&mut other).unwrap().unwrap();
+        let line = String::from_utf8_lossy(&frame).to_string();
+        assert!(line.contains("\"chat_id\":\"c\""), "{line}");
+        assert!(
+            line.contains("Hi") && line.contains("\"deleted\":false"),
+            "{line}"
+        );
     }
 
     /// F2: a live change never moves the position `ChatsSince` asks from;
