@@ -4079,6 +4079,7 @@ impl Service {
         &mut self,
         a: &TalkArgs,
         paid: bool,
+        online: bool,
         sees: bool,
     ) -> (
         Vec<mimir_proto::ChatTurn>,
@@ -4109,6 +4110,11 @@ impl Service {
                 if k.text.trim().is_empty() || left == 0 {
                     continue;
                 }
+                // Words kept from a file that still had hidden details stay
+                // off any answer that can go online.
+                if online && k.note.ends_with(crate::wipe::KEPT_MARK) {
+                    continue;
+                }
                 let part: String = k.text.chars().take(left.min(6_000)).collect();
                 left -= part.chars().count();
                 let cut = part.chars().count() < k.text.chars().count();
@@ -4126,7 +4132,7 @@ impl Service {
             }
         }
         if let Some(t) = turns.iter_mut().find(|t| t.id == a.turn_id) {
-            let (sent, lines) = wiped_chat_files_for(&t.files, &mut notes, paid);
+            let (sent, lines) = wiped_chat_files_for(&t.files, &mut notes, online);
             if !sent.is_empty() {
                 let read: Vec<rf::Extracted> = sent.iter().map(|f| rf::extract(f, sees)).collect();
                 let fitted = rf::fit(&read, if paid { rf::PAID_CHARS } else { rf::FREE_CHARS });
@@ -4135,10 +4141,14 @@ impl Service {
                 }
                 let kept: Vec<mimir_store::talk::KeptFile> = fitted
                     .iter()
-                    .map(|f| mimir_store::talk::KeptFile {
+                    .enumerate()
+                    .map(|(k, f)| mimir_store::talk::KeptFile {
                         name: f.name.clone(),
                         text: f.text.clone(),
-                        note: f.note.clone(),
+                        note: crate::wipe::kept_note(
+                            &f.note,
+                            lines.get(k).filter(|_| fitted.len() == lines.len()),
+                        ),
                     })
                     .collect();
                 let _ = self
@@ -4274,7 +4284,33 @@ impl Service {
                 sight = Some(c);
                 any
             });
-        let (turns, files_read, scan_pics) = self.file_words(&a, paid, sees);
+        // Pictures can turn a local answer into an online one (a PC model
+        // that can't see, or its backup), so a file that still has hidden
+        // details is kept off the words whenever that can happen.
+        let may_online = self.may_go_online(&a.person);
+        let earlier_pics = user_ids
+            .iter()
+            .rev()
+            .find(|id| **id != a.turn_id)
+            .is_some_and(|prev| {
+                !self
+                    .chats()
+                    .pictures_for(&a.person, &a.chat_id, prev)
+                    .is_empty()
+            });
+        let names: Vec<&str> = a
+            .turns
+            .iter()
+            .filter(|t| t.id == a.turn_id)
+            .flat_map(|t| t.files.iter().map(|f| f.name.as_str()))
+            .collect();
+        let online = crate::wipe::online_possible(
+            paid,
+            may_online,
+            !new_pics.is_empty() || earlier_pics,
+            &names,
+        );
+        let (turns, files_read, scan_pics) = self.file_words(&a, paid, online, sees);
         let mut new_pics = new_pics;
         for p in scan_pics {
             if new_pics.len() < mimir_store::talk::PICTURES_PER_TURN {

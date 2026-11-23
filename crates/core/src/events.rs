@@ -289,9 +289,23 @@ pub fn picture_from_file(path: &std::path::Path) -> Option<Picture> {
     if bytes.len() > 5 * 1024 * 1024 {
         return None;
     }
-    // Redrawn from its pixels, so no location or camera details go on. One
-    // that can't be cleaned (a GIF) is not passed on as a picture; the file
-    // path goes through the file wiper instead.
+    // Details taken out without touching the pixels (a PNG stays a PNG, an
+    // animation stays one); a photo meant to be shown turned is redrawn. One
+    // that can't be cleaned (a GIF) is not passed on as a picture: its path
+    // goes through the file wiper instead.
+    if let Some(clean) = crate::wipe::strip_image(&bytes) {
+        let media_type = if bytes.starts_with(b"\x89PNG") {
+            "image/png"
+        } else if bytes.starts_with(&[0xFF, 0xD8]) {
+            "image/jpeg"
+        } else {
+            "image/webp"
+        };
+        return Some(Picture {
+            media_type: media_type.to_string(),
+            base64: base64(&clean),
+        });
+    }
     crate::pictures::clean(&bytes)
 }
 

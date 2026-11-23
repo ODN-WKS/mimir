@@ -458,35 +458,47 @@ impl Runner {
     /// be cleaned is not named at all. Also the line to show for each.
     fn cleaned_attached_files(&self, i: usize, id: &str, text: &str) -> (String, Vec<String>) {
         let task = &self.tasks[i].task;
-        let tag = format!("\n{}", crate::queue::ATTACHED);
-        if crate::models::is_free(task.model.as_deref()) || !format!("\n{text}").contains(&tag) {
+        if crate::models::is_free(task.model.as_deref()) || !text.contains(crate::queue::ATTACHED) {
             return (text.to_string(), vec![]);
         }
         let dir = crate::task_files::dir_for(&self.data_dir(), id, task.incognito);
         let mut notes = vec![];
-        let lines: Vec<String> = text
-            .split('\n')
-            .map(|line| {
-                let Some(p) = line.strip_prefix(crate::queue::ATTACHED) else {
-                    return line.to_string();
-                };
-                let path = Path::new(p.trim());
-                let name = path
-                    .file_name()
-                    .map_or_else(|| p.to_string(), |n| n.to_string_lossy().into_owned());
-                match crate::task_files::cleaned_copy(&dir, path) {
-                    Ok((copy, note)) => {
-                        notes.push(format!("{name}: {note}"));
-                        format!("{}{}", crate::queue::ATTACHED, copy.display())
-                    }
-                    Err(why) => {
-                        notes.push(format!("{name}: {why}"));
-                        format!("{}{name} (not shared)", crate::queue::ATTACHED)
-                    }
+        let out = crate::queue::map_attached(text, &mut |p| {
+            let path = Path::new(p.trim());
+            let name = path
+                .file_name()
+                .map_or_else(|| p.to_string(), |n| n.to_string_lossy().into_owned());
+            match crate::task_files::cleaned_copy(&dir, path) {
+                Ok((copy, note)) => {
+                    notes.push(format!("{name}: {note}"));
+                    format!("{}{}", crate::queue::ATTACHED, copy.display())
                 }
-            })
-            .collect();
-        (lines.join("\n"), notes)
+                Err(why) => {
+                    notes.push(format!("{name}: {why}"));
+                    format!("{}{name} (not shared)", crate::queue::ATTACHED)
+                }
+            }
+        });
+        notes.dedup();
+        (out, notes)
+    }
+
+    /// A task that moved to an online model: the files kept for it that
+    /// still have hidden details are taken away.
+    fn drop_local_only_files(&mut self, id: &str) {
+        let Some(i) = self.index(id) else { return };
+        let t = &self.tasks[i].task;
+        if crate::models::is_free(t.model.as_deref()) {
+            return;
+        }
+        let dir = crate::task_files::dir_for(&self.data_dir(), id, t.incognito);
+        if crate::task_files::drop_local_only(&dir) > 0 {
+            self.note(
+                id,
+                "Files that still had hidden details were taken away, because this task now \
+                 runs online.",
+            );
+        }
     }
 
     /// Says under the message what was done to each file ("Lease.pdf: Hidden
@@ -923,6 +935,7 @@ impl Runner {
     /// ended now so the next message starts it with them.
     pub fn set_model(&mut self, id: &str, model: Option<String>) {
         self.edit(id, |t| t.model = model);
+        self.drop_local_only_files(id);
         if let Some(i) = self.index(id) {
             self.restart_when_idle(i);
         }
@@ -1307,6 +1320,7 @@ impl Runner {
             }
             t.session_id = None;
         });
+        self.drop_local_only_files(id);
         if let Some(i) = self.index(id)
             && let Some(mut s) = self.tasks[i].session.take()
         {

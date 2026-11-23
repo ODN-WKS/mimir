@@ -216,28 +216,64 @@ pub fn prepare(pictures: &[Picture], files: &[SentFile]) -> Result<Prepared, Str
     Ok(out)
 }
 
+/// In the name of a kept file that still has hidden details.
+const LOCAL_ONLY: &str = "local-only-";
+
+/// Takes away the files of a task that still have hidden details (it moved
+/// to an online model). How many went.
+pub fn drop_local_only(dir: &Path) -> usize {
+    let Ok(rd) = std::fs::read_dir(dir) else {
+        return 0;
+    };
+    rd.flatten()
+        .filter(|e| {
+            e.file_name()
+                .to_string_lossy()
+                .contains(&format!("-{LOCAL_ONLY}"))
+        })
+        .filter(|e| std::fs::remove_file(e.path()).is_ok())
+        .count()
+}
+
 /// A cleaned copy of one of the person's own files, kept for the task: what
 /// an online model reads instead of the original. Returns where it is and the
 /// line to show; a file that can't be cleaned is refused in plain words.
 pub fn cleaned_copy(dir: &Path, path: &Path) -> Result<(PathBuf, String), String> {
+    use std::io::Read as _;
     let name = safe_name(
         &path
             .file_name()
             .map_or_else(|| "file".to_string(), |n| n.to_string_lossy().into_owned()),
     );
-    let big = || "A file is over 10 MB. Send a smaller part of it.".to_string();
-    if std::fs::metadata(path)
-        .map_err(|_| "A file couldn't be read. Pick another one.")?
-        .len()
-        > MAX_FILE_BYTES as u64
-    {
-        return Err(big());
+    let unread = || "A file couldn't be read. Pick another one.".to_string();
+    // Only a real file: never a device, a pipe or a system file whose size
+    // isn't its size.
+    if !std::fs::metadata(path).is_ok_and(|m| m.is_file()) {
+        return Err(unread());
     }
-    let bytes = std::fs::read(path)
-        .map_err(|_| "A file couldn't be read. Pick another one.".to_string())?;
+    let mut bytes = Vec::new();
+    std::fs::File::open(path)
+        .and_then(|f| f.take(MAX_FILE_BYTES as u64 + 1).read_to_end(&mut bytes))
+        .map_err(|_| unread())?;
+    if bytes.len() > MAX_FILE_BYTES {
+        return Err("A file is over 10 MB. Send a smaller part of it.".to_string());
+    }
     let w = crate::wipe::wipe(&name, &bytes)?;
     if w.kept_as_it_was.is_some() {
         return Err(crate::wipe::NOT_SENT_ONLINE.into());
+    }
+    // The same file sent again uses the copy already kept.
+    let tail = format!("-{name}");
+    if let Ok(rd) = std::fs::read_dir(dir) {
+        for e in rd.flatten() {
+            let q = e.path();
+            if e.file_name().to_string_lossy().ends_with(&tail)
+                && e.metadata().is_ok_and(|m| m.len() == w.bytes.len() as u64)
+                && std::fs::read(&q).is_ok_and(|b| b == w.bytes)
+            {
+                return Ok((q, w.note()));
+            }
+        }
     }
     let one = Prepared {
         items: vec![(name, w.bytes.clone())],
@@ -286,7 +322,14 @@ pub fn write(dir: &Path, p: &Prepared) -> Result<Kept, String> {
     }
     let first = std::fs::read_dir(dir).map(|d| d.count()).unwrap_or(0);
     for (i, (name, bytes)) in p.items.iter().enumerate() {
-        let path = dir.join(format!("{}-{name}", first + i + 1));
+        // A file that still has hidden details is marked, so it can be taken
+        // away if the task moves to an online model.
+        let local = if p.uncleaned.contains(name) {
+            LOCAL_ONLY
+        } else {
+            ""
+        };
+        let path = dir.join(format!("{}-{local}{name}", first + i + 1));
         let r = std::fs::OpenOptions::new()
             .write(true)
             .create_new(true)
@@ -445,5 +488,44 @@ mod tests {
         let p = prepare(&[], &[f("data.bin", b"abc")]).unwrap();
         assert!(p.has_uncleaned());
         assert!(p.notes()[0].1.starts_with("Kept as it was:"));
+    }
+
+    #[test]
+    fn m1b2_3_only_real_files_are_copied_and_the_same_file_uses_one_copy() {
+        let d = std::env::temp_dir().join(format!("m1b2-copy-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        assert!(cleaned_copy(&d, Path::new("/dev/zero")).is_err());
+        assert!(cleaned_copy(&d, &d).is_err());
+        let src = d.join("a.txt");
+        std::fs::write(&src, b"words").unwrap();
+        let kept = d.join("kept");
+        let (one, _) = cleaned_copy(&kept, &src).unwrap();
+        let (two, _) = cleaned_copy(&kept, &src).unwrap();
+        assert_eq!(one, two);
+        assert_eq!(std::fs::read_dir(&kept).unwrap().count(), 1);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn m1b2_9_files_with_hidden_details_are_taken_away_when_a_task_goes_online() {
+        let b64 = base64::engine::general_purpose::STANDARD;
+        let f = |name: &str, b: &[u8]| SentFile {
+            name: name.into(),
+            media_type: String::new(),
+            base64: b64.encode(b),
+        };
+        let p = prepare(&[], &[f("data.bin", b"abc"), f("notes.txt", b"words")]).unwrap();
+        let d = std::env::temp_dir().join(format!("m1b2-drop-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        write(&d, &p).unwrap();
+        assert_eq!(drop_local_only(&d), 1);
+        let left: Vec<String> = std::fs::read_dir(&d)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(left.len(), 1);
+        assert!(left[0].ends_with("notes.txt"));
+        let _ = std::fs::remove_dir_all(&d);
     }
 }

@@ -18,6 +18,32 @@ pub const FAILED: &str = "This file's hidden details couldn't be removed, so it 
 /// Said when a file that still has hidden details would go to an online model.
 pub const NOT_SENT_ONLINE: &str =
     "This file still has hidden details, so it wasn't sent to the online model.";
+/// Ends the kept note of a file's words when it still had hidden details.
+pub const KEPT_MARK: &str = " (kept as it was)";
+
+/// The note kept with a file's words: its reading note, marked when the file
+/// could not be cleaned.
+pub fn kept_note(note: &str, line: Option<&String>) -> String {
+    match line {
+        Some(l) if l.starts_with("Kept as it was") => format!("{note}{KEPT_MARK}"),
+        _ => note.to_string(),
+    }
+}
+
+/// Whether an answer that starts here may still reach an online model: it
+/// does already, or a picture (sent, earlier, or made from a scanned file) can
+/// make a local answer go online.
+pub fn online_possible(paid: bool, may_online: bool, has_pictures: bool, names: &[&str]) -> bool {
+    paid || (may_online
+        && (has_pictures
+            || names.iter().any(|n| {
+                let n = n.to_ascii_lowercase();
+                [".pdf", ".png", ".jpg", ".jpeg", ".webp", ".gif", ".heic"]
+                    .iter()
+                    .any(|e| n.ends_with(e))
+            })))
+}
+
 /// Said under a file whose kind Mímir can't clean yet.
 pub const UNKNOWN_KIND: &str = "Mímir doesn't know how to clean this kind of file yet";
 
@@ -77,9 +103,70 @@ fn kept(bytes: &[u8], why: &str) -> Wiped {
 }
 
 const TEXT_KINDS: &[&str] = &[
-    "txt", "md", "markdown", "csv", "tsv", "json", "jsonl", "yaml", "yml", "toml", "ini", "log",
-    "rs", "py", "js", "ts", "java", "kt", "c", "h", "cpp", "hpp", "go", "rb", "sh", "css", "sql",
-    "tex", "html", "htm", "rst", "cfg", "conf", "xml", "xhtml", "opf", "ncx",
+    "txt",
+    "md",
+    "markdown",
+    "csv",
+    "tsv",
+    "json",
+    "jsonl",
+    "yaml",
+    "yml",
+    "toml",
+    "ini",
+    "log",
+    "rs",
+    "py",
+    "js",
+    "ts",
+    "java",
+    "kt",
+    "c",
+    "h",
+    "cpp",
+    "hpp",
+    "go",
+    "rb",
+    "sh",
+    "css",
+    "sql",
+    "tex",
+    "html",
+    "htm",
+    "rst",
+    "cfg",
+    "conf",
+    "xml",
+    "xhtml",
+    "opf",
+    "ncx",
+    "ics",
+    "vcf",
+    "gpx",
+    "tsx",
+    "jsx",
+    "php",
+    "env",
+    "lock",
+    "bib",
+    "vue",
+    "svelte",
+    "scss",
+    "less",
+    "lua",
+    "pl",
+    "swift",
+    "dart",
+    "gradle",
+    "properties",
+    "srt",
+    "vtt",
+    "diff",
+    "patch",
+    "mk",
+    "cmake",
+    "bat",
+    "ps1",
 ];
 
 /// Heif and AVIF pictures: their `meta` box is the picture, not a tag.
@@ -87,16 +174,66 @@ const FTYP_PICTURES: &[&[u8]] = &[
     b"heic", b"heix", b"hevc", b"hevx", b"heim", b"heis", b"mif1", b"msf1", b"avif", b"avis",
 ];
 
+/// Plain text: UTF-8 with no NUL bytes, or UTF-16 that starts with its mark
+/// and reads back as text.
 fn looks_text(b: &[u8]) -> bool {
-    b.starts_with(&[0xFF, 0xFE])
-        || b.starts_with(&[0xFE, 0xFF])
-        || !b[..b.len().min(8192)].contains(&0)
+    if b.starts_with(&[0xFF, 0xFE]) || b.starts_with(&[0xFE, 0xFF]) {
+        return decode_xml(b).is_some();
+    }
+    let head = &b[..b.len().min(8192)];
+    !head.contains(&0)
+        && match std::str::from_utf8(head) {
+            Ok(_) => true,
+            // Only the cut at the end of the first part may be incomplete.
+            Err(e) => e.error_len().is_none() && head.len() == 8192,
+        }
+}
+
+/// An SVG picture without its metadata block, document details and file paths.
+fn svg(b: &[u8]) -> Result<Vec<u8>, ()> {
+    let (s, enc) = decode_xml(b).ok_or(())?;
+    let s = sub(&s, r"(?s)<metadata\b.*?</metadata>", "");
+    let s = sub(&s, r"(?s)<rdf:RDF\b.*?</rdf:RDF>", "");
+    let s = sub(&s, r"(?s)<dc:\w+\b[^>]*>.*?</dc:\w+>", "");
+    let s = sub(
+        &s,
+        r#"\s(?:sodipodi:docname|inkscape:export-filename)="[^"]*""#,
+        "",
+    );
+    Ok(encode_xml(&s, enc))
+}
+
+/// RTF without its `{\info ...}` group (title, author, company, dates).
+fn rtf(b: &[u8]) -> Vec<u8> {
+    let Some(start) = b.windows(6).position(|w| w == b"{\\info") else {
+        return b.to_vec();
+    };
+    let (mut depth, mut i) = (0usize, start);
+    while i < b.len() {
+        match b[i] {
+            b'\\' => i += 1,
+            b'{' => depth += 1,
+            b'}' => {
+                depth -= 1;
+                if depth == 0 {
+                    let mut out = b[..start].to_vec();
+                    out.extend(&b[i + 1..]);
+                    return rtf(&out);
+                }
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    b.to_vec()
 }
 
 enum ZipKind {
     Office,
     Open,
     Plain,
+    /// A book: fonts and the like inside it are fine as they are.
+    Book,
 }
 
 /// What a zip is, from what is inside it (not from its name).
@@ -106,6 +243,11 @@ fn zip_kind(b: &[u8], depth: u32) -> Option<ZipKind> {
         m.name == "mimetype" && m.data.starts_with(b"application/vnd.oasis.opendocument")
     }) {
         Some(ZipKind::Open)
+    } else if members
+        .first()
+        .is_some_and(|m| m.name == "mimetype" && m.data.starts_with(b"application/epub+zip"))
+    {
+        Some(ZipKind::Book)
     } else if members.iter().any(|m| m.name == "[Content_Types].xml") {
         Some(ZipKind::Office)
     } else {
@@ -188,8 +330,9 @@ fn wipe_kind(name: &str, b: &[u8], depth: u32) -> Result<Wiped, String> {
                 let o = open_doc_zip(b, depth).map_err(fail)?;
                 Ok(done(o, b, "Author, dates, comments and editing history"))
             }
-            ZipKind::Plain => {
-                let (o, left) = plain_zip(b, depth).map_err(fail)?;
+            ZipKind::Plain | ZipKind::Book => {
+                let book = matches!(kind, ZipKind::Book) || ext == "epub";
+                let (o, left) = plain_zip(b, depth, book).map_err(fail)?;
                 let mut w = done(
                     o,
                     b,
@@ -234,7 +377,15 @@ fn wipe_kind(name: &str, b: &[u8], depth: u32) -> Result<Wiped, String> {
             "old Word, Excel and PowerPoint files can't be cleaned yet",
         ));
     }
-    if TEXT_KINDS.contains(&ext) && looks_text(b) {
+    if ext == "svg" && looks_text(b) {
+        return svg(b)
+            .map(|o| done(o, b, "Details of the file"))
+            .map_err(fail);
+    }
+    if (ext == "rtf" || b.starts_with(b"{\\rtf")) && looks_text(b) {
+        return Ok(done(rtf(b), b, "Author, company and dates"));
+    }
+    if (TEXT_KINDS.contains(&ext) || ext.is_empty()) && looks_text(b) {
         return Ok(Wiped {
             bytes: b.to_vec(),
             removed: vec![],
@@ -339,12 +490,46 @@ fn pdf_too_nested(b: &[u8]) -> bool {
     false
 }
 
+/// More objects than this and the file is refused (a PDF of a long book is
+/// far below it).
+const PDF_OBJECTS: usize = 200_000;
+
+/// Drops every object nothing leads to from the trailer (an old Info, an old
+/// XMP packet left by a later save). One walk, no repeated searching.
+fn prune_unreached(doc: &mut lopdf::Document) {
+    use lopdf::{Object, ObjectId};
+    fn refs(o: &Object, out: &mut Vec<ObjectId>) {
+        match o {
+            Object::Reference(id) => out.push(*id),
+            Object::Array(a) => a.iter().for_each(|x| refs(x, out)),
+            Object::Dictionary(d) => d.iter().for_each(|(_, x)| refs(x, out)),
+            Object::Stream(s) => s.dict.iter().for_each(|(_, x)| refs(x, out)),
+            _ => {}
+        }
+    }
+    let mut todo: Vec<ObjectId> = vec![];
+    doc.trailer.iter().for_each(|(_, x)| refs(x, &mut todo));
+    let mut seen: std::collections::HashSet<ObjectId> = std::collections::HashSet::new();
+    while let Some(id) = todo.pop() {
+        if !seen.insert(id) {
+            continue;
+        }
+        if let Some(o) = doc.objects.get(&id) {
+            refs(o, &mut todo);
+        }
+    }
+    doc.objects.retain(|id, _| seen.contains(id));
+}
+
 fn pdf(bytes: &[u8]) -> Result<Vec<u8>, ()> {
     use lopdf::{Dictionary, Object};
     if pdf_too_nested(bytes) {
         return Err(());
     }
     let mut doc = lopdf::Document::load_mem(bytes).map_err(|_| ())?;
+    if doc.objects.len() > PDF_OBJECTS {
+        return Err(());
+    }
     if doc.is_encrypted() {
         return Err(());
     }
@@ -407,7 +592,7 @@ fn pdf(bytes: &[u8]) -> Result<Vec<u8>, ()> {
         doc.objects.remove(&id);
     }
     // Older versions left behind by later saves (an old Info, old XMP).
-    doc.prune_objects();
+    prune_unreached(&mut doc);
     let mut out = Vec::new();
     doc.save_to(&mut out).map_err(|_| ())?;
     // Proof it still opens, and nothing of the old file is left in it.
@@ -602,7 +787,7 @@ fn zip_write(members: &[Member]) -> Result<Vec<u8>, ()> {
 }
 
 /// The cleaned zip, and whether some file inside could not be cleaned.
-fn plain_zip(b: &[u8], depth: u32) -> Result<(Vec<u8>, bool), ()> {
+fn plain_zip(b: &[u8], depth: u32, book: bool) -> Result<(Vec<u8>, bool), ()> {
     if depth >= 3 {
         return Err(());
     }
@@ -613,7 +798,8 @@ fn plain_zip(b: &[u8], depth: u32) -> Result<(Vec<u8>, bool), ()> {
             continue;
         }
         let w = wipe_deep(&m.name, &m.data, depth + 1).map_err(|_| ())?;
-        left |= w.kept_as_it_was.is_some();
+        // A book's fonts and other resources pass as they are.
+        left |= w.kept_as_it_was.is_some() && !book;
         m.data = w.bytes;
     }
     Ok((zip_write(&members)?, left))
@@ -2389,5 +2575,121 @@ pub(crate) mod tests {
                 "This file still has hidden details, so it wasn't sent to the online model."
             )
         );
+    }
+
+    // ------------------------------------------------ M1b round 2 (review)
+
+    #[test]
+    fn m1b2_1_a_picture_can_turn_a_local_answer_online_so_unclean_files_stay_off() {
+        assert!(online_possible(true, true, false, &[]));
+        assert!(online_possible(false, true, true, &["a.doc"]));
+        assert!(online_possible(false, true, false, &["Scan.PDF"]));
+        assert!(!online_possible(false, false, true, &["Scan.pdf"]));
+        assert!(!online_possible(false, true, false, &["notes.txt"]));
+        let line = "Kept as it was: x.".to_string();
+        assert!(kept_note("Read all of it", Some(&line)).ends_with(KEPT_MARK));
+        let ok = "Hidden details removed.".to_string();
+        assert_eq!(kept_note("Read all of it", Some(&ok)), "Read all of it");
+    }
+
+    #[test]
+    fn m1b2_2_a_pdf_with_too_many_objects_is_refused_and_a_big_one_is_quick() {
+        use lopdf::{Document, Object, dictionary};
+        let many = |n: usize| {
+            let mut doc = Document::load_mem(&sample_pdf()).unwrap();
+            let extra: Vec<Object> = (0..n)
+                .map(|i| Object::Reference(doc.add_object(dictionary! { "N" => i as i64 })))
+                .collect();
+            let root = doc.trailer.get(b"Root").unwrap().as_reference().unwrap();
+            if let Some(Object::Dictionary(d)) = doc.objects.get_mut(&root) {
+                d.set("Extra", Object::Array(extra));
+            }
+            let mut out = Vec::new();
+            doc.save_to(&mut out).unwrap();
+            out
+        };
+        assert_eq!(
+            wipe("big.pdf", &many(PDF_OBJECTS + 10)).unwrap_err(),
+            FAILED
+        );
+        let t = std::time::Instant::now();
+        let w = wipe("mid.pdf", &many(40_000)).unwrap();
+        assert!(t.elapsed().as_secs() < 60, "{:?}", t.elapsed());
+        assert!(!String::from_utf8_lossy(&w.bytes).contains("Alice Example"));
+    }
+
+    #[test]
+    fn m1b2_6_plain_files_count_as_text_and_svg_and_rtf_lose_their_details() {
+        for (name, b) in [
+            ("README", b"Just words\n".to_vec()),
+            ("Makefile", b"all:\n\techo hi\n".to_vec()),
+            ("cal.ics", b"BEGIN:VCALENDAR\n".to_vec()),
+            ("App.tsx", b"export const a = 1;".to_vec()),
+            ("page.html", b"<html></html>".to_vec()),
+        ] {
+            assert_eq!(wipe(name, &b).unwrap().kept_as_it_was, None, "{name}");
+        }
+        let mut u16 = vec![0xFF, 0xFE];
+        u16.extend("hello".encode_utf16().flat_map(|u| u.to_le_bytes()));
+        assert_eq!(wipe("a.txt", &u16).unwrap().kept_as_it_was, None);
+        // A mark with no readable text after it is not trusted.
+        assert!(
+            wipe("a.txt", &[0xFF, 0xFE, 0x00, 0xD8, 0x00])
+                .unwrap()
+                .kept_as_it_was
+                .is_some()
+        );
+        let svg = br#"<svg xmlns="http://www.w3.org/2000/svg" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:rdf="r" xmlns:sodipodi="s" sodipodi:docname="/home/jo/secret-plan.svg"><metadata><rdf:RDF><dc:creator>Svg Author</dc:creator></rdf:RDF></metadata><circle r="4"/></svg>"#;
+        let w = wipe("a.svg", svg).unwrap();
+        let out = String::from_utf8_lossy(&w.bytes).into_owned();
+        assert!(
+            !out.contains("Svg Author") && !out.contains("secret-plan") && out.contains("circle")
+        );
+        let r =
+            br"{\rtf1\ansi {\info{\title T}{\author Rtf Author}{\company {Acme}}}Hello \{ world}";
+        let w = wipe("a.rtf", r).unwrap();
+        let out = String::from_utf8_lossy(&w.bytes).into_owned();
+        assert!(!out.contains("Rtf Author") && !out.contains("Acme") && out.contains("Hello"));
+    }
+
+    #[test]
+    fn m1b2_7_a_book_with_fonts_is_not_marked_kept() {
+        let epub = zip_of(&[
+            ("mimetype", b"application/epub+zip"),
+            (
+                "OEBPS/content.opf",
+                b"<package><dc:creator>Visible Author</dc:creator></package>",
+            ),
+            ("OEBPS/font.ttf", b"\0\x01\0\0font-bytes"),
+        ]);
+        let w = wipe("book.epub", &epub).unwrap();
+        assert_eq!(w.kept_as_it_was, None);
+        assert!(all_bytes(&w.bytes).contains("Visible Author"));
+        // A plain zip with such a file still says so.
+        let z = zip_of(&[("font.ttf", b"\0\x01\0\0font-bytes")]);
+        assert!(wipe("a.zip", &z).unwrap().kept_as_it_was.is_some());
+    }
+
+    #[test]
+    fn m1b2_8_a_png_file_stays_a_png_without_its_details() {
+        let mut png = Vec::new();
+        image::RgbImage::from_pixel(4, 4, image::Rgb([1, 2, 3]))
+            .write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
+            .unwrap();
+        let mut with_text = png[..33].to_vec();
+        with_text.extend([0, 0, 0, 16]);
+        with_text.extend(b"tEXtAuthor\0Jane Doe!");
+        with_text.extend([0, 0, 0, 0]);
+        with_text.extend(&png[33..]);
+        let path = std::env::temp_dir().join(format!("m1b2-{}.png", std::process::id()));
+        std::fs::write(&path, &with_text).unwrap();
+        let p = crate::events::picture_from_file(&path).unwrap();
+        let _ = std::fs::remove_file(&path);
+        assert_eq!(p.media_type, "image/png");
+        use base64::Engine as _;
+        let out = base64::engine::general_purpose::STANDARD
+            .decode(p.base64)
+            .unwrap();
+        assert!(out.starts_with(b"\x89PNG") && !String::from_utf8_lossy(&out).contains("Jane Doe"));
     }
 }

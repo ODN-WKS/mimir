@@ -60,8 +60,47 @@ pub fn with_files(
     for f in files {
         match crate::events::picture_from_file(f) {
             Some(p) => pictures.push(p),
+            // A name with a line break can't be named on one line.
+            None if f.to_string_lossy().contains(['\n', '\r']) => text.push_str(&format!(
+                "\n\n{ATTACHED}a file (not shared, its name has a line break)"
+            )),
             None => text.push_str(&format!("\n\n{ATTACHED}{}", f.display())),
         }
     }
     (text, pictures)
+}
+
+/// Rewrites the "Attached file: <path>" lines Mímir itself put at the end of
+/// a message (one per blank-line block, last blocks only); anything the
+/// person typed earlier in the message is left alone.
+pub fn map_attached(text: &str, f: &mut dyn FnMut(&str) -> String) -> String {
+    let mut blocks: Vec<String> = text.split("\n\n").map(str::to_string).collect();
+    let mut at = blocks.len();
+    while at > 1 && blocks[at - 1].starts_with(ATTACHED) && !blocks[at - 1].contains('\n') {
+        at -= 1;
+    }
+    for b in &mut blocks[at..] {
+        *b = f(&b[ATTACHED.len()..]);
+    }
+    blocks.join("\n\n")
+}
+
+#[cfg(test)]
+mod m1b_tests {
+    use super::*;
+
+    #[test]
+    fn m1b_4_only_the_lines_mimir_added_are_rewritten() {
+        let text = "Attached file: /etc/passwd\n\nRead these\n\nAttached file: /a/one.pdf\n\nAttached file: /a/two.pdf";
+        let mut seen = vec![];
+        let out = map_attached(text, &mut |p| {
+            seen.push(p.to_string());
+            format!("{ATTACHED}copy-of-{p}")
+        });
+        assert_eq!(seen, ["/a/one.pdf", "/a/two.pdf"]);
+        assert!(out.starts_with("Attached file: /etc/passwd\n\nRead these"));
+        assert!(out.ends_with("copy-of-/a/two.pdf"));
+        let (t, _) = with_files("Hi", &[std::path::PathBuf::from("/tmp/a\nb.pdf")]);
+        assert!(t.contains("not shared") && !t.contains("a\nb"));
+    }
 }
