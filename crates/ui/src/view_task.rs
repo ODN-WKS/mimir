@@ -1121,19 +1121,15 @@ fn model_effort_chips(
                     ui.label(RichText::new("On this PC").color(MUTED).size(12.5));
                     for f in free {
                         let chosen = model.as_deref() == Some(f.id.as_str());
-                        let mut hover = format!("{}\n{}", f.note, mimir_core::models::FIT_NOTE);
+                        let note = models::plain_test_note(&f.note);
+                        let mut hover = format!("{note}\n{}", mimir_core::models::FIT_NOTE);
                         if f.refusals_removed {
                             hover = format!("{}\n{hover}", mimir_core::models::REFUSALS_REMOVED);
                         }
                         if ui
                             .selectable_label(
                                 chosen,
-                                format!(
-                                    "{}  ·  {}\n{}",
-                                    models::plain_name(&f.name),
-                                    f.note,
-                                    f.name
-                                ),
+                                format!("{}  ·  {}\n{}", models::plain_name(&f.name), note, f.name),
                             )
                             .on_hover_text(hover)
                             .clicked()

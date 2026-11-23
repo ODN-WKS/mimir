@@ -113,7 +113,7 @@ fn chats_card(ui: &mut egui::Ui) {
         ui.set_width(ui.available_width());
         theme::heading(ui, "Chats");
         let e = engine_pick();
-        ui.label(mimir_core::engine::words(e.as_ref()));
+        ui.label(chats_words(e.as_ref()));
         if let Some(p) = e.as_ref().and_then(|e| e.chat.as_ref()) {
             ui.label(small(format!(
                 "{} · first words in {:.1} s",
@@ -122,6 +122,17 @@ fn chats_card(ui: &mut egui::Ui) {
             )));
         }
     });
+}
+
+/// Where chats run. The coding check under "On this PC" is another test:
+/// until the chat check has run, say so instead of "hasn't tested".
+fn chats_words(e: Option<&mimir_core::engine::EngineFile>) -> String {
+    let words = mimir_core::engine::words(e);
+    if words == "Your PC hasn't tested its models yet" {
+        "Not checked for chats yet".into()
+    } else {
+        words
+    }
 }
 
 fn small(text: impl Into<String>) -> RichText {
@@ -258,12 +269,15 @@ impl App {
 
     /// Ground rules: sent with every task, Claude's and the free models'.
     fn ground_rules_card(&mut self, ui: &mut egui::Ui) {
-        use mimir_core::settings::{DEFAULT_GROUND_RULES, GROUND_RULES_NOTE};
+        use mimir_core::settings::DEFAULT_GROUND_RULES;
         theme::card().show(ui, |ui| {
             ui.set_width(ui.available_width());
             theme::heading(ui, crate::labels::GROUND_RULES);
             let mut on = self.settings.ground_rules_on != Some(false);
-            if ui.checkbox(&mut on, "Send these with every task").changed() {
+            if ui
+                .checkbox(&mut on, crate::labels::GROUND_RULES_SEND)
+                .changed()
+            {
                 self.settings.ground_rules_on = if on { None } else { Some(false) };
                 self.settings_dirty = true;
             }
@@ -283,7 +297,7 @@ impl App {
                 self.settings.ground_rules = (text != DEFAULT_GROUND_RULES).then_some(text);
                 self.settings_dirty = true;
             }
-            ui.label(small(GROUND_RULES_NOTE));
+            ui.label(small(crate::labels::GROUND_RULES_NOTE));
             if self.settings.ground_rules.is_some()
                 && ui.add(theme::quiet("Reset to default")).clicked()
             {
@@ -393,19 +407,31 @@ impl App {
                 .or_else(|| mimir_core::models::default_free(&models).map(|f| f.id.clone()));
             let working = busy();
             let online_used = self.settings.online_set_up();
-            for m in &models {
+            let names = crate::models::show_names(&models);
+            let chat_pick = if self.settings.chats_paid() {
+                None
+            } else {
+                engine_pick().and_then(|e| e.chat).map(|c| c.model)
+            };
+            for (m, (shown, apart)) in models.iter().zip(&names) {
                 ui.add_space(4.0);
                 ui.horizontal_wrapped(|ui| {
-                    ui.label(RichText::new(crate::models::plain_name(&m.name)).strong());
+                    ui.label(RichText::new(shown).strong());
+                    if let Some(a) = apart {
+                        ui.label(small(a));
+                    }
                     if m.refusals_removed {
                         tag(ui, "Uncensored");
+                    }
+                    if chat_pick.as_deref() == Some(m.name.as_str()) {
+                        tag(ui, "Answers your chats");
                     }
                     if online_used && backup.as_deref() == Some(m.id.as_str()) {
                         tag(ui, "Used when your online plan runs out");
                     }
                 });
                 ui.horizontal_wrapped(|ui| {
-                    let mut line = m.note.clone();
+                    let mut line = crate::models::plain_test_note(&m.note);
                     if let Some(b) = sizes.get(&m.name) {
                         line = format!("{} · {line}", gb(*b));
                     }
@@ -595,7 +621,7 @@ fn store_card(ui: &mut egui::Ui) {
                         } else {
                             "too big for your graphics card"
                         },
-                        p.tested
+                        crate::models::plain_test_note(p.tested)
                     )));
                     ui.horizontal_wrapped(|ui| {
                         let have = installed.iter().any(|n| n == p.name);
@@ -622,7 +648,7 @@ fn store_card(ui: &mut egui::Ui) {
                             ui.label(small(fit));
                             ui.label(small(format!(
                                 "Our test (a coding job with two bugs to fix): {}.",
-                                p.tested
+                                crate::models::plain_test_note(p.tested)
                             )));
                             if let Some(l) = p.licence {
                                 ui.label(small(format!("Licence: {l}")));
@@ -707,11 +733,15 @@ pub fn storage(ui: &mut egui::Ui) {
             ui.label(small("None on this PC."));
         }
         let mut total = 0;
-        for m in &models {
+        let names = crate::models::show_names(&models);
+        for (m, (shown, apart)) in models.iter().zip(&names) {
             ui.horizontal_wrapped(|ui| {
                 let b = sizes.get(&m.name).copied().unwrap_or(0);
                 total += b;
-                ui.label(RichText::new(crate::models::plain_name(&m.name)).strong());
+                ui.label(RichText::new(shown).strong());
+                if let Some(a) = apart {
+                    ui.label(small(a));
+                }
                 if b > 0 {
                     ui.label(small(gb(b)));
                 }

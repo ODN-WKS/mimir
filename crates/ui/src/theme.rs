@@ -164,28 +164,6 @@ pub fn chip_style(ui: &mut egui::Ui) {
     }
 }
 
-/// The quiet locomotive nod: two rails with sleepers above the sidebar's foot.
-pub fn rails(ui: &mut egui::Ui) {
-    let w = ui.available_width();
-    let (rect, _) = ui.allocate_exact_size(egui::vec2(w, 5.0), egui::Sense::hover());
-    let p = ui.painter();
-    let c = Color32::from_rgb(0x16, 0x1D, 0x19);
-    let mut x = rect.left();
-    while x < rect.right() {
-        p.line_segment(
-            [egui::pos2(x, rect.top()), egui::pos2(x, rect.bottom())],
-            Stroke::new(1.0, c),
-        );
-        x += 14.0;
-    }
-    for y in [rect.top() + 1.0, rect.bottom() - 1.0] {
-        p.line_segment(
-            [egui::pos2(rect.left(), y), egui::pos2(rect.right(), y)],
-            Stroke::new(1.0, Color32::from_rgb(0x1E, 0x2B, 0x24)),
-        );
-    }
-}
-
 /// Whisper mode's sign: the closed eye with its lightning scar, exactly as
 /// docs/designs/mimir/icon/in-app/make.py draws it (soft halo and glow
 /// included), drawn from its SVG at the exact pixel size so it stays sharp.

@@ -87,7 +87,7 @@ fn settings_models_has_every_model_and_the_weekly_look() {
         "On this PC",
         "Model Store",
         "gpt-oss 20B",
-        "Fixed both test bugs in 32 s",
+        "Passed our coding check in 32 s",
         "Uncensored",
         "On the phone",
         "Gemma 4 E2B heretic",
@@ -332,7 +332,7 @@ fn ground_rules_go_with_every_task_and_can_be_changed_or_turned_off() {
     click(&mut h, "Settings");
     click(&mut h, "Models");
     assert!(shows(&h, station_ui::labels::GROUND_RULES));
-    assert!(shows(&h, mimir_core::settings::GROUND_RULES_NOTE));
+    assert!(shows(&h, station_ui::labels::GROUND_RULES_NOTE));
     assert!(
         h.query_all_by(|n| n.value().is_some_and(|v| v == "Be brief and plain."))
             .next()
@@ -366,7 +366,7 @@ fn ground_rules_go_with_every_task_and_can_be_changed_or_turned_off() {
     // Turned off: nothing is added.
     click(&mut h, "Settings");
     click(&mut h, "Models");
-    h.get_by_role_and_label(Role::CheckBox, "Send these with every task")
+    h.get_by_role_and_label(Role::CheckBox, "Send these with every chat and task")
         .click();
     for _ in 0..5 {
         h.step();

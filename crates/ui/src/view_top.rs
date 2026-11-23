@@ -177,7 +177,6 @@ impl Foot<'_> {
             // whether or not they show anything, so no button or list row
             // ever moves when one comes or goes.
             self.activity_slot(ui, w);
-            theme::rails(ui);
         });
     }
 

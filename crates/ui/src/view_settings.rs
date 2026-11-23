@@ -253,12 +253,15 @@ impl App {
             ui.set_width(ui.available_width());
             theme::heading(ui, "Read aloud");
             ui.horizontal(|ui| {
-                let natural = !self.settings.read_desktop_voice;
+                // The voice that really reads: the natural one only when it is
+                // here; otherwise the desktop voice reads and looks chosen.
+                let natural =
+                    !self.settings.read_desktop_voice && places::voice_status() == "Ready";
                 fn pick(on: bool, text: &str) -> egui::Button<'_> {
                     if on {
-                        theme::quiet(text).fill(theme::JADE_DIM)
+                        theme::quiet(text).fill(theme::JADE_DIM).selected(true)
                     } else {
-                        theme::quiet(text)
+                        theme::quiet(text).selected(false)
                     }
                 }
                 if ui.add(pick(natural, "Natural voice (Ingrid)")).clicked() {

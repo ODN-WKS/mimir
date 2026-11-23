@@ -152,7 +152,7 @@ pub(crate) fn starter_chip(ui: &mut egui::Ui, title: &str, note: &str) -> bool {
 pub(crate) fn hint_line(ui: &mut egui::Ui, text: &str) {
     ui.add_space(4.0);
     ui.vertical_centered(|ui| {
-        ui.add(egui::Label::new(RichText::new(text).color(theme::DIM).size(11.5)).truncate());
+        ui.add(egui::Label::new(RichText::new(text).color(theme::DIM).size(11.5)).wrap());
     });
 }
 
@@ -217,6 +217,10 @@ pub(crate) struct ComposerOut {
     pub later: bool,
 }
 
+/// What the plus and the chips need side by side (a mode, a model and an
+/// effort chip are about this wide).
+const CHIPS_W: f32 = 330.0;
+
 /// The message box, the same on every page: a rounded card with the text
 /// on top; under it a plus (attach), the page's chips, then a microphone
 /// and a round send button at the right.
@@ -269,27 +273,23 @@ pub(crate) fn composer_card(
             let mut send = false;
             let mut stop = false;
             let mut later = false;
-            // The chips wrap onto a second line in a narrow window; the
-            // microphone and send stay at the top right.
+            // Microphone and send stay at the top right. In a narrow window
+            // the chips don't fit beside them: they take a row of their own
+            // under the plus, together, rather than one chip dropping alone.
             let right_w = if mode == SendMode::Wait { 170.0 } else { 80.0 };
             let left_w = (ui.available_width() - right_w - 8.0).max(60.0);
-            ui.horizontal_top(|ui| {
-                ui.spacing_mut().item_spacing.x = 6.0;
-                ui.allocate_ui(egui::vec2(left_w, 0.0), |ui| {
-                    ui.horizontal_wrapped(|ui| {
-                        ui.spacing_mut().item_spacing.x = 6.0;
-                        if theme::icon_button(ui, theme::Icon::Plus, 28.0, crate::labels::ATTACH_FILES, None, true)
-                            .on_hover_text(
-                                "Add pictures or files (or drop them on the window, or paste a picture with Ctrl+V)",
-                            )
-                            .clicked()
-                        {
-                            actions.push(Action::PickAttachments);
-                        }
-                        chips(ui, actions);
-                    });
-                });
-                ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
+            let stacked = left_w < CHIPS_W;
+            let plus = |ui: &mut egui::Ui, actions: &mut Vec<Action>| {
+                if theme::icon_button(ui, theme::Icon::Plus, 28.0, crate::labels::ATTACH_FILES, None, true)
+                    .on_hover_text(
+                        "Add pictures or files (or drop them on the window, or paste a picture with Ctrl+V)",
+                    )
+                    .clicked()
+                {
+                    actions.push(Action::PickAttachments);
+                }
+            };
+            let mut right = |ui: &mut egui::Ui, actions: &mut Vec<Action>| {
                     let blue = Color32::from_rgb(0x2F, 0x5B, 0xC4);
                     match mode {
                         SendMode::Stop => {
@@ -336,8 +336,30 @@ pub(crate) fn composer_card(
                     {
                         later = true;
                     }
+            };
+            if stacked {
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 6.0;
+                    plus(ui, actions);
+                    ui.with_layout(Layout::right_to_left(Align::Min), |ui| right(ui, actions));
                 });
-            });
+                ui.horizontal_wrapped(|ui| {
+                    ui.spacing_mut().item_spacing.x = 6.0;
+                    chips(ui, actions);
+                });
+            } else {
+                ui.horizontal_top(|ui| {
+                    ui.spacing_mut().item_spacing.x = 6.0;
+                    ui.allocate_ui(egui::vec2(left_w, 0.0), |ui| {
+                        ui.horizontal_wrapped(|ui| {
+                            ui.spacing_mut().item_spacing.x = 6.0;
+                            plus(ui, actions);
+                            chips(ui, actions);
+                        });
+                    });
+                    ui.with_layout(Layout::right_to_left(Align::Min), |ui| right(ui, actions));
+                });
+            }
             out = Some(ComposerOut {
                 edit,
                 send,

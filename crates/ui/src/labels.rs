@@ -223,6 +223,8 @@ pub fn is_claude_ai_session(url: &str) -> bool {
 pub const OPEN_ON_CLAUDE_AI: &str = "Open on claude.ai";
 /// Settings › Models: the rules sent with every task.
 pub const GROUND_RULES: &str = "Rules for every chat";
+pub const GROUND_RULES_SEND: &str = "Send these with every chat and task";
+pub const GROUND_RULES_NOTE: &str = "Online answers follow their own safety rules on top of these; your PC's model and the phone's models follow these as written.";
 /// Settings: the card of experiments, and its first switch.
 pub const LABS: &str = "Labs";
 pub const LABS_PC_ACTIVITY: &str = "Show what Mímir is doing on this PC";
@@ -248,7 +250,7 @@ pub const ATTACH_FILES: &str = "Attach files";
 pub const REMOVE_PICTURE: &str = "Remove this picture";
 pub const DICTATE: &str = "Dictate";
 pub const HINT_CHAT: &str =
-    "Enter send · Shift Enter new line · Ctrl N new chat · right-click anything for more";
+    "Enter send · Shift Enter new line · Ctrl N new chat · right-click for more";
 pub const HINT_TASK: &str = "Enter send · Esc stop · right-click anything for more";
 
 /// The calm greeting when nothing is open.

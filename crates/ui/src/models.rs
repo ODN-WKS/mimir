@@ -61,6 +61,28 @@ pub const MODELS: [Model; 4] = [
 
 pub use mimir_core::models::plain_name;
 
+/// The speed note of a model in plain words: the lab's "Fixed both test bugs
+/// in 30 s" says "Passed our coding check in 30 s".
+pub fn plain_test_note(note: &str) -> String {
+    note.replace("Fixed both test bugs in", "Passed our coding check in")
+}
+
+/// What to show for each model's name: its plain name, and, when two
+/// installed models would read the same, what tells them apart (the name
+/// they are stored under), so two models never show one name.
+pub fn show_names(models: &[mimir_core::models::FreeModel]) -> Vec<(String, Option<String>)> {
+    let plain: Vec<String> = models.iter().map(|m| plain_name(&m.name)).collect();
+    plain
+        .iter()
+        .map(|p| {
+            let same = plain.iter().filter(|q| *q == p).count() > 1;
+            (p.clone(), same)
+        })
+        .zip(models)
+        .map(|((p, same), m)| (p, same.then(|| m.name.clone())))
+        .collect()
+}
+
 /// The picker's name for a saved `--model` value. Older tasks saved the
 /// short aliases ("opus"), which run the newest of that family.
 pub fn label(value: Option<&str>) -> String {
