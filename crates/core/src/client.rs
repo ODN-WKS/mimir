@@ -624,6 +624,8 @@ impl Station {
             Event::TestNotice { .. } | Event::TestNoticeOff => {}
             // The phone's alerts; the window has nothing to show for them.
             Event::Finished { .. } | Event::RecentFinished { .. } => {}
+            // The phone's "Running on your PC" list.
+            Event::PcSessions { .. } => {}
             Event::Activity { state } => self.activity = state,
             Event::Truth { truth } => {
                 if crate::truth::newer(self.truth.as_ref(), &truth) {

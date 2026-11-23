@@ -45,7 +45,7 @@ pub fn empty_for_others(call: &Call) -> Option<serde_json::Value> {
     use serde_json::json;
     match call {
         Call::Projects => Some(json!({"projects": [], "last": null})),
-        Call::Inbox | Call::Updates | Call::Ideas { .. } => Some(json!([])),
+        Call::Inbox | Call::Updates | Call::Ideas { .. } | Call::PcSessions => Some(json!([])),
         _ => None,
     }
 }

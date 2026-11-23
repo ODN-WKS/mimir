@@ -248,7 +248,11 @@ const OFFERED: &[&str] = &[
     "chat_files",
     "task_files",
     "finished_events",
+    "pc_sessions",
 ];
+
+/// How often the PC's Claude Code sessions are looked at again.
+const PC_SESSIONS_EVERY: Duration = Duration::from_secs(5);
 
 /// How long a task must stay idle before its work counts as ended.
 const FINISH_AFTER: Duration = Duration::from_secs(1);
@@ -353,6 +357,9 @@ struct Service {
     /// Session ids of Claude Code processes running on this PC, and when
     /// they were looked for.
     procs: (HashSet<String>, Option<Instant>),
+    /// The PC's Claude Code sessions as last sent to the owner's phones, and
+    /// when they were last looked at.
+    pc_sessions: (Vec<mimir_proto::PcSession>, Option<Instant>),
     queued: HashMap<String, QueuedMessage>,
     git: HashMap<String, GitInfo>,
     git_watch: Option<String>,
@@ -468,6 +475,7 @@ impl Service {
             outside_followed: HashSet::new(),
             outside_scan: None,
             procs: (HashSet::new(), None),
+            pc_sessions: (vec![], None),
             claude_out_until: None,
             queued: HashMap::new(),
             git: HashMap::new(),
@@ -1007,6 +1015,9 @@ impl Service {
         events.push(Event::RecentFinished {
             items: self.finished.iter().cloned().collect(),
         });
+        events.push(Event::PcSessions {
+            sessions: self.pc_sessions.0.clone(),
+        });
         if let Some(t) = self.truth_now() {
             events.push(Event::Truth { truth: Box::new(t) });
         }
@@ -1461,6 +1472,11 @@ impl Service {
                 });
                 serde_json::to_value(sessions).map_err(|e| e.to_string())
             }
+            Call::PcSessions => {
+                self.refresh_pc_sessions(true);
+                serde_json::to_value(&self.pc_sessions.0).map_err(|e| e.to_string())
+            }
+            Call::OpenPcSession { session } => self.open_pc_session(&session),
             Call::ImportPast { project, session } => {
                 let s: crate::sessions::PastSession =
                     serde_json::from_value(session).map_err(|e| e.to_string())?;
@@ -3768,6 +3784,80 @@ impl Service {
         }
     }
 
+    /// The tasks the PC's session list links to.
+    fn pc_task_refs(&self) -> Vec<crate::pcsessions::TaskRef> {
+        self.runner
+            .tasks
+            .iter()
+            .map(|l| crate::pcsessions::TaskRef {
+                task: l.task.id.clone(),
+                session: l.task.session_id.clone(),
+                title: l.task.title.clone(),
+                busy: l.busy(),
+                elsewhere: l.task.live_elsewhere,
+                whisper: l.task.incognito,
+            })
+            .collect()
+    }
+
+    /// Looks at the PC's Claude Code sessions (at most every few seconds,
+    /// or now when `force`) and tells the owner's phones when the list
+    /// changed.
+    fn refresh_pc_sessions(&mut self, force: bool) {
+        let now = Instant::now();
+        if !force
+            && self
+                .pc_sessions
+                .1
+                .is_some_and(|t| now.duration_since(t) < PC_SESSIONS_EVERY)
+        {
+            return;
+        }
+        // Nobody to tell and nobody asking: not looked at.
+        if !force
+            && !self
+                .clients
+                .values()
+                .any(|c| c.ready && c.features.iter().any(|f| f == "pc_sessions"))
+        {
+            return;
+        }
+        self.pc_sessions.1 = Some(now);
+        if self.procs.1.is_none() {
+            self.procs = (crate::sessions::running_sessions(), Some(now));
+        }
+        let hidden: HashSet<String> = self.settings.hidden_sessions.iter().cloned().collect();
+        let list = crate::pcsessions::list(
+            &crate::sessions::claude_home(),
+            &self.procs.0,
+            &hidden,
+            &self.pc_task_refs(),
+            crate::needs::now(),
+        );
+        if list != self.pc_sessions.0 {
+            self.pc_sessions.0 = list.clone();
+            self.broadcast(Event::PcSessions { sessions: list });
+        }
+    }
+
+    /// `Call::OpenPcSession`: the session becomes a task, or the task that
+    /// follows it live.
+    fn open_pc_session(&mut self, session: &str) -> Result<serde_json::Value, String> {
+        let opened = crate::pcsessions::open(
+            &mut self.runner,
+            &crate::sessions::claude_home(),
+            session,
+            &self.procs.0,
+            crate::needs::now(),
+        )?;
+        if opened.follow {
+            self.outside_followed.insert(opened.task.clone());
+        }
+        self.touched.insert(opened.task.clone());
+        self.refresh_pc_sessions(true);
+        Ok(serde_json::Value::String(opened.task))
+    }
+
     fn focused(&self) -> bool {
         self.clients.values().any(|c| c.ready && c.focused)
     }
@@ -4465,6 +4555,7 @@ impl Service {
             self.publish();
         }
         self.follow_outside();
+        self.refresh_pc_sessions(false);
         // The plan's usage is looked up only when Claude is in use.
         let wanted = self.settings.chats_paid() || !self.settings.project_free();
         if let Some(p) = self.runner.usage_poller.as_mut() {

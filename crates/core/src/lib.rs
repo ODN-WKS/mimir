@@ -30,6 +30,7 @@ pub mod needs;
 pub mod notify;
 pub mod ollama;
 pub mod paths;
+pub mod pcsessions;
 pub mod people;
 pub mod pictures;
 pub mod placement;

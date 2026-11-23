@@ -273,6 +273,16 @@ pub fn recent(limit: usize) -> Vec<OtherSession> {
 }
 
 fn recent_in(root: &Path, limit: usize) -> Vec<OtherSession> {
+    recent_keeping(root, limit, &Default::default())
+}
+
+/// The newest `limit` sessions, and also every one whose id is in `keep`
+/// (the running ones), newest first.
+pub(crate) fn recent_keeping(
+    root: &Path,
+    limit: usize,
+    keep: &std::collections::HashSet<String>,
+) -> Vec<OtherSession> {
     let mut files: Vec<(i64, PathBuf)> = vec![];
     for dir in std::fs::read_dir(root).into_iter().flatten().flatten() {
         for e in std::fs::read_dir(dir.path())
@@ -295,11 +305,8 @@ fn recent_in(root: &Path, limit: usize) -> Vec<OtherSession> {
         }
     }
     files.sort_by_key(|(m, _)| std::cmp::Reverse(*m));
-    let mut out = vec![];
+    let mut out: Vec<OtherSession> = vec![];
     for (modified_unix, path) in files {
-        if out.len() >= limit {
-            break;
-        }
         let Some(id) = path
             .file_stem()
             .and_then(|s| s.to_str())
@@ -307,6 +314,9 @@ fn recent_in(root: &Path, limit: usize) -> Vec<OtherSession> {
         else {
             continue;
         };
+        if out.len() >= limit && !keep.contains(&id) {
+            continue;
+        }
         let Some((project, first)) = head(&path) else {
             continue;
         };

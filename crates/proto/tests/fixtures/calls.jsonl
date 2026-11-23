@@ -1,5 +1,7 @@
 {"Hello":{"proto":2,"app_version":"0.17","client_name":"Samsung EX-100","env":[],"features":[]}}
 {"Hello":{"proto":2,"app_version":"0.22","client_name":"Samsung EX-100","env":[],"features":["search","lookup","talk","chat_sync","truth","models_changed","finished_events"]}}
+"PcSessions"
+{"OpenPcSession":{"session":"5f1c0a52-1111-4d2e-9a10-0123456789ab"}}
 {"Sync":{"since":12}}
 "Projects"
 {"NewTask":{"project":"/home/me/p","text":"Fix it","pictures":[],"mode":"Ask","model":null,"effort":null,"separate_copy":false,"msg_id":"m-1"}}

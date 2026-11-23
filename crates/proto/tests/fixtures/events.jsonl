@@ -35,3 +35,4 @@
 {"seq":35,"event":"ModelsChanged"}
 {"seq":36,"event":{"Finished":{"item":{"id":"fin:1794-1-1:4","task":"1794-1-1","how":"Ok","at":1794000400}}}}
 {"seq":37,"event":{"RecentFinished":{"items":[{"id":"fin:1794-1-1:4","task":"1794-1-1","how":"Ok","at":1794000400},{"id":"fin:1794-1-2:9","task":"1794-1-2","how":"Failed","at":1794000500}]}}}
+{"seq":38,"event":{"PcSessions":{"sessions":[{"id":"5f1c0a52-1111-4d2e-9a10-0123456789ab","title":"Tidy the recipe list","project":"Recipe box","here":false,"state":"working","last":1794000600},{"id":"5f1c0a52-2222-4d2e-9a10-0123456789ab","title":"Plan the garden beds","project":"Garden planner","here":true,"task":"1794-1-1","state":"ended","last":1794000100}]}}}

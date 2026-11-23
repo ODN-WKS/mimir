@@ -312,7 +312,10 @@ pub const PROTO: u32 = 2;
 /// (`ChatTurn::files`: a chat message can carry files for the PC to read, and
 /// `Filed::Talk::files_read` says how much of each was read) and "task_files"
 /// (`Call::NewTask::files` and `Call::Send::files`: a project task's message
-/// can carry files, and its `pictures` are kept for the task too). A client lists the
+/// can carry files, and its `pictures` are kept for the task too) and
+/// "pc_sessions" (`Event::PcSessions`, `Call::PcSessions` and
+/// `Call::OpenPcSession`: every Claude Code session on the PC, owner only).
+/// A client lists the
 /// ones it knows in `Hello`, and only gets the new events when it does.
 pub const FEATURES: &[&str] = &[
     "search",
@@ -330,7 +333,41 @@ pub const FEATURES: &[&str] = &[
     "chat_files",
     "task_files",
     "finished_events",
+    "pc_sessions",
 ];
+
+/// Where a PC session is at.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum PcSessionState {
+    /// Claude is working on it now.
+    Working,
+    /// Open in an app, waiting for the next message.
+    Idle,
+    /// Not open anywhere.
+    Ended,
+}
+
+/// One Claude Code session on the PC, wherever it was started. Feature
+/// "pc_sessions".
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PcSession {
+    /// Claude Code's session id.
+    pub id: String,
+    /// Short title in plain words.
+    pub title: String,
+    /// The project folder's name.
+    pub project: String,
+    /// Started in Mímir (its task is `task`), or elsewhere (a terminal, the
+    /// Claude app, a scheduled run).
+    pub here: bool,
+    /// The Mímir task for this session, when there is one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub task: Option<String>,
+    pub state: PcSessionState,
+    /// When it last moved (unix seconds).
+    pub last: i64,
+}
 
 /// What `ConfirmPair.person` says for the owner's own phone. Anything else
 /// is a first name (someone else's phone); nothing at all is refused, so
@@ -1422,6 +1459,14 @@ pub enum Call {
     PastSessions {
         project: String,
     },
+    /// The PC's Claude Code sessions, newest first (the owner only; feature
+    /// "pc_sessions"). Replies with a `Vec<PcSession>`.
+    PcSessions,
+    /// Opens one of them as a task: an idle or ended one continues, one
+    /// working elsewhere is followed live. Replies with the task's id.
+    OpenPcSession {
+        session: String,
+    },
     ImportPast {
         project: String,
         session: serde_json::Value,
@@ -1533,6 +1578,8 @@ impl Call {
             Call::Hello { .. }
             | Call::Sync { .. }
             | Call::Projects
+            | Call::PcSessions
+            | Call::OpenPcSession { .. }
             | Call::NewProject { .. }
             | Call::Chat { .. }
             | Call::Talk { .. }
@@ -1743,6 +1790,11 @@ pub enum Event {
     RecentFinished {
         items: Vec<FinishedItem>,
     },
+    /// Every Claude Code session on the PC, the whole list each time it
+    /// changes (the owner's phones only). Feature "pc_sessions".
+    PcSessions {
+        sessions: Vec<PcSession>,
+    },
     /// What this person may choose changed (the owner allowed or took away
     /// their use of the online plan): the phone asks `Models` again.
     ModelsChanged,
@@ -1775,6 +1827,7 @@ impl Event {
                 | Event::ModelsChanged
                 | Event::Finished { .. }
                 | Event::RecentFinished { .. }
+                | Event::PcSessions { .. }
         )
     }
 
@@ -1802,6 +1855,7 @@ impl Event {
             Event::Truth { .. } => Some("truth"),
             Event::ModelsChanged => Some("models_changed"),
             Event::Finished { .. } | Event::RecentFinished { .. } => Some("finished_events"),
+            Event::PcSessions { .. } => Some("pc_sessions"),
             _ => None,
         }
     }
@@ -1820,6 +1874,7 @@ impl Event {
                 | Event::Activity { .. }
                 // Sent with each snapshot.
                 | Event::RecentFinished { .. }
+                | Event::PcSessions { .. }
                 // Caught up by `TalkTurn`, `ChatsSince` and the truth sent on connect.
                 | Event::TalkPiece { .. }
                 | Event::TalkDone { .. }

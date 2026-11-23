@@ -487,6 +487,28 @@ fn write_the_examples() {
                 },
             ],
         },
+        Event::PcSessions {
+            sessions: vec![
+                PcSession {
+                    id: "5f1c0a52-1111-4d2e-9a10-0123456789ab".into(),
+                    title: "Tidy the recipe list".into(),
+                    project: "Recipe box".into(),
+                    here: false,
+                    task: None,
+                    state: PcSessionState::Working,
+                    last: 1_794_000_600,
+                },
+                PcSession {
+                    id: "5f1c0a52-2222-4d2e-9a10-0123456789ab".into(),
+                    title: "Plan the garden beds".into(),
+                    project: "Garden planner".into(),
+                    here: true,
+                    task: Some("1794-1-1".into()),
+                    state: PcSessionState::Ended,
+                    last: 1_794_000_100,
+                },
+            ],
+        },
     ];
     let lines: Vec<String> = events
         .into_iter()
@@ -524,6 +546,10 @@ fn write_the_examples() {
                 "models_changed".into(),
                 "finished_events".into(),
             ],
+        },
+        Call::PcSessions,
+        Call::OpenPcSession {
+            session: "5f1c0a52-1111-4d2e-9a10-0123456789ab".into(),
         },
         Call::Sync { since: 12 },
         Call::Projects,
