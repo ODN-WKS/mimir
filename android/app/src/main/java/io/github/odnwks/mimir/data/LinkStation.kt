@@ -1296,7 +1296,7 @@ class LinkStation(
     override fun moveTask(taskId: String, project: String, said: (String) -> Unit) {
         val path = pathOf(project) ?: return said("That project isn't on your PC.")
         // The answer is said where the person is looking (the task page), not left in the chat list.
-        if (!call(Wire.moveTo(taskId, path)) { _, err -> said(err ?: "Moved to $project.") }) said("Your PC is away: try again when it's back.")
+        if (!call(Wire.moveTo(taskId, path)) { _, err -> if (err != null) said(err) }) said("Your PC is away: try again when it's back.")
     }
     override fun setTaskPlan(taskId: String, plan: Boolean) = taskCall(Wire.setMode(taskId, plan))
     override fun setTaskYolo(taskId: String) = taskCall(Wire.setYolo(taskId))
@@ -1859,10 +1859,23 @@ internal fun isGoAheadOffText(err: String) =
 /** The PC's "ran out of room" note: its older words ("This free model…") and its newer ("This model…"). */
 internal fun isOutOfRoomNote(text: String) = text.startsWith("This free model ran out of room") || text.startsWith("This model ran out of room")
 
+/** Claude Code's own "Not logged in · Please run /login" is not for people: the plain line instead (also from an older PC). */
+internal fun signedOutWords(text: String): String? {
+    val t = text.trim().lowercase()
+    val signIn = t.contains("not logged in") || t.contains("please run /login")
+    return if (t.length <= 120 && signIn) SIGNED_OUT else null
+}
+
+const val SIGNED_OUT = "Claude isn't signed in on your PC. Open Mímir on your PC to sign in, or use your PC's own model."
+
+/** The first message of a task carried on from a summary (the PC hands it to Claude). */
+internal const val CARRY_ON_TEXT = "Carry on with this task from the summary."
+
 /** One chat entry as a task message; null for steps, and for the "ran out of room" note (its own panel says it). */
 internal fun taskMessageOf(taskId: String, i: Int, e: LEntry, streamingLast: Boolean): TaskMessage? = when (e) {
-    is LEntry.You -> TaskMessage("$taskId-$i", false, e.text)
-    is LEntry.Claude -> TaskMessage("$taskId-$i", true, e.text, if (streamingLast) "" else "Play the reply")
+    // N6: the hand-over line to Claude is a dim note, never the person's own words.
+    is LEntry.You -> if (e.text.trim() == CARRY_ON_TEXT) TaskMessage("$taskId-$i", false, e.text, note = true) else TaskMessage("$taskId-$i", false, e.text)
+    is LEntry.Claude -> TaskMessage("$taskId-$i", true, signedOutWords(e.text) ?: e.text, if (streamingLast) "" else "Play the reply")
     is LEntry.Note -> if (e.text.isBlank() || isOutOfRoomNote(e.text)) null
         else TaskMessage("$taskId-$i", false, e.text, note = true)
     else -> null

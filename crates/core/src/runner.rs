@@ -2144,7 +2144,16 @@ impl Runner {
                     .entries
                     .iter()
                     .any(|e| matches!(e, crate::task::Entry::Note(n) if n == BACKGROUND_NOTE));
-                let died_busy = (l.background || l.bg_seen > 0 || said_busy)
+                // Ended by a signal nobody here sent (a kill from outside): the
+                // work is not done, whatever the background look last saw. Mímir's
+                // own stops set Stopped or Paused first, and its other kills take
+                // the run away before this is read.
+                let killed_outside = l
+                    .session
+                    .as_mut()
+                    .is_some_and(|s| s.poll_exit() == Some(None))
+                    && !matches!(l.task.status, Status::Stopped | Status::Paused);
+                let died_busy = (l.background || l.bg_seen > 0 || said_busy || killed_outside)
                     && !matches!(l.task.status, Status::Stopped | Status::Paused);
                 l.session = None;
                 self.own_ended

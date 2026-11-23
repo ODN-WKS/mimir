@@ -19,6 +19,10 @@ const OWN_BASE: u64 = 20_000;
 /// 130,000 of them).
 const TOKENS_PER_PAGE: u64 = 440;
 
+/// N6: the first message of a task carried on from a summary. It is handed to
+/// Claude, never the person's own words: both screens show it as a dim note.
+pub const CARRY_ON_TEXT: &str = "Carry on with this task from the summary.";
+
 /// What the old task says once it was carried on in a new one.
 pub const CARRIED_NOTE: &str = "Carried on in a fresh task.";
 

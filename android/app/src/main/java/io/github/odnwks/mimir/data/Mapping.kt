@@ -43,6 +43,8 @@ object Mapping {
         t.status == "NeedsYou" -> "Needs you"
         t.archived -> "Archived"
         connected && t.liveElsewhere -> "Live"
+        // N2: a session followed from elsewhere while the PC is away: its last known state is not "Done".
+        !connected && t.liveElsewhere -> "Was working (PC away)"
         // A stop nobody asked for reads differently from the owner's own Stop.
         t.status == "Stopped" && t.failed -> "Stopped unexpectedly"
         else -> t.status

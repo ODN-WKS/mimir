@@ -11,6 +11,7 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.snapshotFlow
 import kotlinx.coroutines.launch
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
@@ -139,11 +140,24 @@ fun TaskScreen(taskId: String, state: StationState, station: Station, nav: Navig
     val reduce = LocalReduceMotion.current
     val keyboard = WindowInsets.isImeVisible
     val focus = LocalFocusManager.current
+    // N3: the view follows the newest line only while the person is at the bottom (as chat apps do);
+    // reading above it, new lines wait behind a "New lines" chip.
+    var atBottom by remember(task.id) { mutableStateOf(true) }
+    var unseen by remember(task.id) { mutableStateOf(false) }
+    val atBottomPx = with(androidx.compose.ui.platform.LocalDensity.current) { 48.dp.roundToPx() }
+    LaunchedEffect(scroll) {
+        snapshotFlow { scroll.isScrollInProgress }.collect { moving ->
+            if (!moving) { atBottom = scroll.value >= scroll.maxValue - atBottomPx; if (atBottom) unseen = false }
+        }
+    }
     LaunchedEffect(task.messages.size, task.messages.lastOrNull()?.text?.length, task.question?.itemId, keyboard) {
         // Wait for the new part to be laid out, so the end is where it really is.
         androidx.compose.runtime.withFrameNanos { }
         androidx.compose.runtime.withFrameNanos { }
-        if (reduce) scroll.scrollTo(scroll.maxValue) else scroll.animateScrollTo(scroll.maxValue)
+        if (followsBottom(atBottom, task.messages.lastOrNull()?.fromClaude == false, keyboard)) {
+            if (reduce) scroll.scrollTo(scroll.maxValue) else scroll.animateScrollTo(scroll.maxValue)
+            atBottom = true; unseen = false
+        } else unseen = true
     }
     BoxWithConstraints(Modifier.fillMaxSize().background(Palette.Ground)) {
         val screenHeight = maxHeight
@@ -226,12 +240,12 @@ fun TaskScreen(taskId: String, state: StationState, station: Station, nav: Navig
                 }
                 // The chat's own parts: an answer with Listen, Copy, Share and Try again, and the owner's
                 // message with its hold menu and Edit. Both only once the task is quiet.
-                val quiet = !task.showsStop && !task.busy
+                val quiet = !task.showsStop && !task.busy && !liveNow
                 // Nothing is queued behind it, and one tap only: Try again never sends an older prompt after a newer one.
                 val nothingWaiting = task.messages.none { it.waiting }
                 var tried by rememberSaveable(task.id) { mutableStateOf<String?>(null) }
                 val lastAnswer = task.messages.lastOrNull { it.fromClaude }
-                val lastOwn = task.messages.lastOrNull { !it.fromClaude && !it.waiting }
+                val lastOwn = task.messages.lastOrNull { !it.fromClaude && !it.waiting && !it.note }
                 messages.forEach { m ->
                     if (m.note) Text(m.text, style = Type.Small, color = Palette.TextDim)
                     else if (m.fromClaude) {
@@ -314,6 +328,10 @@ fun TaskScreen(taskId: String, state: StationState, station: Station, nav: Navig
             }
             }
 
+            if (unseen) Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                val toEnd = androidx.compose.runtime.rememberCoroutineScope()
+                QuietButton("New lines ↓", "Go to the newest lines") { toEnd.launch { scroll.animateScrollTo(scroll.maxValue); atBottom = true; unseen = false } }
+            }
             // After an answer, its receipt shows for 4 s in the dock's place, then the next ask (or nothing).
             var receipt by remember(task.id) { mutableStateOf<String?>(null) }
             LaunchedEffect(receipt) { if (receipt != null) { kotlinx.coroutines.delay(4000); receipt = null } }
@@ -381,7 +399,7 @@ fun TaskScreen(taskId: String, state: StationState, station: Station, nav: Navig
                     // Only the composer rides the keyboard; the dock above it goes up with it.
                     Composer(
                         draft, { draft = it },
-                        hint = if (state.pcAway) "Reply to Mímir (${state.waitsUntil})" else "Reply to Mímir",
+                        hint = if (state.pcAway) "Reply (${state.waitsUntil})" else "Reply to Mímir",
                         label = "Reply to this task", voice = voice, micLabel = "Talk (voice typing): speak a reply",
                         onSend = { station.reply(task.id, draft.trim()); draft = "" },
                         // While Claude works, an empty box's button is Stop.
@@ -547,6 +565,9 @@ fun MissingScreen(text: String, nav: Navigator) {
         Box(Modifier.weight(1f))
     }
 }
+
+/** N3: whether a new line pulls the view down: at the bottom already, the person's own message, or the keyboard opening. */
+internal fun followsBottom(atBottom: Boolean, lastIsOwn: Boolean, keyboard: Boolean): Boolean = atBottom || lastIsOwn || keyboard
 
 /** Under the edit box of a task message: what sending it does. */
 const val EDIT_TASK_NOTE = "Your edited message is sent as a new message; earlier replies stay."

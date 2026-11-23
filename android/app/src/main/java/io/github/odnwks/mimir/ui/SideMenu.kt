@@ -141,11 +141,18 @@ fun menuTime(at: Long, now: Long): String {
 }
 
 /** What a project's row says on its right, and whether it is amber (needs you), green (running) or dim. */
-fun projectState(p: io.github.odnwks.mimir.data.Project): Pair<String, ProjectTone> = when {
+fun projectState(p: io.github.odnwks.mimir.data.Project, elsewhere: Int = 0): Pair<String, ProjectTone> = when {
     p.needsYou > 0 -> "needs you" to ProjectTone.Needs
-    p.tasksRunning > 0 -> "● ${p.tasksRunning} task${if (p.tasksRunning == 1) "" else "s"} running" to ProjectTone.Running
+    p.tasksRunning + elsewhere > 0 -> "● ${p.tasksRunning + elsewhere} task${if (p.tasksRunning + elsewhere == 1) "" else "s"} running" to ProjectTone.Running
     else -> "idle" to ProjectTone.Idle
 }
+
+/** N8: sessions working in this project in a terminal or the Claude app (the menu's "Your PC" counts them, so the project must too). */
+fun projectRunningElsewhere(state: io.github.odnwks.mimir.data.StationState, p: io.github.odnwks.mimir.data.Project): Int =
+    if (!(state.paired && state.pc.online)) 0 else state.pcSessions.orEmpty().count { s ->
+        s.state == io.github.odnwks.mimir.data.PcSessionState.Working && !s.here && s.project == p.name &&
+            state.tasks.none { t -> t.id == s.task && t.stateWords == "Working" }
+    }
 
 enum class ProjectTone { Needs, Running, Idle }
 
@@ -263,7 +270,7 @@ fun SideMenu(
                     )
                 }
                 if (fold.projectsOpen) items(state.projects, key = { "project-${it.name}" }) { p ->
-                    val (words, tone) = projectState(p)
+                    val (words, tone) = projectState(p, projectRunningElsewhere(state, p))
                     MenuRow(p.name, right = words, rightColor = when (tone) { ProjectTone.Needs -> MenuColors.Amber; ProjectTone.Running -> Palette.GreenText; ProjectTone.Idle -> MenuColors.Dim }, ellipsize = true) {
                         go { nav.open(Screen.Project(p.name)) }
                     }

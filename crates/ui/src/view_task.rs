@@ -1876,6 +1876,7 @@ fn auto_note(text: &str) -> Option<String> {
     match t {
         "The plan is approved. Carry it out now." => Some("Plan approved".into()),
         "Please continue where you left off." => Some("Continued".into()),
+        mimir_core::long::CARRY_ON_TEXT => Some(mimir_core::long::CARRY_ON_TEXT.into()),
         _ if t.starts_with('/') && !t.contains(char::is_whitespace) => Some(format!("You ran {t}")),
         _ => None,
     }

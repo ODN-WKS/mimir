@@ -200,6 +200,9 @@ class MappingTest {
         // Live only while it goes on elsewhere; QA F5: an archived task is never Live.
         assertEquals("Live", Mapping.taskWords(t("Done", false).copy(liveElsewhere = true), asks = false, connected = true))
         assertEquals("Archived", Mapping.taskWords(t("Done", false).copy(liveElsewhere = true, archived = true), asks = false, connected = true))
+        // N2: followed while the PC is away: the away state, never a green Done.
+        assertEquals("Was working (PC away)", Mapping.taskWords(t("Done", false).copy(liveElsewhere = true), asks = false, connected = false))
+        assertEquals("Done", Mapping.taskWords(t("Done", false), asks = false, connected = false))
         assertEquals("Was working (PC away)", Mapping.taskWords(t("Working", false), asks = false, connected = false))
     }
 

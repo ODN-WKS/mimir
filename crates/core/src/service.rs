@@ -1361,6 +1361,9 @@ impl Service {
                 files,
                 ..
             } => {
+                if let Some(why) = self.task(&task).and_then(blocked_elsewhere) {
+                    return Err(why);
+                }
                 self.runner.send_attached(&task, &text, &pictures, &files)?;
                 // Carrying on after a sure filing: the "Filed under" line has
                 // done its work.
@@ -1391,6 +1394,9 @@ impl Service {
                 .and_then(|q| serde_json::to_value(q).ok())
                 .unwrap_or(Value::Null)),
             Call::SendQueued { task } => {
+                if let Some(why) = self.task(&task).and_then(blocked_elsewhere) {
+                    return Err(why);
+                }
                 if let Some(q) = self.queued.remove(&task) {
                     let (text, pictures) = with_files(&q.text, &q.files);
                     self.runner.send_with(&task, &text, &pictures);
@@ -1414,6 +1420,9 @@ impl Service {
                 ok
             }
             Call::Continue { task } => {
+                if let Some(why) = self.task(&task).and_then(blocked_elsewhere) {
+                    return Err(why);
+                }
                 self.runner.resume(&task);
                 ok
             }
@@ -2833,7 +2842,7 @@ impl Service {
         // note. The summary itself goes to Claude, not into the conversation.
         let (text, brief) = if did_work {
             (
-                "Carry on with this task from the summary.".to_string(),
+                crate::long::CARRY_ON_TEXT.to_string(),
                 Some(crate::auto::brief(t)),
             )
         } else {
@@ -5563,6 +5572,21 @@ fn elsewhere_in(t: &crate::task::Task) -> Option<String> {
     Some(if app { "app" } else { "terminal" }.into())
 }
 
+/// N1: a task still running outside Mímir (a terminal, the Claude app) takes no
+/// reply, Try again or Edit from here: a second Claude Code on the same
+/// conversation would work at the same time. The plain line says where and what to do.
+fn blocked_elsewhere(l: &runner::Live) -> Option<String> {
+    if !l.task.live_elsewhere || l.running() {
+        return None;
+    }
+    let place = match elsewhere_in(&l.task).as_deref() {
+        Some("app") => "the Claude app",
+        Some(_) => "a terminal",
+        None => "another app",
+    };
+    Some(format!("It's still running in {place}. Stop it first."))
+}
+
 /// A few lines to look at before answering a permission request: the
 /// change, the new file's start, or the command.
 fn permission_preview(r: &crate::approvals::Request) -> Vec<String> {
@@ -6349,6 +6373,29 @@ mod pc_name_tests {
         assert!(h.live_elsewhere && !h.failed);
         t.live_elsewhere = false;
         assert_eq!(elsewhere_in(&t), None);
+    }
+
+    /// N1: a reply to a task still running in a terminal or the app is refused
+    /// with a plain line; a task of Mímir's own, or one stopped there, is not.
+    #[test]
+    fn a_reply_to_a_task_running_elsewhere_is_refused() {
+        let mut t = crate::task::Task::new("1-1-3".into(), "T".into(), "/p".into(), 1);
+        t.session_id = Some("sess-n1".into());
+        let own = crate::runner::Live::for_test(t.clone());
+        assert_eq!(blocked_elsewhere(&own), None);
+        t.live_elsewhere = true;
+        let live = crate::runner::Live::for_test(t.clone());
+        assert_eq!(
+            blocked_elsewhere(&live).as_deref(),
+            Some("It's still running in a terminal. Stop it first.")
+        );
+        crate::sessions::mark_app_sessions_for_test(&["sess-n1"]);
+        assert_eq!(
+            blocked_elsewhere(&live).as_deref(),
+            Some("It's still running in the Claude app. Stop it first.")
+        );
+        t.live_elsewhere = false;
+        assert_eq!(blocked_elsewhere(&crate::runner::Live::for_test(t)), None);
     }
 
     /// T4 / P5: the header and truth carry "stopped unexpectedly" only for a

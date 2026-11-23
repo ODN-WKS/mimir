@@ -90,9 +90,11 @@ const val TASK_OPTIONS = "Task options"
 @Composable
 fun TopicButton(text: String?, label: String, onClick: () -> Unit, style: androidx.compose.ui.text.TextStyle, color: androidx.compose.ui.graphics.Color = Palette.Text, maxLines: Int = 1, modifier: Modifier = Modifier, start: androidx.compose.ui.unit.Dp = 12.dp) {
     Row(
-        modifier.heightIn(min = 48.dp).clip(RoundedCornerShape(12.dp))
+        // P13: a small corner and some air above and below, so the first letter of a last line (a name of
+        // three lines starts at the very edge) is never cut by the rounded corner.
+        modifier.heightIn(min = 48.dp).clip(RoundedCornerShape(8.dp))
             .clickable(role = Role.Button, onClickLabel = label, onClick = onClick)
-            .padding(start = start, end = 12.dp),
+            .padding(start = start, end = 12.dp, top = 6.dp, bottom = 6.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         if (text != null) Text(

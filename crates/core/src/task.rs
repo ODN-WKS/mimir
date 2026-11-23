@@ -307,6 +307,21 @@ pub fn phone_too_start(task: &mut Task) -> Result<(), String> {
     Ok(())
 }
 
+/// What a person reads when Claude Code says it isn't signed in (N4): its own
+/// "Not logged in · Please run /login" is not for them. None for any other text.
+pub fn sign_in_words(text: &str) -> Option<&'static str> {
+    let t = text.trim().to_lowercase();
+    // Only Claude Code's short sign-in errors, never a long answer that mentions /login.
+    if t.chars().count() <= 120 && (t.contains("not logged in") || t.contains("please run /login"))
+    {
+        return Some(SIGNED_OUT);
+    }
+    None
+}
+
+/// The plain line for a Claude Code that isn't signed in.
+pub const SIGNED_OUT: &str = "Claude isn't signed in on your PC. Open Mímir on your PC to sign in, or use your PC's own model.";
+
 impl Task {
     pub fn new(id: String, title: String, project: String, now_unix: i64) -> Self {
         Task {
@@ -544,7 +559,8 @@ impl Task {
             }
             Event::Text(t) => {
                 self.live.clear();
-                self.entries.push(Entry::Claude(t.clone()));
+                let t = sign_in_words(t).map_or_else(|| t.clone(), str::to_string);
+                self.entries.push(Entry::Claude(t));
             }
             Event::TextDelta(t) => self.live.push_str(t),
             Event::ContextUsed(n) => self.context_used = *n,
@@ -761,6 +777,7 @@ impl Task {
                 self.status = Status::Stopped;
                 self.failed = true;
                 let why = f.text.clone().unwrap_or_else(|| f.subtype.clone());
+                let why = sign_in_words(&why).map_or(why, str::to_string);
                 // Claude's last message may already say it.
                 let said =
                     matches!(self.entries.last(), Some(Entry::Claude(t)) if t.trim() == why.trim());
@@ -1204,6 +1221,35 @@ mod tests {
             terminal_reason: "completed".into(),
             context_window: 0,
         })
+    }
+
+    /// N4: Claude Code's "Not logged in" answer reads as a plain line, in the
+    /// answer and in the stop note, and a long answer that mentions /login stays.
+    #[test]
+    fn a_sign_in_error_reads_plain() {
+        let mut t = Task::new("1-1-1".into(), "T".into(), "/p".into(), 1);
+        t.apply(&Event::Text("Not logged in · Please run /login".into()), 0);
+        assert!(matches!(t.entries.last(), Some(Entry::Claude(x)) if x == SIGNED_OUT));
+        let mut f = Finished {
+            session_id: "s".into(),
+            subtype: "success".into(),
+            is_error: true,
+            text: Some("Not logged in · Please run /login".into()),
+            duration_ms: 0,
+            cost_usd: 0.0,
+            terminal_reason: "completed".into(),
+            context_window: 0,
+        };
+        t.apply(&Event::Finished(f.clone()), 0);
+        assert!(
+            !t.entries
+                .iter()
+                .any(|e| matches!(e, Entry::Note(n) if n.contains("/login"))),
+            "no raw text, and the answer already says it: {:?}",
+            t.entries
+        );
+        f.text = Some("Run /login in your terminal, then start the app again, and here is a long explanation of how the sign-in flow works in every detail so it is not a short error.".into());
+        assert_eq!(sign_in_words(f.text.as_deref().unwrap()), None);
     }
 
     fn step_oks(t: &Task) -> Vec<Option<bool>> {

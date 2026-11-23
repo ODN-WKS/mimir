@@ -1355,12 +1355,14 @@ fn move_session_in(home: &Path, session: &str, from: &Path, to: &Path) -> std::i
     Ok(dst)
 }
 
+/// N9: why a move is refused when the conversation's history is missing, and what to do instead.
+pub const NO_HISTORY: &str = "The history of this conversation wasn't found. It can't be moved. Start a new task in the other project instead.";
+
 /// Whether a session could move to `to` now: its history is found and the
 /// project hasn't got it already.
 pub fn can_move(session: &str, from: &Path, to: &Path) -> Result<(), String> {
     let home = claude_home();
-    let src =
-        locate(&home, session, from).ok_or("The history of this conversation wasn't found.")?;
+    let src = locate(&home, session, from).ok_or(NO_HISTORY)?;
     let dir = history_folder(&home, to).map_err(|e| format!("{e}."))?;
     let dst = dir.join(format!("{session}.jsonl"));
     if src != dst && (dst.exists() || dst.with_extension("").exists()) {
@@ -1447,6 +1449,16 @@ pub fn to_task(s: &PastSession, project: &Path, task_id: String) -> std::io::Res
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// N9: a move refused for a missing history says what to do instead.
+    #[test]
+    fn a_missing_history_says_what_to_do_instead() {
+        assert!(NO_HISTORY.starts_with("The history of this conversation wasn't found."));
+        assert!(
+            NO_HISTORY
+                .contains("It can't be moved. Start a new task in the other project instead.")
+        );
+    }
 
     /// N7: a followed session shows when it began, and its "send a message to
     /// carry on" line stays under the last line.

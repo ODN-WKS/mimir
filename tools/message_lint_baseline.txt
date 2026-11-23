@@ -1,5 +1,6 @@
 # Message lint: known findings (rule, file, text). New ones fail
 # tools/check-all.sh. Fix one, then: python3 -I tools/message_lint.py --update
+claude-name	android/app/src/main/java/io/github/odnwks/mimir/data/LinkStation.kt	Claude isn't signed in on your PC. Open Mímir on your PC to sign in, or use your PC's own model.
 tech-word	android/app/src/main/java/io/github/odnwks/mimir/standalone/Engine.kt	%.0f tokens a second
 tech-word	crates/core/src/incognito.rs	no socket for loopback
 tech-word	crates/core/src/sockets.rs	no socket was handed over
