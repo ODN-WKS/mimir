@@ -143,7 +143,7 @@ fun TaskScreen(taskId: String, state: StationState, station: Station, nav: Navig
                     var more by rememberSaveable(task.id) { mutableStateOf(false) }
                     Row(
                         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        modifier = Modifier.heightIn(min = 32.dp).clickable(role = androidx.compose.ui.semantics.Role.Button, onClickLabel = if (more) "Hide the details" else "Show the project and age") { more = !more }
+                        modifier = Modifier.padding(top = 4.dp).heightIn(min = 32.dp).clickable(role = androidx.compose.ui.semantics.Role.Button, onClickLabel = if (more) "Hide the details" else "Show the project and age") { more = !more }
                             .semantics(mergeDescendants = true) { liveRegion = androidx.compose.ui.semantics.LiveRegionMode.Polite },
                     ) {
                         val (fg, bg) = stateColours(task.stateWords)
@@ -169,6 +169,8 @@ fun TaskScreen(taskId: String, state: StationState, station: Station, nav: Navig
                 )
             }
             ConnectionStrip(state, Modifier.padding(bottom = 4.dp))
+            // Pinned above the conversation, so it stays in sight while it scrolls.
+            if (listsSessions && task.liveElsewhere) Box(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) { FollowBanner(followedIn(state, task.id)) }
             ChatTextSize {
             Column(
                 Modifier.weight(1f).fillMaxWidth()
@@ -181,7 +183,6 @@ fun TaskScreen(taskId: String, state: StationState, station: Station, nav: Navig
                     .padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
-                if (listsSessions && task.liveElsewhere) FollowBanner(followedIn(state, task.id))
                 if (task.steps.isNotEmpty()) Steps(task, stepsOpen) { stepsOpen = !stepsOpen }
                 if (task.freeModel) Panel(background = Palette.Bar) {
                     Text(

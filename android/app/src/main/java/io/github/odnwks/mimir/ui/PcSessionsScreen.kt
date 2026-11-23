@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -135,8 +137,11 @@ fun PcSessionsScreen(
             Modifier.fillMaxWidth().background(Palette.Ground).clickable(role = Role.Button) { nav.open(Screen.PcSettings) }.heightIn(min = 52.dp).padding(horizontal = 22.dp),
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            Text(PC_SETTINGS_ROW, style = Type.BodyTight, color = Palette.Text)
-            Text("$PC_SETTINGS_HINT ›", style = Type.Small, color = Palette.TextDim)
+            Text(PC_SETTINGS_ROW, style = Type.BodyTight, color = Palette.Text, maxLines = 1, softWrap = false)
+            Spacer(Modifier.width(12.dp))
+            // The hint takes what is left on one line (cut with "…"), the arrow stays at the right edge.
+            Text(PC_SETTINGS_HINT, style = Type.Small, color = Palette.TextDim, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = androidx.compose.ui.text.style.TextAlign.End, modifier = Modifier.weight(1f))
+            Text(" ›", style = Type.Small, color = Palette.TextDim, maxLines = 1, softWrap = false)
         }
         NeedsYouBar(state.needsYou.size, { nav.open(Screen.NeedsYou) }, Modifier.padding(start = 12.dp, end = 12.dp, top = 4.dp, bottom = 4.dp))
     }
