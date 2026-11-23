@@ -12,21 +12,46 @@ use mimir_proto::{LongNotice, LongWhy};
 /// Conversation size (in tokens) from which a task is long.
 pub const LONG_FROM: u64 = 150_000;
 
+/// What Claude Code's own start takes of a small window.
+const OWN_BASE: u64 = 20_000;
+
 /// A book page holds about this many tokens (a 300-page book is roughly
 /// 130,000 of them).
 const TOKENS_PER_PAGE: u64 = 440;
 
 /// The notice a task calls for, or None while it is not long.
 pub fn notice(t: &Task) -> Option<LongNotice> {
-    if t.context_used < LONG_FROM {
+    // A Whisper keeps nothing: no line, no way to copy it into a saved task.
+    if t.incognito {
         return None;
     }
-    let very = t.context_window > 0 && t.context_used * 5 >= t.context_window * 4;
-    let why = if crate::models::is_free(t.model.as_deref()) {
-        LongWhy::Own
+    let own = crate::models::is_free(t.model.as_deref());
+    // The PC's own model has a small room (the one Mímir gives it, unless the
+    // model reported its own); Claude Code's start takes about 20,000 of it,
+    // so "long" is 60% of the room left for the conversation itself.
+    let window = if t.context_window > 0 {
+        t.context_window
+    } else if own {
+        crate::models::CONTEXT
     } else {
-        LongWhy::Online
+        0
     };
+    let base = if own && window > OWN_BASE {
+        OWN_BASE
+    } else {
+        0
+    };
+    let room = window.saturating_sub(base);
+    let long_from = if own && room > 0 {
+        LONG_FROM.min(base + room * 3 / 5)
+    } else {
+        LONG_FROM
+    };
+    if t.context_used < long_from {
+        return None;
+    }
+    let very = window > 0 && (t.context_used - base.min(t.context_used)) * 5 >= room * 4;
+    let why = if own { LongWhy::Own } else { LongWhy::Online };
     // Rounded to ten pages, so it doesn't change with every reply.
     let pages = ((t.context_used / TOKENS_PER_PAGE + 5) / 10 * 10) as u32;
     Some(LongNotice {
@@ -61,6 +86,27 @@ pub fn size_words(n: &LongNotice) -> Option<String> {
 /// The button's words: absent for a conversation going on elsewhere.
 pub fn button(n: &LongNotice) -> Option<&'static str> {
     (!n.elsewhere).then_some("Start fresh with a summary")
+}
+
+/// Why a task can't be started fresh from here, in plain words.
+pub fn start_fresh_refusal(t: &Task) -> Option<&'static str> {
+    if t.incognito {
+        Some("A Whisper keeps nothing, so it can't be carried into a new task.")
+    } else if t.live_elsewhere {
+        Some("It is going on in another app: start fresh there.")
+    } else {
+        None
+    }
+}
+
+/// The mode of a fresh task: a phone never starts one that doesn't ask.
+pub fn fresh_mode(from_phone: bool, mode: mimir_proto::Mode) -> mimir_proto::Mode {
+    use mimir_proto::Mode;
+    if from_phone && !matches!(mode, Mode::Ask | Mode::Plan) {
+        Mode::Ask
+    } else {
+        mode
+    }
 }
 
 /// Whether a notice stays hidden: `dismissed` says it was dismissed (and
@@ -152,6 +198,74 @@ mod tests {
         assert!(hidden(Some(false), &long));
         assert!(!hidden(Some(false), &very), "comes back at very long");
         assert!(hidden(Some(true), &very), "dismissed there, it stays");
+    }
+
+    #[test]
+    fn a_whisper_task_never_gets_the_line_or_a_fresh_start() {
+        let mut t = task(None, 900_000, 1_000_000);
+        t.incognito = true;
+        assert!(notice(&t).is_none());
+        assert!(start_fresh_refusal(&t).unwrap().contains("Whisper"));
+        t.incognito = false;
+        assert!(start_fresh_refusal(&t).is_none());
+        t.live_elsewhere = true;
+        assert!(start_fresh_refusal(&t).unwrap().contains("another app"));
+    }
+
+    #[test]
+    fn the_pcs_own_model_is_long_well_before_150k() {
+        let own = Some("ollama:qwen3.6:35b-a3b-coding");
+        // The window Mímir gives it is 32,768, about 20,000 of it Claude Code's own start.
+        assert!(
+            notice(&task(own, 20_500, 0)).is_none(),
+            "a fresh task is not long"
+        );
+        assert!(notice(&task(own, 28_000, 0)).is_some());
+        assert!(!notice(&task(own, 28_000, 0)).unwrap().very);
+        assert!(notice(&task(own, 31_000, 0)).unwrap().very);
+        // A window the model reported is used instead.
+        assert!(notice(&task(own, 28_000, 200_000)).is_none());
+        // Online stays at 150,000.
+        assert!(notice(&task(None, 28_000, 0)).is_none());
+    }
+
+    #[test]
+    fn a_phone_never_starts_a_task_that_doesnt_ask() {
+        use mimir_proto::Mode;
+        assert_eq!(fresh_mode(true, Mode::NoAsk), Mode::Ask);
+        assert_eq!(fresh_mode(true, Mode::Auto), Mode::Ask);
+        assert_eq!(fresh_mode(true, Mode::Plan), Mode::Plan);
+        assert_eq!(fresh_mode(false, Mode::NoAsk), Mode::NoAsk);
+    }
+
+    /// Writes the words for every case, for the phone's test to compare with.
+    #[test]
+    fn the_words_for_every_case_are_written_for_the_phone() {
+        let mut rows = vec![];
+        for very in [false, true] {
+            for own in [false, true] {
+                for elsewhere in [false, true] {
+                    for pages in [340, 50] {
+                        let n = LongNotice {
+                            very,
+                            why: if own { LongWhy::Own } else { LongWhy::Online },
+                            elsewhere,
+                            pages,
+                        };
+                        rows.push(serde_json::json!({
+                            "very": very, "own": own, "elsewhere": elsewhere, "pages": pages,
+                            "line": line(&n), "size": size_words(&n),
+                        }));
+                    }
+                }
+            }
+        }
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../proto/tests/fixtures");
+        std::fs::write(
+            dir.join("long_lines.json"),
+            serde_json::to_string_pretty(&rows).unwrap() + "\n",
+        )
+        .unwrap();
     }
 
     #[test]

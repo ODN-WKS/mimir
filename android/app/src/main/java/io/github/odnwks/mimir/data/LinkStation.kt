@@ -1322,8 +1322,11 @@ class LinkStation(
         call(Wire.continueOnClaude(taskId)) { _, err -> if (err != null) note(err) }
     }
 
-    override fun startFresh(taskId: String) {
-        call(Wire.startFresh(taskId)) { _, err -> if (err != null) note(err) }
+    override fun startFresh(taskId: String, done: (String?) -> Unit) {
+        if (!call(Wire.startFresh(taskId)) { ok, err ->
+                if (err != null) note(err)
+                done(if (err == null) ok as? String else null)
+            }) { note("Your PC is away: try again when it's back."); done(null) }
     }
 
     override fun setWeeklyCheck(on: Boolean) {

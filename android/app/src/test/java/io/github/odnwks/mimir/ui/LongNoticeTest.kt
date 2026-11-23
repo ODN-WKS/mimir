@@ -9,6 +9,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
@@ -38,7 +39,7 @@ class LongNoticeTest {
     @get:Rule val compose = createComposeRule()
     private val base = FakeStation()
     private val started = mutableListOf<String>()
-    private val station = object : Station by base { override fun startFresh(taskId: String) { started += taskId } }
+    private val station = object : Station by base { override fun startFresh(taskId: String, done: (String?) -> Unit) { started += taskId } }
     private val nav = Navigator()
     private val id = ExampleData.TASK_CELL
     private val online = LongNotice(very = false, own = false, elsewhere = false, pages = 340)
@@ -56,7 +57,11 @@ class LongNoticeTest {
         compose.onNodeWithText(line).assertIsDisplayed()
         compose.onNodeWithText("About the length of a 340-page book.").assertIsDisplayed()
         compose.onNodeWithText("Start fresh with a summary").performClick()
+        compose.waitForIdle()
+        runCatching { compose.onNodeWithText("Starting a fresh task…").performClick() }
+        // Pressed twice, it asked once; the button says it is working.
         assertEquals(listOf(id), started)
+        compose.onNodeWithText("Starting a fresh task…").assertIsDisplayed()
     }
 
     @Test fun noFieldMeansNoLine() {
@@ -99,12 +104,31 @@ class LongNoticeTest {
     @Test fun fitsAt360dpWithFont13() {
         compose.setContent {
             CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, fontScale = 1.3f)) {
-                MimirTheme { Box(Modifier.width(360.dp)) { LongLine(online.copy(very = true), {}, {}) } }
+                MimirTheme { Box(Modifier.width(360.dp)) { LongLine(online.copy(very = true), false, {}, {}) } }
             }
         }
         compose.onNodeWithText("Start fresh with a summary").assertIsDisplayed()
         assertTrue(compose.onNodeWithText("Start fresh with a summary").getUnclippedBoundsInRoot().let { it.right <= 360.dp && it.left >= 0.dp })
         compose.onNodeWithText("Not now").assertIsDisplayed()
+    }
+
+    /** The PC writes its words for every case; the phone's copy must say the same. */
+    @Test fun theWordsMatchThePcs() {
+        val rows = org.json.JSONArray(File("../../crates/proto/tests/fixtures/long_lines.json").readText())
+        assertTrue(rows.length() >= 8)
+        for (i in 0 until rows.length()) {
+            val r = rows.getJSONObject(i)
+            val n = LongNotice(r.getBoolean("very"), r.getBoolean("own"), r.getBoolean("elsewhere"), r.getInt("pages"))
+            assertEquals(r.getString("line"), n.line)
+            assertEquals(if (r.isNull("size")) null else r.getString("size"), n.size)
+        }
+    }
+
+    @Test fun theCardScrollsWithTheConversation() {
+        open(online)
+        // Inside the scrolling conversation, not pinned above the reply box: it moves when the chat scrolls.
+        compose.onNodeWithText(line).assertIsDisplayed()
+        compose.onNodeWithContentDescription("Reply to this task").assertIsDisplayed()
     }
 
     @Test fun anOldPcThatSendsNoFieldGivesNone() {

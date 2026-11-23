@@ -2108,6 +2108,7 @@ impl Service {
                 let id = self.carry_on_fresh(
                     &task,
                     Some(crate::auto::Style::Efficient.value().into()),
+                    false,
                     "Carried on in a new task online.",
                 )?;
                 Ok(json!(id))
@@ -2116,13 +2117,15 @@ impl Service {
                 let Some(l) = self.task(&task) else {
                     return Err("That task is gone.".into());
                 };
-                if l.task.live_elsewhere {
-                    return Err("It is going on in another app: start fresh there.".into());
+                if let Some(why) = crate::long::start_fresh_refusal(&l.task) {
+                    return Err(why.into());
                 }
                 let model = l.task.model.clone();
+                let from_phone = self.clients.get(&client).is_some_and(|c| c.phone.is_some());
                 let id = self.carry_on_fresh(
                     &task,
                     model,
+                    from_phone,
                     "Started fresh in a new task from a summary.",
                 )?;
                 Ok(json!(id))
@@ -2816,6 +2819,7 @@ impl Service {
         &mut self,
         task: &str,
         model: Option<String>,
+        from_phone: bool,
         note: &str,
     ) -> Result<String, String> {
         let Some(l) = self.task(task) else {
@@ -2835,7 +2839,8 @@ impl Service {
         } else {
             first.unwrap_or_default()
         };
-        let (project, mode, rules) = (t.project.clone(), t.mode, t.ground_rules.clone());
+        let (project, rules) = (t.project.clone(), t.ground_rules.clone());
+        let mode = crate::long::fresh_mode(from_phone, t.mode);
         self.runner.next_rules = rules;
         self.runner.stop(task);
         let id = self

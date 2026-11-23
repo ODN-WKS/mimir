@@ -182,13 +182,6 @@ fun TaskScreen(taskId: String, state: StationState, station: Station, nav: Navig
             ConnectionStrip(state, Modifier.padding(bottom = 4.dp))
             // Pinned above the conversation, so it stays in sight while it scrolls.
             if (liveNow) Box(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) { FollowBanner(followedIn(state, task)) }
-            // A long conversation: one calm line, not a popup. Dismissed for this task, it comes back at "very long".
-            task.long?.let { n ->
-                var dismissed by rememberSaveable(task.id) { mutableStateOf<Boolean?>(null) }
-                if (!longHidden(dismissed, n)) Box(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
-                    LongLine(n, { station.startFresh(task.id) }, { dismissed = n.very })
-                }
-            }
             ChatTextSize {
             Column(
                 Modifier.weight(1f).fillMaxWidth()
@@ -201,6 +194,21 @@ fun TaskScreen(taskId: String, state: StationState, station: Station, nav: Navig
                     .padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
+                // A long conversation: one calm line at the top of the conversation (it scrolls, so it never squeezes the reply box).
+                // Dismissed for this task, it comes back at "very long".
+                task.long?.let { n ->
+                    var dismissed by rememberSaveable(task.id) { mutableStateOf<Boolean?>(null) }
+                    var starting by rememberSaveable(task.id) { mutableStateOf(false) }
+                    if (!longHidden(dismissed, n)) LongLine(n, starting, {
+                        if (!starting) {
+                            starting = true
+                            // The new task opens when the PC says it is made; a refusal re-enables the button.
+                            station.startFresh(task.id) { id ->
+                                android.os.Handler(android.os.Looper.getMainLooper()).post { if (id != null) nav.open(Screen.Task(id)) else starting = false }
+                            }
+                        }
+                    }, { dismissed = n.very })
+                }
                 if (task.steps.isNotEmpty()) Steps(task, stepsOpen) { stepsOpen = !stepsOpen }
                 if (task.freeModel) Panel(background = Palette.Bar) {
                     Text(
@@ -569,11 +577,11 @@ internal fun longHidden(dismissedAtVery: Boolean?, n: LongNotice): Boolean = dis
 
 /** "This conversation is long…": the line, its size in book pages, and the one button (none while it goes on elsewhere). */
 @Composable
-internal fun LongLine(n: LongNotice, onStartFresh: () -> Unit, onDismiss: () -> Unit) {
+internal fun LongLine(n: LongNotice, starting: Boolean, onStartFresh: () -> Unit, onDismiss: () -> Unit) {
     Panel(background = Palette.Bar, border = if (n.very) Palette.AmberBorder else Palette.Line, spacing = 6.dp, padding = PaddingValues(12.dp)) {
         Text(n.line, style = Type.Label, color = if (n.very) Palette.AmberText else Palette.TextSoft)
         n.size?.let { Text(it, style = Type.Small, color = Palette.TextDim) }
-        if (!n.elsewhere) BigButton("Start fresh with a summary", Look.Outline, onStartFresh, height = 48.dp)
+        if (!n.elsewhere) BigButton(if (starting) "Starting a fresh task…" else "Start fresh with a summary", Look.Outline, onStartFresh, height = 48.dp, enabled = !starting)
         QuietButton("Not now", "Hide this line", onClick = onDismiss)
     }
 }

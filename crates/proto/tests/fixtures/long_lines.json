@@ -1,0 +1,130 @@
+[
+  {
+    "elsewhere": false,
+    "line": "This conversation is long. Each reply re-reads all of it, so it uses more of your plan.",
+    "own": false,
+    "pages": 340,
+    "size": "About the length of a 340-page book.",
+    "very": false
+  },
+  {
+    "elsewhere": false,
+    "line": "This conversation is long. Each reply re-reads all of it, so it uses more of your plan.",
+    "own": false,
+    "pages": 50,
+    "size": null,
+    "very": false
+  },
+  {
+    "elsewhere": true,
+    "line": "This conversation is long. Each reply re-reads all of it, so it uses more of your plan. It is going on in another app, so it can't be started fresh from here.",
+    "own": false,
+    "pages": 340,
+    "size": "About the length of a 340-page book.",
+    "very": false
+  },
+  {
+    "elsewhere": true,
+    "line": "This conversation is long. Each reply re-reads all of it, so it uses more of your plan. It is going on in another app, so it can't be started fresh from here.",
+    "own": false,
+    "pages": 50,
+    "size": null,
+    "very": false
+  },
+  {
+    "elsewhere": false,
+    "line": "This conversation is long. Answers get slower, and the start may be forgotten.",
+    "own": true,
+    "pages": 340,
+    "size": "About the length of a 340-page book.",
+    "very": false
+  },
+  {
+    "elsewhere": false,
+    "line": "This conversation is long. Answers get slower, and the start may be forgotten.",
+    "own": true,
+    "pages": 50,
+    "size": null,
+    "very": false
+  },
+  {
+    "elsewhere": true,
+    "line": "This conversation is long. Answers get slower, and the start may be forgotten. It is going on in another app, so it can't be started fresh from here.",
+    "own": true,
+    "pages": 340,
+    "size": "About the length of a 340-page book.",
+    "very": false
+  },
+  {
+    "elsewhere": true,
+    "line": "This conversation is long. Answers get slower, and the start may be forgotten. It is going on in another app, so it can't be started fresh from here.",
+    "own": true,
+    "pages": 50,
+    "size": null,
+    "very": false
+  },
+  {
+    "elsewhere": false,
+    "line": "This conversation is long. Each reply re-reads all of it, so it uses more of your plan. Starting fresh soon will save a lot.",
+    "own": false,
+    "pages": 340,
+    "size": "About the length of a 340-page book.",
+    "very": true
+  },
+  {
+    "elsewhere": false,
+    "line": "This conversation is long. Each reply re-reads all of it, so it uses more of your plan. Starting fresh soon will save a lot.",
+    "own": false,
+    "pages": 50,
+    "size": null,
+    "very": true
+  },
+  {
+    "elsewhere": true,
+    "line": "This conversation is long. Each reply re-reads all of it, so it uses more of your plan. Starting fresh soon will save a lot. It is going on in another app, so it can't be started fresh from here.",
+    "own": false,
+    "pages": 340,
+    "size": "About the length of a 340-page book.",
+    "very": true
+  },
+  {
+    "elsewhere": true,
+    "line": "This conversation is long. Each reply re-reads all of it, so it uses more of your plan. Starting fresh soon will save a lot. It is going on in another app, so it can't be started fresh from here.",
+    "own": false,
+    "pages": 50,
+    "size": null,
+    "very": true
+  },
+  {
+    "elsewhere": false,
+    "line": "This conversation is long. Answers get slower, and the start may be forgotten. Starting fresh soon will save a lot.",
+    "own": true,
+    "pages": 340,
+    "size": "About the length of a 340-page book.",
+    "very": true
+  },
+  {
+    "elsewhere": false,
+    "line": "This conversation is long. Answers get slower, and the start may be forgotten. Starting fresh soon will save a lot.",
+    "own": true,
+    "pages": 50,
+    "size": null,
+    "very": true
+  },
+  {
+    "elsewhere": true,
+    "line": "This conversation is long. Answers get slower, and the start may be forgotten. Starting fresh soon will save a lot. It is going on in another app, so it can't be started fresh from here.",
+    "own": true,
+    "pages": 340,
+    "size": "About the length of a 340-page book.",
+    "very": true
+  },
+  {
+    "elsewhere": true,
+    "line": "This conversation is long. Answers get slower, and the start may be forgotten. Starting fresh soon will save a lot. It is going on in another app, so it can't be started fresh from here.",
+    "own": true,
+    "pages": 50,
+    "size": null,
+    "very": true
+  }
+]

@@ -91,7 +91,7 @@ interface Station {
     /** A free-model task carries on in a new task on Claude ("Continue on Claude", "Use Claude instead"). */
     fun continueOnClaude(taskId: String)
     /** "Start fresh with a summary" on a long conversation: a new task from a short summary; the old one stays. */
-    fun startFresh(taskId: String)
+    fun startFresh(taskId: String, done: (newTaskId: String?) -> Unit)
     fun setSwitchToFree(on: Boolean)
     /** The PC's weekly look for a better model for this phone ("Worth switching?"), on or off. */
     fun setWeeklyCheck(on: Boolean)
