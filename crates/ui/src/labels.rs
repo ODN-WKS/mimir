@@ -217,11 +217,11 @@ pub const FOLLOWS_ALONG: &str = "Reply from your phone; this view follows along 
 /// `place` is the PC's "app" or "terminal"; absent (an older PC) says "your PC".
 pub fn still_running_in(place: Option<&str>) -> String {
     let at = match place {
-        Some("app") => "another app",
-        Some("terminal") => "a terminal",
-        _ => "your PC",
+        Some("app") => "in the Claude app",
+        Some("terminal") => "in a terminal",
+        _ => "on your PC",
     };
-    format!("Still running in {at}. Stop it to carry on here.")
+    format!("Still running {at}. Stop it to carry on here.")
 }
 /// The link out is for a session that really started on claude.ai.
 pub fn is_claude_ai_session(url: &str) -> bool {

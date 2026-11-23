@@ -66,7 +66,7 @@ fn a_model_program_that_is_down_has_try_again_and_no_green_pill() {
 fn a_session_running_elsewhere_names_the_place_and_offers_no_try_again() {
     assert_eq!(
         labels::still_running_in(Some("app")),
-        "Still running in another app. Stop it to carry on here."
+        "Still running in the Claude app. Stop it to carry on here."
     );
     assert_eq!(
         labels::still_running_in(Some("terminal")),
@@ -74,7 +74,7 @@ fn a_session_running_elsewhere_names_the_place_and_offers_no_try_again() {
     );
     assert_eq!(
         labels::still_running_in(None),
-        "Still running in your PC. Stop it to carry on here."
+        "Still running on your PC. Stop it to carry on here."
     );
 }
 

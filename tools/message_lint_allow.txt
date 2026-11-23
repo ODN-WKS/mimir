@@ -20,3 +20,4 @@ crates/core/src/models.rs|Claude's limit ran out
 # Running on your PC: where a session was started, in plain words (owner-reviewed mock-up, 2026-11-22).
 android/app/src/main/java/io/github/odnwks/mimir/data/Station.kt|in the Claude app
 android/app/src/main/java/io/github/odnwks/mimir/ui/TaskScreen.kt|the Claude app
+crates/ui/src/labels.rs|in the Claude app
