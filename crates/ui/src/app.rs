@@ -83,10 +83,10 @@ impl SettingsPage {
     fn words(self) -> &'static str {
         match self {
             SettingsPage::General => {
-                "powers online anthropic claude free backup text size zoom summary finish shortcuts keyboard claude code github sign in connectors mcp start"
+                "powers online anthropic claude free backup text size zoom summary finish shortcuts keyboard connectors mcp start"
             }
             SettingsPage::Models => {
-                "model models online anthropic claude haiku sonnet opus fable auto free download store limit backup runs out uncensored phone worth switching weekly instructions"
+                "model models online anthropic claude code sign in install haiku sonnet opus fable auto free download store limit backup runs out uncensored phone worth switching weekly instructions"
             }
             SettingsPage::Phone => {
                 "phone phones pair pairing qr unpair remove connections pc name android app"

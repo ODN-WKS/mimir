@@ -183,6 +183,14 @@ impl App {
         let is_chat = self.new_project.as_deref()
             == Some(crate::places::chats_dir().display().to_string().as_str());
         let mut picked = vec![];
+        if !mimir_core::models::is_free(self.new_model.as_deref())
+            && !self.settings.project_free()
+            && self.setup.claude_ready() == Some(false)
+            && crate::setup_view::claude_missing_line(ui, actions)
+            && let Some(f) = mimir_core::models::default_free(&mimir_core::models::cached())
+        {
+            self.new_model = Some(f.id.clone());
+        }
         attachment_chips(ui, &mut self.attachments);
         let out = composer_card(
             ui,

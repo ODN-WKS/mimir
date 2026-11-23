@@ -174,60 +174,6 @@ pub fn claude_status(claude: &std::path::Path) -> ClaudeStatus {
     }
 }
 
-#[derive(Debug, Clone, Default, PartialEq)]
-pub struct GithubStatus {
-    pub gh_installed: bool,
-    /// The GitHub account name when signed in.
-    pub account: Option<String>,
-}
-
-/// `gh auth status` output → the signed-in account, if any.
-pub fn parse_gh_status(out: &str) -> Option<String> {
-    out.lines().find_map(|l| {
-        let l = strip_ansi(l);
-        let rest = l.split("Logged in to github.com account ").nth(1)?;
-        rest.split_whitespace().next().map(str::to_string)
-    })
-}
-
-pub fn github_status() -> GithubStatus {
-    match crate::flatpak::host_cmd("gh")
-        .args(["auth", "status", "--hostname", "github.com"])
-        .output()
-    {
-        Ok(o) => {
-            let text = format!(
-                "{}{}",
-                String::from_utf8_lossy(&o.stdout),
-                String::from_utf8_lossy(&o.stderr)
-            );
-            GithubStatus {
-                gh_installed: true,
-                account: parse_gh_status(&text),
-            }
-        }
-        Err(_) => GithubStatus::default(),
-    }
-}
-
-/// The GitHub device sign-in: `gh` prints a one-time code and waits until
-/// the owner enters it at github.com/login/device.
-pub const GITHUB_LOGIN: &str =
-    "gh auth login --web --git-protocol https --hostname github.com --skip-ssh-key";
-pub const GITHUB_DEVICE_PAGE: &str = "https://github.com/login/device";
-
-/// Finds "XXXX-XXXX" in gh's output.
-pub fn parse_device_code(lines: &[String]) -> Option<String> {
-    lines.iter().find_map(|l| {
-        let rest = l.split("one-time code: ").nth(1)?;
-        let code = rest.trim();
-        let ok = code.len() == 9
-            && code.as_bytes()[4] == b'-'
-            && code.chars().all(|c| c == '-' || c.is_ascii_alphanumeric());
-        ok.then(|| code.to_string())
-    })
-}
-
 /// Quotes a value for `sh`.
 pub fn shell_quote(s: &str) -> String {
     format!("'{}'", s.replace('\'', "'\\''"))
@@ -471,26 +417,6 @@ mod tests {
             Some("d5-1")
         );
         assert_eq!(parse_claude_account("{}"), None);
-    }
-
-    #[test]
-    fn github_output() {
-        let out = "github.com\n  \u{1b}[32m✓\u{1b}[0m Logged in to github.com account example-user (keyring)\n";
-        assert_eq!(parse_gh_status(out).as_deref(), Some("example-user"));
-        assert_eq!(
-            parse_gh_status("You are not logged into any GitHub hosts."),
-            None
-        );
-        // Recorded from gh 2.103.3 run without a terminal.
-        let lines: Vec<String> = [
-            "! Failed to copy one-time code to clipboard",
-            "! First copy your one-time code: FD2A-7760",
-            "Open this web address to continue in your browser: https://github.com/login/device",
-        ]
-        .iter()
-        .map(|s| s.to_string())
-        .collect();
-        assert_eq!(parse_device_code(&lines).as_deref(), Some("FD2A-7760"));
     }
 
     #[test]

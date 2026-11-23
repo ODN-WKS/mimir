@@ -250,9 +250,13 @@ impl App {
         // Claude is one optional section at the end: its setup, and its
         // models and prices only once a plan is connected.
         self.setup.show(ui);
-        if self.setup.claude_ready() == Some(true) {
+        // Their models stay in view for anyone with Claude installed or
+        // online chosen, also while signed out; the price list is only for
+        // a connected plan.
+        let online = self.settings.chats_paid() || !self.settings.project_free();
+        if self.setup.claude_installed() == Some(true) || online {
             ui.add_space(10.0);
-            claude_card(ui);
+            claude_card(ui, self.setup.claude_ready() == Some(true));
         }
     }
 
@@ -300,7 +304,8 @@ impl App {
             ui.set_width(ui.available_width());
             theme::heading(ui, "Who answers");
             let paid = self.settings.chats_paid();
-            let ready = self.setup.claude_ready() == Some(true);
+            // While the first check runs, nothing is greyed out or hinted.
+            let ready = self.setup.claude_ready() != Some(false);
             ui.horizontal_wrapped(|ui| {
                 ui.label("Chats and look-ups:");
                 if ui.radio(!paid, "Free (on your PC)").clicked() && paid {
@@ -516,7 +521,7 @@ fn sizes() -> std::collections::HashMap<String, u64> {
     list
 }
 
-fn claude_card(ui: &mut egui::Ui) {
+fn claude_card(ui: &mut egui::Ui, connected: bool) {
     theme::card().show(ui, |ui| {
         ui.set_width(ui.available_width());
         theme::heading(ui, "Online models");
@@ -535,6 +540,12 @@ fn claude_card(ui: &mut egui::Ui) {
             ui.label(RichText::new("Auto").strong());
             ui.label(small("picks one of these for each step"));
         });
+        if !connected {
+            ui.label(small(
+                "Not connected yet. Use the plan section above to sign in.",
+            ));
+            return;
+        }
         let open_id = egui::Id::unique("models-about-open");
         let open = ui
             .data_mut(|d| d.remove_temp::<bool>(open_id))

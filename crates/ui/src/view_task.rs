@@ -502,6 +502,15 @@ impl App {
                             });
                         ui.add_space(4.0);
                     }
+                    if !mimir_core::models::is_free(t.model.as_deref())
+                        && !self.settings.project_free()
+                        && self.setup.claude_ready() == Some(false)
+                        && crate::setup_view::claude_missing_line(ui, actions)
+                        && let Some(f) =
+                            mimir_core::models::default_free(&mimir_core::models::cached())
+                    {
+                        actions.push(Action::SetModel(id.clone(), Some(f.id.clone())));
+                    }
                     let chose = slash_suggestions(ui, draft, &slash);
                     attachment_chips(ui, attachments);
                     let can_wait = running;

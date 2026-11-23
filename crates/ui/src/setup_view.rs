@@ -78,6 +78,12 @@ impl SetupPanel {
         });
     }
 
+    /// Whether Claude Code is installed (None while the first check runs).
+    pub fn claude_installed(&self) -> Option<bool> {
+        let s = self.snap.lock().unwrap();
+        s.claude.as_ref().map(|c| c.version.is_some())
+    }
+
     /// Whether Claude Code is installed and signed in (None while the
     /// first check runs). Only Settings reads this; nothing else in the
     /// window asks a person to set Claude up.
@@ -187,7 +193,10 @@ impl SetupPanel {
                     match &c.version {
                         Some(v) => ui.label(format!("Installed: version {v}")),
                         None => ui.label(
-                            RichText::new("Not set up. Nothing is sent anywhere.").color(MUTED),
+                            RichText::new(
+                                "Not set up. Project work on your PC's own models also needs Claude Code installed here.",
+                            )
+                            .color(MUTED),
                         ),
                     };
                     if c.version.is_some() {
@@ -328,3 +337,31 @@ fn job_output(ui: &mut egui::Ui, lines: &[String]) {
         );
     }
 }
+
+/// The one line shown right in a chat or task that is set to Claude while
+/// Claude Code is missing or signed out: what is wrong, where to fix it,
+/// and a way out on the PC's own model. Returns true when the way out was
+/// chosen.
+pub(crate) fn claude_missing_line(
+    ui: &mut egui::Ui,
+    actions: &mut Vec<crate::app::Action>,
+) -> bool {
+    let mut own = false;
+    ui.horizontal_wrapped(|ui| {
+        ui.label(RichText::new(CLAUDE_MISSING).color(MUTED).size(13.0));
+        if ui.add(theme::quiet("Open Settings › Models")).clicked() {
+            actions.push(crate::app::Action::OpenModels);
+        }
+        if ui
+            .add(theme::quiet("Use your PC's own model instead"))
+            .clicked()
+        {
+            own = true;
+        }
+    });
+    own
+}
+
+/// What the line says (Claude is the one chosen, and it can't answer yet).
+pub(crate) const CLAUDE_MISSING: &str =
+    "This is set to Online, but no Anthropic plan is connected on this PC.";

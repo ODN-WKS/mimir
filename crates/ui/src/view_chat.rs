@@ -595,6 +595,13 @@ impl App {
                         );
                     });
                 }
+                if self.settings.chats_paid()
+                    && self.setup.claude_ready() == Some(false)
+                    && crate::setup_view::claude_missing_line(ui, actions)
+                {
+                    self.settings.chats_engine = Some("free".into());
+                    self.settings_dirty = true;
+                }
                 let mode = if busy { SendMode::Stop } else { SendMode::Send };
                 let new_effort = self.new_effort.clone();
                 let model_words = engine_line
