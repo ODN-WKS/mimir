@@ -755,16 +755,31 @@ impl App {
             || self.rename_chat.is_some()
     }
 
-    /// Whether the side panel shows: the owner's choice, else only while
-    /// something runs and the window is wide enough for it.
+    /// Whether the side panel shows: the owner's choice, else it opens while
+    /// something runs, stays a few seconds after, and never closes while the
+    /// person is typing (it closes at the next calm moment).
     pub(crate) fn details_shown(&self, ctx: &egui::Context) -> bool {
-        self.settings.details.unwrap_or_else(|| {
-            ctx.content_rect().width() >= 1180.0
-                && self
-                    .station
-                    .as_ref()
-                    .is_ok_and(|r| r.tasks.iter().any(|l| l.busy()))
-        })
+        if let Some(v) = self.settings.details {
+            return v;
+        }
+        let wide = ctx.content_rect().width() >= 1180.0;
+        let busy = self
+            .station
+            .as_ref()
+            .is_ok_and(|r| r.tasks.iter().any(|l| l.busy()));
+        let typing = ctx.memory(|m| m.focused().is_some())
+            || !self.draft.is_empty()
+            || !self.new_text.is_empty()
+            || self.chat_drafts.values().any(|d| !d.is_empty());
+        let key = egui::Id::NULL.with("auto-panel");
+        let (open, held): (bool, f64) = ctx.data(|d| d.get_temp(key)).unwrap_or((false, 0.0));
+        let now = ctx.input(|i| i.time);
+        let (shown, held) = auto_panel(wide, busy, typing, open, now, held);
+        ctx.data_mut(|d| d.insert_temp(key, (shown, held)));
+        if shown && !busy {
+            ctx.request_repaint_after(std::time::Duration::from_secs(1));
+        }
+        shown
     }
 
     pub(crate) fn selected_project(&self) -> Option<String> {
@@ -2124,8 +2139,44 @@ pub fn should_wake(window_visible: bool, has_busy_tasks: bool) -> bool {
     window_visible || has_busy_tasks
 }
 
+/// How long the automatic side panel stays after the last task ends.
+const PANEL_HOLD_SECS: f64 = 8.0;
+
+/// The automatic side panel: (shown, hold-until time).
+fn auto_panel(
+    wide: bool,
+    busy: bool,
+    typing: bool,
+    open: bool,
+    now: f64,
+    held: f64,
+) -> (bool, f64) {
+    if !wide {
+        return (false, held);
+    }
+    if busy {
+        return (true, now + PANEL_HOLD_SECS);
+    }
+    (now < held || (open && typing), held)
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn the_auto_panel_holds_then_closes_when_calm() {
+        use super::auto_panel;
+        // Opens while busy, holds after, closes once the hold is over.
+        let (s, h) = auto_panel(true, true, false, false, 10.0, 0.0);
+        assert!(s);
+        assert!(auto_panel(true, false, false, true, 12.0, h).0);
+        assert!(!auto_panel(true, false, false, true, 19.0, h).0);
+        // Typing keeps it open past the hold; calm closes it.
+        assert!(auto_panel(true, false, true, true, 30.0, h).0);
+        assert!(!auto_panel(true, false, false, true, 31.0, h).0);
+        // Typing alone never opens it.
+        assert!(!auto_panel(true, false, true, false, 31.0, h).0);
+    }
+
     use super::*;
 
     #[test]

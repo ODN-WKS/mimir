@@ -94,3 +94,69 @@ fn the_shortcut_line_shows_only_in_an_empty_chat() {
     assert!(shows(&h, "Enter send"), "{}", screen_text(&h));
     close(h);
 }
+
+#[test]
+fn needs_you_shows_when_a_task_waits() {
+    let Some(home) = TestHome::new() else { return };
+    home.play("run-1.jsonl", "question.jsonl");
+    let mut h = home.open();
+    assert!(!has_button(&h, "Needs you"), "{}", screen_text(&h));
+    start_task(&mut h, "Tidy up notes.txt.");
+    assert!(
+        wait_for(&mut h, |h| has_button(h, "Needs you")),
+        "a waiting question didn't raise the Needs you row\n{}",
+        screen_text(&h)
+    );
+    close(h);
+}
+
+#[test]
+fn updates_shows_when_an_update_is_ready() {
+    use mimir_core::update;
+    let Some(home) = TestHome::new() else { return };
+    let key = ed25519_dalek::SigningKey::from_bytes(&[42u8; 32]);
+    let program: &[u8] = b"#!/bin/sh\necho new\n";
+    let name = update::asset_name("9.99");
+    let releases = home.root.join("updates");
+    std::fs::write(releases.join(&name), program).unwrap();
+    std::fs::write(
+        releases.join(format!("{name}.sig")),
+        update::sign(&key, "9.99", program),
+    )
+    .unwrap();
+    // SAFETY: as in window_update.rs; nothing else runs yet.
+    unsafe {
+        std::env::set_var(
+            "MIMIR_TEST_KEY",
+            update::to_hex(&key.verifying_key().to_bytes()),
+        );
+    };
+    let mut h = home.open();
+    assert!(
+        wait_for(&mut h, |h| has_button(h, "Updates")),
+        "no Updates row\n{}",
+        screen_text(&h)
+    );
+    close(h);
+}
+
+#[test]
+fn a_short_task_ending_while_typing_leaves_the_panel_open() {
+    let Some(home) = TestHome::new() else { return };
+    home.play("run-1.jsonl", "near-limit.jsonl");
+    let mut h = home.open();
+    start_task(&mut h, "Tidy up notes.txt.");
+    assert!(
+        wait_for(&mut h, |h| has_button(h, labels::HIDE_PANEL)),
+        "{}",
+        screen_text(&h)
+    );
+    assert!(wait_for(&mut h, |h| shows(h, "notes.txt is sorted")));
+    type_message(&mut h, "Next, ");
+    for _ in 0..30 {
+        h.step();
+    }
+    // The task is over, a draft is in the box: the panel stays.
+    assert!(has_button(&h, labels::HIDE_PANEL), "{}", screen_text(&h));
+    close(h);
+}

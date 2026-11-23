@@ -114,6 +114,7 @@ fn box_is_inside(
     h: &egui_kittest::Harness<'static, station_ui::App>,
     size: (f32, f32),
     hint: &str,
+    want_hint: bool,
     what: &str,
 ) {
     let inside = |r: eframe::egui::Rect, name: &str| {
@@ -138,15 +139,23 @@ fn box_is_inside(
         eframe::egui::Rect::from_min_size(top.min, eframe::egui::vec2(1.0, 1.0)),
         "the top of the message box",
     );
-    // The shortcut line shows only in an empty chat; when it is there it fits.
+    // The shortcut line shows only in an empty chat, and then it is not cut.
     let hint_node = h
         .query_all_by(|n| {
             n.label().is_some_and(|l| l.contains(hint))
                 || n.value().is_some_and(|v| v.contains(hint))
         })
         .next();
-    if let Some(hint_node) = hint_node {
-        inside(hint_node.rect(), "the hint line");
+    if want_hint {
+        let node = hint_node
+            .unwrap_or_else(|| panic!("{what}: the hint line is missing\n{}", screen_text(h)));
+        inside(node.rect(), "the hint line");
+    } else {
+        assert!(
+            hint_node.is_none(),
+            "{what}: the hint line shows in a chat with messages\n{}",
+            screen_text(h)
+        );
     }
 }
 
@@ -195,7 +204,7 @@ fn a_long_chat_keeps_its_box_in_the_window() {
         for _ in 0..30 {
             h.step();
         }
-        box_is_inside(&h, size, labels::HINT_CHAT, "a long chat");
+        box_is_inside(&h, size, labels::HINT_CHAT, false, "a long chat");
         close(h);
     }
 }
@@ -209,7 +218,7 @@ fn an_empty_new_chat_keeps_its_box_in_the_window() {
         for _ in 0..30 {
             h.step();
         }
-        box_is_inside(&h, size, labels::HINT_CHAT, "a new chat");
+        box_is_inside(&h, size, labels::HINT_CHAT, true, "a new chat");
         close(h);
     }
 }
@@ -249,7 +258,7 @@ fn a_long_task_keeps_its_box_in_the_window() {
         for _ in 0..40 {
             h.step();
         }
-        box_is_inside(&h, size, labels::HINT_TASK, "a long task");
+        box_is_inside(&h, size, labels::HINT_TASK, false, "a long task");
         close(h);
     }
 }
@@ -270,7 +279,7 @@ fn a_long_draft_keeps_the_send_button_in_the_window() {
         for _ in 0..10 {
             h.step();
         }
-        box_is_inside(&h, size, labels::HINT_CHAT, "a long draft");
+        box_is_inside(&h, size, labels::HINT_CHAT, true, "a long draft");
         close(h);
     }
 }
@@ -311,6 +320,7 @@ fn a_task_opened_at_start_shows_its_whole_box_on_sharp_screens() {
             &h,
             size,
             labels::HINT_TASK,
+            false,
             &format!("a task at start, ppp {ppp}"),
         );
         assert!(
