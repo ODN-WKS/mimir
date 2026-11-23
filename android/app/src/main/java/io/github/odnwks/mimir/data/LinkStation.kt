@@ -978,20 +978,13 @@ class LinkStation(
     }
 
     /**
-     * Edit: the task goes back to that message (the PC's Undo); only when that worked do the edited words go
-     * out as a normal reply (kept and sent when the link is back, like any reply). If Undo is refused or
-     * can't go out, nothing is sent and [done] gets the reason, so the words stay with the owner.
+     * Edit: the edited words go out as a normal new message in the same task (kept and sent when the link is
+     * back, like any reply). The phone never calls the PC's Undo (it refuses phones); earlier replies stay.
      */
     override fun editTaskMessage(taskId: String, messageId: String, text: String, done: (String?) -> Unit) {
         if (text.isBlank()) return done("Write something first.")
-        val entry = Wire.entryIndex(taskId, messageId)
-        if (entry == null) { reply(taskId, text); return done(null) }
-        val sent = call(Wire.undo(taskId, entry)) { _, err ->
-            if (err != null) return@call done(err)
-            reply(taskId, text)
-            done(null)
-        }
-        if (!sent) done("Your PC is away. Your words are kept here: send them again when it's back.")
+        reply(taskId, text)
+        done(null)
     }
 
     /** Sends the task replies waiting on this phone, oldest first. */

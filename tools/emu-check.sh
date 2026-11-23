@@ -41,7 +41,10 @@ $a exec-out screencap -p >"$out/home.png"
 $a logcat -d >"$out/logcat.txt" 2>&1
 if grep -A3 "FATAL EXCEPTION" "$out/logcat.txt" | grep -q "$pkg"; then
     echo "emu-check: the app crashed (see $out/logcat.txt)" >&2
-elif grep -E "Fatal signal|ANR in $pkg|>>> $pkg <<<" "$out/logcat.txt" | grep -q .; then
+elif { grep -E "ANR in $pkg|>>> $pkg <<<" "$out/logcat.txt"
+       # A native crash counts only when it is the app's own process (its pid or its name on the line),
+       # not the emulator's own services (the Bluetooth app's "Fatal signal 6" at boot).
+       grep "Fatal signal" "$out/logcat.txt" | grep -E "$pkg|pid (${pid1:-x}|${pid2:-x}) " ; } | grep -q .; then
     echo "emu-check: the app crashed natively or hung (see $out/logcat.txt)" >&2
 elif [ "$up" != 1 ] || [ -z "$pid2" ] || [ "$pid1" != "$pid2" ]; then
     echo "emu-check: the app isn't on screen or restarted (see $out/logcat.txt)" >&2

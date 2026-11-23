@@ -162,7 +162,7 @@ private fun SheetContent(sheet: Sheet, state: StationState, station: Station, na
             MenuRow(Glyphs.Steps, "Ask me first before changes", checked = task?.mode == "Ask") { station.setTaskPlan(id, false); nav.closeSheet() }
             MenuRow(Glyphs.Steps, "Plan first, change nothing yet", checked = task?.plan == true) { station.setTaskPlan(id, true); nav.closeSheet() }
             // YOLO: never in Whisper; a full warning every time, then the phone's unlock.
-            if (task?.whisper != true) MenuRow(Glyphs.Steps, "Go ahead without asking (this task)…", checked = task?.yolo == true) {
+            if (task?.whisper != true) MenuRow(Glyphs.Steps, "Go ahead without asking (this task)\u00A0…", checked = task?.yolo == true) {
                 if (task?.yolo != true) nav.openSheet(Sheet.Yolo(id)) else nav.closeSheet()
             }
             MenuRow(Glyphs.Shield, "Always allowed in this task…") { nav.openSheet(Sheet.AlwaysAllowed(id)) }

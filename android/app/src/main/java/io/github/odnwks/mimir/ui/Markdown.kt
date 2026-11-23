@@ -4,6 +4,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.unit.Dp
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -50,6 +53,7 @@ import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import io.github.odnwks.mimir.ui.theme.Palette
+import io.github.odnwks.mimir.ui.theme.Type
 
 /**
  * The Markdown models write (bold, italics, lists, code, headings, links, quotes), shown as such
@@ -300,30 +304,59 @@ private fun CodeBlock(b: Markdown.Block.Code, style: TextStyle, color: Color) {
     }
 }
 
-/** A table as a grid: a bold header row, padded cells, thin lines; a wide one scrolls sideways inside the answer. */
+/** A table as a grid: a bold header row, thin lines. Columns share the width and cells wrap; only a table with too many columns scrolls sideways, and it shows a hint and a faded edge. */
 @Composable
 private fun TableBlock(b: Markdown.Block.Table, style: TextStyle, color: Color, code: SpanStyle, link: SpanStyle, links: Markdown.Links) {
     val fontScale = LocalDensity.current.fontScale
-    val widths = remember(b, fontScale) {
+    val scroll = rememberScrollState()
+    val cols = remember(b) {
         b.header.indices.map { c ->
-            val longest = (listOf(b.header[c]) + b.rows.map { it[c] }).maxOf { Markdown.inline(it).text.length }
-            ((longest * 8 + 24) * fontScale).coerceIn(64f, 220f * fontScale).dp
+            val cells = (listOf(b.header[c]) + b.rows.map { it[c] }).map { Markdown.inline(it).text }
+            val longestWord = cells.maxOf { t -> t.split(' ', '\n').maxOfOrNull { it.length } ?: 0 }
+            val natural = cells.maxOf { it.length }
+            longestWord to natural
         }
     }
-    Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).border(1.dp, Palette.Line, RoundedCornerShape(8.dp)).horizontalScroll(rememberScrollState())) {
-        Column(Modifier.testTag("md-table")) {
-            (listOf(b.header) + b.rows).forEachIndexed { r, row ->
-                Row(Modifier.height(IntrinsicSize.Min).then(if (r == 0) Modifier.background(Palette.Bar) else Modifier)) {
-                    row.forEachIndexed { c, cell ->
-                        Text(
-                            Markdown.inline(cell, code, link, links),
-                            style = style.copy(fontWeight = if (r == 0) FontWeight.Bold else style.fontWeight, fontSize = style.fontSize * 0.95f),
-                            color = color,
-                            modifier = Modifier.width(widths[c]).fillMaxHeight().border(0.5.dp, Palette.Line).padding(horizontal = 10.dp, vertical = 8.dp),
-                        )
+    // Rough width of one character at the table's text size, plus the cell padding.
+    val perChar = 9f * fontScale
+    val pad = 22f
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val avail = maxWidth.value - 1f
+        val mins = cols.map { it.first * perChar + pad }
+        val naturals = cols.mapIndexed { i, c -> maxOf(mins[i], c.second * perChar + pad) }
+        val fits = mins.sum() <= avail
+        val widths: List<Dp> = if (!fits) mins.map { it.dp } else if (naturals.sum() <= avail) {
+            val extra = (avail - naturals.sum()) / naturals.size
+            naturals.map { (it + extra).dp }
+        } else {
+            val spare = avail - mins.sum()
+            val wants = naturals.indices.map { naturals[it] - mins[it] }
+            val total = wants.sum().coerceAtLeast(1f)
+            mins.indices.map { (mins[it] + spare * wants[it] / total).dp }
+        }
+        Column {
+            Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).border(1.dp, Palette.Line, RoundedCornerShape(8.dp))) {
+                Column(Modifier.testTag("md-table").then(if (fits) Modifier else Modifier.horizontalScroll(scroll))) {
+                    (listOf(b.header) + b.rows).forEachIndexed { r, row ->
+                        Row(Modifier.height(IntrinsicSize.Min).then(if (r == 0) Modifier.background(Palette.Bar) else Modifier)) {
+                            row.forEachIndexed { c, cell ->
+                                Text(
+                                    Markdown.inline(cell, code, link, links),
+                                    style = style.copy(fontWeight = if (r == 0) FontWeight.Bold else style.fontWeight, fontSize = style.fontSize * 0.95f),
+                                    color = color,
+                                    modifier = Modifier.width(widths[c]).fillMaxHeight().border(0.5.dp, Palette.Line).padding(horizontal = 10.dp, vertical = 8.dp),
+                                )
+                            }
+                        }
+                    }
+                }
+                if (!fits && scroll.canScrollForward) {
+                    Box(Modifier.matchParentSize(), contentAlignment = Alignment.CenterEnd) {
+                        Box(Modifier.width(28.dp).fillMaxHeight().background(Brush.horizontalGradient(listOf(Color.Transparent, Palette.Bar))))
                     }
                 }
             }
+            if (!fits) Text("Scroll sideways to see more", style = Type.Small, color = Palette.TextDim, modifier = Modifier.fillMaxWidth().padding(top = 4.dp).testTag("md-table-hint"))
         }
     }
 }

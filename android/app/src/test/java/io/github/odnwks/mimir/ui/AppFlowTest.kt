@@ -800,7 +800,7 @@ class AppFlowTest {
         val id = io.github.odnwks.mimir.data.ExampleData.TASK_ALLOW
         nav.open(Screen.Task(id)); nav.openSheet(io.github.odnwks.mimir.nav.Sheet.TaskOptions(id))
         compose.waitForIdle()
-        compose.onNodeWithText("Go ahead without asking (this task)…").performScrollTo().performClick()
+        compose.onNodeWithText("Go ahead without asking (this task)\u00A0…").performScrollTo().performClick()
         compose.waitForIdle()
         // The whole warning, every time.
         compose.onNodeWithText(YOLO_WARNING).assertIsDisplayed()

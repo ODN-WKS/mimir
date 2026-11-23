@@ -90,42 +90,24 @@ class LinkStationEditTest {
     private fun outbox() = vault().load().outbox.map { it.second }
     private fun notes(st: LinkStation) = st.state.value.chat.filterIsInstance<ChatEntry.Note>().map { it.text }
 
-    @Test fun undoGoesFirstWithTheRightEntryThenTheReply() {
+    @Test fun anEditIsANormalMessageAndNeverUndo() {
         val link = FakeLink(); val st = paired(link)
         var result: String? = "pending"
         st.editTaskMessage("t1", "t1-4", "new words") { result = it }
-        assertTrue(until { link.callsOf("{\"Undo\"").size == 1 })
-        assertEquals("""{"Undo":{"task":"t1","entry":4}}""", link.callsOf("{\"Undo\"").single().second)
-        assertTrue("no reply before Undo is answered", link.callsOf("{\"Send\"").isEmpty())
-        link.reply(link.callsOf("{\"Undo\"").single().first, "null")
         assertTrue(until { link.callsOf("{\"Send\"").size == 1 })
-        assertTrue(link.calls.indexOfFirst { it.second.startsWith("{\"Undo\"") } < link.calls.indexOfFirst { it.second.startsWith("{\"Send\"") })
         assertTrue(link.callsOf("{\"Send\"").single().second.contains("new words"))
+        assertTrue(link.callsOf("{\"Undo\"").isEmpty())
         assertTrue(until { result == null })
         st.close()
     }
 
-    @Test fun aRefusedUndoSendsNothingAndGivesTheReasonBack() {
+    @Test fun anEditWithNoWordsSendsNothing() {
         val link = FakeLink(); val st = paired(link)
-        var result: String? = "pending"
-        st.editTaskMessage("t1", "t1-2", "new words") { result = it }
-        assertTrue(until { link.callsOf("{\"Undo\"").size == 1 })
-        link.refuse(link.callsOf("{\"Undo\"").single().first, "Pause or stop the task before undoing.")
-        assertTrue(until { result != "pending" })
-        assertEquals("Pause or stop the task before undoing.", result)
-        Thread.sleep(300)
-        assertTrue(link.callsOf("{\"Send\"").isEmpty())
-        st.close()
-    }
-
-    @Test fun withTheLinkDownNothingGoesOutAndTheCallerKeepsTheWords() {
-        val link = FakeLink(); val st = paired(link)
-        link.dropped = true
         var result: String? = null
-        st.editTaskMessage("t1", "t1-2", "new words") { result = it }
-        assertTrue(until { result != null })
-        assertTrue(result!!.contains("away"))
-        assertTrue(link.callsOf("{\"Undo\"").isEmpty() && link.callsOf("{\"Send\"").isEmpty())
+        st.editTaskMessage("t1", "t1-2", "  ") { result = it }
+        assertEquals("Write something first.", result)
+        Thread.sleep(200)
+        assertTrue(link.callsOf("{\"Send\"").isEmpty() && link.callsOf("{\"Undo\"").isEmpty())
         st.close()
     }
 }

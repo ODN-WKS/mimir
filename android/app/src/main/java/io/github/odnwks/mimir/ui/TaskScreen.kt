@@ -508,7 +508,7 @@ fun MissingScreen(text: String, nav: Navigator) {
 }
 
 /** Under the edit box of a task message: what sending it does. */
-const val EDIT_TASK_NOTE = "Sending puts changed files back as they were, then the task carries on with your new words."
+const val EDIT_TASK_NOTE = "Your edited message is sent as a new message; earlier replies stay."
 
 /** The note while a conversation goes on elsewhere (the PC window shows its own version of it). */
 const val FOLLOWS_ALONG = "Going on in a terminal or another app right now. Reply there; this view follows along live."

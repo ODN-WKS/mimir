@@ -321,7 +321,7 @@ private fun ModelRow(model: Model, selected: Boolean, usable: Boolean = true, se
         Box(Modifier.padding(top = 2.dp)) { RadioMark(selected) }
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Text(plainModelName(model.name), style = Type.BodyTight.copy(fontWeight = FontWeight.SemiBold), color = Palette.Text)
-            Text(model.note, style = Type.Small, color = Palette.TextDim)
+            Text(plainTestNote(model.note), style = Type.Small, color = Palette.TextDim)
             // The tags sit under the words, so large text never squeezes the name; a model with no
             // safety filter carries its tag here and the note is said once, below the list.
             if (model.free || model.refusalsRemoved) FlowRow(
@@ -340,6 +340,9 @@ private fun Modifier.border16Width(color: Color, width: Int) = this.border(width
  * A model's name as a person reads it: "qwen3.6:35b-a3b-coding" is "Qwen 3.6 coding", and
  * "huihui_ai/Qwen3.6-abliterated:35b-a3b" is "Qwen 3.6 uncensored". A name with spaces is already plain.
  */
+/** The speed note in plain words, as on the PC: "Fixed both test bugs in 30 s" says "Passed our coding check in 30 s". */
+fun plainTestNote(note: String): String = note.replace("Fixed both test bugs in", "Passed our coding check in")
+
 fun plainModelName(raw: String): String {
     if (raw.isBlank() || raw.any { it == ' ' } || !raw.any { it == ':' || it == '/' || it == '_' || it == '-' }) return raw
     val base = raw.substringAfterLast('/').substringBefore(':')
