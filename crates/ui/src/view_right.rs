@@ -27,14 +27,8 @@ pub(crate) fn started_words(secs: i64) -> String {
 
 /// The processor's word: calm under 20%, busy over 70%.
 pub(crate) fn cpu_words(pct: f32) -> String {
-    let how = if pct < 20.0 {
-        " · calm"
-    } else if pct > 70.0 {
-        " · busy"
-    } else {
-        ""
-    };
-    format!("{pct:.0}%{how}")
+    // A plain percent, the way the old app showed it (owner, 2026-11-23).
+    format!("{pct:.0}%")
 }
 
 /// "31 of 62 GB".
@@ -538,9 +532,9 @@ mod tests {
 
     #[test]
     fn the_processor_says_calm_or_busy() {
-        assert_eq!(cpu_words(4.0), "4% · calm");
+        assert_eq!(cpu_words(4.0), "4%");
         assert_eq!(cpu_words(45.0), "45%");
-        assert_eq!(cpu_words(88.0), "88% · busy");
+        assert_eq!(cpu_words(88.0), "88%");
     }
 
     #[test]
