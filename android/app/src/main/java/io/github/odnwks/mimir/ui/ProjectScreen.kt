@@ -82,7 +82,9 @@ fun ProjectScreen(name: String, state: StationState, station: Station, nav: Navi
                     Chip.Idea -> Palette.Text to Palette.Track
                     Chip.Done -> Palette.Ground to Palette.GreenText
                     Chip.Stopped -> Palette.Text to Palette.Track
-                    Chip.Waiting -> Palette.Text to Palette.Track
+                    Chip.Waiting, Chip.Paused -> Palette.Text to Palette.Track
+                    Chip.Starting -> Palette.Ground to Palette.BlueLight
+                    Chip.NeedsYou, Chip.WaitingForYou -> stateColours(t.chip.label)
                 }
                 ListRow(
                     t.name, t.meta,

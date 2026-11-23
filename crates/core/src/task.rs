@@ -642,8 +642,12 @@ impl Task {
         if f.context_window > 0 {
             self.context_window = f.context_window;
         }
-        // Steps still running when the turn ended were cut short.
-        self.close_open_steps(now_ms);
+        // Steps still running when a turn ended with a problem, or after Pause or Stop,
+        // were cut short. After a clean end one may be a command left running in the
+        // background: it stays open until the run ends (see `settle_open_steps`).
+        if f.is_error || matches!(self.status, Status::Paused | Status::Stopped) {
+            self.close_open_steps(now_ms);
+        }
         match self.status {
             // The owner already chose Pause or Stop; keep that.
             Status::Paused | Status::Stopped => {}
@@ -765,6 +769,28 @@ impl Task {
         } else {
             self.status.words()
         }
+    }
+
+    /// The end of a run: steps that never got a result are closed. On a task that
+    /// finished (Done) they were a command left running in the background, which
+    /// has ended too, so they count as done; otherwise they are stopped.
+    pub fn settle_open_steps(&mut self, now_ms: u64) -> bool {
+        if self.status != Status::Done {
+            return self.close_open_steps(now_ms);
+        }
+        let mut changed = false;
+        for e in &mut self.entries {
+            if let Entry::Step(s) = e
+                && s.ok.is_none()
+            {
+                s.ok = Some(true);
+                if now_ms > 0 {
+                    s.took_ms = Some(now_ms.saturating_sub(s.started_ms));
+                }
+                changed = true;
+            }
+        }
+        changed
     }
 
     /// Marks steps that never got a result as stopped. Returns whether any

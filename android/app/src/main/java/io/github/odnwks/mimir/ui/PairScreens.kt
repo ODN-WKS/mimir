@@ -57,6 +57,16 @@ import io.github.odnwks.mimir.ui.theme.Type
 /** The one-time warning when pairing a phone with no screen lock (owner, 2026-11-19: warn, never block). */
 const val NO_LOCK_WARNING = "Without a screen lock, anyone holding this phone can use $AI_NAME and your PC. Add one in Android Settings › Security."
 
+/** The typed pairing code's keyboard: no autocorrect, suggestions or capital letters. */
+val PAIR_CODE_KEYBOARD = androidx.compose.foundation.text.KeyboardOptions(
+    capitalization = androidx.compose.ui.text.input.KeyboardCapitalization.None,
+    autoCorrectEnabled = false,
+    keyboardType = androidx.compose.ui.text.input.KeyboardType.Uri,
+)
+
+/** A pasted code with spaces or line ends around it. */
+fun cleanPairCode(raw: String): String = raw.trim()
+
 /** Connect your PC: the intro, and the three plain steps (the words the PC really uses). */
 const val CONNECT_TITLE = "Connect your PC"
 val CONNECT_INTRO = "Once connected, this phone reaches your PC from anywhere. It stays private, with no account to make."
@@ -149,7 +159,7 @@ fun PairScreen(station: Station, nav: Navigator, screenLock: Boolean = true) {
             Text(CONNECT_INTRO.forDevice(), style = Type.Body, color = Palette.TextSoft)
             NumberedSteps(CONNECT_STEPS)
             if (typing) {
-                MessageBox(typed, { typed = it }, "Pairing code", "Type the code from the PC", Modifier.fillMaxWidth(), minLines = 3, shape = RoundedCornerShape(16.dp))
+                MessageBox(typed, { typed = it }, "Pairing code", "Type the code from the PC", Modifier.fillMaxWidth(), minLines = 3, shape = RoundedCornerShape(16.dp), keyboardOptions = PAIR_CODE_KEYBOARD)
             } else {
                 Box(
                     Modifier.fillMaxWidth().height(220.dp).clip(RoundedCornerShape(20.dp)).background(Palette.Bar)
@@ -166,7 +176,7 @@ fun PairScreen(station: Station, nav: Navigator, screenLock: Boolean = true) {
         }
         PinnedBar(top = 10.dp) {
             if (typing) {
-                BigButton("Pair", Look.Primary, { if (typed.isNotBlank()) go(typed) }, radius = 16.dp, bold = true)
+                BigButton("Pair", Look.Primary, { if (typed.isNotBlank()) go(cleanPairCode(typed)) }, radius = 16.dp, bold = true)
                 Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { LinkText(CONNECT_SCAN_INSTEAD, { typing = false }) }
             } else {
                 BigButton(CONNECT_SCAN, Look.Primary, { startScan() }, radius = 16.dp, bold = true)

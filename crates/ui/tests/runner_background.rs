@@ -186,3 +186,33 @@ fn the_note_is_said_once() {
         .count();
     assert_eq!(notes, 1);
 }
+
+#[test]
+fn a_finished_task_has_no_open_step_after_its_background_work_ends() {
+    let env = Env::new("bg-steps");
+    let mut r = env.runner("background.jsonl");
+    r.new_task(&env.proj(), "start a sleep in the background");
+    until(&mut r, "working in the background", |r| {
+        status(r) == Status::Done && r.tasks[0].working_now()
+    });
+    until(&mut r, "done by itself", |r| {
+        !r.tasks[0].working_now() && !r.tasks[0].running()
+    });
+    let steps: Vec<_> = r.tasks[0]
+        .task
+        .entries
+        .iter()
+        .filter_map(|e| match e {
+            Entry::Step(s) => Some(s.ok),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        !steps.is_empty(),
+        "the stream has a background command step"
+    );
+    assert!(
+        steps.iter().all(|ok| *ok == Some(true)),
+        "no step is left open or failed on a Done task: {steps:?}"
+    );
+}

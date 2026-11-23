@@ -207,7 +207,7 @@ impl Runner {
                 t.add_note(CLOSED_WHILE_WORKING);
                 dirty = true;
             }
-            if t.close_open_steps(0) {
+            if t.settle_open_steps(0) {
                 dirty = true;
             }
             tasks.push(Live {
@@ -1875,7 +1875,7 @@ impl Runner {
                     p.answer(Answer::Halted);
                 }
                 // Steps it was in the middle of will never finish now.
-                l.task.close_open_steps(now);
+                l.task.settle_open_steps(now);
                 l.dirty = true;
             }
         }

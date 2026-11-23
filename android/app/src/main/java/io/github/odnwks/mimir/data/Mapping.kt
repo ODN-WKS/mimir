@@ -25,6 +25,10 @@ object Mapping {
      * started elsewhere that works on, or work going on in the background). The one rule for
      * "Working now", the counts and Stop.
      */
+    /** A project page's task row with the task's own state words (the same as its task screen). */
+    fun withTaskWords(pt: ProjectTask, words: String): ProjectTask =
+        pt.copy(meta = words, chip = Chip.ofWords(words))
+
     fun working(t: io.github.odnwks.mimir.link.LinkTask): Boolean = t.busy || t.status == "Working"
 
     /**

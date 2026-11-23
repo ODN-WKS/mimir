@@ -1513,6 +1513,9 @@ class LinkStation(
                     }, tasks.values.count { it.project == path && Mapping.working(it) && connected })
                 }
             }.map { pr ->
+                // A task's state on its project page is the task's own words, not a second guess.
+                pr.copy(tasks = pr.tasks.map { pt -> ts.firstOrNull { it.id == pt.taskId && pt.chip != Chip.Waiting }?.let { Mapping.withTaskWords(pt, it.stateWords) } ?: pt })
+            }.map { pr ->
                 // A task still waiting on this phone shows in its project at once.
                 val mine = data.newTasks.filter { name(it.project) == pr.name }
                 if (mine.isEmpty()) pr else pr.copy(tasks = mine.map { w -> ProjectTask(w.id, taskTitle(w.text), if (connected) "Starting…" else WAITING_WORDS, Chip.Waiting) } + pr.tasks)

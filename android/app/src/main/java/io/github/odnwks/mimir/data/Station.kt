@@ -586,13 +586,25 @@ data class Project(
 data class Check(val name: String, val ok: Boolean)
 
 enum class Chip(val label: String) {
-    Running("Working"), Idea("Idea"), Done("Done"), Stopped("Stopped"), Waiting("Waiting");
+    Running("Working"), Idea("Idea"), Done("Done"), Stopped("Stopped"), Waiting("Waiting"),
+    NeedsYou("Needs you"), WaitingForYou("Waiting for you"), Paused("Paused"), Starting("Starting");
 
     companion object {
         /** A task's chip from the PC's status words: a stopped or denied task isn't "Done". */
         fun of(busy: Boolean, status: String): Chip = when {
             busy -> Running
             status == "Stopped" || status == "Failed" || status == "Interrupted" -> Stopped
+            else -> Done
+        }
+
+        /** A task's chip from [Task.stateWords], the one source every screen shows. */
+        fun ofWords(words: String): Chip = when (words) {
+            "Needs you" -> NeedsYou
+            "Waiting for you" -> WaitingForYou
+            "Paused" -> Paused
+            "Starting" -> Starting
+            "Working" -> Running
+            "Stopped" -> Stopped
             else -> Done
         }
     }
