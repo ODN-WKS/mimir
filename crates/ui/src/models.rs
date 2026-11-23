@@ -92,8 +92,14 @@ fn tell_apart(
     models: &[mimir_core::models::FreeModel],
 ) -> String {
     let lower = raw.to_lowercase();
+    // Only when no other of the same name is an agent version too.
     if lower.contains("agent") {
-        return "agent version".into();
+        let other_agent = models.iter().enumerate().any(|(j, o)| {
+            j != i && plain[j] == plain[i] && o.name.to_lowercase().contains("agent")
+        });
+        if !other_agent {
+            return "agent version".into();
+        }
     }
     let size = lower
         .rsplit_once(':')
@@ -272,6 +278,37 @@ mod tests {
                 .iter()
                 .all(|m| m.name.chars().any(|c| c.is_ascii_digit()))
         );
+    }
+}
+
+#[cfg(test)]
+mod tell_apart_tests {
+    use super::show_names;
+    use mimir_core::models::FreeModel;
+
+    fn m(name: &str) -> FreeModel {
+        FreeModel {
+            id: format!("ollama:{name}"),
+            name: name.into(),
+            note: String::new(),
+            refusals_removed: false,
+        }
+    }
+
+    #[test]
+    fn one_agent_among_same_named_models_is_the_agent_version() {
+        let v = show_names(&[m("gemma4:12b"), m("gemma4:12b-agent")]);
+        assert_eq!(v[1].1.as_deref(), Some("agent version"));
+    }
+
+    #[test]
+    fn two_agents_of_one_name_are_told_apart_by_size_or_number() {
+        let v = show_names(&[m("gemma4:12b-agent"), m("gemma4:27b-agent")]);
+        assert_eq!(v[0].1.as_deref(), Some("12B version"));
+        assert_eq!(v[1].1.as_deref(), Some("27B version"));
+        let w = show_names(&[m("gemma4:agent"), m("gemma4:agent-2")]);
+        assert_eq!(w[0].1.as_deref(), Some("version 1"));
+        assert_eq!(w[1].1.as_deref(), Some("version 2"));
     }
 }
 
