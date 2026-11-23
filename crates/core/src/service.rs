@@ -1366,6 +1366,14 @@ impl Service {
                 ok
             }
             Call::Stop { task } => {
+                // A session going on in another app is ended where it runs.
+                if self
+                    .task(&task)
+                    .is_some_and(|l| l.task.live_elsewhere && !l.running())
+                {
+                    return crate::pcsessions::stop_elsewhere(&mut self.runner, &task)
+                        .map(|_| Value::Null);
+                }
                 self.runner.stop(&task);
                 ok
             }

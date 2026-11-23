@@ -773,6 +773,14 @@ impl Runner {
         self.halt(id, Status::Stopped, STOPPED_NOTE);
     }
 
+    /// A task that followed a session running elsewhere, whose Claude Code
+    /// the owner ended: it reads Stopped, with `note`.
+    pub fn stopped_elsewhere(&mut self, id: &str, note: &str) {
+        self.owner_stopped.insert(id.to_string());
+        self.set_elsewhere(id, false);
+        self.halt(id, Status::Stopped, note);
+    }
+
     fn halt(&mut self, id: &str, status: Status, note: &str) {
         let Some(i) = self.index(id) else { return };
         let l = &mut self.tasks[i];

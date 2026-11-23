@@ -72,7 +72,8 @@ pub fn list(
             id,
             title: short(&title),
             project: crate::paths::project_name(&o.project.display().to_string()),
-            here: task.is_some(),
+            // Mímir's own Claude runs it only while nothing else has it open.
+            here: task.is_some_and(|t| !t.elsewhere),
             app,
             task: task.map(|t| t.task.clone()),
             state,
@@ -159,6 +160,24 @@ pub fn open(
         runner.note(&id, FOLLOW_NOTE);
     }
     Ok(Opened { task: id, follow })
+}
+
+/// Stop on a task that follows a session running elsewhere: that Claude
+/// Code ends (see `sessions::stop_session`) and the task reads Stopped.
+pub fn stop_elsewhere(runner: &mut crate::runner::Runner, task: &str) -> Result<(), String> {
+    let session = runner
+        .tasks
+        .iter()
+        .find(|l| l.task.id == task)
+        .and_then(|l| l.task.session_id.clone())
+        .ok_or("Couldn't stop it here. Stop it where it runs.")?;
+    let app = sessions::stop_session(&session)?;
+    let place = if app { "the Claude app" } else { "a terminal" };
+    runner.stopped_elsewhere(
+        task,
+        &format!("You stopped this session. It was running in {place}."),
+    );
+    Ok(())
 }
 
 /// A title short enough for a phone row.
@@ -635,6 +654,94 @@ mod tests {
                 now() - s.last
             );
         }
+    }
+
+    fn exited(s: &mut Stand) -> bool {
+        for _ in 0..300 {
+            if s.0.try_wait().unwrap().is_some() {
+                return true;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        false
+    }
+
+    #[test]
+    fn stop_ends_the_session_running_elsewhere_and_only_it() {
+        let h = home("stop");
+        unsafe { std::env::set_var("CLAUDE_CONFIG_DIR", &h.root) };
+        let mut mine = Stand::start(&h.project);
+        session(&h, "s1", "Sort the notes", None, 0);
+        // Another Claude Code, in another folder.
+        let other_dir = h.base.join("Garden planner");
+        fs::create_dir_all(&other_dir).unwrap();
+        let mut other = Stand::start(&other_dir);
+        let mut r = runner(&h);
+        let run = scan(&h, &[mine.0.id()]);
+        assert!(run.ids.contains("s1"));
+        let o = open(&mut r, &h.root, "s1", &run.ids, now()).unwrap();
+        assert!(o.follow);
+        stop_elsewhere(&mut r, &o.task).unwrap();
+        assert!(exited(&mut mine), "the session's process is still there");
+        assert!(other.0.try_wait().unwrap().is_none(), "another one was hit");
+        let t = &r.tasks.iter().find(|l| l.task.id == o.task).unwrap().task;
+        assert_eq!(t.status, crate::task::Status::Stopped);
+        assert!(!t.live_elsewhere);
+        let words = format!("{:?}", t.entries);
+        assert!(words.contains("You stopped this session. It was running in a terminal."));
+    }
+
+    #[test]
+    fn stop_with_no_process_says_why() {
+        let h = home("stop-none");
+        unsafe { std::env::set_var("CLAUDE_CONFIG_DIR", &h.root) };
+        session(&h, "s2", "Old notes", None, 900);
+        let mut r = runner(&h);
+        let o = open(&mut r, &h.root, "s2", &set(&[]), now()).unwrap();
+        r.set_elsewhere(&o.task, true);
+        let e = stop_elsewhere(&mut r, &o.task).unwrap_err();
+        assert_eq!(e, "Couldn't stop it here. Stop it where it runs.");
+        let t = &r.tasks.iter().find(|l| l.task.id == o.task).unwrap().task;
+        assert_ne!(t.status, crate::task::Status::Stopped);
+        assert!(stop_elsewhere(&mut r, "no-such-task").is_err());
+    }
+
+    #[test]
+    fn a_task_live_elsewhere_keeps_its_real_origin_in_the_list() {
+        let h = home("origin");
+        let app_id = "5f1c0a52-2222-5d2e-9a10-0123456789ab";
+        session(&h, app_id, "From the app", None, 5);
+        session(&h, "t9", "From a terminal", None, 5);
+        let mut r = runner(&h);
+        let run = set(&[app_id, "t9"]);
+        for id in [app_id, "t9"] {
+            assert!(open(&mut r, &h.root, id, &run, now()).unwrap().follow);
+        }
+        let refs = |r: &crate::runner::Runner| -> Vec<TaskRef> {
+            r.tasks
+                .iter()
+                .map(|l| TaskRef {
+                    task: l.task.id.clone(),
+                    session: l.task.session_id.clone(),
+                    title: l.task.title.clone(),
+                    busy: false,
+                    elsewhere: l.task.live_elsewhere,
+                    whisper: false,
+                })
+                .collect()
+        };
+        let l = list(&h.root, &run, &set(&[]), &refs(&r), now());
+        let a = l.iter().find(|s| s.id == app_id).unwrap();
+        let t = l.iter().find(|s| s.id == "t9").unwrap();
+        assert!(!a.here && a.app && a.task.is_some());
+        assert!(!t.here && !t.app && t.task.is_some());
+        // Once nothing else has it open it is the task's own again.
+        for l in 0..r.tasks.len() {
+            let id = r.tasks[l].task.id.clone();
+            r.set_elsewhere(&id, false);
+        }
+        let l = list(&h.root, &set(&[]), &set(&[]), &refs(&r), now());
+        assert!(l.iter().all(|s| s.here));
     }
 
     fn runner(h: &Home) -> crate::runner::Runner {

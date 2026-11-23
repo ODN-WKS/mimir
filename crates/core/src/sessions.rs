@@ -494,6 +494,21 @@ pub struct Running {
     pub ids: std::collections::HashSet<String>,
     /// Of those, the ones started from the Claude app (Remote Control).
     pub app: std::collections::HashSet<String>,
+    /// The processes (number, start) that have each session open.
+    pub pids: std::collections::HashMap<String, Vec<(u32, i64)>>,
+}
+
+impl Running {
+    fn add(&mut self, id: String, app: bool, p: &Proc) {
+        if app {
+            self.app.insert(id.clone());
+        }
+        self.pids
+            .entry(id.clone())
+            .or_default()
+            .push((p.pid, p.started));
+        self.ids.insert(id);
+    }
 }
 
 /// Session ids a Claude Code process on this PC has open (it was started
@@ -642,10 +657,7 @@ pub fn running_from(procs: &[Proc], home: &Path) -> Running {
             .iter()
             .any(|a| a == "--sdk-url" || a.contains("cse_"));
         if let Some(id) = id_on_line(&p.args) {
-            if app {
-                out.app.insert(id.clone());
-            }
-            out.ids.insert(id);
+            out.add(id, app, p);
         } else if let Some(c) = &p.cwd {
             by_folder.entry(c.clone()).or_default().push(p);
         }
@@ -684,10 +696,7 @@ pub fn running_from(procs: &[Proc], home: &Path) -> Running {
             match known(p, &cache) {
                 Some((id, app)) => {
                     taken.insert(id.clone());
-                    if app {
-                        out.app.insert(id.clone());
-                    }
-                    out.ids.insert(id);
+                    out.add(id, app, p);
                 }
                 None => open.push(p),
             }
@@ -713,13 +722,89 @@ pub fn running_from(procs: &[Proc], home: &Path) -> Running {
                 }
                 map.insert((p.pid, p.started), (id.clone(), app));
             }
-            if app {
-                out.app.insert(id.clone());
-            }
-            out.ids.insert(id.clone());
+            out.add(id.clone(), app, p);
         }
     }
     out
+}
+
+/// One process now, if it is a Claude Code that is not a Remote Control
+/// listener (read fresh, so a reused process number is told apart by its
+/// start time).
+fn claude_now(pid: u32) -> Option<Proc> {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    let p = if let Some(list) = crate::flatpak::host_processes_aged() {
+        list.into_iter().find(|h| h.pid == pid).map(|h| Proc {
+            pid,
+            started: now - h.age_secs,
+            args: h.args,
+            cwd: h.cwd,
+        })?
+    } else {
+        local_procs(now).into_iter().find(|p| p.pid == pid)?
+    };
+    (claude_process(&p.args)
+        && !p
+            .args
+            .iter()
+            .any(|a| a == "--remote-control" || a == "remote-control"))
+    .then_some(p)
+}
+
+/// Ends the Claude Code processes that have `session` open: SIGINT now,
+/// SIGTERM after 2 s and SIGKILL after 5 s if one is still there. Each is
+/// checked (a Claude Code, and the same start time) before every signal, so
+/// a reused process number is never hit. Where the processes were started:
+/// `Ok(true)` for the Claude app. `Err` with a plain reason when none could
+/// be found or signalled.
+pub fn stop_session(session: &str) -> Result<bool, String> {
+    let cant = || "Couldn't stop it here. Stop it where it runs.".to_string();
+    let run = running_scan();
+    let list = run.pids.get(session).cloned().unwrap_or_default();
+    let app = run.app.contains(session);
+    let mut sent = 0;
+    let mut targets = vec![];
+    for (pid, started) in list {
+        if same_process(pid, started) && signal(pid, "INT") {
+            sent += 1;
+            targets.push((pid, started));
+        }
+    }
+    if sent == 0 {
+        return Err(cant());
+    }
+    std::thread::spawn(move || {
+        for (after, name) in [(2u64, "TERM"), (3, "KILL")] {
+            std::thread::sleep(std::time::Duration::from_secs(after));
+            for (pid, started) in &targets {
+                if same_process(*pid, *started) {
+                    signal(*pid, name);
+                }
+            }
+        }
+    });
+    Ok(app)
+}
+
+/// Whether `pid` is still the Claude Code that started at `started`.
+fn same_process(pid: u32, started: i64) -> bool {
+    claude_now(pid).is_some_and(|p| (p.started - started).abs() <= 2)
+}
+
+/// Sends a signal ("INT", "TERM", "KILL") to a process, on the PC itself
+/// inside a Flatpak. True if it was sent.
+fn signal(pid: u32, name: &str) -> bool {
+    crate::flatpak::host_cmd("kill")
+        .arg(format!("-{name}"))
+        .arg(pid.to_string())
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .is_ok_and(|s| s.success())
 }
 
 /// When the conversation in a transcript last moved: the time of its
