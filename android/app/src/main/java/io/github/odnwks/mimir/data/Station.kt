@@ -35,8 +35,17 @@ interface Station {
     fun undoMessage(messageId: String)
     /** A message the PC couldn't take (its line says so): sent again. */
     fun retryMessage(messageId: String)
-    /** A reply typed into one task. */
-    fun reply(taskId: String, text: String)
+    /**
+     * A reply typed into one task, with the pictures and files chosen for it (the PC wipes their hidden details).
+     * False when it was not taken (nothing to send, or the pictures and files couldn't be kept): the box keeps what was in it.
+     */
+    fun reply(taskId: String, text: String, pictures: List<io.github.odnwks.mimir.standalone.TurnPicture> = emptyList(), files: List<io.github.odnwks.mimir.standalone.TurnFile> = emptyList()): Boolean
+    /** This PC takes pictures and files on a task's message ("task_files"); an older one doesn't, and the box offers none. */
+    fun canAttachToTasks(): Boolean = false
+    /** This PC lets a phone set a task's model and effort with a message ("task_reply_options"). */
+    fun canSetReplyOptions(): Boolean = false
+    /** The effort for this task from now on (null: its usual one); the PC takes it with the next message. */
+    fun setTaskEffort(taskId: String, effort: String?) {}
     /** [done] gets null when it went out, or the plain reason it did not (nothing was sent then). Edit one of the owner's own messages in a task: the task goes back to that message and carries on with [text]. */
     fun editTaskMessage(taskId: String, messageId: String, text: String, done: (String?) -> Unit = {}) { reply(taskId, text); done(null) }
     /** Takes back a new task that is still waiting on this phone (nothing is sent). */
@@ -453,6 +462,8 @@ data class Task(
     val stopPending: Boolean = false,
     /** Where a session going on elsewhere runs, when the PC says: "app" (the Claude app) or "terminal"; "" when it doesn't. */
     val elsewhereIn: String = "",
+    /** The effort chosen on this phone for the task's next messages (the PC's word, e.g. "high"); "" when its usual one. */
+    val effort: String = "",
 ) {
     /** A mode that does things without asking, in words for its chip; null when it asks first. */
     val riskyMode: String? get() = when (mode) {

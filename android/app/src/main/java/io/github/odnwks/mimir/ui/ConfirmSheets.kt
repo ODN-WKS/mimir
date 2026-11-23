@@ -250,6 +250,14 @@ private fun SheetContent(sheet: Sheet, state: StationState, station: Station, na
                 // Online ones go to Anthropic: marked, so it is plain which ones leave the PC.
                 MenuRow(Glyphs.Models, plainModelName(m.name), checked = current, note = if (m.free) "On your PC" else "Online") { station.setTaskModel(sheet.taskId, m.id); nav.closeSheet() }
             }
+            // Effort for this task from now on: only a PC that takes it with a message (task_reply_options).
+            if (station.canSetReplyOptions()) {
+                val effortNow = TaskEffort.of(state.task(sheet.taskId)?.effort?.ifEmpty { null })
+                Text("Effort, from now on", style = Type.Small, color = Palette.TextDim, modifier = Modifier.padding(start = 12.dp, top = 10.dp, bottom = 2.dp))
+                TaskEffort.entries.forEach { e ->
+                    MenuRow(Glyphs.Models, e.words, checked = e == effortNow, note = e.about) { station.setTaskEffort(sheet.taskId, e.wire); nav.closeSheet() }
+                }
+            } else Text(UPDATE_PC_FOR_OPTIONS, style = Type.Small, color = Palette.TextDim, modifier = Modifier.padding(start = 12.dp, top = 10.dp, bottom = 2.dp))
         }
         Sheet.IncognitoOptions -> Menu(sheet.title(state)) {
             PrivacyLine("Whisper mode: the internet is cut off for this task, nothing leaves your PC, and it's read aloud by this phone's voice only.")

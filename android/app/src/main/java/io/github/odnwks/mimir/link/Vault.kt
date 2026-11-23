@@ -13,7 +13,7 @@ import kotlin.concurrent.withLock
  */
 class Vault(
     private val file: File,
-    private val codec: Codec = KeystoreVaultCodec(),
+    val codec: Codec = KeystoreVaultCodec(),
     private val newKey: () -> ByteArray = { if (Native.available) Native.generateKey() else java.security.SecureRandom().generateSeed(32) },
     /** Reading the file is tried this many times before it is called unreadable. */
     private val tries: Int = 3,

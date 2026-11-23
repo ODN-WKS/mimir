@@ -102,12 +102,19 @@ fun PhoneChat(
     LaunchedEffect(needsYou) { if (needsYou == 0) pillDismissedFor = -1 }
     val markChatted = { if (!hasChatted) { hasChatted = true; prefs.edit().putBoolean(HAS_CHATTED, true).apply() } }
     LaunchedEffect(s.chat.turns.isNotEmpty(), s.earlier.isNotEmpty()) { if (s.chat.turns.isNotEmpty() || s.earlier.isNotEmpty()) markChatted() }
-    // Text files and pictures to go with the next message (pictures for a model that sees).
-    val files = remember { androidx.compose.runtime.mutableStateListOf<io.github.odnwks.mimir.standalone.TurnFile>() }
-    val pictures = remember { androidx.compose.runtime.mutableStateListOf<io.github.odnwks.mimir.standalone.TurnPicture>() }
-    var attachNote by remember { mutableStateOf<String?>(null) }
-    // The one button under a note (Try again, Open settings), when there is a fix to offer.
-    var attachFix by remember { mutableStateOf<Pair<String, () -> Unit>?>(null) }
+    // When the PC answers, pictures go to the PC: its model's sight counts, never this phone's (null: not the PC, or an older one).
+    // The PC's own word is read from the link's state too, so a change on the PC (after a reconnect, or an answer from another model) redraws the Attach menu.
+    val link = remember { io.github.odnwks.mimir.data.Stations.current() }
+    val pcSees = link?.state?.collectAsStateWithLifecycle()?.value?.models?.seesPictures
+    val pcSight = if (pcReady) engine.pcPictures().also { pcSees } else null
+    // When the PC answers, any file goes to the PC to be read (PDFs, documents, sheets, recordings), never limited by this phone's model.
+    val pcFiles = pcReady && engine.pcFiles()
+    // Text files and pictures to go with the next message (pictures for a model that sees): one piece, shared with a task's reply box.
+    val attach = rememberAttach(pcSight == true, pcFiles)
+    val files = attach.files
+    val pictures = attach.pictures
+    var attachNote by attach::note
+    var attachFix by attach::fix
     // Each chat keeps its own box, held by the engine (outside this screen): Settings or History in between loses nothing.
     val drafts = engine.drafts
     var boxChat by remember { mutableStateOf<String?>(null) }
@@ -123,13 +130,6 @@ fun PhoneChat(
         if (boxChat == s.chat.id) drafts.put(s.chat.id, io.github.odnwks.mimir.standalone.Draft(draft, files.toList(), pictures.toList()))
     }
     androidx.compose.runtime.DisposableEffect(Unit) { onDispose { engine.flushDrafts() } }
-    // When the PC answers, pictures go to the PC: its model's sight counts, never this phone's (null: not the PC, or an older one).
-    // The PC's own word is read from the link's state too, so a change on the PC (after a reconnect, or an answer from another model) redraws the Attach menu.
-    val link = remember { io.github.odnwks.mimir.data.Stations.current() }
-    val pcSees = link?.state?.collectAsStateWithLifecycle()?.value?.models?.seesPictures
-    val pcSight = if (pcReady) engine.pcPictures().also { pcSees } else null
-    // When the PC answers, any file goes to the PC to be read (PDFs, documents, sheets, recordings), never limited by this phone's model.
-    val pcFiles = pcReady && engine.pcFiles()
     val sight = sightFor(pcSight, pcReady, model.id in s.sees, model.vision?.let { model.chipName })
     // A Whisper on the PC waits for its first words here; they start it there and the Whisper's own screen opens.
     var pcWhisper by rememberSaveable { mutableStateOf(false) }
@@ -152,62 +152,6 @@ fun PhoneChat(
         }
     }
     val scope = androidx.compose.runtime.rememberCoroutineScope()
-    val pick = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) scope.launch {
-            when (val r = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                if (pcFiles) io.github.odnwks.mimir.standalone.Attach.readForPc(ctx, uri) else io.github.odnwks.mimir.standalone.Attach.read(ctx, uri)
-            }) {
-                is io.github.odnwks.mimir.standalone.Attach.Result.Read -> if (files.size < io.github.odnwks.mimir.standalone.Attach.MAX_FILES) files += r.file
-                is io.github.odnwks.mimir.standalone.Attach.Result.No -> attachNote = attachProblem(r.problem)
-            }
-        }
-    }
-    val addPictures = { got: List<io.github.odnwks.mimir.standalone.TurnPicture> ->
-        if (got.isEmpty()) attachNote = "That picture couldn't be read. Try another one."
-        val room = io.github.odnwks.mimir.standalone.Pictures.MAX - pictures.size
-        got.filter { p -> pictures.none { it == p } }.take(room).forEach { pictures += it }
-        if (got.size > room) attachNote = "Only ${io.github.odnwks.mimir.standalone.Pictures.MAX} pictures go with one message (a video counts as ${io.github.odnwks.mimir.standalone.Pictures.VIDEO_FRAMES})."
-    }
-    val pickMedia = androidx.activity.compose.rememberLauncherForActivityResult(
-        androidx.activity.result.contract.ActivityResultContracts.PickMultipleVisualMedia(io.github.odnwks.mimir.standalone.Pictures.MAX),
-    ) { uris ->
-        if (uris.isNotEmpty()) scope.launch {
-            val got = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                uris.flatMap { uri ->
-                    val name = (io.github.odnwks.mimir.standalone.Attach.nameOf(ctx, uri) ?: "Picture")
-                    if (ctx.contentResolver.getType(uri).orEmpty().startsWith("video/")) io.github.odnwks.mimir.standalone.Pictures.video(ctx, uri, name, if (pcSight == true) io.github.odnwks.mimir.standalone.Pictures.PC_FRAME_SIDE else io.github.odnwks.mimir.standalone.Pictures.FRAME_SIDE)
-                    else listOfNotNull(io.github.odnwks.mimir.standalone.Pictures.photo(ctx, uri, name, if (pcSight == true) io.github.odnwks.mimir.standalone.Pictures.PC_SIDE else io.github.odnwks.mimir.standalone.Pictures.MAX_SIDE))
-                }
-            }
-            addPictures(got)
-        }
-    }
-    // A camera shot waits in the app's cache only until it's read in, then it's deleted.
-    val shot = remember { java.io.File(ctx.cacheDir, "camera/shot.jpg") }
-    val takePhoto = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.TakePicture()) { ok ->
-        scope.launch {
-            val got = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                val p = if (ok && shot.isFile) io.github.odnwks.mimir.standalone.Pictures.photo(ctx, android.net.Uri.fromFile(shot), "Photo", if (pcSight == true) io.github.odnwks.mimir.standalone.Pictures.PC_SIDE else io.github.odnwks.mimir.standalone.Pictures.MAX_SIDE) else null
-                shot.delete()
-                p
-            }
-            if (ok) addPictures(listOfNotNull(got))
-        }
-    }
-    val openCameraRef = remember { arrayOf<() -> Unit>({}) }
-    val openCamera = {
-        runCatching {
-            shot.parentFile?.mkdirs()
-            takePhoto.launch(androidx.core.content.FileProvider.getUriForFile(ctx, ctx.packageName + ".camera", shot))
-        }.onFailure { attachNote = CAMERA_FAILED; attachFix = "Try again" to { attachNote = null; attachFix = null; openCameraRef[0]() } }
-        Unit
-    }
-    openCameraRef[0] = openCamera
-    val askCamera = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) { ok ->
-        if (ok) openCamera() else { attachNote = CAMERA_REFUSED; attachFix = "Open settings" to { openAppSettings(ctx) } }
-    }
-    // A note about a file that wasn't added shows for a few seconds only.
-    LaunchedEffect(attachNote) { if (attachNote != null) { kotlinx.coroutines.delay(if (attachFix != null) 12000 else 6000); attachNote = null; attachFix = null } }
 
     // A Whisper turns the whole chat teal (the colour fades, nothing jumps).
     val ground by androidx.compose.animation.animateColorAsState(if (s.whisper || pcWhisper) WhisperTint.Ground else Palette.Ground, motionSpec(Motion.SCREEN_MS), label = "ground")
@@ -468,15 +412,7 @@ fun PhoneChat(
         Column(Modifier.fillMaxWidth().imePadding()) {
         val voice = rememberVoiceInput(if (s.whisper || pcWhisper) null else link, whisper = s.whisper || pcWhisper, keep = { wav, secs -> engine.keepRecording(wav, secs) })
         VoicePanel(voice, heard = { draft = withHeard(draft, it) }, Modifier.padding(top = 4.dp))
-        val noteShown = remember { arrayOf("") }
-        attachNote?.let { noteShown[0] = it }
-        androidx.compose.animation.AnimatedVisibility(
-            attachNote != null,
-            enter = androidx.compose.animation.expandVertically(motionSpec(Motion.NEEDS_YOU_BAR_MS)) + androidx.compose.animation.fadeIn(motionSpec(Motion.NEEDS_YOU_BAR_MS)),
-            exit = androidx.compose.animation.shrinkVertically(motionSpec(Motion.NEEDS_YOU_BAR_MS)) + androidx.compose.animation.fadeOut(motionSpec(Motion.NEEDS_YOU_BAR_MS)),
-        ) {
-            AttachNote(noteShown[0], attachFix) { attachNote = null; attachFix = null }
-        }
+        attach.Note()
         // While the chat is in a project (its last card's task isn't done), a follow-up goes there; ✕ leaves it.
         val card = s.chat.projectCard?.takeIf { !s.whisper && it.task?.let(task)?.stateWords != "Done" }
         androidx.compose.animation.AnimatedVisibility(
@@ -507,27 +443,9 @@ fun PhoneChat(
         MimirComposer(draft, { draft = it; if (it.isNotBlank()) engine.prepare() }, waiting, s.writing, voice, onSend = { send(draft) }, onStop = engine::stop,
             whisper = s.whisper || pcWhisper, waitHint = !paired, modifier = Modifier.startupBottom(startup, on = showHome && first).padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 10.dp),
             hasFiles = files.isNotEmpty() || pictures.isNotEmpty(),
-            above = {
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    pictures.toList().forEach { p -> PictureChip(p) { pictures.remove(p) } }
-                    files.toList().forEach { f -> FileChip(f) { files.remove(f) } }
-                }
-            },
+            above = { attach.Chips() },
             attach = { fit ->
-            AttachButton(
-                sight,
-                filesFull = files.size >= io.github.odnwks.mimir.standalone.Attach.MAX_FILES,
-                picturesFull = pictures.size >= io.github.odnwks.mimir.standalone.Pictures.MAX,
-                onFile = { pick.launch(arrayOf("*/*")) },
-                onPhotos = { pickMedia.launch(androidx.activity.result.PickVisualMediaRequest(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageAndVideo)) },
-                onCamera = {
-                    if (androidx.core.content.ContextCompat.checkSelfPermission(ctx, android.Manifest.permission.CAMERA) == android.content.pm.PackageManager.PERMISSION_GRANTED) openCamera()
-                    else askCamera.launch(android.Manifest.permission.CAMERA)
-                },
-                onModels = { nav.open(Screen.Models) },
-                model = model,
-                pcFiles = pcFiles,
-            )
+            attach.Button(sight, onModels = { nav.open(Screen.Models) }, model = model)
             },
         ) { fit ->
             val installed = Catalog.withOwn().filter { it.id in s.have }
@@ -689,9 +607,6 @@ internal fun writingWords(s: io.github.odnwks.mimir.standalone.LocalState): Stri
 /** What a message waiting for the PC says under itself. */
 const val QUEUED_WORDS = "Sends when your PC is back"
 
-/** Said when the camera won't open (with "Try again") or isn't allowed (with "Open settings"). */
-private const val CAMERA_FAILED = "The camera couldn't be opened. Close other apps that use it, then try again."
-private const val CAMERA_REFUSED = "The camera isn't allowed for this app. Allow it in Android settings, or pick a photo instead."
 
 /** The line under the chat when a photo, the camera or a file can't be used: the words fill the width, the buttons wrap under them when they don't fit beside each other. */
 @Composable

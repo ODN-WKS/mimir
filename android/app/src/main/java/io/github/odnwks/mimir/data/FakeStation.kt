@@ -108,15 +108,31 @@ class FakeStation(initial: StationState = ExampleData.awake()) : Station {
         }
     }
 
-    override fun reply(taskId: String, text: String) {
+    /** Pictures and files sent with replies: (task, picture count, file names). Checks read this. */
+    val repliedWith = mutableListOf<Triple<String, Int, List<String>>>()
+    /** Set by a check: the stand-in PC takes pictures and files / effort and model with a reply. */
+    var attachOk = true
+    var optionsOk = true
+    val efforts = mutableMapOf<String, String?>()
+    override fun canAttachToTasks() = attachOk
+    override fun canSetReplyOptions() = optionsOk
+    override fun setTaskEffort(taskId: String, effort: String?) {
+        efforts[taskId] = effort
+        flow.update { s -> s.copy(tasks = s.tasks.map { if (it.id == taskId) it.copy(effort = effort.orEmpty()) else it }) }
+    }
+
+    override fun reply(taskId: String, text: String, pictures: List<io.github.odnwks.mimir.standalone.TurnPicture>, files: List<io.github.odnwks.mimir.standalone.TurnFile>): Boolean {
         val clean = text.trim()
-        if (clean.isEmpty()) return
+        if (clean.isEmpty() && pictures.isEmpty() && files.isEmpty()) return false
+        if (pictures.isNotEmpty() || files.isNotEmpty()) repliedWith += Triple(taskId, pictures.size, files.map { it.name })
         replied += clean
+        val shown = clean.ifEmpty { (files.map { it.name } + listOfNotNull(pictures.size.takeIf { it > 0 }?.let { if (it == 1) "A picture" else "$it pictures" })).joinToString() }
         flow.update { s ->
             s.copy(tasks = s.tasks.map { t ->
-                if (t.id == taskId) t.copy(messages = t.messages + TaskMessage(newId("r"), fromClaude = false, text = clean)) else t
+                if (t.id == taskId) t.copy(messages = t.messages + TaskMessage(newId("r"), fromClaude = false, text = shown)) else t
             })
         }
+        return true
     }
 
     /** Edits made on a task: (task, message, new words). Checks read this. */

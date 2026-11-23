@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -57,6 +58,7 @@ import io.github.odnwks.mimir.ui.theme.Type
  * is dimmed while the box is empty. While a task is [working] a red Stop button sits beside Send,
  * typed words or not; a tap within 800 ms of Stop turning up or going is ignored.
  */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 fun Composer(
     value: String,
@@ -74,8 +76,18 @@ fun Composer(
     whisper: Boolean = false,
     working: Boolean = false,
     onStop: (() -> Unit)? = null,
+    /** Pictures and files for this message (the + beside the mic, the chips above the words); null: this box takes none. */
+    attach: AttachState? = null,
+    /** What the attach menu says about pictures (the PC takes them on a task's message). */
+    attachSight: Sight = Sight.Sees,
+    /** The "Model · Effort" chip for this task (null: not shown) and what it opens. */
+    optionsChip: String? = null,
+    onOptions: () -> Unit = {},
+    /** Said in place of the chip when this PC can't take them yet. */
+    optionsNote: String? = null,
 ) {
     val shape = RoundedCornerShape(24.dp)
+    val sendable = value.isNotBlank() || attach?.any == true
     val surface by androidx.compose.animation.animateColorAsState(if (whisper) Palette.WhisperBar else Palette.Bar, io.github.odnwks.mimir.ui.theme.motionSpec(io.github.odnwks.mimir.ui.theme.Motion.SCREEN_MS), label = "box")
     val haptic = LocalHapticFeedback.current
     val focus = remember { FocusRequester() }
@@ -84,8 +96,11 @@ fun Composer(
     LaunchedEffect(ask) { if (ask > 0) runCatching { focus.requestFocus() } }
     Column(
         modifier.fillMaxWidth().clip(shape).background(surface).border(1.dp, Palette.Outline, shape)
-            .padding(start = 6.dp, end = 6.dp, top = if (chip != null) 6.dp else 0.dp, bottom = 0.dp),
+            .padding(start = 6.dp, end = 6.dp, top = if (chip != null || optionsChip != null || optionsNote != null) 6.dp else 0.dp, bottom = 0.dp),
     ) {
+        attach?.Note()
+        if (attach?.any == true) Box(Modifier.padding(start = 4.dp, end = 4.dp, bottom = 6.dp)) { attach.Chips() }
+        if (chip != null || optionsChip != null) FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(0.dp)) {
         if (chip != null) Row(
             Modifier.heightIn(min = 40.dp).clip(RoundedCornerShape(12.dp)).clickable(role = Role.Button, onClick = onChip)
                 .semantics(mergeDescendants = true) { contentDescription = chipLabel },
@@ -101,7 +116,24 @@ fun Composer(
                 Icon(Glyphs.Down, null, tint = Palette.TextDim, modifier = Modifier.size(16.dp))
             }
         }
+        if (optionsChip != null) Row(
+            Modifier.heightIn(min = 40.dp).clip(RoundedCornerShape(12.dp)).clickable(role = Role.Button, onClick = onOptions)
+                .semantics(mergeDescendants = true) { contentDescription = "Model and effort for this task: $optionsChip. Change" },
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Row(
+                Modifier.clip(RoundedCornerShape(12.dp)).border(1.dp, Palette.LineStrong, RoundedCornerShape(12.dp))
+                    .padding(start = 10.dp, end = 6.dp, top = 4.dp, bottom = 4.dp),
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Text(optionsChip, style = Type.Small.copy(fontWeight = FontWeight.Bold), color = Palette.Text, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Icon(Glyphs.Down, null, tint = Palette.TextDim, modifier = Modifier.size(16.dp))
+            }
+        }
+        }
+        if (optionsNote != null) Text(optionsNote, style = Type.Small, color = Palette.TextDim, modifier = Modifier.padding(start = 6.dp, bottom = 4.dp))
         Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            if (attach != null) Box(Modifier.padding(bottom = 4.dp)) { attach.Button(attachSight) }
             Box(Modifier.padding(bottom = 4.dp)) { MicButton(voice, micLabel, filled = false, surface = Palette.Card) }
             BasicTextField(
                 value = value,
@@ -112,7 +144,7 @@ fun Composer(
                 modifier = Modifier.weight(1f).heightIn(min = 56.dp).semantics { contentDescription = label }
                     .focusRequester(focus)
                     // A real keyboard: Enter sends, Shift+Enter is a new line, Tab leaves the box.
-                    .messageBoxKeys { if (value.isNotBlank()) onSend() },
+                    .messageBoxKeys { if (sendable) onSend() },
                 decorationBox = { inner ->
                     Box(Modifier.padding(vertical = 16.dp), contentAlignment = Alignment.CenterStart) {
                         if (value.isEmpty()) Text(hint, style = Type.Body.copy(lineHeight = 16.sp * 1.4f), color = Palette.TextDim, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -120,7 +152,7 @@ fun Composer(
                     }
                 },
             )
-            val kind = if (value.isNotBlank()) ButtonKind.Send else ButtonKind.Empty
+            val kind = if (sendable) ButtonKind.Send else ButtonKind.Empty
             // Stop is there the whole time something works, typed words or not (owner, 2026-11-22).
             val showStop = working && onStop != null
             // A tap meant for the button that was there a moment ago does nothing: Stop turning up
@@ -151,7 +183,7 @@ fun Composer(
                     when (k) {
                         ButtonKind.Empty -> RoundButton(Glyphs.Send, "Send", {}, filled = true, enabled = false)
                         ButtonKind.Send -> RoundButton(Glyphs.Send, "Send", {
-                            if (value.isNotBlank()) {
+                            if (sendable) {
                                 haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
                                 onSend()
                             }

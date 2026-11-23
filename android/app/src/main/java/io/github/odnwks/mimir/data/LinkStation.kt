@@ -54,6 +54,8 @@ class LinkStation(
     private val deviceName: String? = null,
     /** Where recordings spoken while the PC is away wait (one sound file each). */
     private val recordDir: java.io.File? = null,
+    /** Where the pictures and files of task messages waiting for the PC are kept (sealed, one file each). */
+    attachDir: java.io.File? = null,
     /** Whether the app asks for a fingerprint or PIN to open (Settings › App lock). */
     private val lockStore: LockStore = LockStore.InMemory(),
     /** Whether the app is on the screen (closed, the link is tried only while something wants it). */
@@ -65,6 +67,7 @@ class LinkStation(
     private val chatRepo: io.github.odnwks.mimir.data.store.ChatRepository? = null,
 ) : Station, io.github.odnwks.mimir.standalone.PcTalk {
     private val lock = Any()
+    private val attachments = PendingAttachments(attachDir, vault.codec)
     /** PHD-15: wakes the loop when network state or pairing state changes so it doesn't poll at 200 ms. */
     private val loopWake = java.util.concurrent.locks.ReentrantLock()
     private val loopReady = loopWake.newCondition()
@@ -482,6 +485,18 @@ class LinkStation(
 
     override fun refreshSight() { if (canTalk()) refreshModels() }
 
+    override fun canAttachToTasks(): Boolean = Wire.TASK_FILES in pcFeatures
+    override fun canSetReplyOptions(): Boolean = Wire.TASK_REPLY_OPTIONS in pcFeatures
+
+    /** The effort chosen on this phone for each task, shown on the box's chip (the PC holds the real one). */
+    private val chosenEfforts = java.util.concurrent.ConcurrentHashMap<String, String>()
+    override fun setTaskEffort(taskId: String, effort: String?) {
+        if (!canSetReplyOptions()) return
+        if (effort == null) chosenEfforts.remove(taskId) else chosenEfforts[taskId] = effort
+        taskCall(Wire.setEffort(taskId, effort))
+        publish()
+    }
+
     override fun canSendFiles(): Boolean = canTalk() && Wire.CHAT_FILES in pcFeatures
 
     override fun pcName(): String = Mapping.pcName(synchronized(lock) { pcName })
@@ -647,6 +662,7 @@ class LinkStation(
     /** Recordings that waited more than a day for the PC go, with their lines (PHD-10); old read-aloud audio goes too (PHD-09). */
     private fun expireOld() {
         Expiry.speakFiles(audioDir, clock())
+        synchronized(lock) { attachments.dropAllExcept(data.replies.map { it.first }.toSet() + data.newTasks.map { it.id }) }
         val gone = synchronized(lock) {
             val ids = Expiry.recordings(recordDir, data.recordings.map { it.first }, clock())
             if (ids.isEmpty()) return@synchronized 0
@@ -730,6 +746,7 @@ class LinkStation(
             data = data.copy(pcId = null, pcName = null, outbox = emptyList(), newTasks = emptyList(), replies = emptyList(), answers = emptyList(), recordings = emptyList(), past = "[]", chatAt = 0)
             past.clear(); pastShown = emptyList()
             recordDir?.listFiles()?.forEach { it.delete() }
+            attachments.dropAllExcept(emptySet(), ageMs = 0)
             saveData()
             pairing = PairProgress.Failed(why)
             tasks.clear(); entries.clear(); live.clear(); items = emptyList()
@@ -980,16 +997,19 @@ class LinkStation(
      * A reply inside a task. It is kept on this phone first, so a reply typed while the PC is away
      * waits and goes out (once: the id makes a resend harmless) as soon as the link is back.
      */
-    override fun reply(taskId: String, text: String) {
-        if (text.isBlank()) return
+    override fun reply(taskId: String, text: String, pictures: List<io.github.odnwks.mimir.standalone.TurnPicture>, files: List<io.github.odnwks.mimir.standalone.TurnFile>): Boolean {
+        val held = PendingAttachments.held(pictures, files)
+        if (text.isBlank() && held.isEmpty) return false
         val id = "s-${UUID.randomUUID()}"
         io.github.odnwks.mimir.alerts.OutsideTasks.mine(taskId)
         // A Whisper's words are never kept on the phone to wait: sent now, or not at all (PHD-11).
         if (!Expiry.mayWait(synchronized(lock) { tasks[taskId] })) {
-            val sent = synchronized(lock) { connected } && call(Wire.send(taskId, text, id)) { _, err -> if (err != null) note(err) }
+            val sent = synchronized(lock) { connected } && call(Wire.send(taskId, text, id, held.pictures, held.files)) { _, err -> if (err != null) note(err) }
             if (!sent) note("Your PC is away: this Whisper can't wait. Send it again when your PC is back.")
-            return
+            return sent
         }
+        // Pictures and files wait on this phone with the words; if they can't be kept, the message isn't taken (the box keeps them).
+        if (!attachments.keep(id, held)) { note("The pictures or files couldn't be saved on this phone. Free up some space, then send again."); return false }
         val now = synchronized(lock) {
             data = data.copy(replies = data.replies + Triple(id, taskId, text))
             saveData()
@@ -997,6 +1017,7 @@ class LinkStation(
         }
         publish()
         if (now) Thread({ flushReplies(); publish() }, "mimir-reply").start()
+        return true
     }
 
     /**
@@ -1014,8 +1035,10 @@ class LinkStation(
         val waiting = synchronized(lock) { data.replies.takeIf { connected } } ?: return
         for ((id, task, text) in waiting) {
             // Kept until the PC answers; a link that went away leaves it for the next connect.
-            val sent = delivery.start(id, { cb -> call(Wire.send(task, text, id), cb) }) { _, err ->
+            val held = attachments.load(id)
+            val sent = delivery.start(id, { cb -> call(Wire.send(task, text, id, held.pictures, held.files), cb) }) { _, err ->
                 synchronized(lock) { data = data.copy(replies = data.replies.filterNot { it.first == id }); saveData() }
+                attachments.drop(id)
                 if (err != null) note(err)
                 publish()
             }
@@ -1665,7 +1688,7 @@ class LinkStation(
         // PHD-29(c): disable Play while the task is live-streaming; enable once the message is complete.
         val streaming = live[t.id]?.isNotBlank() == true
         val messages = es.mapIndexedNotNull { i, e -> taskMessageOf(t.id, i, e, streaming && i == es.lastIndex) } + listOfNotNull(live[t.id]?.takeIf { it.isNotBlank() }?.let { TaskMessage("${t.id}-live", true, it) }) +
-            data.replies.filter { it.second == t.id }.map { (id, _, text) -> TaskMessage(id, false, text, waiting = true) } +
+            data.replies.filter { it.second == t.id }.map { (id, _, text) -> TaskMessage(id, false, text.ifBlank { attachments.words(id) }, waiting = true) } +
             data.recordings.filter { it.second == t.id }.map { (id, _, secs) -> TaskMessage(id, false, recordingWords(secs), waiting = true) }
         val ask = t.asks.firstOrNull()
         val change = ask?.let { change(it) }
@@ -1678,6 +1701,7 @@ class LinkStation(
             title = t.title,
             project = name(t.project),
             model = Mapping.modelName(t.model),
+            effort = chosenEfforts[t.id].orEmpty(),
             age = "",
             // ✓ done, ✕ refused or failed, … still going or waiting for an answer.
             steps = es.filterIsInstance<LEntry.Step>().takeLast(8).map { (when (it.ok) { true -> "✓ "; false -> "✕ "; null -> "… " }) + it.what },

@@ -20,7 +20,7 @@ object Wire {
      * The PC sends the new events (talk pieces, chat changes, the truth) only to a phone that lists
      * them; the phone sends the new calls only to a PC whose Welcome lists them.
      */
-    val FEATURES = listOf("search", "lookup", TALK, CHAT_SYNC, TRUTH, MODELS_CHANGED, FINISHED_EVENTS, PC_SESSIONS)
+    val FEATURES = listOf("search", "lookup", TALK, CHAT_SYNC, TRUTH, MODELS_CHANGED, FINISHED_EVENTS, PC_SESSIONS, TASK_FILES, TASK_REPLY_OPTIONS)
     const val TALK = "talk"
     const val CHAT_SYNC = "chat_sync"
     /** The PC understands a cut-away turn ([LChatTurn.gone]); an older one would keep it as an empty message. */
@@ -41,6 +41,10 @@ object Wire {
     const val CHAT_PICTURES = "chat_pictures"
     /** A chat message can carry files for the PC to read ([LChatTurn.files]); the reply says how much of each was read ([Filed.Talk.filesRead]). */
     const val CHAT_FILES = "chat_files"
+    /** A project task's message can carry pictures and files ([send], [newTask]). */
+    const val TASK_FILES = "task_files"
+    /** A phone may set a task's model and effort ([setModel], [setEffort]) just before its next message. */
+    const val TASK_REPLY_OPTIONS = "task_reply_options"
 
     fun hello(appVersion: String, phoneName: String, @Suppress("UNUSED_PARAMETER") pushToken: String? = null, features: List<String> = FEATURES): String = obj("Hello") {
         put("proto", PROTO); put("app_version", appVersion); put("client_name", phoneName)
@@ -191,9 +195,13 @@ object Wire {
     fun pcSessionList(a: JSONArray): List<LPcSession> = (0 until a.length()).map { pcSession(a.getJSONObject(it)) }
 
     /** A task from the phone always asks first. A message id makes sending it again harmless. */
-    fun newTask(project: String, text: String, msgId: String? = null, model: String? = null, plan: Boolean = false, rules: String? = null): String = obj("NewTask") {
-        put("project", project); put("text", text); put("pictures", JSONArray()); put("mode", if (plan) "Plan" else "Ask")
-        put("model", model ?: JSONObject.NULL); put("effort", JSONObject.NULL); put("separate_copy", false)
+    fun newTask(
+        project: String, text: String, msgId: String? = null, model: String? = null, plan: Boolean = false, rules: String? = null,
+        pictures: List<LPicture> = emptyList(), files: List<LFile> = emptyList(), effort: String? = null,
+    ): String = obj("NewTask") {
+        put("project", project); put("text", text); put("pictures", pictureArray(pictures)); put("mode", if (plan) "Plan" else "Ask")
+        files(files)
+        put("model", model ?: JSONObject.NULL); put("effort", effort ?: JSONObject.NULL); put("separate_copy", false)
         put("msg_id", msgId ?: JSONObject.NULL)
         rules(rules)
     }
@@ -201,8 +209,14 @@ object Wire {
     /** The phone's ground rules, which the PC uses for that task instead of its own (left out when off). */
     private fun JSONObject.rules(rules: String?) { if (rules != null) put("ground_rules", rules) }
 
-    fun send(task: String, text: String, msgId: String? = null): String = obj("Send") {
-        put("task", task); put("text", text); put("pictures", JSONArray()); put("msg_id", msgId ?: JSONObject.NULL)
+    /** The pictures (all kept for the task) and files ("task_files") that go with a task's message; empty lists leave the call as it was. */
+    fun send(task: String, text: String, msgId: String? = null, pictures: List<LPicture> = emptyList(), files: List<LFile> = emptyList()): String = obj("Send") {
+        put("task", task); put("text", text); put("pictures", pictureArray(pictures)); files(files); put("msg_id", msgId ?: JSONObject.NULL)
+    }
+
+    private fun pictureArray(pictures: List<LPicture>) = JSONArray(pictures.map { JSONObject().put("media_type", it.mediaType).put("base64", it.base64) })
+    private fun JSONObject.files(files: List<LFile>) {
+        if (files.isNotEmpty()) put("files", JSONArray(files.map { JSONObject().put("name", it.name).put("media_type", it.mediaType).put("base64", it.base64) }))
     }
 
     /** A general-chat message (a PC without "talk"): the PC files it (status, idea, request, Inbox); the reply is a [Filed]. */
@@ -240,6 +254,8 @@ object Wire {
     fun setMode(task: String, plan: Boolean): String = obj("SetMode") { put("task", task); put("mode", if (plan) "Plan" else "Ask") }
     /** YOLO ("Never ask"): the PC allows it only when its Settings allow YOLO from the phone. */
     fun setYolo(task: String): String = obj("SetMode") { put("task", task); put("mode", "NoAsk") }
+    /** The effort level for the task's next messages (`null`: the usual one); "task_reply_options". */
+    fun setEffort(task: String, effort: String?): String = obj("SetEffort") { put("task", task); put("effort", effort ?: JSONObject.NULL) }
     fun setModel(task: String, model: String?): String = obj("SetModel") { put("task", task); put("model", model ?: JSONObject.NULL) }
 
     /** How the phone sets engine selection in Settings › Who answers. */

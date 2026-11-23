@@ -397,11 +397,19 @@ fun TaskScreen(taskId: String, state: StationState, station: Station, nav: Navig
                 else Column {
                     VoicePanel(voice, heard = { draft = withHeard(draft, it) }, Modifier.padding(top = 8.dp))
                     // Only the composer rides the keyboard; the dock above it goes up with it.
+                    // Pictures and files go to the PC with the reply (a PC that takes them); the model and effort are chosen beside the box.
+                    val attach = rememberAttach(bigPictures = true, pcReadsFiles = true)
+                    val canAttach = station.canAttachToTasks()
+                    val canOptions = station.canSetReplyOptions()
                     Composer(
                         draft, { draft = it },
+                        attach = attach.takeIf { canAttach },
+                        optionsChip = optionsWords(task.model, task.effort).takeIf { canOptions },
+                        onOptions = { nav.openSheet(Sheet.TaskModel(task.id)) },
+                        optionsNote = UPDATE_PC_FOR_OPTIONS.takeIf { !canOptions && state.paired },
                         hint = if (state.pcAway) "Reply (${state.waitsUntil})" else "Reply to Mímir",
                         label = "Reply to this task", voice = voice, micLabel = "Talk (voice typing): speak a reply",
-                        onSend = { station.reply(task.id, draft.trim()); draft = "" },
+                        onSend = { if (station.reply(task.id, draft.trim(), attach.pictures.toList(), attach.files.toList())) { draft = ""; attach.clear() } },
                         // While Claude works, an empty box's button is Stop.
                         working = task.showsStop && !task.stopPending,
                         onStop = { cutOff = task.steps.lastOrNull()?.startsWith("…") == true; station.stopTask(task.id) },
