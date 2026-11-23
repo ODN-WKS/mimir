@@ -115,6 +115,8 @@ fun TaskScreen(taskId: String, state: StationState, station: Station, nav: Navig
     if (listsSessions && task.liveElsewhere) followed = true
     // Still going on outside Mímir right now (a stopped one is not): said once, and only Stop is offered.
     val liveNow = listsSessions && !task.stopped && (task.liveElsewhere || followedElsewhere(state, task.id))
+    // The PC's list says it works elsewhere: the follow buttons with Stop show at once.
+    if (listsSessions && liveNow) followed = true
     val words = find.trim().takeIf { finding && it.isNotEmpty() }
     // The PC's own notes about a followed session say what the line and buttons below already say.
     val shownMessages = task.messages.filterNot { m ->
