@@ -35,6 +35,8 @@ class LinkStationQueueTest {
         @Volatile var up = false
         /** The link is gone for calls (the real one hands back no call id). */
         @Volatile var dropped = false
+        /** The PC answers a Stop with this refusal instead of Ok. */
+        @Volatile var refuseStop: String? = null
         @Volatile var connects = 0
         private val seq = AtomicLong(100)
         private val held = listOf("{\"Chat\"", "{\"Send\"", "{\"Talk\"", "{\"Answer", "{\"NewTask\"", "{\"Listen\"")
@@ -48,6 +50,8 @@ class LinkStationQueueTest {
             if (dropped) return -1L
             val id = ids.incrementAndGet()
             calls += id to json
+            val why = refuseStop
+            if (why != null && json.startsWith("{\"Stop\"")) { refuse(id, why); return id }
             if (held.none { json.startsWith(it) }) reply(id, "{}")
             return id
         }
@@ -180,6 +184,21 @@ class LinkStationQueueTest {
         link.ready()
         assertTrue("Stop is sent again once the PC is back", until { link.callsOf("{\"Stop\"").size == 1 })
         assertTrue("and the line goes", until { !st.stopIsWaiting("t1") })
+        st.close()
+    }
+
+    @Test fun aStopTheConnectedPcRefusesIsNotKeptAndTheReasonShowsOnce() {
+        val link = FakeLink(); val st = paired(link)
+        link.refuseStop = "This task isn't running here."
+        st.stopTask("t1")
+        assertTrue("the PC's words show", until { notes(st).any { it.contains("isn't running here") } })
+        assertTrue("the stop is not kept", until { !st.stopIsWaiting("t1") })
+        // A later reconnect does not send it again.
+        link.refuseStop = null
+        link.ready()
+        Thread.sleep(300)
+        assertEquals("sent once only", 1, link.callsOf("{\"Stop\"").size)
+        assertEquals("said once", 1, notes(st).count { it.contains("isn't running here") })
         st.close()
     }
 }

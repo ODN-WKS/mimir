@@ -1112,13 +1112,25 @@ class LinkStation(
 
     override fun stopTask(taskId: String) {
         val sent = call(Wire.stop(taskId)) { _, err ->
-            if (err != null) { pendingStops += taskId; note(err) } else pendingStops -= taskId
+            stopAnswered(taskId, err)
             publish()
         }
         if (!sent) {
             pendingStops += taskId
             // The task says it itself ("Stop waiting: sends when your PC is back"), as a reply does.
             publish()
+        }
+    }
+
+    /**
+     * The PC's answer to a Stop. Kept for later only when the link went away before it answered;
+     * a refusal from the PC drops it and shows the PC's words once, so Stop shows again.
+     */
+    private fun stopAnswered(taskId: String, err: String?) {
+        when {
+            err == null -> pendingStops -= taskId
+            err == WENT_AWAY -> pendingStops += taskId
+            else -> { pendingStops -= taskId; note(err) }
         }
     }
 
@@ -1141,11 +1153,9 @@ class LinkStation(
     private fun flushStops() {
         synchronized(pendingStops) { pendingStops.toList() }.forEach { id ->
             call(Wire.stop(id)) { _, err ->
-                if (err == null) {
-                    pendingStops -= id
-                    // The Stop went out: its "sends when your PC is back" line is no longer true.
-                    publish()
-                } else note(err)
+                stopAnswered(id, err)
+                // The Stop went out: its "sends when your PC is back" line is no longer true.
+                publish()
             }
         }
     }
