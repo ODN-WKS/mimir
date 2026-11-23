@@ -742,7 +742,10 @@ pub fn descendants(root: u32) -> Vec<Pkey> {
             let Ok(kids) = std::fs::read_to_string(t.path().join("children")) else {
                 continue;
             };
-            for k in kids.split_whitespace().filter_map(|k| k.parse::<u32>().ok()) {
+            for k in kids
+                .split_whitespace()
+                .filter_map(|k| k.parse::<u32>().ok())
+            {
                 if out.iter().any(|(p, _)| *p == k) {
                     continue;
                 }
@@ -829,7 +832,10 @@ mod queue_tests {
 
     #[test]
     fn descendants_carry_their_start_time() {
-        let mut c = std::process::Command::new("sleep").arg("5").spawn().unwrap();
+        let mut c = std::process::Command::new("sleep")
+            .arg("5")
+            .spawn()
+            .unwrap();
         let kids = descendants(std::process::id());
         let (pid, born) = kids.iter().copied().find(|(p, _)| *p == c.id()).unwrap();
         assert_ne!(born, 0);

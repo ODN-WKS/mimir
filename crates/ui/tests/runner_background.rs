@@ -93,7 +93,6 @@ fn status(r: &Runner) -> Status {
     r.tasks[0].task.status
 }
 
-
 fn alive(pid: u32) -> bool {
     // A zombie does not count: it runs nothing.
     std::fs::read_to_string(format!("/proc/{pid}/stat"))

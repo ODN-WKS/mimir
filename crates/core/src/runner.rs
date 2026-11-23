@@ -170,7 +170,12 @@ impl Runner {
                             sent: 0,
                             finished: 0,
                             dirty,
-                            background: false, baseline: Vec::new(), bg_checked: None, freeze: false, bg_seen: 0, bg_noted: false,
+                            background: false,
+                            baseline: Vec::new(),
+                            bg_checked: None,
+                            freeze: false,
+                            bg_seen: 0,
+                            bg_noted: false,
                         });
                         continue;
                     }
@@ -199,7 +204,12 @@ impl Runner {
                 sent: 0,
                 finished: 0,
                 dirty,
-                background: false, baseline: Vec::new(), bg_checked: None, freeze: false, bg_seen: 0, bg_noted: false,
+                background: false,
+                baseline: Vec::new(),
+                bg_checked: None,
+                freeze: false,
+                bg_seen: 0,
+                bg_noted: false,
             });
         }
         let weekly = tasks.iter().rev().find_map(|l| l.task.weekly.clone());
@@ -374,7 +384,12 @@ impl Runner {
             sent: 0,
             finished: 0,
             dirty: true,
-            background: false, baseline: Vec::new(), bg_checked: None, freeze: false, bg_seen: 0, bg_noted: false,
+            background: false,
+            baseline: Vec::new(),
+            bg_checked: None,
+            freeze: false,
+            bg_seen: 0,
+            bg_noted: false,
         });
     }
 
@@ -1288,7 +1303,12 @@ impl Runner {
             sent: 0,
             finished: 0,
             dirty: true,
-            background: false, baseline: Vec::new(), bg_checked: None, freeze: false, bg_seen: 0, bg_noted: false,
+            background: false,
+            baseline: Vec::new(),
+            bg_checked: None,
+            freeze: false,
+            bg_seen: 0,
+            bg_noted: false,
         });
         self.save_dirty();
         Ok(id)
@@ -1581,7 +1601,12 @@ impl Runner {
             sent: 0,
             finished: 0,
             dirty: false,
-            background: false, baseline: Vec::new(), bg_checked: None, freeze: false, bg_seen: 0, bg_noted: false,
+            background: false,
+            baseline: Vec::new(),
+            bg_checked: None,
+            freeze: false,
+            bg_seen: 0,
+            bg_noted: false,
         });
         self.send_with(&id, text, &[]);
         Ok(id)
@@ -1690,7 +1715,8 @@ impl Runner {
                                 });
                             }
                             if let Event::ToolUse { input, .. } = e
-                                && input.get("run_in_background").and_then(|v| v.as_bool()) == Some(true)
+                                && input.get("run_in_background").and_then(|v| v.as_bool())
+                                    == Some(true)
                             {
                                 l.freeze = true;
                             }
@@ -1770,7 +1796,10 @@ impl Runner {
                     l.task.status,
                     Status::Working | Status::NeedsYou | Status::Paused | Status::Stopped
                 );
-            if l.bg_checked.is_none_or(|at| at.elapsed() >= BACKGROUND_LOOK) && !exited {
+            if l.bg_checked
+                .is_none_or(|at| at.elapsed() >= BACKGROUND_LOOK)
+                && !exited
+            {
                 l.bg_checked = Some(Instant::now());
                 let now_kids = s.descendants();
                 if !idle {

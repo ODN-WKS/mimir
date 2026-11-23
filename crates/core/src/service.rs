@@ -704,15 +704,14 @@ impl Service {
     /// How long the loop may wait for a message before its timers are due:
     /// [`TICK`] while anything is going on, [`IDLE_WAIT`] when nothing is.
     fn next_wait(&self) -> Duration {
-        let busy =
-            !self.clients.is_empty()
-                || !self.queued.is_empty()
-                || !self.wake_pending.is_empty()
-                || !self.outside.is_empty()
-                || !self.summary_pending.is_empty()
-                || self.runner.tasks.iter().any(|l| {
-                    l.running() || matches!(l.task.status, Status::Working | Status::NeedsYou)
-                });
+        let busy = !self.clients.is_empty()
+            || !self.queued.is_empty()
+            || !self.wake_pending.is_empty()
+            || !self.outside.is_empty()
+            || !self.summary_pending.is_empty()
+            || self.runner.tasks.iter().any(|l| {
+                l.running() || matches!(l.task.status, Status::Working | Status::NeedsYou)
+            });
         if busy { TICK } else { IDLE_WAIT }
     }
 
