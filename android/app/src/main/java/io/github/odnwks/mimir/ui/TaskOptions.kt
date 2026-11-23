@@ -23,3 +23,6 @@ const val UPDATE_PC_FOR_OPTIONS = "Update Mímir on your PC to change this here"
 /** The words on the chip beside the reply box: "Model · Effort". */
 fun optionsWords(model: String, effort: String): String =
     listOf(plainModelName(model).ifBlank { "Auto" }, TaskEffort.of(effort.ifEmpty { null }).let { if (it == TaskEffort.Usual) "Usual effort" else it.words }).joinToString(" · ")
+
+/** The next effort level in the list, round to the usual one (one tap on a chip steps through them). */
+fun nextEffort(wire: String): String = TaskEffort.entries.let { all -> all[(all.indexOf(TaskEffort.of(wire.ifEmpty { null })) + 1) % all.size] }.wire.orEmpty()

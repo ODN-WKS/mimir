@@ -49,7 +49,8 @@ class TaskReplyAttachTest {
             if (!up) return -1L
             val id = ids.incrementAndGet()
             calls += id to json
-            if (!json.startsWith("{\"Send\"")) events.add("""{"seq":${seq.incrementAndGet()},"event":{"Reply":{"call_id":$id,"result":{"Ok":{}}}}}""")
+            if (json.startsWith("\"Projects\"")) events.add("""{"seq":${seq.incrementAndGet()},"event":{"Reply":{"call_id":$id,"result":{"Ok":{"projects":[{"path":"/p/garden","name":"Garden planner"}],"last":null}}}}}""")
+            else if (!json.startsWith("{\"Send\"")) events.add("""{"seq":${seq.incrementAndGet()},"event":{"Reply":{"call_id":$id,"result":{"Ok":{}}}}}""")
             return id
         }
         override fun nextEvent(handle: Long, timeoutMs: Long): String? = events.poll(minOf(timeoutMs, 50), TimeUnit.MILLISECONDS)
@@ -79,7 +80,8 @@ class TaskReplyAttachTest {
     private fun station(link: FakeLink): LinkStation {
         val v = vault()
         v.save(v.load().copy(pcId = "pc-1", pcName = "Test PC"))
-        return LinkStation(vault(), "0.21", relays = false, hints = emptyList(), secure = { true }, api = link, attachDir = attachDir)
+        return LinkStation(vault(), "0.21", relays = false, hints = emptyList(), secure = { true }, api = link, attachDir = attachDir,
+            projectStore = ProjectStore.InMemory(listOf("/p/garden" to "Garden planner")))
     }
 
     private val pic = TurnPicture.of("Photo.jpg", byteArrayOf(1, 2, 3))
@@ -163,5 +165,27 @@ class TaskReplyAttachTest {
         assertTrue(fake.reply(id, "", listOf(pic), emptyList()))
         assertEquals(listOf(Triple(id, 1, emptyList<String>())), fake.repliedWith)
         assertEquals("A picture", fake.state.value.task(id)!!.messages.last().text)
+    }
+
+    @Test fun aNewTaskCarriesItsPicturesFilesAndEffortToThePc() {
+        val link = FakeLink(all); val st = station(link); link.ready()
+        assertTrue(until { st.state.value.task("t1") != null && st.canAttachToTasks() })
+        assertTrue("ready", until { link.callsOf("\"Projects\"").isNotEmpty() })
+        val id = st.startTask("Look at this", "Garden planner", incognito = false, pictures = listOf(pic), files = listOf(file), effort = "high")
+        assertTrue("started: " + st.startProblem(), id.startsWith("t-"))
+        assertTrue("calls: " + link.calls.map { it.second.take(60) }, until { link.callsOf("{\"NewTask\"").size == 1 })
+        val nt = JSONObject(link.callsOf("{\"NewTask\"").single().second).getJSONObject("NewTask")
+        assertEquals(1, nt.getJSONArray("pictures").length())
+        assertEquals("notes.pdf", nt.getJSONArray("files").getJSONObject(0).getString("name"))
+        assertEquals("high", nt.getString("effort"))
+        st.close()
+    }
+
+    @Test fun theNewTaskScreenKeepsEffortInItsOptionsAndAnOldPcHidesIt() {
+        assertTrue(io.github.odnwks.mimir.nav.ComposeTo().auto)
+        assertFalse(io.github.odnwks.mimir.nav.ComposeTo(effort = "max").auto)
+        assertEquals("low", io.github.odnwks.mimir.ui.nextEffort(""))
+        assertEquals("", io.github.odnwks.mimir.ui.nextEffort("max"))
+        assertFalse(FakeStation().also { it.optionsOk = false }.canSetReplyOptions())
     }
 }

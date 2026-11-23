@@ -1208,7 +1208,10 @@ class LinkStation(
     @Volatile private var startWhy = ""
     override fun startProblem(): String = startWhy
 
-    override fun startTask(text: String, project: String, incognito: Boolean, plan: Boolean, model: String?): String {
+    override fun startTask(
+        text: String, project: String, incognito: Boolean, plan: Boolean, model: String?,
+        pictures: List<io.github.odnwks.mimir.standalone.TurnPicture>, files: List<io.github.odnwks.mimir.standalone.TurnFile>, effort: String?,
+    ): String {
         startWhy = ""
         // Nothing to do: no empty task is made on the PC.
         if (text.isBlank()) { startWhy = "Write what the task should do first."; return "" }
@@ -1236,8 +1239,14 @@ class LinkStation(
         // The task is kept on this phone first: started while the PC is away, it waits and starts
         // once (the id is what the PC dedupes on, so a resend never makes a second task).
         val pending = "t-${UUID.randomUUID()}"
+        // Pictures and files wait on this phone with the words; if they can't be kept, the task isn't started (the box keeps them).
+        if (!attachments.keep(pending, PendingAttachments.held(pictures, files))) {
+            startWhy = "The pictures or files couldn't be saved on this phone. Free up some space, then try again."
+            note(startWhy)
+            return ""
+        }
         val now = synchronized(lock) {
-            data = data.copy(newTasks = data.newTasks + WaitingTask(pending, path, text, model ?: "auto", plan, GroundRules.current))
+            data = data.copy(newTasks = data.newTasks + WaitingTask(pending, path, text, model ?: "auto", plan, GroundRules.current, effort = effort.takeIf { canSetReplyOptions() || it == null }))
             saveData()
             connected
         }
@@ -1253,9 +1262,11 @@ class LinkStation(
             // Checked and handed over under one lock, so a Cancel never slips in between.
             val sent = synchronized(lock) {
                 if (data.newTasks.none { it.id == w.id && it.failed.isEmpty() }) return@synchronized null
-                delivery.start(w.id, { cb -> call(Wire.newTask(w.project, w.text, w.id, w.model, w.plan, w.rules), cb) }) { ok, err ->
+                val held = attachments.load(w.id)
+                delivery.start(w.id, { cb -> call(Wire.newTask(w.project, w.text, w.id, w.model, w.plan, w.rules, held.pictures, held.files, w.effort), cb) }) { ok, err ->
                     synchronized(lock) {
                         if (err == null) {
+                            attachments.drop(w.id)
                             data = data.copy(newTasks = data.newTasks.filterNot { it.id == w.id })
                             started[w.id] = (ok as? String).orEmpty()
                         } else {
@@ -1275,7 +1286,7 @@ class LinkStation(
         val onItsWay = synchronized(lock) {
             if (data.newTasks.none { it.id == taskId }) return
             if (delivery.active(taskId)) true
-            else { data = data.copy(newTasks = data.newTasks.filterNot { it.id == taskId }); saveData(); false }
+            else { data = data.copy(newTasks = data.newTasks.filterNot { it.id == taskId }); attachments.drop(taskId); saveData(); false }
         }
         if (onItsWay) note("It already went to your PC.", problem = false)
         publish()

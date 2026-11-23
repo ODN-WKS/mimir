@@ -297,6 +297,7 @@ LazyColumn(
 
         NeedsYouBar(state.needsYou.size, { nav.open(Screen.NeedsYou) }, Modifier.padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 4.dp))
         val voice = rememberVoiceInput(station, whisper = nav.composeTo.whisper)
+        val attach = rememberAttach(bigPictures = true, pcReadsFiles = true)
         VoicePanel(voice, heard = { draft = withHeard(draft, it) }, Modifier.padding(top = 4.dp))
 
         // The one composer: "To:" picks where it goes. Only it rides the keyboard (the list above
@@ -309,7 +310,9 @@ LazyColumn(
                 else -> "Message Mímir"
             },
             label = "Message Mímir", voice = voice, micLabel = "Talk (voice typing): speak a message",
-            onSend = { if (sendFromChat(draft, state, station, nav, engine)) draft = "" },
+            // Pictures and files go with a task started here (To: a project or options); in Auto the PC files words only.
+            attach = attach.takeIf { !to.auto && station.canAttachToTasks() }, needsWords = true,
+            onSend = { if (sendFromChat(draft, state, station, nav, engine, attach.pictures.toList(), attach.files.toList())) { draft = ""; attach.clear() } },
             modifier = Modifier.imePadding().padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 10.dp),
             chip = if (state.paired) to.chipWords() else null,
             chipLabel = "To: ${to.chipWords()}. Choose where this goes",

@@ -129,6 +129,7 @@ private fun Sheet.title(state: StationState) = when (this) {
     is Sheet.ProjectPicker -> "Project"
     Sheet.WhereTo -> "Where should this go?"
     Sheet.ComposeModel -> "Model for this task"
+    Sheet.ComposeEffort -> "Effort for this task"
     is Sheet.RenameTask -> "Rename this task"
     is Sheet.TaskModel -> "Model for this task"
     is Sheet.Yolo -> "Go ahead without asking in this task?"
@@ -255,7 +256,7 @@ private fun SheetContent(sheet: Sheet, state: StationState, station: Station, na
                 val effortNow = TaskEffort.of(state.task(sheet.taskId)?.effort?.ifEmpty { null })
                 Text("Effort, from now on", style = Type.Small, color = Palette.TextDim, modifier = Modifier.padding(start = 12.dp, top = 10.dp, bottom = 2.dp))
                 TaskEffort.entries.forEach { e ->
-                    MenuRow(Glyphs.Models, e.words, checked = e == effortNow, note = e.about) { station.setTaskEffort(sheet.taskId, e.wire); nav.closeSheet() }
+                    MenuRow(Glyphs.Models, e.words, checked = e == effortNow, note = e.about, tick = "Effort chosen") { station.setTaskEffort(sheet.taskId, e.wire); nav.closeSheet() }
                 }
             } else Text(UPDATE_PC_FOR_OPTIONS, style = Type.Small, color = Palette.TextDim, modifier = Modifier.padding(start = 12.dp, top = 10.dp, bottom = 2.dp))
         }
@@ -299,8 +300,9 @@ private fun SheetContent(sheet: Sheet, state: StationState, station: Station, na
             "Keep going", { nav.closeSheet() },
         )
         is Sheet.ProjectPicker -> ProjectPicker(sheet.current, state, station, nav, sheet.newProject, sheet.back, sheet.open, sheet.justChat)
-        Sheet.WhereTo -> WhereToSheet(state, nav)
+        Sheet.WhereTo -> WhereToSheet(state, nav, canEffort = station.canSetReplyOptions())
         Sheet.ComposeModel -> ComposeModelSheet(state, nav)
+        Sheet.ComposeEffort -> ComposeEffortSheet(nav)
         Sheet.Unpair -> Ask(
             sheet.title(state),
             "This phone forgets your PC at once. To cut it off on the PC side too, remove it in $AI_NAME on the PC (Settings › Phones). You can pair again later with a new code.",
@@ -445,7 +447,7 @@ private fun Menu(title: String, rows: @Composable ColumnScope.() -> Unit) {
 }
 
 @Composable
-private fun MenuRow(icon: ImageVector, text: String, color: Color = Palette.Text, checked: Boolean? = null, note: String? = null, onClick: () -> Unit) {
+private fun MenuRow(icon: ImageVector, text: String, color: Color = Palette.Text, checked: Boolean? = null, note: String? = null, tick: String = "In use", onClick: () -> Unit) {
     Row(
         Modifier.fillMaxWidth().heightIn(min = 52.dp).clip(RoundedCornerShape(12.dp))
             .then(
@@ -460,7 +462,7 @@ private fun MenuRow(icon: ImageVector, text: String, color: Color = Palette.Text
             Text(text, style = Type.BodyTight, color = color)
             if (note != null) Text(note, style = Type.Small, color = Palette.TextDim)
         }
-        if (checked == true) Icon(Glyphs.Check, "In use", tint = Palette.BlueText, modifier = Modifier.size(20.dp))
+        if (checked == true) Icon(Glyphs.Check, tick, tint = Palette.BlueText, modifier = Modifier.size(20.dp))
     }
 }
 

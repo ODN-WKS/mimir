@@ -89,7 +89,10 @@ interface Station {
     fun setTaskModel(taskId: String, modelId: String)
     fun endIncognito()
     /** Starts a task in [project]; [model] is for this task only (null: the usual one). Returns its id, or "" if it didn't start. */
-    fun startTask(text: String, project: String, incognito: Boolean, plan: Boolean = false, model: String? = null): String
+    fun startTask(
+        text: String, project: String, incognito: Boolean, plan: Boolean = false, model: String? = null,
+        pictures: List<io.github.odnwks.mimir.standalone.TurnPicture> = emptyList(), files: List<io.github.odnwks.mimir.standalone.TurnFile> = emptyList(), effort: String? = null,
+    ): String
 
     /**
      * Makes a project folder on the PC (or picks it if it's already there). [done] gets the

@@ -85,9 +85,11 @@ fun Composer(
     onOptions: () -> Unit = {},
     /** Said in place of the chip when this PC can't take them yet. */
     optionsNote: String? = null,
+    /** A new task needs words (they name it); a reply can go with only a picture. */
+    needsWords: Boolean = false,
 ) {
     val shape = RoundedCornerShape(24.dp)
-    val sendable = value.isNotBlank() || attach?.any == true
+    val sendable = value.isNotBlank() || (attach?.any == true && !needsWords)
     val surface by androidx.compose.animation.animateColorAsState(if (whisper) Palette.WhisperBar else Palette.Bar, io.github.odnwks.mimir.ui.theme.motionSpec(io.github.odnwks.mimir.ui.theme.Motion.SCREEN_MS), label = "box")
     val haptic = LocalHapticFeedback.current
     val focus = remember { FocusRequester() }
@@ -213,11 +215,14 @@ fun ComposeTo.chipWords(): String = listOfNotNull(
  * there and opens it. The options are for this one message: the chip goes back to Auto after.
  * Returns false when nothing went (the words stay in the box).
  */
-fun sendFromChat(text: String, state: StationState, station: Station, nav: Navigator, engine: io.github.odnwks.mimir.standalone.Engine? = null): Boolean {
+fun sendFromChat(
+    text: String, state: StationState, station: Station, nav: Navigator, engine: io.github.odnwks.mimir.standalone.Engine? = null,
+    pictures: List<io.github.odnwks.mimir.standalone.TurnPicture> = emptyList(), files: List<io.github.odnwks.mimir.standalone.TurnFile> = emptyList(),
+): Boolean {
     val to = nav.composeTo
     if (to.auto && state.paired && answerEveryday(text, state, station, nav, engine)) return true
     if (to.auto) { station.send(text); return true }
-    val id = station.startTask(text.trim(), to.project.ifEmpty { state.newTaskProject }, to.whisper, to.plan, to.model.ifEmpty { null })
+    val id = station.startTask(text.trim(), to.project.ifEmpty { state.newTaskProject }, to.whisper, to.plan, to.model.ifEmpty { null }, pictures, files, to.effort.ifEmpty { null })
     if (id.isEmpty()) return false
     nav.composeTo = ComposeTo()
     if (id == FakeStation.INCOGNITO) nav.open(Screen.IncognitoTask) else nav.open(Screen.Task(id))
@@ -298,9 +303,9 @@ fun answerFirst(lines: List<String>): List<String> {
 
 /** "Where should this go?" (board 03): Auto or a project, and More options for this one task. */
 @Composable
-fun WhereToSheet(state: StationState, nav: Navigator) {
+fun WhereToSheet(state: StationState, nav: Navigator, canEffort: Boolean = false) {
     val to = nav.composeTo
-    var more by rememberSaveable { mutableStateOf(to.plan || to.model.isNotEmpty() || to.whisper) }
+    var more by rememberSaveable { mutableStateOf(to.plan || to.model.isNotEmpty() || to.whisper || to.effort.isNotEmpty()) }
     Column(Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, top = 10.dp, bottom = 12.dp)) {
         Box(Modifier.fillMaxWidth().padding(bottom = 8.dp), contentAlignment = Alignment.Center) { SheetHandle() }
         SectionTitle("Where should this go?", Modifier.padding(start = 12.dp, end = 12.dp, top = 4.dp, bottom = 4.dp),
@@ -356,6 +361,20 @@ fun WhereToSheet(state: StationState, nav: Navigator) {
                     }
                     Icon(Glyphs.Next, null, tint = Palette.TextDim, modifier = Modifier.size(20.dp))
                 }
+                // Effort for this task: only a PC that takes it with the task (task_reply_options).
+                Row(
+                    Modifier.fillMaxWidth().heightIn(min = 56.dp).clip(RoundedCornerShape(12.dp)).then(if (canEffort) Modifier.clickable(role = Role.Button) { nav.openSheet(Sheet.ComposeEffort) } else Modifier),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Effort for this task", style = Type.BodyTight, color = if (canEffort) Palette.Text else Palette.TextSoft)
+                        Text(
+                            if (canEffort) TaskEffort.of(to.effort.ifEmpty { null }).let { if (it == TaskEffort.Usual) "Usual · its own choice" else "${it.words} · ${it.about}" } else UPDATE_PC_FOR_OPTIONS,
+                            style = Type.Small, color = Palette.TextDim,
+                        )
+                    }
+                    if (canEffort) Icon(Glyphs.Next, null, tint = Palette.TextDim, modifier = Modifier.size(20.dp))
+                }
                 // Whisper mode needs a free model on the PC: without one it says why, and where to add one.
                 if (state.models.local.isEmpty()) Row(
                     Modifier.fillMaxWidth().heightIn(min = 56.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -404,6 +423,19 @@ fun ComposeModelSheet(state: StationState, nav: Navigator) {
         WhereRow("Your usual", state.models.selectedName, nav.composeTo.model.isEmpty()) { back("") }
         (state.models.claude + state.models.local).forEach { m ->
             WhereRow(m.name, m.note, nav.composeTo.model == m.id) { back(m.id) }
+        }
+    }
+}
+
+/** The effort for the task the composer starts (this task only). */
+@Composable
+fun ComposeEffortSheet(nav: Navigator) {
+    Column(Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, top = 10.dp, bottom = 12.dp).selectableGroup()) {
+        Box(Modifier.fillMaxWidth().padding(bottom = 8.dp), contentAlignment = Alignment.Center) { SheetHandle() }
+        SectionTitle("Effort for this task", Modifier.padding(start = 12.dp, end = 12.dp, top = 4.dp, bottom = 4.dp), style = Type.SheetTitle)
+        val now = TaskEffort.of(nav.composeTo.effort.ifEmpty { null })
+        TaskEffort.entries.forEach { e ->
+            WhereRow(e.words, e.about, now == e) { nav.composeTo = nav.composeTo.copy(effort = e.wire.orEmpty()); nav.openSheet(Sheet.WhereTo) }
         }
     }
 }

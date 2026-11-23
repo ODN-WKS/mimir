@@ -109,7 +109,7 @@ class Vault(
             outbox = (0 until box.length()).map { box.getJSONObject(it).let { m -> m.getString("id") to m.getString("text") } },
             replies = (0 until rs.length()).map { rs.getJSONObject(it).let { m -> Triple(m.getString("id"), m.getString("task"), m.getString("text")) } },
             newTasks = (0 until nts.length()).map { nts.getJSONObject(it).let { m ->
-                WaitingTask(m.getString("id"), m.getString("project"), m.getString("text"), m.optString("model", "auto"), m.optBoolean("plan"), m.optString("rules").ifEmpty { null }, m.optString("failed"))
+                WaitingTask(m.getString("id"), m.getString("project"), m.getString("text"), m.optString("model", "auto"), m.optBoolean("plan"), m.optString("rules").ifEmpty { null }, m.optString("failed"), m.optString("effort").ifEmpty { null })
             } },
             answers = (0 until ans.length()).map { ans.getJSONObject(it).let { m -> m.getString("ask") to m.getString("call") } },
             chat = (o.optJSONArray("chat") ?: JSONArray()).toString(),
@@ -135,7 +135,7 @@ class Vault(
             .put("pc_name", d.pcName ?: "")
             .put("outbox", JSONArray(d.outbox.map { JSONObject().put("id", it.first).put("text", it.second) }))
             .put("replies", JSONArray(d.replies.map { JSONObject().put("id", it.first).put("task", it.second).put("text", it.third) }))
-            .put("new_tasks", JSONArray(d.newTasks.map { JSONObject().put("id", it.id).put("project", it.project).put("text", it.text).put("model", it.model).put("plan", it.plan).put("rules", it.rules ?: "").put("failed", it.failed) }))
+            .put("new_tasks", JSONArray(d.newTasks.map { JSONObject().put("id", it.id).put("project", it.project).put("text", it.text).put("model", it.model).put("plan", it.plan).put("rules", it.rules ?: "").put("failed", it.failed).put("effort", it.effort ?: "") }))
             .put("answers", JSONArray(d.answers.map { JSONObject().put("ask", it.first).put("call", it.second) }))
             .put("chat", runCatching { JSONArray(d.chat) }.getOrDefault(JSONArray()))
             .put("recordings", JSONArray(d.recordings.map { JSONObject().put("id", it.first).put("task", it.second).put("seconds", it.third) }))
@@ -158,4 +158,4 @@ class KeystoreVaultCodec : Vault.Codec {
 }
 
 /** A new task started while the PC was away: kept until the PC has it ([id] is also what the PC dedupes on). */
-data class WaitingTask(val id: String, val project: String, val text: String, val model: String, val plan: Boolean, val rules: String?, val failed: String = "")
+data class WaitingTask(val id: String, val project: String, val text: String, val model: String, val plan: Boolean, val rules: String?, val failed: String = "", val effort: String? = null)

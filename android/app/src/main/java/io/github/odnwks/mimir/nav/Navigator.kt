@@ -125,14 +125,16 @@ sealed interface Sheet {
     data object WhereTo : Sheet
     /** The model for the task the composer starts. */
     data object ComposeModel : Sheet
+    /** The effort for the task the composer starts. */
+    data object ComposeEffort : Sheet
 }
 
 /**
  * Where Chat's composer sends its next message: Auto (the PC files it) or a project, and for
  * that one task Plan first, a model, or Whisper mode.
  */
-data class ComposeTo(val project: String = "", val plan: Boolean = false, val model: String = "", val whisper: Boolean = false) {
-    val auto: Boolean get() = project.isEmpty() && !plan && model.isEmpty() && !whisper
+data class ComposeTo(val project: String = "", val plan: Boolean = false, val model: String = "", val whisper: Boolean = false, val effort: String = "") {
+    val auto: Boolean get() = project.isEmpty() && !plan && model.isEmpty() && !whisper && effort.isEmpty()
 }
 
 /** How the last screen change happened; it picks the animation. */

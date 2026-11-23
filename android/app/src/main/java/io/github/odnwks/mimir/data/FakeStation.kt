@@ -248,7 +248,13 @@ class FakeStation(initial: StationState = ExampleData.awake()) : Station {
         s.copy(tasks = s.tasks.map { if (it.id == taskId) it.copy(title = f(it.title)) else it })
     }
 
-    override fun startTask(text: String, project: String, incognito: Boolean, plan: Boolean, model: String?): String {
+    /** What started tasks carried: (words, picture count, file names, effort). Checks read this. */
+    val startedWith = mutableListOf<List<Any?>>()
+    override fun startTask(
+        text: String, project: String, incognito: Boolean, plan: Boolean, model: String?,
+        pictures: List<io.github.odnwks.mimir.standalone.TurnPicture>, files: List<io.github.odnwks.mimir.standalone.TurnFile>, effort: String?,
+    ): String {
+        if (pictures.isNotEmpty() || files.isNotEmpty() || effort != null) startedWith += listOf(text, pictures.size, files.map { it.name }, effort)
         val clean = text.trim().ifEmpty { "New task" }
         val title = clean.split(' ').take(4).joinToString(" ").trimEnd('.', ',')
         if (incognito) {
