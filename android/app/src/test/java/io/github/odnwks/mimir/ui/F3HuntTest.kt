@@ -99,9 +99,12 @@ class F3HuntTest {
     @Test fun t9_oneNameForATaskThatNeedsYou() {
         val t = ExampleData.awake().tasks.first().copy(question = null, permission = null, busy = false, stopped = false, status = "Done",
             messages = listOf(TaskMessage("1", true, "Want me to go on?")))
-        assertEquals("Needs you", t.stateWords)
-        assertEquals("Needs you", t.stateLine)
+        // G1: a finished task whose closing words are a question is Done, as on the PC.
+        assertEquals("Done", t.stateWords)
         assertTrue(!t.showsStop)
+        val asking = t.copy(status = "Needs you")
+        assertEquals("Needs you", asking.stateWords)
+        assertEquals("Needs you", asking.stateLine)
         assertEquals(Chip.NeedsYou, Chip.ofWords("Waiting for you"))
     }
 

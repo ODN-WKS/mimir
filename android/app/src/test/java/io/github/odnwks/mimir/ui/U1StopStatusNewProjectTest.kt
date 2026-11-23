@@ -51,11 +51,12 @@ class U1StopStatusNewProjectTest {
         assertEquals("Stopped", station.state.value.task(id)!!.stateWords)
     }
 
-    @Test fun aTaskThatEndedWithAQuestionOrNextStepsIsWaitingNotDone() {
-        assertEquals("Needs you", finished("I fixed the first test. Want me to go on with the other two?").stateWords)
-        assertEquals("Needs you", finished("Done with step one.\n\nNext steps:\n1. Fix the rest\n2. Run everything").stateWords)
-        assertEquals("Needs you", finished("Should I open the change for review? **Tell me.**").stateWords)
-        assertEquals("Needs you", finished("Shall I carry on?").stateLine)
+    @Test fun aTaskThatEndedWithAQuestionIsDoneLikeOnThePc() {
+        // The PC says Done; its question stays visible in the text (G1).
+        assertEquals("Done", finished("I fixed the first test. Want me to go on with the other two?").stateWords)
+        assertEquals("Done", finished("Done with step one.\n\nNext steps:\n1. Fix the rest\n2. Run everything").stateWords)
+        assertEquals("Done", finished("Should I open the change for review? **Tell me.**").stateWords)
+        assertEquals("Done", finished("Shall I carry on?").stateLine)
     }
 
     @Test fun aFinishedTaskIsStillDone() {
@@ -67,7 +68,8 @@ class U1StopStatusNewProjectTest {
 
     @Test fun waitingForYouIsAmberLikeNeedsYou() {
         // One name for the state: the old second name no longer comes from a task.
-        assertEquals("Needs you", finished("Shall I go on?").stateWords)
+        assertEquals("Needs you", finished("Shall I go on?").copy(status = "Needs you").stateWords)
+        assertEquals("Done", finished("Shall I go on?").stateWords)
     }
 
     @Test fun theSideMenuHasNewProjectAsTheLastRowUnderProjects() {
@@ -94,17 +96,17 @@ class U1StopStatusNewProjectTest {
         compose.onNode(androidx.compose.ui.test.SemanticsMatcher.expectValue(androidx.compose.ui.semantics.SemanticsProperties.StateDescription, "Task is working")).assertExists()
     }
 
-    @Test fun onlyTheClosingWordsDecideIfATaskIsWaiting() {
+    @Test fun whateverTheClosingWordsAFinishedTaskIsDoneLikeOnThePc() {
         assertEquals("Done", finished("Options parsing was fixed. All tests pass.").stateWords)
         assertEquals("Done", finished("Next step: none. Everything is saved.").stateWords)
         assertEquals("Done", finished("Fixed the bug. Let me know if you need anything else.").stateWords)
         assertEquals("Done", finished("All saved.\n\nAnything else?").stateWords)
         assertEquals("Done", finished("Fixed it.\n\n```\nwhy?\n```").stateWords)
-        assertEquals("Needs you", finished("Want me to go on? Let me know.").stateWords)
-        assertEquals("Needs you", finished("Soll ich weitermachen\u2753\u3000Was meinst du\uff1f").stateWords)
-        assertEquals("Needs you", finished("Continue now?!").stateWords)
-        assertEquals("Needs you", finished("\u0647\u0644 \u0623\u0643\u0645\u0644\u061f").stateWords)
-        assertEquals("Needs you", finished("Done with step one.\n\nNext steps:\n1. Fix the rest").stateWords)
+        assertEquals("Done", finished("Want me to go on? Let me know.").stateWords)
+        assertEquals("Done", finished("Soll ich weitermachen\u2753\u3000Was meinst du\uff1f").stateWords)
+        assertEquals("Done", finished("Continue now?!").stateWords)
+        assertEquals("Done", finished("\u0647\u0644 \u0623\u0643\u0645\u0644\u061f").stateWords)
+        assertEquals("Done", finished("Done with step one.\n\nNext steps:\n1. Fix the rest").stateWords)
     }
 
     @Test fun aTaskThatEndedWithAQuestionIsFoundUnderTheNeedsYouFilter() {

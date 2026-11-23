@@ -29,7 +29,8 @@ class U1dRowStateTest {
     @Test fun everyStateRowMatchesTheTaskScreen() {
         listOf(
             task("Needs you") to Chip.NeedsYou,
-            task("Done", text = "Which one should I use?") to Chip.NeedsYou,
+            // The PC says Done for a finished task whose last words are a question; the phone agrees.
+            task("Done", text = "Which one should I use?") to Chip.Done,
             task("Working", busy = true) to Chip.Running,
             task("Done") to Chip.Done,
             task("Stopped") to Chip.Stopped,
