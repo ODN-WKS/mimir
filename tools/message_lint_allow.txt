@@ -17,3 +17,6 @@ android/app/src/main/java/io/github/odnwks/mimir/ui/MoreScreens.kt|Claude Code
 # Old saved notes (written before R26) are still recognised.
 crates/core/src/auto.rs|Claude stopped with a problem
 crates/core/src/models.rs|Claude's limit ran out
+# Running on your PC: where a session was started, in plain words (owner-reviewed mock-up, 2026-11-22).
+android/app/src/main/java/io/github/odnwks/mimir/data/Station.kt|in the Claude app
+android/app/src/main/java/io/github/odnwks/mimir/ui/TaskScreen.kt|the Claude app

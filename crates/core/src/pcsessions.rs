@@ -624,7 +624,7 @@ mod tests {
         let other = sessions::Proc {
             pid: 4_000_005,
             started,
-            args: vec!["/home/x/.local/bin/claude-station".into()],
+            args: vec!["/home/x/.local/bin/claude-helper".into()],
             cwd: Some(h.project.clone()),
         };
         assert!(
