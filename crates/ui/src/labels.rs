@@ -317,6 +317,10 @@ pub fn nothing_found(search: &str) -> String {
     format!("Nothing found for “{search}”.")
 }
 
+/// Settings › Notifications, "On this PC": the pop-up for a finished task.
+pub const POPUP_DONE_TITLE: &str = "Pop up when a task is done";
+pub const POPUP_DONE_CAPTION: &str = "A task that needs you always pops up. A finished task only tells you in the window, unless you turn this on.";
+
 #[cfg(test)]
 mod tests {
     use super::*;

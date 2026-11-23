@@ -148,6 +148,10 @@ pub struct Settings {
     /// Labs: "Include my normal chats" in the developer log; None: off.
     #[serde(default)]
     pub labs_devlog_chats: Option<bool>,
+    /// Settings › Notifications: a desktop pop-up when a task is done.
+    /// None: off (owner, 2026-11-23). A task that needs you always pops up.
+    #[serde(default)]
+    pub popup_done: Option<bool>,
     /// Keys this version doesn't know (from a newer one): kept as they are.
     #[serde(flatten)]
     pub other: serde_json::Map<String, serde_json::Value>,
@@ -294,6 +298,11 @@ impl Settings {
     /// Project work runs on a free model on this PC.
     pub fn project_free(&self) -> bool {
         self.project_engine.as_deref() != Some("claude")
+    }
+
+    /// Whether a finished task gets a desktop pop-up (off until chosen).
+    pub fn popup_done_on(&self) -> bool {
+        self.popup_done.unwrap_or(false)
     }
 
     /// Whether the developer log is on.
@@ -600,6 +609,21 @@ mod tests {
         assert!(r.starts_with("Answer exactly what I ask"));
         let s: Settings = serde_json::from_str(r#"{"ground_rules":"Be brief."}"#).unwrap();
         assert_eq!(s.ground_rules().as_deref(), Some("Be brief."));
+    }
+
+    #[test]
+    fn the_done_pop_up_is_off_until_chosen() {
+        assert!(!Settings::default().popup_done_on());
+        let s: Settings = serde_json::from_str("{}").unwrap();
+        assert!(!s.popup_done_on());
+        let s: Settings = serde_json::from_str(r#"{"popup_done":true}"#).unwrap();
+        assert!(s.popup_done_on());
+        // It travels in a part like any setting.
+        let s = with_part(
+            &Settings::default(),
+            &serde_json::json!({"popup_done": true}),
+        );
+        assert!(s.popup_done_on());
     }
 
     #[test]

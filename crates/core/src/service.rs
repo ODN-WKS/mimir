@@ -269,6 +269,31 @@ pub fn check_effort(effort: Option<&str>) -> Result<(), String> {
     }
 }
 
+/// A refusal line for a model name Mímir would not run a task on; None
+/// clears (Claude Code's own choice). Known: the Auto styles, the exact
+/// Claude ids and their short names, and a free model (`ollama:<name>`).
+pub fn check_model(model: Option<&str>) -> Result<(), String> {
+    let Some(m) = model else { return Ok(()) };
+    let free_ok = |n: &str| {
+        !n.is_empty()
+            && n.len() <= 120
+            && n.chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | ':' | '/' | '-'))
+    };
+    let known = m == crate::auto::AUTO
+        || m == crate::auto::AUTO_CAPABLE
+        || crate::auto::LADDER.contains(&m)
+        || crate::talk::CLAUDE_CHOICES
+            .iter()
+            .any(|c| c.0 == m && c.0 != "auto")
+        || crate::models::ollama_name(m).is_some_and(free_ok);
+    if known {
+        Ok(())
+    } else {
+        Err("That model is not known. Pick one from the list.".into())
+    }
+}
+
 /// How often the PC's Claude Code sessions are looked at again.
 const PC_SESSIONS_EVERY: Duration = Duration::from_secs(5);
 
@@ -1484,6 +1509,7 @@ impl Service {
                 ok
             }
             Call::SetModel { task, model } => {
+                check_model(model.as_deref())?;
                 self.runner.set_model(&task, model);
                 ok
             }
@@ -5388,7 +5414,8 @@ impl Service {
             && !self.focused()
         {
             let whisper = |id: &str| self.task(id).is_some_and(|l| l.task.incognito);
-            for (title, body) in crate::truth::notices(old, &t, &whisper) {
+            let done = self.settings.popup_done_on();
+            for (title, body) in crate::truth::notices_with(old, &t, &whisper, done) {
                 crate::notify::notify(&title, &body);
             }
         }
@@ -5397,6 +5424,12 @@ impl Service {
     }
 
     fn publish(&mut self) {
+        // A run first seen working starts its clock now (after a restart or a
+        // takeover too), never from an old message.
+        let now = crate::needs::now();
+        for l in &mut self.runner.tasks {
+            l.clock_turn(now);
+        }
         self.publish_truth();
         let full = self.last_full.elapsed() >= FULL_EVERY;
         if full {
@@ -6319,6 +6352,32 @@ mod pc_name_tests {
             assert!(why.contains("xhigh") && !why.contains(bad) || bad.is_empty());
         }
         assert!(super::OFFERED.contains(&"task_reply_options"));
+    }
+
+    #[test]
+    fn a_model_is_one_mimir_knows_or_none() {
+        for m in [
+            "auto",
+            "auto-capable",
+            "claude-opus-5-5",
+            "claude-haiku-5-5",
+            "sonnet",
+            "opus",
+            "ollama:qwen3.6:35b-a3b-coding",
+        ] {
+            assert!(super::check_model(Some(m)).is_ok(), "{m}");
+        }
+        assert!(super::check_model(None).is_ok());
+        for bad in [
+            "",
+            "--dangerously-skip-permissions",
+            "gpt-9",
+            "ollama:",
+            "ollama:a b",
+            "opus 5",
+        ] {
+            assert!(super::check_model(Some(bad)).is_err(), "{bad}");
+        }
     }
 
     #[test]

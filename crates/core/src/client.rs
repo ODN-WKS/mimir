@@ -2011,7 +2011,10 @@ mod tests {
         v.doing = Some("Reading main.rs".into());
         v.turn_unix = Some(90);
         assert_eq!(v.live_line(100).as_deref(), Some("Reading main.rs · 10 s"));
+        // A long think changes nothing for a while: not yet "no news".
         v.news = Instant::now() - std::time::Duration::from_secs(25);
+        assert_eq!(v.live_line(100).as_deref(), Some("Reading main.rs · 10 s"));
+        v.news = Instant::now() - std::time::Duration::from_secs(65);
         assert!(
             v.live_line(100)
                 .unwrap()

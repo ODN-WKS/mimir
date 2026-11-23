@@ -13,6 +13,8 @@ e="$(./test-pc.sh env qa-1)"
 case "$e" in *"HOME=$real/.cache/mimir/test-pc-qa-1/home "*) ;; *) fail "HOME is not the test home: $e" ;; esac
 case "$e" in *"XDG_RUNTIME_DIR=$real/.cache/mimir/test-pc-qa-1/run"*) ;; *) fail "runtime folder is not the test one: $e" ;; esac
 if ./test-pc.sh bogus qa-1 >/dev/null 2>&1; then fail "an unknown command was accepted"; fi
+# A test PC never posts a pop-up on the real desktop: its unit gets the silencing variable.
+grep -q -- '--setenv=MIMIR_NO_POPUPS=1' test-pc.sh || fail "the test PC's unit is not silenced"
 # stop ends this test PC's own hosts, and only those.
 mkdir -p /tmp/test-pc-test-$$; cp "$(command -v sleep)" /tmp/test-pc-test-$$/mimir
 m=/tmp/test-pc-test-$$/mimir

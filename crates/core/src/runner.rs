@@ -52,6 +52,9 @@ pub struct Live {
     bg_seen: u8,
     /// The note was said for this turn.
     bg_noted: bool,
+    /// The turn's start time was set for this working stretch (a time from
+    /// before a restart or a takeover is never shown).
+    pub(crate) turn_clocked: bool,
 }
 
 impl Live {
@@ -70,12 +73,21 @@ impl Live {
             bg_checked: None,
             freeze: false,
             bg_seen: 0,
+            turn_clocked: false,
             bg_noted: false,
         }
     }
 
     pub fn running(&self) -> bool {
         self.session.is_some()
+    }
+
+    /// Starts the turn's clock the first moment the run is seen working, and
+    /// lets go of it when it stops (so a time from before a restart, or one
+    /// a queued message would move, is never shown).
+    pub fn clock_turn(&mut self, now: i64) {
+        let busy = self.busy();
+        clock(busy, &mut self.turn_clocked, &mut self.task.turn_unix, now);
     }
 
     /// Claude is working on this task right now (not just finishing up).
@@ -229,6 +241,7 @@ impl Runner {
                             bg_checked: None,
                             freeze: false,
                             bg_seen: 0,
+                            turn_clocked: false,
                             bg_noted: said_busy,
                         });
                         continue;
@@ -264,6 +277,7 @@ impl Runner {
                 bg_checked: None,
                 freeze: false,
                 bg_seen: 0,
+                turn_clocked: false,
                 bg_noted: false,
             });
         }
@@ -477,6 +491,7 @@ impl Runner {
             bg_checked: None,
             freeze: false,
             bg_seen: 0,
+            turn_clocked: false,
             bg_noted: false,
         });
     }
@@ -1569,6 +1584,7 @@ impl Runner {
             bg_checked: None,
             freeze: false,
             bg_seen: 0,
+            turn_clocked: false,
             bg_noted: false,
         });
         self.save_dirty();
@@ -1885,6 +1901,7 @@ impl Runner {
             bg_checked: None,
             freeze: false,
             bg_seen: 0,
+            turn_clocked: false,
             bg_noted: false,
         });
         self.send_with(&id, text, &[]);
@@ -2363,8 +2380,34 @@ pub fn title_from(text: &str) -> String {
     }
 }
 
+/// The rule of [`Live::clock_turn`].
+fn clock(busy: bool, clocked: &mut bool, turn: &mut Option<i64>, now: i64) {
+    if !busy {
+        *clocked = false;
+    } else if !*clocked {
+        *clocked = true;
+        *turn = Some(now);
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    /// The turn's clock starts when the run is first seen working, and a
+    /// time saved before a restart is replaced; later looks leave it be.
+    #[test]
+    fn the_turn_clock_starts_at_the_first_look_at_a_working_run() {
+        let (mut clocked, mut turn) = (false, Some(10));
+        super::clock(false, &mut clocked, &mut turn, 5000);
+        assert_eq!(turn, Some(10), "not working: nothing touched");
+        super::clock(true, &mut clocked, &mut turn, 5000);
+        assert_eq!(turn, Some(5000), "an hours-old saved time is replaced");
+        super::clock(true, &mut clocked, &mut turn, 5007);
+        assert_eq!(turn, Some(5000), "it keeps counting from the start");
+        super::clock(false, &mut clocked, &mut turn, 5010);
+        super::clock(true, &mut clocked, &mut turn, 9000);
+        assert_eq!(turn, Some(9000), "a new working stretch is a new turn");
+    }
+
     use super::*;
 
     #[test]

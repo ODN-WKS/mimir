@@ -214,6 +214,17 @@ pub fn newer(have: Option<&Truth>, new: &Truth) -> bool {
 /// says which task is a Whisper (its title never shows, and its Done is
 /// silent). Nothing says what model runs it.
 pub fn notices(old: &Truth, new: &Truth, whisper: &dyn Fn(&str) -> bool) -> Vec<(String, String)> {
+    notices_with(old, new, whisper, true)
+}
+
+/// [`notices`], with the Done pop-ups left out when `done` is false (they are
+/// off until chosen in Settings › Notifications; Needs you always shows).
+pub fn notices_with(
+    old: &Truth,
+    new: &Truth,
+    whisper: &dyn Fn(&str) -> bool,
+    done: bool,
+) -> Vec<(String, String)> {
     let mut out = vec![];
     for t in &new.tasks {
         let Some(before) = old.tasks.iter().find(|o| o.id == t.id) else {
@@ -232,7 +243,7 @@ pub fn notices(old: &Truth, new: &Truth, whisper: &dyn Fn(&str) -> bool) -> Vec<
                 },
                 "Open Mímir to answer.".to_string(),
             )),
-            TaskState::Done if !secret => {
+            TaskState::Done if !secret && done => {
                 out.push((format!("{} is done", t.title), "Mímir".to_string()))
             }
             _ => {}
@@ -415,5 +426,33 @@ mod tests {
             notices(&before, &w, &|_| true)[0].0,
             "A Whisper task needs you"
         );
+    }
+
+    /// A finished task's pop-up is off until chosen; Needs you always shows.
+    #[test]
+    fn done_pop_ups_can_be_left_out_and_needs_you_stays() {
+        let mk = |id: &str, state| TruthTask {
+            id: id.into(),
+            project: "/p".into(),
+            title: format!("Task {id}"),
+            state,
+            background: false,
+            since: None,
+            from_phone: false,
+            failed: false,
+            elsewhere_in: None,
+        };
+        let old = Truth {
+            tasks: vec![mk("a", TaskState::Working), mk("b", TaskState::Working)],
+            ..Default::default()
+        };
+        let new = Truth {
+            tasks: vec![mk("a", TaskState::NeedsYou), mk("b", TaskState::Done)],
+            ..Default::default()
+        };
+        let off = notices_with(&old, &new, &|_| false, false);
+        assert_eq!(off.len(), 1, "{off:?}");
+        assert!(off[0].0.ends_with("needs you"));
+        assert_eq!(notices_with(&old, &new, &|_| false, true).len(), 2);
     }
 }

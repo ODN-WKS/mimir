@@ -89,7 +89,7 @@ start)
     systemd-run --user --quiet --unit="$UNIT" -p Delegate=yes -p Nice=10 \
         --setenv=HOME="$H" --setenv=XDG_CONFIG_HOME="$H/.config" --setenv=XDG_DATA_HOME="$H/.local/share" \
         --setenv=XDG_STATE_HOME="$H/.local/state" --setenv=XDG_CACHE_HOME="$H/.cache" --setenv=XDG_RUNTIME_DIR="$D/run" \
-        --setenv=MIMIR_OLLAMA="$ollama" --setenv=LANG=C.UTF-8 "${extra[@]}" \
+        --setenv=MIMIR_OLLAMA="$ollama" --setenv=LANG=C.UTF-8 --setenv=MIMIR_NO_POPUPS=1 "${extra[@]}" \
         -p StandardOutput=append:"$D/service.log" -p StandardError=append:"$D/service.log" \
         "$D/mimir-bin" serve
     for _ in $(seq 1 30); do

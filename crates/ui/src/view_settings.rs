@@ -483,6 +483,24 @@ impl App {
         gap(ui);
         theme::card().show(ui, |ui| {
             ui.set_width(ui.available_width());
+            theme::heading(ui, "On this PC");
+            let mut on = self.settings.popup_done_on();
+            if ui
+                .checkbox(&mut on, crate::labels::POPUP_DONE_TITLE)
+                .changed()
+            {
+                self.settings.popup_done = Some(on);
+                self.settings_dirty = true;
+            }
+            ui.label(
+                RichText::new(crate::labels::POPUP_DONE_CAPTION)
+                    .color(MUTED)
+                    .size(13.0),
+            );
+        });
+        gap(ui);
+        theme::card().show(ui, |ui| {
+            ui.set_width(ui.available_width());
             theme::heading(ui, "In this window");
             ui.label(
                 RichText::new(

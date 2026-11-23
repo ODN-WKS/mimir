@@ -729,6 +729,23 @@ pub struct TaskHeader {
     pub turn_unix: Option<i64>,
 }
 
+/// Whether a file name looks like it holds secrets (a dotfile, `*.env`,
+/// `*key*`, `*secret*`, `*token*`, `*.pem`, `id_*` and the like). Such a name
+/// is never sent to a phone: only the verb ("Reading a file").
+pub fn sensitive_name(name: &str) -> bool {
+    let base = name.rsplit('/').next().unwrap_or(name).to_lowercase();
+    name.split('/')
+        .any(|p| p.starts_with('.') && p != "." && p != "..")
+        || base.starts_with("id_")
+        || base.starts_with("credentials")
+        || [".env", ".pem", ".p12", ".pfx", ".kdbx", ".keystore", ".jks"]
+            .iter()
+            .any(|e| base.ends_with(e))
+        || ["key", "secret", "token", "passw", "passwd", "credential"]
+            .iter()
+            .any(|w| base.contains(w))
+}
+
 /// What Claude is doing, in plain words, for a step that is still running:
 /// from the tool and the step's words ("Read main.rs"). Never a path.
 pub fn doing_words(tool: &str, what: &str) -> String {
@@ -741,7 +758,7 @@ pub fn doing_words(tool: &str, what: &str) -> String {
             .to_string()
     };
     let with = |verb: &str, name: String| {
-        if name.is_empty() {
+        if name.is_empty() || sensitive_name(&name) {
             format!("{verb} a file")
         } else {
             format!("{verb} {name}")
@@ -777,8 +794,10 @@ pub fn worked_for(secs: u64) -> String {
 }
 
 /// The silence line: nothing came from the PC for this long while the task
-/// is said to be working.
-pub const QUIET_AFTER_SECS: u64 = 20;
+/// is said to be working. 60 s on the PC and the phone alike: the PC sends a
+/// task's header only when something in it changes, and a long think or a
+/// slow command changes nothing for a while; 20 s said "no news" falsely.
+pub const QUIET_AFTER_SECS: u64 = 60;
 
 /// Why a long conversation matters for this task.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

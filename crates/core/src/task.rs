@@ -126,8 +126,11 @@ pub struct Task {
     /// Text Claude is writing right now (not saved).
     #[serde(skip)]
     pub live: String,
-    /// When the owner's last message went in (seconds since 1970): the turn
-    /// that is working began then. Only read while it works.
+    /// When the turn that is working began (seconds since 1970): the owner's
+    /// message that started it. The service sets it again when the run is
+    /// first seen working (a saved time from before a restart or takeover is
+    /// hours old); a message sent while the turn already works does not move
+    /// it. Only read while it works.
     #[serde(default)]
     pub turn_unix: Option<i64>,
     #[serde(default)]
@@ -477,8 +480,10 @@ impl Task {
 
     pub fn add_you(&mut self, text: &str) {
         self.entries.push(Entry::You(text.to_string()));
+        if self.status != Status::Working || self.turn_unix.is_none() {
+            self.turn_unix = Some(crate::needs::now());
+        }
         self.status = Status::Working;
-        self.turn_unix = Some(crate::needs::now());
         self.failed = false;
     }
 
@@ -1554,6 +1559,20 @@ mod tests {
             stopped: false,
             detail: Default::default(),
         })
+    }
+
+    /// The turn's clock starts when a turn starts and is not moved by a
+    /// message sent while it works.
+    #[test]
+    fn the_turn_clock_is_not_moved_by_a_message_sent_while_it_works() {
+        let mut t = Task::new("1-1-2".into(), "T".into(), "/p".into(), 1);
+        t.add_you("first");
+        t.turn_unix = Some(100);
+        t.add_you("sent while it works");
+        assert_eq!(t.turn_unix, Some(100));
+        t.status = Status::Done;
+        t.add_you("a new turn");
+        assert!(t.turn_unix.unwrap() > 100);
     }
 
     /// D1: while it works the task says in plain words what Claude is doing.
