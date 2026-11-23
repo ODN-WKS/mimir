@@ -310,7 +310,7 @@ class FindabilityTest {
         compose.onNodeWithContentDescription("Task options").performClick()
         compose.waitForIdle()
         tap("Move to another project…")
-        heading("Project").assertIsDisplayed()
+        heading("Move to another project").assertIsDisplayed()
         val other = station.state.value.pickable.first { it != "Budget-App" }
         compose.onNodeWithText(other).performClick()
         compose.waitForIdle()

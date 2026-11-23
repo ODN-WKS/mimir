@@ -29,7 +29,7 @@ class U1dRowStateTest {
     @Test fun everyStateRowMatchesTheTaskScreen() {
         listOf(
             task("Needs you") to Chip.NeedsYou,
-            task("Done", text = "Which one should I use?") to Chip.WaitingForYou,
+            task("Done", text = "Which one should I use?") to Chip.NeedsYou,
             task("Working", busy = true) to Chip.Running,
             task("Done") to Chip.Done,
             task("Stopped") to Chip.Stopped,

@@ -173,11 +173,13 @@ class LinkStationQueueTest {
         val link = FakeLink(); val st = paired(link)
         link.dropped = true
         st.stopTask("t1")
-        assertTrue("the owner is told", until { notes(st).any { it.contains("Your PC is away") } })
+        // The task itself says "Stop waiting: sends when your PC is back" (QA11 T7).
+        assertTrue("the task says the stop waits", until { st.stopIsWaiting("t1") })
         assertTrue("nothing went out", link.callsOf("{\"Stop\"").isEmpty())
         link.dropped = false
         link.ready()
         assertTrue("Stop is sent again once the PC is back", until { link.callsOf("{\"Stop\"").size == 1 })
+        assertTrue("and the line goes", until { !st.stopIsWaiting("t1") })
         st.close()
     }
 }

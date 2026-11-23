@@ -105,7 +105,7 @@ fun PcSessionsScreen(
         Row(Modifier.fillMaxWidth().padding(bottom = 12.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
             Dot(if (state.pc.online) Palette.Green else Palette.TextDim, hollow = !state.pc.online)
             Text(
-                "  " + if (state.pc.online) "Your PC · connected" else state.connectionLine,
+                "  " + if (state.pc.online) "Connected" else state.connectionLine,
                 style = Type.Small, color = Palette.TextDim,
             )
         }

@@ -189,7 +189,7 @@ class FakeStation(initial: StationState = ExampleData.awake()) : Station {
         if (!flow.value.pc.online) { done(null, "Your PC is away: new projects can be made when it's back."); return }
         val exists = n in flow.value.pickable
         if (!exists) flow.update { it.copy(projectChoices = it.pickable + n) }
-        done(n, if (exists) "$n is already on your PC: picked it." else "Made ~/Projects/$n on your PC")
+        done(n, if (exists) "$n is already on your PC: picked it." else "Made the project $n on your PC")
     }
 
     override fun pauseTask(taskId: String) = retitle(taskId) { it }

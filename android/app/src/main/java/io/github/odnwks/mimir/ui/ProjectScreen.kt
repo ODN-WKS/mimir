@@ -39,7 +39,8 @@ fun ProjectScreen(name: String, state: StationState, station: Station, nav: Navi
         BackHeader(p.name, nav::back, backLabel = "Back to status",
             // The folder's full path means nothing on a phone: only a short description shows.
             subtitle = listOf(p.about.takeUnless { it.startsWith("/") || it.startsWith("~") }.orEmpty(),
-                when { state.pcAway -> state.connectionLine; running > 0 -> "${running} working"; else -> "nothing working" }).filter { it.isNotBlank() }.joinToString(" · "))
+                // While the PC is away the strip under the header says so; the header does not say it again.
+                when { state.pcAway -> ""; running > 0 -> "${running} working"; else -> "nothing working" }).filter { it.isNotBlank() }.joinToString(" · "))
         ConnectionStrip(state, Modifier.padding(bottom = 6.dp))
         Column(
             Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 16.dp),
@@ -75,19 +76,21 @@ fun ProjectScreen(name: String, state: StationState, station: Station, nav: Navi
                 }
             }
             SectionTitle("Tasks", Modifier.padding(start = 4.dp, end = 4.dp, top = 4.dp))
-            if (p.tasks.isEmpty()) Text("No tasks yet.", style = Type.Label, color = Palette.TextDim, modifier = Modifier.padding(horizontal = 4.dp))
+            if (p.tasks.isEmpty()) Text("No tasks yet. Type below to start one.", style = Type.Label, color = Palette.TextDim, modifier = Modifier.padding(horizontal = 4.dp))
             p.tasks.forEach { t ->
                 val (fg, bg) = when (t.chip) {
                     Chip.Running -> Palette.Ground to Palette.BlueLight
                     Chip.Idea -> Palette.Text to Palette.Track
                     Chip.Done -> Palette.Ground to Palette.GreenText
                     Chip.Stopped -> Palette.Text to Palette.Track
+                    Chip.StoppedUnexpectedly -> Palette.AmberInk to Palette.Amber
                     Chip.Waiting, Chip.Paused, Chip.Away, Chip.Archived -> Palette.Text to Palette.Track
                     Chip.Starting, Chip.Live -> Palette.Ground to Palette.BlueLight
-                    Chip.NeedsYou, Chip.WaitingForYou -> stateColours(t.chip.label)
+                    Chip.NeedsYou -> stateColours(t.chip.label)
                 }
                 ListRow(
-                    t.name, t.meta,
+                    // The state shows once, in the tag; a line under the name only when it says more.
+                    t.name, t.meta.takeIf { it.isNotBlank() && it != t.chip.label },
                     onClick = t.taskId?.let { id -> { nav.open(Screen.Task(id), tap.last) } },
                     trailing = { Tag(t.chip.label, fg, bg) },
                 )

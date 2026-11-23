@@ -1107,13 +1107,18 @@ class LinkStation(
     /** Stops that couldn't go out (the link was gone): sent again when the PC is back, until it answers. */
     private val pendingStops = java.util.Collections.synchronizedSet(LinkedHashSet<String>())
 
+    /** Stop was tapped on this task and has not reached the PC yet (the task's "Stop waiting" line). */
+    internal fun stopIsWaiting(taskId: String) = taskId in pendingStops
+
     override fun stopTask(taskId: String) {
         val sent = call(Wire.stop(taskId)) { _, err ->
             if (err != null) { pendingStops += taskId; note(err) } else pendingStops -= taskId
+            publish()
         }
         if (!sent) {
             pendingStops += taskId
-            note("Your PC is away: Stop goes out when it's back.", tag = STOP_TAG)
+            // The task says it itself ("Stop waiting: sends when your PC is back"), as a reply does.
+            publish()
         }
     }
 
@@ -1138,8 +1143,8 @@ class LinkStation(
             call(Wire.stop(id)) { _, err ->
                 if (err == null) {
                     pendingStops -= id
-                    // The Stop went out: its "goes out when it's back" line is no longer true.
-                    if (pendingStops.isEmpty()) { synchronized(lock) { chat.removeAll { it is ChatEntry.Note && it.id.startsWith("n-$STOP_TAG") } }; publish() }
+                    // The Stop went out: its "sends when your PC is back" line is no longer true.
+                    publish()
                 } else note(err)
             }
         }
@@ -1245,8 +1250,7 @@ class LinkStation(
             }
             refreshStatus()
             publish()
-            val shown = path.replaceFirst(Regex("^/home/[^/]+"), "~")
-            done(n, if (o.optBoolean("made")) "Made $shown on your PC" else "$n is already on your PC: picked it.")
+            done(n, if (o.optBoolean("made")) "Made the project $n on your PC" else "$n is already on your PC: picked it.")
         }
         if (!sent) done(null, "Your PC is away: new projects can be made when it's back.")
     }
@@ -1602,7 +1606,7 @@ class LinkStation(
         )
     }
 
-    private fun taskTitle(text: String): String = text.trim().lines().first().trim().let { if (it.length > 40) it.take(40).trimEnd() + "…" else it }
+    private fun taskTitle(text: String): String = text.trim().lines().first().trim().let { shortTitle(it) }
 
     /** A new task not yet on the PC: its words, shown as waiting (or starting, once the PC is there). */
     private fun waitingTask(w: WaitingTask): Task = Task(
@@ -1657,6 +1661,8 @@ class LinkStation(
             plan = t.plan,
             mode = t.mode,
             whisper = t.incognito,
+            stopPending = t.id in pendingStops,
+            elsewhereIn = t.elsewhereIn,
         )
     }
 
@@ -1804,7 +1810,6 @@ internal const val ONLINE_WITHDRAWN = "Your PC's owner turned off Online for you
 internal fun onlineWithdrawn(before: String?, now: String?, owner: Boolean): Boolean =
     !owner && before == "paid" && now != "paid"
 
-private const val STOP_TAG = "stop-"
 
 /** The PC refused "Go ahead without asking" from the phone: its older words ("YOLO from the phone is off") and its newer. */
 internal fun isGoAheadOffText(err: String) =
@@ -1820,4 +1825,12 @@ internal fun taskMessageOf(taskId: String, i: Int, e: LEntry, streamingLast: Boo
     is LEntry.Note -> if (e.text.isBlank() || isOutOfRoomNote(e.text)) null
         else TaskMessage("$taskId-$i", false, e.text, note = true)
     else -> null
+}
+
+/** A task's name from its first words: cut at a whole word, never in the middle of one. */
+fun shortTitle(line: String, max: Int = 40): String {
+    if (line.length <= max) return line
+    val cut = line.take(max + 1)
+    val at = cut.lastIndexOf(' ')
+    return (if (at >= max / 2) cut.take(at) else line.take(max)).trimEnd(' ', ',', ';', ':', '.') + "…"
 }

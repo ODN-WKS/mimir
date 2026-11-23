@@ -448,6 +448,10 @@ data class Task(
     val canCancel: Boolean = false,
     /** Why the PC didn't start it ("" if nothing went wrong): the words stay, with Try again and Remove. */
     val failedWhy: String = "",
+    /** Stop was tapped while the PC is away: it goes out when the PC is back (the task still shows what it was doing). */
+    val stopPending: Boolean = false,
+    /** Where a session going on elsewhere runs, when the PC says: "app" (the Claude app) or "terminal"; "" when it doesn't. */
+    val elsewhereIn: String = "",
 ) {
     /** A mode that does things without asking, in words for its chip; null when it asks first. */
     val riskyMode: String? get() = when (mode) {
@@ -462,12 +466,13 @@ data class Task(
     /** The task's state in one or two words, the same everywhere it shows. */
     val stateWords: String get() = when {
         permission != null || question != null || status == "Needs you" -> "Needs you"
-        stopped || status == "Stopped" || status == "Failed" || status == "Interrupted" -> "Stopped"
+        status == "Stopped unexpectedly" || status == "Failed" -> "Stopped unexpectedly"
+        stopped || status == "Stopped" || status == "Interrupted" -> "Stopped"
         status == "Paused" -> "Paused"
         busy || status == "Working" -> if (messages.none { it.fromClaude } && steps.isEmpty()) "Starting" else "Working"
         status.isNotEmpty() && status != "Done" -> status
         // Its turn ended, but Claude is asking or proposing what comes next: not finished.
-        endsWaiting(messages.lastOrNull()?.takeIf { it.fromClaude }?.text) -> "Waiting for you"
+        endsWaiting(messages.lastOrNull()?.takeIf { it.fromClaude }?.text) -> "Needs you"
         else -> "Done"
     }
     /**
@@ -477,13 +482,14 @@ data class Task(
      */
     val showsStop: Boolean get() = when (stateWords) {
         "Working", "Starting" -> true
-        "Needs you" -> running || permission != null
+        "Needs you" -> (permission != null || question != null || status == "Needs you") && running || permission != null
         else -> false
     }
     /** The line under a task's title: what is happening now, in a sentence. */
     val stateLine: String get() = when (stateWords) {
-        "Needs you", "Waiting for you" -> "Waiting for you"
+        "Needs you" -> "Needs you"
         "Stopped" -> "Stopped"
+        "Stopped unexpectedly" -> "Stopped unexpectedly"
         "Paused" -> "Paused"
         "Starting" -> "Starting…"
         "Working" -> "Working on it" + (steps.lastOrNull()?.let { ": " + it.trimStart('✓', '✕', '…', ' ') } ?: "")
@@ -625,15 +631,16 @@ data class Project(
 data class Check(val name: String, val ok: Boolean)
 
 enum class Chip(val label: String) {
-    Running("Working"), Idea("Idea"), Done("Done"), Stopped("Stopped"), Waiting("Waiting"),
-    NeedsYou("Needs you"), WaitingForYou("Waiting for you"), Paused("Paused"), Starting("Starting"), Live("Live"),
+    Running("Working"), Idea("Idea"), Done("Done"), Stopped("Stopped"), StoppedUnexpectedly("Stopped unexpectedly"), Waiting("Waiting"),
+    NeedsYou("Needs you"), Paused("Paused"), Starting("Starting"), Live("Live"),
     Away("Was working"), Archived("Archived");
 
     companion object {
         /** A task's chip from the PC's status words: a stopped or denied task isn't "Done". */
         fun of(busy: Boolean, status: String): Chip = when {
             busy -> Running
-            status == "Stopped" || status == "Failed" || status == "Interrupted" -> Stopped
+            status == "Stopped unexpectedly" || status == "Failed" -> StoppedUnexpectedly
+            status == "Stopped" || status == "Interrupted" -> Stopped
             else -> Done
         }
 
@@ -643,12 +650,12 @@ enum class Chip(val label: String) {
          */
         fun ofWords(words: String): Chip = when (words) {
             "Done" -> Done
-            "Needs you" -> NeedsYou
-            "Waiting for you" -> WaitingForYou
+            "Needs you", "Waiting for you" -> NeedsYou
             "Paused" -> Paused
             "Starting" -> Starting
             "Working", "Answering…" -> Running
             "Stopped" -> Stopped
+            "Stopped unexpectedly" -> StoppedUnexpectedly
             "Live" -> Live
             "Was working (PC away)" -> Away
             "Archived" -> Archived
@@ -658,7 +665,7 @@ enum class Chip(val label: String) {
         /** The words [ofWords] knows. */
         fun knows(words: String): Boolean = words in setOf(
             "Done", "Needs you", "Waiting for you", "Paused", "Starting", "Working", "Answering…",
-            "Stopped", "Live", "Was working (PC away)", "Archived",
+            "Stopped", "Stopped unexpectedly", "Live", "Was working (PC away)", "Archived",
         )
     }
 }

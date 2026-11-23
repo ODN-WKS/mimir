@@ -107,8 +107,24 @@ fun TaskScreen(taskId: String, state: StationState, station: Station, nav: Navig
     // Find in this task: only the messages with the words show while it's open.
     var finding by rememberSaveable { mutableStateOf(false) }
     var find by rememberSaveable { mutableStateOf("") }
+    // A PC that lists its sessions: a task going on elsewhere is followed with a banner, Stop and Carry on here.
+    val listsSessions = state.pcSessions != null
+    // Known on the first frame: from the task itself, or from the PC's list (a session working somewhere else).
+    var followed by rememberSaveable(task.id) { mutableStateOf(listsSessions && (task.liveElsewhere || followedElsewhere(state, task.id))) }
+    var carried by rememberSaveable(task.id) { mutableStateOf(false) }
+    if (listsSessions && task.liveElsewhere) followed = true
+    // Still going on outside Mímir right now (a stopped one is not): said once, and only Stop is offered.
+    val liveNow = listsSessions && !task.stopped && (task.liveElsewhere || followedElsewhere(state, task.id))
     val words = find.trim().takeIf { finding && it.isNotEmpty() }
-    val messages = if (words == null) task.messages else task.messages.filter { it.text.contains(words, ignoreCase = true) }
+    // The PC's own notes about a followed session say what the line and buttons below already say.
+    val shownMessages = task.messages.filterNot { m ->
+        m.note && ((followed && !carried && isFollowNote(m.text)) ||
+            // Nothing runs on after a stop or a pause.
+            (m.text == BACKGROUND_NOTE && task.stateWords in setOf("Stopped", "Stopped unexpectedly", "Paused")) ||
+            // The box below says it, with Continue.
+            (task.stateWords == "Paused" && m.text.startsWith("Paused. Press Continue")))
+    }
+    val messages = if (words == null) shownMessages else shownMessages.filter { it.text.contains(words, ignoreCase = true) }
     // "Move to another project" in the options: the picker hands back where to.
     LaunchedEffect(nav.pickedProject) {
         nav.pickedProject?.let { p -> nav.pickedProject = null; if (p != task.project) station.moveTask(task.id, p) }
@@ -118,12 +134,6 @@ fun TaskScreen(taskId: String, state: StationState, station: Station, nav: Navig
     val scroll = rememberScrollState()
     // A step was still running when Stop was tapped here.
     var cutOff by rememberSaveable(task.id) { mutableStateOf(false) }
-    // A PC that lists its sessions: a task going on elsewhere is followed with a banner, Stop and Carry on here.
-    val listsSessions = state.pcSessions != null
-    // Known on the first frame: from the task itself, or from the PC's list (a session working somewhere else).
-    var followed by rememberSaveable(task.id) { mutableStateOf(listsSessions && (task.liveElsewhere || followedElsewhere(state, task.id))) }
-    var carried by rememberSaveable(task.id) { mutableStateOf(false) }
-    if (listsSessions && task.liveElsewhere) followed = true
     val reduce = LocalReduceMotion.current
     val keyboard = WindowInsets.isImeVisible
     val focus = LocalFocusManager.current
@@ -171,7 +181,7 @@ fun TaskScreen(taskId: String, state: StationState, station: Station, nav: Navig
             }
             ConnectionStrip(state, Modifier.padding(bottom = 4.dp))
             // Pinned above the conversation, so it stays in sight while it scrolls.
-            if (listsSessions && task.liveElsewhere) Box(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) { FollowBanner(followedIn(state, task.id)) }
+            if (liveNow) Box(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) { FollowBanner(followedIn(state, task)) }
             // A long conversation: one calm line, not a popup. Dismissed for this task, it comes back at "very long".
             task.long?.let { n ->
                 var dismissed by rememberSaveable(task.id) { mutableStateOf<Boolean?>(null) }
@@ -250,9 +260,10 @@ fun TaskScreen(taskId: String, state: StationState, station: Station, nav: Navig
                 }
                 // Last, under the conversation it ended.
                 // "Stopped · Continue", and whether a command was cut off by the stop.
-                if (task.stateWords == "Stopped") Panel(background = Palette.Bar) {
+                if (task.stopPending) StatusWords(Glyphs.Clock, STOP_WAITING, Palette.TextDim)
+                if (task.stateWords in setOf("Stopped", "Stopped unexpectedly", "Paused")) Panel(background = Palette.Bar) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("Stopped ·", style = Type.Label, color = Palette.TextDim)
+                        Text(if (task.stateWords == "Stopped unexpectedly") "Stopped unexpectedly ·" else "${task.stateWords} ·", style = Type.Label, color = if (task.stateWords == "Stopped unexpectedly") Palette.AmberNote else Palette.TextDim)
                         LinkText("Continue", { station.continueTask(task.id); cutOff = false }, bold = true)
                     }
                     if (cutOff || task.steps.lastOrNull()?.startsWith("…") == true) Text("A command may have been cut off.", style = Type.Small, color = Palette.AmberNote)
@@ -260,7 +271,10 @@ fun TaskScreen(taskId: String, state: StationState, station: Station, nav: Navig
                 task.question?.let { q ->
                     Panel(background = Palette.AmberCard, border = Palette.AmberBorder, spacing = 10.dp) {
                         SectionTitle("A question for you", color = Palette.AmberText, style = Type.Label.copy(fontWeight = FontWeight.Bold))
-                        MarkdownText(q.text, style = Type.BodyTight, color = Palette.AmberSoft)
+                        // The question is already in the answer above: said once.
+                        val said = task.messages.lastOrNull { it.fromClaude }?.text.orEmpty().let { last -> q.text.isNotBlank() && markdownPlain(last).contains(markdownPlain(q.text).trim()) }
+                        if (!said) MarkdownText(q.text, style = Type.BodyTight, color = Palette.AmberSoft)
+                        if (q.choices.isEmpty() && q.yes.isEmpty()) Text("Answer in the box below.", style = Type.Small, color = Palette.AmberSoft)
                         // Claude's offered options, one tap each, none picked for the owner; otherwise the reply box answers.
                         q.choices.forEachIndexed { i, c ->
                             BigButton(c, Look.AmberOutline, { station.answerChoice(q.itemId, i) }, height = 48.dp, fontSize = 15)
@@ -336,7 +350,7 @@ fun TaskScreen(taskId: String, state: StationState, station: Station, nav: Navig
                     }
                 }
             } else androidx.compose.animation.AnimatedContent(
-                task.liveElsewhere,
+                if (listsSessions) liveNow else task.liveElsewhere,
                 transitionSpec = { fadeIn(Motion.spec(Motion.SCREEN_MS, reduce)) togetherWith fadeOut(Motion.spec(Motion.SCREEN_MS, reduce)) },
                 label = "reply box",
             ) { elsewhere ->
@@ -355,7 +369,7 @@ fun TaskScreen(taskId: String, state: StationState, station: Station, nav: Navig
                         label = "Reply to this task", voice = voice, micLabel = "Talk (voice typing): speak a reply",
                         onSend = { station.reply(task.id, draft.trim()); draft = "" },
                         // While Claude works, an empty box's button is Stop.
-                        working = task.showsStop,
+                        working = task.showsStop && !task.stopPending,
                         onStop = { cutOff = task.steps.lastOrNull()?.startsWith("…") == true; station.stopTask(task.id) },
                         modifier = Modifier.windowInsetsPadding(WindowInsets.navigationBars.union(WindowInsets.ime))
                             .padding(start = 12.dp, end = 12.dp, top = 10.dp, bottom = 16.dp),
@@ -386,8 +400,9 @@ private fun Steps(task: Task, open: Boolean, toggle: () -> Unit) {
                 if (failed > 0) "$failed not done" else null,
             ).joinToString(", ")
             when {
-                failed > 0 -> Text("✕", style = Type.Label, color = Palette.Red)
-                going > 0 -> Icon(Glyphs.Clock, null, tint = Palette.TextDim, modifier = Modifier.size(18.dp))
+                // A red cross is for work that ended with something not done, not for progress that is still going.
+                failed > 0 && !task.busy -> Text("✕", style = Type.Label, color = Palette.Red)
+                going > 0 || task.busy || failed > 0 -> Icon(Glyphs.Clock, null, tint = Palette.TextDim, modifier = Modifier.size(18.dp))
                 else -> Icon(Glyphs.Check, null, tint = Palette.Green, modifier = Modifier.size(18.dp))
             }
             Text(words, style = Type.Label, color = Palette.Text, modifier = Modifier.weight(1f))
@@ -518,12 +533,13 @@ fun MissingScreen(text: String, nav: Navigator) {
 /** Under the edit box of a task message: what sending it does. */
 const val EDIT_TASK_NOTE = "Your edited message is sent as a new message; earlier replies stay."
 
-/** The note while a conversation goes on elsewhere (the PC window shows its own version of it). */
-const val FOLLOWS_ALONG = "Going on in a terminal or another app right now. Reply there; this view follows along live."
+/** The note while a conversation goes on elsewhere, when this PC can't list its sessions (the PC window shows its own version). */
+const val FOLLOWS_ALONG = "Still running on your PC. This view follows along live."
 
-/** Where a task going on elsewhere runs: "the Claude app", "a terminal", or "another app" when the PC's list doesn't say. */
-fun followedIn(state: StationState, taskId: String): String {
-    val s = state.pcSessions?.firstOrNull { it.task == taskId } ?: return "another app"
+/** Where a task going on elsewhere runs: "the Claude app" or "a terminal"; null when the PC doesn't say. */
+fun followedIn(state: StationState, task: io.github.odnwks.mimir.data.Task): String? {
+    when (task.elsewhereIn) { "app" -> return "the Claude app"; "terminal" -> return "a terminal" }
+    val s = state.pcSessions?.firstOrNull { it.task == task.id } ?: return null
     return if (s.app) "the Claude app" else "a terminal"
 }
 
@@ -531,8 +547,19 @@ fun followedIn(state: StationState, taskId: String): String {
 fun followedElsewhere(state: StationState, taskId: String): Boolean =
     state.pcSessions?.any { it.task == taskId && it.state == io.github.odnwks.mimir.data.PcSessionState.Working && !it.here } == true
 
-/** The words of the green banner over a task that is going on elsewhere. */
-fun followBannerText(where: String) = "Running in $where. You can follow it here."
+/** The one line over a task that is going on elsewhere (a PC that doesn't say where: "your PC"). */
+fun followBannerText(where: String?) =
+    if (where == null) "Still running on your PC. Stop it to carry on here." else "Still running in $where. Stop it to carry on here."
+
+/** The PC's note that a command it started may still run. */
+const val BACKGROUND_NOTE = "Still running something it started in the background."
+
+/** The PC's own notes in a followed session, which the line above and the buttons below replace. */
+fun isFollowNote(text: String) =
+    text == "Running in another app; you can follow it here." || text == "Opened from an earlier session. Send a message to carry on."
+
+/** Under a task whose Stop could not reach the PC (as under a reply that waits). */
+const val STOP_WAITING = "Stop waiting: sends when your PC is back"
 
 const val FOLLOW_STOP = "Stop"
 const val FOLLOW_CARRY_ON = "Carry on here"
@@ -552,7 +579,7 @@ internal fun LongLine(n: LongNotice, onStartFresh: () -> Unit, onDismiss: () -> 
 }
 
 @Composable
-private fun FollowBanner(where: String) {
+private fun FollowBanner(where: String?) {
     Row(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Palette.GreenCard).border(1.dp, Palette.GreenBorder, RoundedCornerShape(14.dp)).padding(horizontal = 12.dp, vertical = 9.dp)
             .semantics(mergeDescendants = true) { liveRegion = androidx.compose.ui.semantics.LiveRegionMode.Polite },
@@ -563,12 +590,12 @@ private fun FollowBanner(where: String) {
     }
 }
 
-/** In place of the reply box while a session from the PC is followed: Stop works, and Carry on here lights up once it stops. */
+/** In place of the reply box while a session from the PC is followed: Stop while it runs, Carry on here (only) once it has stopped. */
 @Composable
 private fun FollowButtons(live: Boolean, onStop: () -> Unit, onCarryOn: () -> Unit, modifier: Modifier) {
-    Row(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Box(Modifier.weight(1f)) { if (live) BigButton("\u25a0 $FOLLOW_STOP", Look.Danger, onStop, height = 48.dp) else BigButton("\u25a0 $FOLLOW_STOP", Look.Outline, {}, height = 48.dp, enabled = false) }
-        Box(Modifier.weight(1f)) { BigButton(FOLLOW_CARRY_ON, if (live) Look.Outline else Look.Primary, onCarryOn, height = 48.dp, enabled = !live) }
+    Row(modifier.fillMaxWidth()) {
+        if (live) BigButton("\u25a0 $FOLLOW_STOP", Look.Danger, onStop, height = 48.dp)
+        else BigButton(FOLLOW_CARRY_ON, Look.Primary, onCarryOn, height = 48.dp)
     }
 }
 

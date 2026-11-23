@@ -206,7 +206,9 @@ class PcSessionsTest {
         compose.setContent { MimirTheme(reduceMotion = true) { AppRoot(base, nav) } }
         compose.waitForIdle()
         nav.open(Screen.Task(id)); compose.waitForIdle()
-        compose.onNodeWithText(FOLLOW_CARRY_ON).assertIsDisplayed()
+        // Still running: the one line and Stop; "Carry on here" is not there at all (not grey).
+        compose.onNodeWithText(followBannerText("the Claude app")).assertIsDisplayed()
+        assertTrue(compose.onAllNodesWithText(FOLLOW_CARRY_ON).fetchSemanticsNodes().isEmpty())
     }
 
     @Test fun aSessionGoingOnElsewhereShowsTheBannerAndStopWorks() {
@@ -217,11 +219,17 @@ class PcSessionsTest {
         compose.setContent { MimirTheme(reduceMotion = true) { AppRoot(base, nav) } }
         compose.waitForIdle()
         nav.open(Screen.Task(id)); compose.waitForIdle()
-        compose.onNodeWithText("Running in the Claude app. You can follow it here.").assertIsDisplayed()
-        compose.onNodeWithText(FOLLOW_CARRY_ON).assertIsDisplayed()
-        assertEquals("Running in a terminal. You can follow it here.", followBannerText("a terminal"))
-        assertEquals("another app", followedIn(base.state.value.copy(pcSessions = emptyList()), id))
+        compose.onNodeWithText("Still running in the Claude app. Stop it to carry on here.").assertIsDisplayed()
+        assertTrue(compose.onAllNodesWithText(FOLLOW_CARRY_ON).fetchSemanticsNodes().isEmpty())
+        assertEquals("Still running in a terminal. Stop it to carry on here.", followBannerText("a terminal"))
+        // An older PC that doesn't say where: "your PC".
+        assertEquals(null, followedIn(base.state.value.copy(pcSessions = emptyList()), base.state.value.task(id)!!))
+        assertEquals("Still running on your PC. Stop it to carry on here.", followBannerText(null))
         compose.onNodeWithText("■ $FOLLOW_STOP").performClick(); compose.waitForIdle()
         assertTrue(base.state.value.task(id)!!.stopped)
+        // Once it has stopped: Carry on here is the one button, and the line is gone.
+        compose.onNodeWithText(FOLLOW_CARRY_ON).assertIsDisplayed()
+        assertTrue(compose.onAllNodesWithText("■ $FOLLOW_STOP").fetchSemanticsNodes().isEmpty())
+        assertTrue(compose.onAllNodesWithText(followBannerText("the Claude app")).fetchSemanticsNodes().isEmpty())
     }
 }

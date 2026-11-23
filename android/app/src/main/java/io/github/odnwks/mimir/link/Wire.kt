@@ -469,6 +469,7 @@ object Wire {
             long = h.optJSONObject("long")?.let { l ->
                 LongNotice(very = l.optBoolean("very"), own = l.optString("why") == "Own", elsewhere = l.optBoolean("elsewhere"), pages = l.optInt("pages"))
             },
+            elsewhereIn = h.optString("elsewhere_in"),
         )
     }
 
@@ -760,6 +761,8 @@ data class LinkTask(
     val liveElsewhere: Boolean = false,
     /** The conversation has run long (the PC's one rule); null: not long, or an older PC that doesn't say. */
     val long: LongNotice? = null,
+    /** Where it goes on, when the PC says: "app" (the Claude app) or "terminal"; "" from an older PC. */
+    val elsewhereIn: String = "",
     /** A Claude Code process of the task runs on the PC: something there can be stopped (true when an older PC doesn't say). */
     val running: Boolean = true,
 )

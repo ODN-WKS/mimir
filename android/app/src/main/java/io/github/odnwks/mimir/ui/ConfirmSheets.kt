@@ -56,6 +56,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.github.odnwks.mimir.data.Mapping
 import io.github.odnwks.mimir.data.Answer
 import io.github.odnwks.mimir.data.Station
 import io.github.odnwks.mimir.data.StationState
@@ -142,36 +143,42 @@ private fun SheetContent(sheet: Sheet, state: StationState, station: Station, na
         is Sheet.TaskOptions -> Menu(sheet.title(state)) {
             val task = state.task(sheet.taskId)
             val id = sheet.taskId
+            // Going on in a terminal or the Claude app: it is not Mímir's task to steer, only to follow, rename or put away.
+            val elsewhere = task != null && !task.stopped && (task.liveElsewhere || followedElsewhere(state, id))
             if (task?.change != null) MenuRow(Glyphs.NewDocument, "Show the change") { nav.open(Screen.Change(id)) }
-            when (task?.status) {
+            // Continue only where there is something to carry on: a finished task has the reply box.
+            if (!elsewhere) when (task?.stateWords) {
                 "Working" -> MenuRow(Glyphs.Pause, "Pause") { station.pauseTask(id); nav.closeSheet() }
-                "Paused", "Stopped", "Done" -> MenuRow(Glyphs.Play, "Continue") { station.continueTask(id); nav.closeSheet() }
+                "Paused", "Stopped", "Stopped unexpectedly" -> MenuRow(Glyphs.Play, "Continue") { station.continueTask(id); nav.closeSheet() }
                 else -> {}
             }
             MenuRow(Glyphs.Steps, "Rename…") { nav.openSheet(Sheet.RenameTask(id)) }
-            // A task moves with its whole conversation, but never while Claude works on it.
-            if (task?.status == "Working") {
-                Row(Modifier.fillMaxWidth().heightIn(min = 52.dp).padding(horizontal = 12.dp).semantics(mergeDescendants = true) {},
-                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                    Icon(Glyphs.Move, null, tint = Palette.TextDim, modifier = Modifier.size(22.dp))
-                    Text("Move to another project (when it stops)", style = Type.BodyTight, color = Palette.TextDim, modifier = Modifier.weight(1f))
+            if (!elsewhere) {
+                // A task moves with its whole conversation, but never while Claude works on it.
+                if (task?.status == "Working") {
+                    Row(Modifier.fillMaxWidth().heightIn(min = 52.dp).padding(horizontal = 12.dp).semantics(mergeDescendants = true) {},
+                        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                        Icon(Glyphs.Move, null, tint = Palette.TextDim, modifier = Modifier.size(22.dp))
+                        Text("Move to another project (when it stops)", style = Type.BodyTight, color = Palette.TextDim, modifier = Modifier.weight(1f))
+                    }
+                } else MenuRow(Glyphs.Move, "Move to another project…") { nav.openSheet(Sheet.ProjectPicker(task?.project.orEmpty())) }
+                MenuRow(Glyphs.Models, "Change the model…") { nav.openSheet(Sheet.TaskModel(id)) }
+                // The mode in use carries a tick.
+                MenuRow(Glyphs.Steps, "Ask me first before changes", checked = task?.mode == "Ask") { station.setTaskPlan(id, false); nav.closeSheet() }
+                MenuRow(Glyphs.Steps, "Plan first, change nothing yet", checked = task?.plan == true) { station.setTaskPlan(id, true); nav.closeSheet() }
+                // YOLO: never in Whisper; a full warning every time, then the phone's unlock.
+                if (task?.whisper != true) MenuRow(Glyphs.Steps, "Go ahead without asking (this task)…", checked = task?.yolo == true) {
+                    if (task?.yolo != true) nav.openSheet(Sheet.Yolo(id)) else nav.closeSheet()
                 }
-            } else MenuRow(Glyphs.Move, "Move to another project…") { nav.openSheet(Sheet.ProjectPicker(task?.project.orEmpty())) }
-            MenuRow(Glyphs.Models, "Change the model…") { nav.openSheet(Sheet.TaskModel(id)) }
-            // The mode in use carries a tick.
-            MenuRow(Glyphs.Steps, "Ask me first before changes", checked = task?.mode == "Ask") { station.setTaskPlan(id, false); nav.closeSheet() }
-            MenuRow(Glyphs.Steps, "Plan first, change nothing yet", checked = task?.plan == true) { station.setTaskPlan(id, true); nav.closeSheet() }
-            // YOLO: never in Whisper; a full warning every time, then the phone's unlock.
-            if (task?.whisper != true) MenuRow(Glyphs.Steps, "Go ahead without asking (this task)\u00A0…", checked = task?.yolo == true) {
-                if (task?.yolo != true) nav.openSheet(Sheet.Yolo(id)) else nav.closeSheet()
+                MenuRow(Glyphs.Shield, "Always allowed in this task…") { nav.openSheet(Sheet.AlwaysAllowed(id)) }
             }
-            MenuRow(Glyphs.Shield, "Always allowed in this task…") { nav.openSheet(Sheet.AlwaysAllowed(id)) }
             MenuRow(Glyphs.Folder, "Archive") {
                 station.archiveTask(id); nav.closeSheet(); nav.back()
                 undo(Undoable("Archived ${task?.title ?: "the task"}", undo = { station.unarchiveTask(id) }))
             }
-            if (task?.stopped != true) MenuRow(Glyphs.Stop, "Stop this task…", Palette.Red) { nav.openSheet(Sheet.StopTask(id)) }
-            PrivacyLine("Your PC does this task. This phone and your PC talk privately.")
+            // Stop is for work that runs: the Stop button is on the task itself while it does.
+            if (task != null && task.showsStop && !task.stopPending && !elsewhere) MenuRow(Glyphs.Stop, "Stop this task…", Palette.Red) { nav.openSheet(Sheet.StopTask(id)) }
+            if (!elsewhere) PrivacyLine("Your PC does this task. This phone and your PC talk privately.")
         }
         is Sheet.ChatOptions -> Menu(sheet.title(state)) {
             // Only things about this chat (the voice settings are in Settings › Voice).
@@ -231,8 +238,11 @@ private fun SheetContent(sheet: Sheet, state: StationState, station: Station, na
             }
         }
         is Sheet.TaskModel -> Menu(sheet.title(state)) {
+            val now = state.task(sheet.taskId)?.model.orEmpty()
             (state.models.claude + state.models.local).forEach { m ->
-                MenuRow(Glyphs.Models, m.name) { station.setTaskModel(sheet.taskId, m.id); nav.closeSheet() }
+                val current = now == Mapping.modelName(m.id) || now == m.name || now == m.id.removePrefix("ollama:") + " (free)" || (m.id == "auto" && now == Mapping.modelName(null))
+                // Online ones go to Anthropic: marked, so it is plain which ones leave the PC.
+                MenuRow(Glyphs.Models, plainModelName(m.name), checked = current, note = if (m.free) "On your PC" else "Online") { station.setTaskModel(sheet.taskId, m.id); nav.closeSheet() }
             }
         }
         Sheet.IncognitoOptions -> Menu(sheet.title(state)) {
@@ -421,7 +431,7 @@ private fun Menu(title: String, rows: @Composable ColumnScope.() -> Unit) {
 }
 
 @Composable
-private fun MenuRow(icon: ImageVector, text: String, color: Color = Palette.Text, checked: Boolean? = null, onClick: () -> Unit) {
+private fun MenuRow(icon: ImageVector, text: String, color: Color = Palette.Text, checked: Boolean? = null, note: String? = null, onClick: () -> Unit) {
     Row(
         Modifier.fillMaxWidth().heightIn(min = 52.dp).clip(RoundedCornerShape(12.dp))
             .then(
@@ -432,7 +442,10 @@ private fun MenuRow(icon: ImageVector, text: String, color: Color = Palette.Text
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         Icon(icon, null, tint = color, modifier = Modifier.size(22.dp))
-        Text(text, style = Type.BodyTight, color = color, modifier = Modifier.weight(1f))
+        Column(Modifier.weight(1f).padding(vertical = if (note != null) 6.dp else 0.dp)) {
+            Text(text, style = Type.BodyTight, color = color)
+            if (note != null) Text(note, style = Type.Small, color = Palette.TextDim)
+        }
         if (checked == true) Icon(Glyphs.Check, "In use", tint = Palette.BlueText, modifier = Modifier.size(20.dp))
     }
 }
@@ -498,7 +511,7 @@ private fun Ask(
 }
 
 /** What YOLO lets Claude do, shown in full every time before it turns on. */
-const val YOLO_WARNING = "With Go ahead without asking, Mímir never asks first. On your PC it can change and delete files, run any command, " +
-    "use the internet and push code, all without asking. Anyone holding this phone unlocked could do the same. " +
-    "It is for this task only, and goes back to Ask me first after 5 hours of work or 24 hours idle. " +
-    "Your PC must allow this for your phone, in Mímir › Settings › Phones."
+const val YOLO_WARNING = "Mímir will not ask first. On your PC it can change and delete files, run programs and use the internet, all without asking.\n\n" +
+    "Anyone holding this phone unlocked could do the same.\n\n" +
+    "This task only. It goes back to Ask me first after 5 hours of work or 24 hours idle.\n\n" +
+    "Your PC must allow it: Mímir › Settings › Phones."

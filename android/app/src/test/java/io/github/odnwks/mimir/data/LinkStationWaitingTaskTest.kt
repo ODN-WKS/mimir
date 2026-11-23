@@ -253,10 +253,10 @@ class LinkStationWaitingTaskTest {
         val link = FakeLink(); val st = away(link, "ollama:tiny")
         st.startTask("secret", "Garden planner", incognito = true)
         st.stopTask("t1")
-        assertTrue(until { notes(st).any { it.contains("Stop goes out") } })
+        assertTrue(until { st.stopIsWaiting("t1") })
         link.ready()
         assertTrue(until { link.callsOf("{\"Stop\"").size == 1 })
-        assertTrue("the Stop line goes", until { notes(st).none { it.contains("Stop goes out") } })
+        assertTrue("the Stop line goes", until { !st.stopIsWaiting("t1") })
         assertTrue("the Whisper line stays", notes(st).any { it.contains("can't wait") })
         st.close()
     }
@@ -264,10 +264,9 @@ class LinkStationWaitingTaskTest {
     @Test fun aPcAwayLineGoesByItselfWhenTheLinkIsBack() {
         val link = FakeLink(); val st = away(link)
         st.stopTask("t1")
-        assertTrue(until { notes(st).any { it.startsWith("Your PC is away") } })
+        assertTrue(until { st.stopIsWaiting("t1") })
         link.ready()
-        assertTrue("the line is gone", until { notes(st).none { it.startsWith("Your PC is away") } })
-        assertFalse(notes(st).any { it.startsWith("Your PC is away") })
+        assertTrue("the line is gone", until { !st.stopIsWaiting("t1") })
         st.close()
     }
 }

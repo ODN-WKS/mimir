@@ -155,7 +155,7 @@ fun StatusScreen(state: StationState, station: io.github.odnwks.mimir.data.Stati
                 // Every task, with search and Archived, one tap from here.
                 LinkText("All tasks", { nav.open(Screen.AllTasks()) })
             }
-            val doing = state.tasks.filter { it.stateWords == "Working" || it.stateWords == "Starting" || it.stateWords == "Needs you" || it.stateWords == "Waiting for you" }
+            val doing = state.tasks.filter { it.stateWords == "Working" || it.stateWords == "Starting" || it.stateWords == "Needs you" }
             if (doing.isEmpty()) Text(
                 if (state.pcAway) "Nothing known (as of when your PC was last reached)." else "Nothing right now.",
                 style = Type.Label, color = Palette.TextDim, modifier = Modifier.padding(horizontal = 4.dp),
@@ -195,7 +195,7 @@ fun StatusScreen(state: StationState, station: io.github.odnwks.mimir.data.Stati
 /** A task the PC is on: its title and, under it, the project and what it's doing (waiting ones in amber). */
 @Composable
 private fun DoingRow(t: io.github.odnwks.mimir.data.Task, open: () -> Unit) {
-    val waiting = t.stateWords == "Needs you" || t.stateWords == "Waiting for you"
+    val waiting = t.stateWords == "Needs you"
     val doing = if (waiting) "waiting for you" else t.steps.lastOrNull()?.trimStart('✓', '✕', '…', ' ')?.replaceFirstChar { it.lowercase() }
         ?: if (t.stateWords == "Starting") "starting" else "working"
     Row(
@@ -285,7 +285,7 @@ fun Gauge(state: CheckState, fraction: Float, size: androidx.compose.ui.unit.Dp 
 fun AllTasksScreen(state: StationState, station: io.github.odnwks.mimir.data.Station, nav: Navigator, archivedFirst: Boolean = false) {
     var query by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf("") }
     var only by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf(if (archivedFirst) "Archived" else "All") }
-    val order = listOf("Needs you", "Waiting for you", "Working", "Starting", "Live", "Paused", "Stopped")
+    val order = listOf("Needs you", "Working", "Starting", "Live", "Paused", "Stopped unexpectedly", "Stopped")
     val archived = only == "Archived"
     val sorted = (if (archived) state.archived else state.tasks).sortedWith(
         compareBy<io.github.odnwks.mimir.data.Task> { order.indexOf(it.stateWords).let { i -> if (i < 0) order.size else i } }
@@ -339,4 +339,4 @@ fun AllTasksScreen(state: StationState, station: io.github.odnwks.mimir.data.Sta
 
 /** Whether a task in [words] (its state) shows under the All tasks filter [only]. */
 fun taskMatchesFilter(words: String, only: String): Boolean =
-    only == "All" || words == only || (only == "Working" && words == "Starting") || (only == "Needs you" && words == "Waiting for you")
+    only == "All" || words == only || (only == "Working" && words == "Starting") || (only == "Stopped" && words == "Stopped unexpectedly")

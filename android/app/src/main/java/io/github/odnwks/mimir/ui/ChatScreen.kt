@@ -357,6 +357,7 @@ fun TaskLink(text: String, stateWords: String, open: () -> Unit) {
 /** A state's tag colours, the same on Chat, Status and a task. */
 fun stateColours(state: String) = when (state) {
     "Needs you", "Waiting for you" -> Palette.Ground to Palette.AmberText
+    "Stopped unexpectedly" -> Palette.AmberInk to Palette.Amber
     "Working", "Starting", "Live" -> Palette.Ground to Palette.BlueLight
     "Done" -> Palette.Ground to Palette.GreenText
     else -> Palette.Text to Palette.Track

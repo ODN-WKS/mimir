@@ -52,10 +52,10 @@ class U1StopStatusNewProjectTest {
     }
 
     @Test fun aTaskThatEndedWithAQuestionOrNextStepsIsWaitingNotDone() {
-        assertEquals("Waiting for you", finished("I fixed the first test. Want me to go on with the other two?").stateWords)
-        assertEquals("Waiting for you", finished("Done with step one.\n\nNext steps:\n1. Fix the rest\n2. Run everything").stateWords)
-        assertEquals("Waiting for you", finished("Should I open the change for review? **Tell me.**").stateWords)
-        assertEquals("Waiting for you", finished("Shall I carry on?").stateLine)
+        assertEquals("Needs you", finished("I fixed the first test. Want me to go on with the other two?").stateWords)
+        assertEquals("Needs you", finished("Done with step one.\n\nNext steps:\n1. Fix the rest\n2. Run everything").stateWords)
+        assertEquals("Needs you", finished("Should I open the change for review? **Tell me.**").stateWords)
+        assertEquals("Needs you", finished("Shall I carry on?").stateLine)
     }
 
     @Test fun aFinishedTaskIsStillDone() {
@@ -66,7 +66,8 @@ class U1StopStatusNewProjectTest {
     }
 
     @Test fun waitingForYouIsAmberLikeNeedsYou() {
-        assertEquals(stateColours("Needs you"), stateColours("Waiting for you"))
+        // One name for the state: the old second name no longer comes from a task.
+        assertEquals("Needs you", finished("Shall I go on?").stateWords)
     }
 
     @Test fun theSideMenuHasNewProjectAsTheLastRowUnderProjects() {
@@ -99,18 +100,17 @@ class U1StopStatusNewProjectTest {
         assertEquals("Done", finished("Fixed the bug. Let me know if you need anything else.").stateWords)
         assertEquals("Done", finished("All saved.\n\nAnything else?").stateWords)
         assertEquals("Done", finished("Fixed it.\n\n```\nwhy?\n```").stateWords)
-        assertEquals("Waiting for you", finished("Want me to go on? Let me know.").stateWords)
-        assertEquals("Waiting for you", finished("Soll ich weitermachen\u2753\u3000Was meinst du\uff1f").stateWords)
-        assertEquals("Waiting for you", finished("Continue now?!").stateWords)
-        assertEquals("Waiting for you", finished("\u0647\u0644 \u0623\u0643\u0645\u0644\u061f").stateWords)
-        assertEquals("Waiting for you", finished("Done with step one.\n\nNext steps:\n1. Fix the rest").stateWords)
+        assertEquals("Needs you", finished("Want me to go on? Let me know.").stateWords)
+        assertEquals("Needs you", finished("Soll ich weitermachen\u2753\u3000Was meinst du\uff1f").stateWords)
+        assertEquals("Needs you", finished("Continue now?!").stateWords)
+        assertEquals("Needs you", finished("\u0647\u0644 \u0623\u0643\u0645\u0644\u061f").stateWords)
+        assertEquals("Needs you", finished("Done with step one.\n\nNext steps:\n1. Fix the rest").stateWords)
     }
 
-    @Test fun waitingForYouIsFoundUnderTheNeedsYouFilter() {
-        assertEquals(true, taskMatchesFilter("Waiting for you", "Needs you"))
+    @Test fun aTaskThatEndedWithAQuestionIsFoundUnderTheNeedsYouFilter() {
         assertEquals(true, taskMatchesFilter("Needs you", "Needs you"))
-        assertEquals(false, taskMatchesFilter("Waiting for you", "Done"))
+        assertEquals(false, taskMatchesFilter("Needs you", "Done"))
         assertEquals(true, taskMatchesFilter("Starting", "Working"))
-        assertEquals(true, taskMatchesFilter("Waiting for you", "All"))
+        assertEquals(true, taskMatchesFilter("Needs you", "All"))
     }
 }

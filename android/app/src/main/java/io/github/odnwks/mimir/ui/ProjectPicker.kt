@@ -56,7 +56,9 @@ private const val SEARCH_FROM = 7
 fun ProjectPicker(current: String, state: StationState, station: Station, nav: Navigator, newProject: Boolean = false, back: io.github.odnwks.mimir.nav.Sheet? = null, open: Boolean = false, justChat: Boolean = false) {
     val standIn = LocalStandIn.current
     var query by rememberSaveable { mutableStateOf("") }
-    var naming by rememberSaveable { mutableStateOf(newProject) }
+    // Moving a task: the project it is in is not a place to move to.
+    val moving = current.isNotBlank() && back == null && !open && !justChat
+    var naming by rememberSaveable { mutableStateOf(newProject || (moving && state.pickable.none { it != current })) }
     var name by rememberSaveable { mutableStateOf("") }
     var working by rememberSaveable { mutableStateOf(false) }
     var problem by rememberSaveable { mutableStateOf<String?>(null) }
@@ -73,7 +75,7 @@ fun ProjectPicker(current: String, state: StationState, station: Station, nav: N
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { SheetHandle() }
-        SectionTitle("Project", style = Type.Section.copy(fontWeight = FontWeight.Bold))
+        SectionTitle(if (moving) "Move to another project" else "Project", style = Type.Section.copy(fontWeight = FontWeight.Bold))
 
         if (!state.paired) {
             Text(
@@ -101,13 +103,13 @@ fun ProjectPicker(current: String, state: StationState, station: Station, nav: N
             RadioMark(false)
             Text("Just chat", style = Type.BodyTight.copy(fontWeight = FontWeight.SemiBold), color = Palette.Text, modifier = Modifier.weight(1f))
         }
-        val all = state.pickable
+        val all = if (moving) state.pickable.filter { it != current } else state.pickable
         if (all.size >= SEARCH_FROM) {
             MessageBox(query, { query = it }, "Search projects", "Search projects", Modifier.fillMaxWidth())
         }
         val shown = all.filter { query.isBlank() || it.contains(query.trim(), ignoreCase = true) }
         if (all.isEmpty()) {
-            Text("No projects yet. Make one below.", style = Type.Label, color = Palette.TextDim)
+            Text(if (moving) "No other project yet. Make one below." else "No projects yet. Make one below.", style = Type.Label, color = Palette.TextDim)
         } else if (shown.isEmpty()) {
             Text("No project matches \"${query.trim()}\".", style = Type.Label, color = Palette.TextDim)
         }
@@ -123,7 +125,8 @@ fun ProjectPicker(current: String, state: StationState, station: Station, nav: N
         }
 
         // "New project…": a name, then the PC makes the folder beside the others.
-        Row(
+        // The row and the form it opens are not shown together.
+        if (!naming) Row(
             Modifier.fillMaxWidth().heightIn(min = 48.dp)
                 .clickable(role = Role.Button, enabled = !naming) { naming = true; problem = null }
                 .padding(horizontal = 4.dp),
