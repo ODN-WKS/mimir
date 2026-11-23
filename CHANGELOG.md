@@ -2,6 +2,9 @@
 
 Every Mímir version, newest first. Full notes for each are in `docs/release-notes/`.
 
+## 0.07
+True screens and quiet notifications: 67 fixes from a screen-by-screen hunt plus three owner finds; notifications you control (one alert per task, nothing from other apps' sessions unless they need you); a plain notice when a conversation runs long, with Start fresh with a summary; sessions running elsewhere say where and how to carry on; one status everywhere. See `docs/release-notes/0.07.md`.
+
 ## 0.06
 Your PC's own model first and Claude only an option; literal answers by default; hidden details removed from documents, recordings and zips, and files that can't be cleaned never go online; see what runs on your PC from the phone and stop it; Copy, Listen, Share, Try again and Edit in phone tasks; tables and code in answers; calmer, plainer screens on both sides. See `docs/release-notes/0.06.md`.
 
