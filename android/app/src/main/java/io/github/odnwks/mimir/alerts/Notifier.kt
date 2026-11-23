@@ -171,17 +171,17 @@ object Notifier {
         // Lock Mímir on: nothing about the task on the lock screen.
         if (locked) return io.github.odnwks.mimir.ui.AppLock.lockedNote()
         val kind = Mapping.kind(i.kind)
-        // PHD-26: lock-screen format "Mímir — [friendly action]", never raw project/kind data.
+        // PHD-26: lock-screen format "Mímir: [friendly action]", never raw project/kind data.
         val action = when (kind) {
-            NeedsKind.Permission -> "waiting for you"
+            NeedsKind.Permission -> "Waiting for you"
             NeedsKind.Question, NeedsKind.Choose -> "A question for you"
-            NeedsKind.Release -> "ready to release"
-            NeedsKind.CheckFailing -> "a check started failing"
-            NeedsKind.CheckFix -> "a fix to check"
-            NeedsKind.Approve -> "waiting for your OK"
-            null -> "waiting for you"
+            NeedsKind.Release -> "Ready to release"
+            NeedsKind.CheckFailing -> "A check started failing"
+            NeedsKind.CheckFix -> "A fix to check"
+            NeedsKind.Approve -> "Waiting for your OK"
+            null -> "Waiting for you"
         }
-        return "Mímir — $action" to "Open the app to answer"
+        return "Mímir: $action" to "Open the app to answer"
     }
 
     private fun post(context: Context, i: LItem) {

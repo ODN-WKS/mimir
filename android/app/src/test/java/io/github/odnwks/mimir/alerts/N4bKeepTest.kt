@@ -76,7 +76,7 @@ class N4bKeepTest {
             val (title, body) = FinishedNotes.words(how)
             for (secret in listOf("task-a", "Garden planner", "/p/")) assertFalse(title + body, (title + body).contains(secret))
         }
-        assertEquals("Mímir — a task finished", FinishedNotes.words("Ok").first)
-        assertEquals("Mímir — a task needs a look", FinishedNotes.words("Failed").first)
+        assertEquals("Mímir: A task finished", FinishedNotes.words("Ok").first)
+        assertEquals("Mímir: A task needs a look", FinishedNotes.words("Failed").first)
     }
 }

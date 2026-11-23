@@ -27,6 +27,6 @@ object FinishedNotes {
 
     /** The generic words: title and body. */
     fun words(how: String): Pair<String, String> =
-        if (how == "Failed") "Mímir — a task needs a look" to "Open the app to see it"
-        else "Mímir — a task finished" to "Open the app to see it"
+        if (how == "Failed") "Mímir: A task needs a look" to "Open the app to see it"
+        else "Mímir: A task finished" to "Open the app to see it"
 }
