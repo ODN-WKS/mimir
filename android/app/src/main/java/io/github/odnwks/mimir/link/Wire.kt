@@ -9,6 +9,9 @@ import org.json.JSONObject
  * Rust side writes, so the two sides can't drift unnoticed.
  */
 object Wire {
+    /** The place of a task message in the PC's list: ids are "<task>-<place>" (null for a live or waiting one). */
+    fun entryIndex(task: String, messageId: String): Int? = messageId.removePrefix("$task-").takeIf { it != messageId }?.toIntOrNull()
+
     /** crates/proto's `PROTO`. */
     const val PROTO = 2
 
@@ -211,6 +214,8 @@ object Wire {
     fun moveTo(task: String, project: String): String = obj("MoveTo") { put("task", task); put("project", project) }
     fun undoIdea(project: String, idea: String): String = obj("UndoIdea") { put("project", project); put("idea", idea) }
     fun stop(task: String): String = obj("Stop") { put("task", task) }
+    /** Back to just before the owner's message at [entry] (the PC puts the files back as they were). */
+    fun undo(task: String, entry: Int): String = obj("Undo") { put("task", task); put("entry", entry) }
     fun pause(task: String): String = obj("Pause") { put("task", task) }
     fun continueTask(task: String): String = obj("Continue") { put("task", task) }
     fun rename(task: String, title: String): String = obj("Rename") { put("task", task); put("title", title) }

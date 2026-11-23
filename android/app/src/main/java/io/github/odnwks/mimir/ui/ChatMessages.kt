@@ -106,6 +106,8 @@ fun OwnMessage(
     under: (@Composable () -> Unit)? = null,
     /** Edit and send again from here (null: this message can't be edited now). Gets the new words. */
     onEdit: ((String) -> Unit)? = null,
+    /** A line under the edit box (what sending it will do). */
+    editNote: String? = null,
 ) {
     var editing by rememberSaveable(id) { mutableStateOf(false) }
     var draft by rememberSaveable(id) { mutableStateOf(text) }
@@ -114,6 +116,7 @@ fun OwnMessage(
             draft, { draft = it }, bubble,
             onCancel = { editing = false; draft = text },
             onSend = { editing = false; onEdit(draft) },
+            note = editNote,
         ) else MessageMenuHost(plain = text, id = id, lookUp = null, onEdit = onEdit?.let { { draft = text; editing = true } }) { onHold ->
             ChatText {
                 Text(
@@ -135,7 +138,7 @@ fun OwnMessage(
 
 /** Editing one of the owner's messages in its own place: a box in the bubble's colour, with Cancel and Send. */
 @Composable
-fun EditBox(value: String, onChange: (String) -> Unit, bubble: Color, onCancel: () -> Unit, onSend: () -> Unit) {
+fun EditBox(value: String, onChange: (String) -> Unit, bubble: Color, onCancel: () -> Unit, onSend: () -> Unit, note: String? = null) {
     val focus = remember { androidx.compose.ui.focus.FocusRequester() }
     LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
     // QA2 #29: the box stays in view above the keyboard: when the keyboard opens or the text grows, scroll it in.
@@ -158,6 +161,7 @@ fun EditBox(value: String, onChange: (String) -> Unit, bubble: Color, onCancel: 
             cursorBrush = androidx.compose.ui.graphics.SolidColor(Palette.Text),
             modifier = Modifier.fillMaxWidth().focusRequester(focus).testTag("edit-box"),
         )
+        if (note != null) Text(note, style = Type.Small, color = Palette.TextSoft, modifier = Modifier.testTag("edit-note"))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) {
             QuietButton("Cancel", "Cancel editing", onClick = onCancel)
             Box(
@@ -190,6 +194,8 @@ fun Answer(
     pc: (() -> Unit)? = null,
     /** Who answered and why, when it was not the usual model: one dim line (null: none). */
     note: String? = null,
+    /** Show Share under the answer too (tasks do; chats keep it in the hold menu). */
+    share: Boolean = false,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -207,6 +213,7 @@ fun Answer(
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), itemVerticalAlignment = Alignment.CenterVertically) {
                 ListenButton(id, plain, pc)
                 CopyButton(plain)
+                if (share) ShareButton(plain)
                 if (onTryAgain != null) QuietButton(TRY_AGAIN, "Ask again: try this answer again", onClick = onTryAgain)
             }
         }
@@ -258,6 +265,22 @@ fun CopyButton(plain: String) {
     QuietButton(COPY, "Copy this answer") { clip.setText(AnnotatedString(plain)) }
 }
 
+/** Opens the phone's share sheet with the words as plain text. */
+fun sharePlain(ctx: android.content.Context, plain: String) {
+    runCatching {
+        ctx.startActivity(
+            Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, plain), SHARE)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        )
+    }
+}
+
+@Composable
+fun ShareButton(plain: String) {
+    val ctx = LocalContext.current
+    QuietButton(SHARE, "Share this answer") { sharePlain(ctx, plain) }
+}
+
 /** What a message's long press holds: Copy, Select text, Share, Listen (and Look it up on the newest answer). */
 @OptIn(ExperimentalFoundationApi::class)
 fun Modifier.holdMenu(open: () -> Unit, label: String = "More: edit, copy, select, share or listen"): Modifier =
@@ -287,12 +310,7 @@ fun MessageMenuHost(
             DropdownMenuItem({ Text(SELECT_TEXT) }, { menu = false; selecting = true })
             DropdownMenuItem({ Text(SHARE) }, {
                 menu = false
-                runCatching {
-                    ctx.startActivity(
-                        Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, plain), SHARE)
-                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-                    )
-                }
+                sharePlain(ctx, plain)
             })
             DropdownMenuItem({ Text(if (reading == id) "Stop reading" else LISTEN_ITEM) }, {
                 menu = false

@@ -971,6 +971,17 @@ class LinkStation(
         if (now) Thread({ flushReplies(); publish() }, "mimir-reply").start()
     }
 
+    /** Edit: the task goes back to that message (the PC's Undo), then the edited words go out as a normal reply. */
+    override fun editTaskMessage(taskId: String, messageId: String, text: String) {
+        if (text.isBlank()) return
+        val entry = Wire.entryIndex(taskId, messageId) ?: return reply(taskId, text)
+        val sent = call(Wire.undo(taskId, entry)) { _, err ->
+            if (err != null) note(err)
+            reply(taskId, text)
+        }
+        if (!sent) note("Your PC is away: edit this message again when it's back.")
+    }
+
     /** Sends the task replies waiting on this phone, oldest first. */
     private fun flushReplies() {
         val waiting = synchronized(lock) { data.replies.takeIf { connected } } ?: return

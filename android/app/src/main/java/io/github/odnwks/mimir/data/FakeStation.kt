@@ -111,12 +111,23 @@ class FakeStation(initial: StationState = ExampleData.awake()) : Station {
     override fun reply(taskId: String, text: String) {
         val clean = text.trim()
         if (clean.isEmpty()) return
+        replied += clean
         flow.update { s ->
             s.copy(tasks = s.tasks.map { t ->
                 if (t.id == taskId) t.copy(messages = t.messages + TaskMessage(newId("r"), fromClaude = false, text = clean)) else t
             })
         }
     }
+
+    /** Edits made on a task: (task, message, new words). Checks read this. */
+    val edited = mutableListOf<Triple<String, String, String>>()
+    override fun editTaskMessage(taskId: String, messageId: String, text: String) {
+        edited += Triple(taskId, messageId, text)
+        reply(taskId, text)
+    }
+
+    /** Words sent as replies in a task (checks read this). */
+    val replied = mutableListOf<String>()
 
     override fun answer(itemId: String, answer: Answer) {
         if (answer == Answer.Opened || answer == Answer.AskClaudeToFix) return

@@ -186,21 +186,41 @@ fun TaskScreen(taskId: String, state: StationState, station: Station, nav: Navig
                     )
                     BigButton(if (task.outOfRoom) "Continue online" else "Answer online instead", Look.Outline, { station.continueOnClaude(task.id) }, height = 48.dp)
                 }
+                // The chat's own parts: an answer with Listen, Copy, Share and Try again, and the owner's
+                // message with its hold menu and Edit. Both only once the task is quiet.
+                val quiet = !task.showsStop && !task.busy
+                val lastAnswer = task.messages.lastOrNull { it.fromClaude }
+                val lastOwn = task.messages.lastOrNull { !it.fromClaude && !it.waiting }
                 messages.forEach { m ->
-                    // Read aloud: the PC's voice while the PC is there, otherwise the phone's own.
-                    if (m.fromClaude) TheirBubble(
-                        "Mímir", m.playLabel.ifEmpty { "Play the reply" },
-                        if (state.pc.online) ({ station.playMessage(task.id, m.id) }) else null,
-                        readText = markdownPlain(m.text), readId = "task-${task.id}-${m.id}",
-                    ) {
-                        MarkdownText(m.text, style = Type.Body, color = Palette.Text)
-                    } else if (m.waiting) MineBubble(m.text, dashed = true) {
-                        StatusWords(
-                            Glyphs.Clock,
-                            if (!state.phoneOnline) "This phone is offline: sends when it's back" else "Waiting: sends when your PC is back",
-                            Palette.TextDim,
-                        )
-                    } else MineBubble(m.text)
+                    if (m.fromClaude) {
+                        val writing = m.playLabel.isEmpty()
+                        val again = lastOwn?.takeIf { quiet && !writing && m.id == lastAnswer?.id && task.messages.indexOf(it) < task.messages.indexOf(m) }
+                        Answer(
+                            markdownPlain(m.text), "task-${task.id}-${m.id}",
+                            dim = writing,
+                            // Listen: the PC's voice while the PC is there, otherwise the phone's own.
+                            pc = if (state.pc.online) ({ station.playMessage(task.id, m.id) }) else null,
+                            onTryAgain = again?.let { o -> { station.reply(task.id, o.text) } },
+                            share = true,
+                        ) {
+                            MarkdownText(m.text, style = ChatLook.MessageText, color = Palette.Text)
+                        }
+                    } else if (m.waiting) OwnMessage(
+                        m.text, bubble = Palette.QueuedBubble, dashed = true, id = "task-${task.id}-${m.id}",
+                        under = {
+                            StatusWords(
+                                Glyphs.Clock,
+                                if (!state.phoneOnline) "This phone is offline: sends when it's back" else "Waiting: sends when your PC is back",
+                                Palette.TextDim,
+                            )
+                        },
+                    ) else OwnMessage(
+                        m.text, id = "task-${task.id}-${m.id}",
+                        onEdit = if (quiet && m.id == lastOwn?.id && io.github.odnwks.mimir.link.Wire.entryIndex(task.id, m.id) != null) {
+                            { words -> station.editTaskMessage(task.id, m.id, words.trim()) }
+                        } else null,
+                        editNote = EDIT_TASK_NOTE,
+                    )
                 }
                 // A task that hasn't answered yet says so, instead of a blank page.
                 if (task.stateWords == "Starting") Panel(background = Palette.Bar) {
@@ -468,6 +488,9 @@ fun MissingScreen(text: String, nav: Navigator) {
         Box(Modifier.weight(1f))
     }
 }
+
+/** Under the edit box of a task message: what sending it does. */
+const val EDIT_TASK_NOTE = "Sending puts changed files back as they were, then the task carries on with your new words."
 
 /** The note while a conversation goes on elsewhere (the PC window shows its own version of it). */
 const val FOLLOWS_ALONG = "Going on in a terminal or another app right now. Reply there; this view follows along live."
