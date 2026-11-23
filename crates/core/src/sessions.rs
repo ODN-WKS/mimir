@@ -42,8 +42,12 @@ pub struct PastSession {
 enum UserLine {
     /// The person typed it.
     Person(String),
-    /// A helper or background command finished (its name, when it has one).
+    /// A helper finished (its name, when it has one).
     HelperFinished(String),
+    /// A helper did not finish: it failed or was stopped.
+    HelperStopped,
+    /// A background command ended (true: it finished; false: it did not).
+    CommandEnded(bool),
     /// A helper reported back (its words, tags removed).
     HelperReported(String),
     /// The person stopped the work at this point.
@@ -53,6 +57,10 @@ enum UserLine {
     /// Bookkeeping that is never shown.
     Hidden,
 }
+
+/// The line a session opened from an earlier time ends with. The window
+/// hides it while the session still runs elsewhere (nothing can be sent yet).
+pub const OPENED_NOTE: &str = "Opened from an earlier session. Send a message to carry on.";
 
 fn between<'a>(text: &'a str, open: &str, close: &str) -> Option<&'a str> {
     let a = text.find(open)? + open.len();
@@ -98,7 +106,16 @@ fn classify(e: &Value) -> Option<UserLine> {
     let raw = text.trim();
     let helper_done = |raw: &str| {
         let summary = between(raw, "<summary>", "</summary>").unwrap_or("");
-        UserLine::HelperFinished(helper_name(summary))
+        // Only a helper that finished counts as finished; a failed one says
+        // so, and a background command is not a helper.
+        let ok = between(raw, "<status>", "</status>").is_none_or(|s| s == "completed");
+        if summary.starts_with("Background command") {
+            UserLine::CommandEnded(ok)
+        } else if ok {
+            UserLine::HelperFinished(helper_name(summary))
+        } else {
+            UserLine::HelperStopped
+        }
     };
     let helper_said = |raw: &str| {
         let body = raw
@@ -1004,6 +1021,18 @@ fn add_line(t: &mut Task, line: &str) {
             t.add_helper_finished(&name);
             return;
         }
+        Some(UserLine::HelperStopped) => {
+            t.add_note("A helper stopped");
+            return;
+        }
+        Some(UserLine::CommandEnded(ok)) => {
+            t.add_note(if ok {
+                "A background command finished"
+            } else {
+                "A background command stopped"
+            });
+            return;
+        }
         Some(UserLine::HelperReported(_)) => {
             t.add_note("A helper reported back");
             return;
@@ -1396,7 +1425,7 @@ pub fn to_task(s: &PastSession, project: &Path, task_id: String) -> std::io::Res
     }
     t.session_id = Some(s.id.clone());
     t.status = Status::Done;
-    t.add_note("Opened from an earlier session. Send a message to carry on.");
+    t.add_note(OPENED_NOTE);
     Ok(t)
 }
 
@@ -1681,6 +1710,51 @@ mod tests {
         let out = shown(&[user_line("human", false, text), user_line("", false, text)]);
         assert_eq!(out.len(), 2);
         assert!(out.iter().all(|e| e.starts_with("You(")));
+    }
+
+    #[test]
+    fn only_helpers_that_finished_are_counted_as_finished() {
+        let line = |status: &str, summary: &str| {
+            format!(
+                "<task-notification>\n<task-id>a</task-id>\n<status>{status}</status>\n<summary>{summary}</summary>\n</task-notification>"
+            )
+        };
+        let out = shown(&[
+            user_line(
+                "task-notification",
+                false,
+                &line("completed", "Agent \"A\" finished"),
+            ),
+            user_line(
+                "task-notification",
+                false,
+                &line("completed", "Agent \"B\" finished"),
+            ),
+            user_line(
+                "task-notification",
+                false,
+                &line("failed", "Agent \"C\" failed"),
+            ),
+            user_line(
+                "task-notification",
+                false,
+                &line("completed", "Background command \"ls\" completed"),
+            ),
+            user_line(
+                "task-notification",
+                false,
+                &line("completed", "Agent \"D\" finished"),
+            ),
+        ]);
+        assert_eq!(
+            out,
+            [
+                "Note(\"2 helpers finished\")",
+                "Note(\"A helper stopped\")",
+                "Note(\"A background command finished\")",
+                "Note(\"A helper finished: D\")",
+            ]
+        );
     }
 
     #[test]
