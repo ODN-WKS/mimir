@@ -598,7 +598,7 @@ impl Session {
 
     /// Everything Claude Code started that still runs (its children, their
     /// children and so on), whatever session or group they moved to.
-    pub fn descendants(&self) -> Vec<u32> {
+    pub fn descendants(&self) -> Vec<Pkey> {
         descendants(self.pid())
     }
 
@@ -655,12 +655,20 @@ impl Session {
     /// Ends Claude Code and everything it started, also what moved to a
     /// group of its own (Claude Code's background commands do).
     pub fn kill_tree(&mut self) {
+        // Once it has ended, its id (and so its children) may belong to
+        // someone else: look only while it is still ours.
+        if self.poll_exit().is_some() {
+            return;
+        }
         let kids = self.descendants();
         self.kill();
-        for pid in kids {
-            // SAFETY: plain kill(2); the id was a descendant a moment ago.
-            unsafe {
-                libc::kill(pid as libc::pid_t, libc::SIGKILL);
+        for (pid, born) in kids {
+            // Only the very process seen, never one that took over its id.
+            if start_time(pid) == Some(born) {
+                // SAFETY: plain kill(2) on a process just checked.
+                unsafe {
+                    libc::kill(pid as libc::pid_t, libc::SIGKILL);
+                }
             }
         }
     }
@@ -709,10 +717,22 @@ impl Session {
     }
 }
 
+/// A process and when it started (field 22 of `/proc/<pid>/stat`), so a
+/// new process that takes over an id is never mistaken for the old one.
+pub type Pkey = (u32, u64);
+
+/// When `pid` started, in clock ticks since boot; None when it is gone.
+pub fn start_time(pid: u32) -> Option<u64> {
+    let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+    // The name (field 2) may hold spaces and brackets: count after its end.
+    let rest = stat.get(stat.rfind(')')? + 1..)?;
+    rest.split_whitespace().nth(19)?.parse().ok()
+}
+
 /// The processes below `root` (children, their children, and so on),
 /// read from `/proc`. Empty when `root` is gone.
-pub fn descendants(root: u32) -> Vec<u32> {
-    let mut out = vec![];
+pub fn descendants(root: u32) -> Vec<Pkey> {
+    let mut out: Vec<Pkey> = vec![];
     let mut todo = vec![root];
     while let Some(pid) = todo.pop() {
         let Ok(tasks) = std::fs::read_dir(format!("/proc/{pid}/task")) else {
@@ -723,8 +743,11 @@ pub fn descendants(root: u32) -> Vec<u32> {
                 continue;
             };
             for k in kids.split_whitespace().filter_map(|k| k.parse::<u32>().ok()) {
-                if !out.contains(&k) {
-                    out.push(k);
+                if out.iter().any(|(p, _)| *p == k) {
+                    continue;
+                }
+                if let Some(born) = start_time(k) {
+                    out.push((k, born));
                     todo.push(k);
                 }
             }
@@ -803,6 +826,18 @@ impl Default for StopIntent {
 #[cfg(test)]
 mod queue_tests {
     use super::*;
+
+    #[test]
+    fn descendants_carry_their_start_time() {
+        let mut c = std::process::Command::new("sleep").arg("5").spawn().unwrap();
+        let kids = descendants(std::process::id());
+        let (pid, born) = kids.iter().copied().find(|(p, _)| *p == c.id()).unwrap();
+        assert_ne!(born, 0);
+        assert_eq!(start_time(pid), Some(born));
+        let _ = c.kill();
+        let _ = c.wait();
+        assert_eq!(start_time(pid), None, "gone after it ended");
+    }
 
     struct Fake {
         sent: Vec<String>,

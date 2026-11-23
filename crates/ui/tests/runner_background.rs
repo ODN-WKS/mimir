@@ -148,3 +148,42 @@ fn stop_ends_background_work_too() {
     }
     assert!(!alive(kids[0]), "the sleep it started is gone too");
 }
+
+#[test]
+fn a_helper_started_mid_turn_does_not_keep_the_task_working() {
+    let env = Env::new("bg-helper");
+    let mut r = env.runner("helper.jsonl");
+    r.new_task(&env.proj(), "a turn with a helper of its own");
+    until(&mut r, "the turn ended", |r| status(r) == Status::Done);
+    // The helper outlives the turn for about two more seconds.
+    let end = Instant::now() + Duration::from_millis(1500);
+    while Instant::now() < end {
+        r.tick();
+        assert!(!r.tasks[0].working_now(), "a helper is not the task's work");
+        assert!(
+            !r.tasks[0]
+                .task
+                .entries
+                .iter()
+                .any(|e| matches!(e, Entry::Note(n) if n.contains("in the background")))
+        );
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+#[test]
+fn the_note_is_said_once() {
+    let env = Env::new("bg-note");
+    let mut r = env.runner("background.jsonl");
+    r.new_task(&env.proj(), "start a sleep in the background");
+    until(&mut r, "done by itself", |r| {
+        status(r) == Status::Done && !r.tasks[0].running()
+    });
+    let notes = r.tasks[0]
+        .task
+        .entries
+        .iter()
+        .filter(|e| matches!(e, Entry::Note(n) if n.contains("in the background")))
+        .count();
+    assert_eq!(notes, 1);
+}

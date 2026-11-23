@@ -43,8 +43,15 @@ pub struct Live {
     background: bool,
     /// What Claude Code already had running when it started (helpers of
     /// its own): not the task's work.
-    baseline: Vec<u32>,
+    baseline: Vec<crate::process::Pkey>,
     bg_checked: Option<Instant>,
+    /// A command was started with `run_in_background`: what appears from
+    /// now on is not taken for a helper of Claude Code's own.
+    freeze: bool,
+    /// Checks in a row that found something not in the baseline.
+    bg_seen: u8,
+    /// The note was said for this turn.
+    bg_noted: bool,
 }
 
 impl Live {
@@ -163,7 +170,7 @@ impl Runner {
                             sent: 0,
                             finished: 0,
                             dirty,
-                            background: false, baseline: Vec::new(), bg_checked: None,
+                            background: false, baseline: Vec::new(), bg_checked: None, freeze: false, bg_seen: 0, bg_noted: false,
                         });
                         continue;
                     }
@@ -192,7 +199,7 @@ impl Runner {
                 sent: 0,
                 finished: 0,
                 dirty,
-                background: false, baseline: Vec::new(), bg_checked: None,
+                background: false, baseline: Vec::new(), bg_checked: None, freeze: false, bg_seen: 0, bg_noted: false,
             });
         }
         let weekly = tasks.iter().rev().find_map(|l| l.task.weekly.clone());
@@ -367,7 +374,7 @@ impl Runner {
             sent: 0,
             finished: 0,
             dirty: true,
-            background: false, baseline: Vec::new(), bg_checked: None,
+            background: false, baseline: Vec::new(), bg_checked: None, freeze: false, bg_seen: 0, bg_noted: false,
         });
     }
 
@@ -1281,7 +1288,7 @@ impl Runner {
             sent: 0,
             finished: 0,
             dirty: true,
-            background: false, baseline: Vec::new(), bg_checked: None,
+            background: false, baseline: Vec::new(), bg_checked: None, freeze: false, bg_seen: 0, bg_noted: false,
         });
         self.save_dirty();
         Ok(id)
@@ -1574,7 +1581,7 @@ impl Runner {
             sent: 0,
             finished: 0,
             dirty: false,
-            background: false, baseline: Vec::new(), bg_checked: None,
+            background: false, baseline: Vec::new(), bg_checked: None, freeze: false, bg_seen: 0, bg_noted: false,
         });
         self.send_with(&id, text, &[]);
         Ok(id)
@@ -1682,8 +1689,14 @@ impl Runner {
                                     resets_at: *resets_at,
                                 });
                             }
+                            if let Event::ToolUse { input, .. } = e
+                                && input.get("run_in_background").and_then(|v| v.as_bool()) == Some(true)
+                            {
+                                l.freeze = true;
+                            }
                             if let Event::Init(init) = e {
                                 l.baseline = s.descendants();
+                                l.freeze = false;
                                 self.slash_commands = init.slash_commands.clone();
                                 self.mcp_servers = init.mcp_servers.clone();
                             }
@@ -1757,17 +1770,43 @@ impl Runner {
                     l.task.status,
                     Status::Working | Status::NeedsYou | Status::Paused | Status::Stopped
                 );
-            if !idle {
-                l.background = false;
-            } else if l.bg_checked.is_none_or(|at| at.elapsed() >= BACKGROUND_LOOK) {
+            if l.bg_checked.is_none_or(|at| at.elapsed() >= BACKGROUND_LOOK) && !exited {
                 l.bg_checked = Some(Instant::now());
-                let now_bg = s.descendants().iter().any(|p| !l.baseline.contains(p));
-                if now_bg != l.background {
-                    l.background = now_bg;
-                    if now_bg {
-                        l.task.add_note(BACKGROUND_NOTE);
+                let now_kids = s.descendants();
+                if !idle {
+                    // A turn is on: helpers Claude Code starts for itself
+                    // (plugins, language servers) are not the task's work,
+                    // unless a background command was asked for.
+                    if !l.freeze {
+                        for k in now_kids {
+                            if !l.baseline.contains(&k) {
+                                l.baseline.push(k);
+                            }
+                        }
                     }
-                    l.dirty = true;
+                    l.bg_seen = 0;
+                    l.bg_noted = false;
+                    if l.background {
+                        l.background = false;
+                        l.dirty = true;
+                    }
+                } else {
+                    // Something new, seen on two checks in a row, is work
+                    // the turn left running.
+                    let extra = now_kids.iter().any(|k| !l.baseline.contains(k));
+                    l.bg_seen = if extra { (l.bg_seen + 1).min(2) } else { 0 };
+                    let now_bg = l.bg_seen >= 2;
+                    if now_bg != l.background {
+                        l.background = now_bg;
+                        if now_bg && !l.bg_noted {
+                            l.bg_noted = true;
+                            l.task.add_note(BACKGROUND_NOTE);
+                        }
+                        if !now_bg {
+                            l.freeze = false;
+                        }
+                        l.dirty = true;
+                    }
                 }
             }
             // A question may arrive before the step it is about; the
