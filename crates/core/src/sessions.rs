@@ -477,57 +477,249 @@ pub fn remote_started(project: &Path, since: i64) -> Vec<PastSession> {
     out
 }
 
-/// Session ids a Claude Code process on this PC was started with
-/// (`--resume <id>`, `--session-id <id>`): those conversations are going on
+/// A process on the PC, as far as finding Claude Code sessions needs.
+#[derive(Debug, Clone)]
+pub struct Proc {
+    pub pid: u32,
+    /// Seconds since 1970 when it started.
+    pub started: i64,
+    pub args: Vec<String>,
+    pub cwd: Option<PathBuf>,
+}
+
+/// The sessions Claude Code processes on this PC have open right now.
+#[derive(Debug, Clone, Default)]
+pub struct Running {
+    /// Session ids (transcript file names).
+    pub ids: std::collections::HashSet<String>,
+    /// Of those, the ones started from the Claude app (Remote Control).
+    pub app: std::collections::HashSet<String>,
+}
+
+/// Session ids a Claude Code process on this PC has open (it was started
+/// with `--resume <id>` / `--session-id <id>`, or runs in a folder whose
+/// newest transcript it is writing): those conversations are going on
 /// right now, wherever they are typed in.
 pub fn running_sessions() -> std::collections::HashSet<String> {
-    let mut out = std::collections::HashSet::new();
-    // Inside a Flatpak the PC's processes come from its own `ps`.
-    if let Some(list) = crate::flatpak::host_processes() {
-        for (_, args) in list {
-            let args: Vec<&[u8]> = args.iter().map(|a| a.as_bytes()).collect();
-            session_ids_in(&args, &mut out);
-        }
-        return out;
+    let r = running_scan();
+    if let Ok(mut g) = APP_IDS.lock() {
+        *g = Some(r.app.clone());
     }
+    r.ids
+}
+
+/// Ids of the running sessions that came from the Claude app, as of the
+/// last `running_sessions()`.
+static APP_IDS: std::sync::Mutex<Option<std::collections::HashSet<String>>> =
+    std::sync::Mutex::new(None);
+
+/// Whether a running session was started from the Claude app.
+pub fn started_in_app(id: &str) -> bool {
+    APP_IDS
+        .lock()
+        .is_ok_and(|g| g.as_ref().is_some_and(|s| s.contains(id)))
+}
+
+/// Looks at the PC's processes (the PC's own `ps` inside a Flatpak).
+pub fn running_scan() -> Running {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    let procs: Vec<Proc> = if let Some(list) = crate::flatpak::host_processes_aged() {
+        list.into_iter()
+            .map(|h| Proc {
+                pid: h.pid,
+                started: now - h.age_secs,
+                args: h.args,
+                cwd: h.cwd,
+            })
+            .collect()
+    } else {
+        local_procs(now)
+    };
+    running_from(&procs, &claude_home())
+}
+
+/// Claude Code processes read from `/proc` (others are skipped unread).
+pub(crate) fn local_procs(now: i64) -> Vec<Proc> {
+    let uptime = std::fs::read_to_string("/proc/uptime")
+        .ok()
+        .and_then(|t| t.split_whitespace().next()?.parse::<f64>().ok())
+        .unwrap_or(0.0);
+    // SAFETY: sysconf only reads a system constant.
+    let tick = unsafe { libc::sysconf(libc::_SC_CLK_TCK) }.max(1) as f64;
+    let mut out = vec![];
     for e in std::fs::read_dir("/proc").into_iter().flatten().flatten() {
-        let name = e.file_name();
-        if !name.to_string_lossy().bytes().all(|b| b.is_ascii_digit()) {
+        let name = e.file_name().to_string_lossy().to_string();
+        if !name.bytes().all(|b| b.is_ascii_digit()) {
             continue;
         }
         let Ok(raw) = std::fs::read(e.path().join("cmdline")) else {
             continue;
         };
-        let args: Vec<&[u8]> = raw.split(|b| *b == 0).collect();
-        session_ids_in(&args, &mut out);
+        let args: Vec<String> = raw
+            .split(|b| *b == 0)
+            .filter(|a| !a.is_empty())
+            .map(|a| String::from_utf8_lossy(a).to_string())
+            .collect();
+        if !args.first().is_some_and(|a| a.contains("claude")) {
+            continue;
+        }
+        // Field 22 of `stat` (after the program's name in brackets): when
+        // the process started, in ticks since boot.
+        let started = std::fs::read_to_string(e.path().join("stat"))
+            .ok()
+            .and_then(|t| {
+                let rest = t.rsplit_once(')')?.1.to_string();
+                rest.split_whitespace().nth(19)?.parse::<f64>().ok()
+            })
+            .map(|ticks| now - (uptime - ticks / tick).max(0.0) as i64)
+            .unwrap_or(now);
+        out.push(Proc {
+            pid: name.parse().unwrap_or(0),
+            started,
+            args,
+            cwd: std::fs::read_link(e.path().join("cwd")).ok(),
+        });
     }
     out
 }
 
-/// The session ids one process's command line names, if it is a Claude Code
-/// on a conversation.
-fn session_ids_in(args: &[&[u8]], out: &mut std::collections::HashSet<String>) {
-    // A Remote Control kept running for the phone sits idle: not activity.
-    if args
-        .iter()
-        .any(|a| *a == b"--remote-control" || *a == b"remote-control")
-    {
-        return;
-    }
-    if !args
-        .first()
-        .is_some_and(|a| a.windows(6).any(|w| w == b"claude"))
-    {
-        return;
-    }
-    for w in args.windows(2) {
-        if (w[0] == b"--resume" || w[0] == b"-r" || w[0] == b"--session-id")
-            && w[1].len() == 36
-            && let Ok(id) = std::str::from_utf8(w[1])
-        {
-            out.insert(id.to_string());
+/// Whether a command line is a Claude Code (the program, its versioned
+/// binary, or its script).
+fn claude_process(args: &[String]) -> bool {
+    is_claude_code(args)
+        || args
+            .first()
+            .is_some_and(|a| a.contains("/claude/versions/"))
+}
+
+/// The 36-character session id a command line names, if any.
+fn id_on_line(args: &[String]) -> Option<String> {
+    let id = |a: &str| (a.len() == 36).then(|| a.to_string());
+    for (i, a) in args.iter().enumerate() {
+        for key in ["--resume", "-r", "--session-id"] {
+            if a == key
+                && let Some(v) = args.get(i + 1).and_then(|v| id(v))
+            {
+                return Some(v);
+            }
+            if let Some(v) = a.strip_prefix(&format!("{key}=")).and_then(id) {
+                return Some(v);
+            }
         }
     }
+    None
+}
+
+/// The sessions the given processes have open. A process with a session id
+/// on its line names it; any other (a plain `claude` in a terminal, or one
+/// the Claude app started under a `cse_` id) is matched by the folder it
+/// runs in: the newest transcripts there written since it started, one per
+/// process. What was matched is remembered by process number and start.
+pub fn running_from(procs: &[Proc], home: &Path) -> Running {
+    use std::collections::{HashMap, HashSet};
+    use std::sync::Mutex;
+    /// (process, start) → the session found for it and whether the Claude
+    /// app started it.
+    type Matched = HashMap<(u32, i64), (String, bool)>;
+    static MATCHED: Mutex<Option<Matched>> = Mutex::new(None);
+    let mut out = Running::default();
+    let mut by_folder: HashMap<PathBuf, Vec<&Proc>> = HashMap::new();
+    for p in procs {
+        // A Remote Control kept running for the phone sits idle: not
+        // activity.
+        if !claude_process(&p.args)
+            || p.args
+                .iter()
+                .any(|a| a == "--remote-control" || a == "remote-control")
+        {
+            continue;
+        }
+        let app = p
+            .args
+            .iter()
+            .any(|a| a == "--sdk-url" || a.contains("cse_"));
+        if let Some(id) = id_on_line(&p.args) {
+            if app {
+                out.app.insert(id.clone());
+            }
+            out.ids.insert(id);
+        } else if let Some(c) = &p.cwd {
+            by_folder.entry(c.clone()).or_default().push(p);
+        }
+    }
+    for (cwd, mut ps) in by_folder {
+        ps.sort_by_key(|p| (p.started, p.pid));
+        let dir = home.join("projects").join(folder_name(&cwd));
+        let mut files: Vec<(i64, String)> = vec![];
+        for e in std::fs::read_dir(&dir).into_iter().flatten().flatten() {
+            let path = e.path();
+            if path.extension().and_then(|x| x.to_str()) != Some("jsonl") {
+                continue;
+            }
+            let (Some(id), Some(m)) = (
+                path.file_stem().and_then(|s| s.to_str()),
+                e.metadata()
+                    .and_then(|m| m.modified())
+                    .ok()
+                    .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()),
+            ) else {
+                continue;
+            };
+            files.push((m.as_secs() as i64, id.to_string()));
+        }
+        files.sort_by_key(|(m, _)| std::cmp::Reverse(*m));
+        let mut cache = MATCHED.lock().ok();
+        let known = |p: &Proc, cache: &Option<std::sync::MutexGuard<Option<HashMap<_, _>>>>| {
+            cache
+                .as_ref()
+                .and_then(|g| g.as_ref())
+                .and_then(|m| m.get(&(p.pid, p.started)).cloned())
+        };
+        let mut taken: HashSet<String> = HashSet::new();
+        let mut open: Vec<&Proc> = vec![];
+        for p in ps {
+            match known(p, &cache) {
+                Some((id, app)) => {
+                    taken.insert(id.clone());
+                    if app {
+                        out.app.insert(id.clone());
+                    }
+                    out.ids.insert(id);
+                }
+                None => open.push(p),
+            }
+        }
+        // The newest transcripts written since each started, one each.
+        let mut fresh = files.iter().filter(|(_, id)| !taken.contains(id));
+        let all_app = open.iter().all(|p| {
+            p.args
+                .iter()
+                .any(|a| a == "--sdk-url" || a.contains("cse_"))
+        });
+        for p in open {
+            let Some((m, id)) = fresh.next() else { break };
+            // A little slack: the clock of the file and the start differ.
+            if *m < p.started - 2 {
+                break;
+            }
+            let app = all_app || from_remote(&dir.join(format!("{id}.jsonl")));
+            if let Some(g) = cache.as_mut() {
+                let map = g.get_or_insert_with(HashMap::new);
+                if map.len() >= CACHE_MAX {
+                    map.clear();
+                }
+                map.insert((p.pid, p.started), (id.clone(), app));
+            }
+            if app {
+                out.app.insert(id.clone());
+            }
+            out.ids.insert(id.clone());
+        }
+    }
+    out
 }
 
 /// When the conversation in a transcript last moved: the time of its

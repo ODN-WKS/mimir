@@ -119,6 +119,55 @@ pub fn host_processes() -> Option<Vec<(u32, Vec<String>)>> {
     Some(parse_ps(&String::from_utf8_lossy(&out.stdout)))
 }
 
+/// The PC's processes with how long each has run (seconds), and the folder
+/// each runs in when it is a Claude Code (through the host helper). None
+/// outside a Flatpak.
+pub fn host_processes_aged() -> Option<Vec<HostProc>> {
+    if !active() {
+        return None;
+    }
+    let out = host_cmd("ps")
+        .args(["-eww", "-o", "pid=,etimes=,args="])
+        .stdin(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .output()
+        .ok()
+        .filter(|o| o.status.success())?;
+    let mut list = vec![];
+    for l in String::from_utf8_lossy(&out.stdout).lines() {
+        let mut it = l.split_whitespace();
+        let (Some(pid), Some(age)) = (it.next(), it.next()) else {
+            continue;
+        };
+        let (Ok(pid), Ok(age)) = (pid.parse::<u32>(), age.parse::<i64>()) else {
+            continue;
+        };
+        let args: Vec<String> = it.map(str::to_string).collect();
+        // Only a Claude Code's folder is asked for (one call each).
+        let cwd = args
+            .first()
+            .is_some_and(|a| a.contains("claude"))
+            .then(|| host_cwd(pid))
+            .flatten();
+        list.push(HostProc {
+            pid,
+            age_secs: age,
+            args,
+            cwd,
+        });
+    }
+    Some(list)
+}
+
+/// One process on the PC, seen from a Flatpak.
+#[derive(Debug, Clone)]
+pub struct HostProc {
+    pub pid: u32,
+    pub age_secs: i64,
+    pub args: Vec<String>,
+    pub cwd: Option<PathBuf>,
+}
+
 /// `ps -o pid=,args=` lines as (process number, words).
 fn parse_ps(text: &str) -> Vec<(u32, Vec<String>)> {
     text.lines()

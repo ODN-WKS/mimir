@@ -60,6 +60,7 @@ pub fn list(
                 .clone()
                 .unwrap_or_else(|| crate::runner::title_from(&o.session.first)),
         };
+        let app = sessions::started_in_app(&id) || sessions::from_remote(&o.session.path);
         let moved = o.session.modified_unix;
         let state = state_of(
             task.is_some_and(|t| t.busy),
@@ -72,7 +73,7 @@ pub fn list(
             title: short(&title),
             project: crate::paths::project_name(&o.project.display().to_string()),
             here: task.is_some(),
-            app: sessions::from_remote(&o.session.path),
+            app,
             task: task.map(|t| t.task.clone()),
             state,
             last: moved,
@@ -195,7 +196,7 @@ mod tests {
         let project = base.join("Recipe box");
         fs::create_dir_all(&project).unwrap();
         let root = base.join("claude");
-        fs::create_dir_all(root.join("projects").join("one")).unwrap();
+        fs::create_dir_all(root.join("projects").join(sessions::folder_name(&project))).unwrap();
         Home {
             root,
             base,
@@ -214,7 +215,7 @@ mod tests {
         let path = h
             .root
             .join("projects")
-            .join("one")
+            .join(sessions::folder_name(&h.project))
             .join(format!("{id}.jsonl"));
         fs::write(&path, text).unwrap();
         let when = std::time::SystemTime::now() - std::time::Duration::from_secs(age as u64);
@@ -443,6 +444,197 @@ mod tests {
         r.follow_session(&o.task, size).unwrap();
         let t = &r.tasks.iter().find(|l| l.task.id == o.task).unwrap().task;
         assert!(format!("{:?}", t.entries).contains(FOLLOW_NOTE));
+    }
+
+    /// A stand-in Claude Code: a `sleep` whose program name is "claude",
+    /// running in `cwd`. Killed when dropped.
+    struct Stand(std::process::Child);
+    impl Stand {
+        fn start(cwd: &Path) -> Stand {
+            let c = std::process::Command::new("bash")
+                .args(["-c", "exec -a /opt/x/claude sleep 60"])
+                .current_dir(cwd)
+                .spawn()
+                .unwrap();
+            // Until bash has become the stand-in.
+            for _ in 0..500 {
+                let line = std::fs::read(format!("/proc/{}/cmdline", c.id())).unwrap_or_default();
+                if line.starts_with(b"/opt/x/claude") {
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+            Stand(c)
+        }
+        fn stop(&mut self) {
+            let _ = self.0.kill();
+            let _ = self.0.wait();
+        }
+    }
+    impl Drop for Stand {
+        fn drop(&mut self) {
+            self.stop();
+        }
+    }
+
+    /// The scan, as `running_scan` does it, for the stand-ins only.
+    fn scan(h: &Home, pids: &[u32]) -> sessions::Running {
+        let procs: Vec<sessions::Proc> = sessions::local_procs(now())
+            .into_iter()
+            .filter(|p| pids.contains(&p.pid))
+            .collect();
+        sessions::running_from(&procs, &h.root)
+    }
+
+    fn state_of_id(h: &Home, r: &sessions::Running, id: &str) -> PcSessionState {
+        let l = list(&h.root, &r.ids, &set(&[]), &[], now());
+        l.iter().find(|s| s.id == id).unwrap().state
+    }
+
+    #[test]
+    fn a_plain_claude_in_a_terminal_is_found_by_its_folder() {
+        let h = home("proc");
+        let mut p = Stand::start(&h.project);
+        session(&h, "t1", "Sort the notes", None, 0);
+        let r = scan(&h, &[p.0.id()]);
+        assert!(r.ids.contains("t1"), "{r:?}");
+        assert!(r.app.is_empty());
+        // Writing now: at work.
+        assert_eq!(state_of_id(&h, &r, "t1"), PcSessionState::Working);
+        // Quiet: open but idle.
+        session(&h, "t1", "Sort the notes", None, 600);
+        assert_eq!(state_of_id(&h, &r, "t1"), PcSessionState::Idle);
+        // The process is gone: ended.
+        p.stop();
+        let r = scan(&h, &[p.0.id()]);
+        assert!(r.ids.is_empty());
+        assert_eq!(state_of_id(&h, &r, "t1"), PcSessionState::Ended);
+    }
+
+    #[test]
+    fn two_in_one_folder_take_the_two_newest_sessions() {
+        let h = home("two");
+        let a = Stand::start(&h.project);
+        let b = Stand::start(&h.project);
+        session(&h, "old", "Ancient", None, 0);
+        session(&h, "n1", "First", None, 0);
+        session(&h, "n2", "Second", None, 0);
+        // Older than both processes: never theirs.
+        session(&h, "stale", "Stale", None, 3600);
+        let r = scan(&h, &[a.0.id(), b.0.id()]);
+        assert_eq!(r.ids.len(), 2, "{r:?}");
+        assert!(!r.ids.contains("stale"));
+    }
+
+    #[test]
+    fn the_claude_app_is_told_by_its_command_line() {
+        let h = home("app-line");
+        session(&h, "u1", "From the app", None, 0);
+        session(&h, "u2", "From a terminal", None, 0);
+        std::fs::create_dir_all(h.base.join("other")).unwrap();
+        let started = now() - 5;
+        let app = sessions::Proc {
+            pid: 4_000_001,
+            started,
+            args: [
+                "/home/x/.local/share/claude/versions/2.1.329",
+                "--print",
+                "--sdk-url",
+                "https://example.invalid/v1/code/sessions/cse_01Abc",
+                "--session-id",
+                "cse_01Abc",
+            ]
+            .map(String::from)
+            .to_vec(),
+            cwd: Some(h.project.clone()),
+        };
+        let r = sessions::running_from(&[app], &h.root);
+        // Newest transcript in its folder (both are new: one of them).
+        assert_eq!(r.ids.len(), 1);
+        assert_eq!(r.app, r.ids);
+        // A plain terminal one in another folder is not the app's.
+        let term = sessions::Proc {
+            pid: 4_000_002,
+            started,
+            args: vec!["/home/x/.local/bin/claude".into()],
+            cwd: Some(h.project.clone()),
+        };
+        let r = sessions::running_from(&[term], &h.root);
+        assert_eq!(r.ids.len(), 1);
+        assert!(r.app.is_empty());
+        // A session id on the line is used as it is.
+        let id = "5f1c0a52-3333-4d2e-9a10-0123456789ab";
+        let with_id = sessions::Proc {
+            pid: 4_000_003,
+            started,
+            args: ["claude", "--resume", id].map(String::from).to_vec(),
+            cwd: None,
+        };
+        let r = sessions::running_from(&[with_id], &h.root);
+        assert!(r.ids.contains(id));
+        // The phone's listener and look-alike programs are not sessions.
+        let listener = sessions::Proc {
+            pid: 4_000_004,
+            started,
+            args: ["/home/x/.local/bin/claude", "remote-control"]
+                .map(String::from)
+                .to_vec(),
+            cwd: Some(h.project.clone()),
+        };
+        let other = sessions::Proc {
+            pid: 4_000_005,
+            started,
+            args: vec!["/home/x/.local/bin/claude-station".into()],
+            cwd: Some(h.project.clone()),
+        };
+        assert!(
+            sessions::running_from(&[listener, other], &h.root)
+                .ids
+                .is_empty()
+        );
+    }
+
+    /// Read-only proof on this PC: prints the real list.
+    /// `cargo test -p mimir-core real_home -- --ignored --nocapture`
+    #[test]
+    #[ignore]
+    fn real_home_list() {
+        let running = sessions::running_scan();
+        println!(
+            "running: {} ids, {} app",
+            running.ids.len(),
+            running.app.len()
+        );
+        for p in sessions::local_procs(now())
+            .iter()
+            .filter(|p| p.args[0].contains("versions"))
+        {
+            println!(
+                "proc {} started {}s ago cwd {:?}",
+                p.pid,
+                now() - p.started,
+                p.cwd
+            );
+        }
+        let l = list(
+            &sessions::claude_home(),
+            &running.ids,
+            &HashSet::new(),
+            &[],
+            now(),
+        );
+        // Only the shape is printed, with titles cut to three words.
+        for s in l.iter().take(12) {
+            let words: Vec<&str> = s.title.split_whitespace().take(3).collect();
+            println!(
+                "{:?} | {} | {} | app={} | {}s ago",
+                s.state,
+                s.project,
+                words.join(" "),
+                s.app,
+                now() - s.last
+            );
+        }
     }
 
     fn runner(h: &Home) -> crate::runner::Runner {
