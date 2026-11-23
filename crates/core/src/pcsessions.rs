@@ -465,6 +465,27 @@ mod tests {
         assert!(format!("{:?}", t.entries).contains(FOLLOW_NOTE));
     }
 
+    #[test]
+    fn a_stopped_followed_task_stays_stopped_when_its_transcript_grows() {
+        let h = home("stopheld");
+        session(&h, "s", "Sort the photos", None, 5);
+        unsafe { std::env::set_var("CLAUDE_CONFIG_DIR", &h.root) };
+        let mut r = runner(&h);
+        let o = open(&mut r, &h.root, "s", &set(&["s"]), now()).unwrap();
+        let path = r.transcript(&o.task).unwrap();
+        let size = std::fs::metadata(&path).unwrap().len();
+        r.stopped_elsewhere(&o.task, "You stopped this session.");
+        // The session wrote on after the stop.
+        let mut text = std::fs::read_to_string(&path).unwrap();
+        text += "{\"type\":\"assistant\",\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"More.\"}]}}\n";
+        std::fs::write(&path, text).unwrap();
+        let at = r.follow_session(&o.task, size).unwrap();
+        assert!(at > size);
+        assert!(r.held_stopped(&o.task));
+        let t = &r.tasks.iter().find(|l| l.task.id == o.task).unwrap().task;
+        assert_eq!(t.status, crate::task::Status::Stopped);
+    }
+
     /// A stand-in Claude Code: a `sleep` whose program name is "claude",
     /// running in `cwd`. Killed when dropped.
     struct Stand(std::process::Child);

@@ -3751,6 +3751,12 @@ impl Service {
             if sid.is_none() || meta.is_none() {
                 continue;
             }
+            // Stopped by the owner: not followed again until they continue it.
+            if self.runner.held_stopped(&id) {
+                self.outside_seen.insert(id.clone(), size);
+                self.outside_followed.remove(&id);
+                continue;
+            }
             // What this service's own Claude writes is already shown.
             if running {
                 self.own_running.insert(id.clone());

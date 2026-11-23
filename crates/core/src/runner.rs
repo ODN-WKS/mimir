@@ -93,6 +93,10 @@ pub struct Runner {
     /// Tasks the owner stopped since they last worked (so "stopped" is
     /// never guessed from the notes).
     pub owner_stopped: std::collections::HashSet<String>,
+    /// Followed tasks the owner stopped: their transcript may still grow
+    /// (the session may not have died), but they stay Stopped until the
+    /// owner continues them.
+    stopped_followed: std::collections::HashSet<String>,
     cfg: Config,
     store: Store,
     pub tasks: Vec<Live>,
@@ -233,6 +237,7 @@ impl Runner {
         }
         let mut r = Runner {
             owner_stopped: Default::default(),
+            stopped_followed: Default::default(),
             cfg,
             store,
             tasks,
@@ -777,6 +782,7 @@ impl Runner {
     /// the owner ended: it reads Stopped, with `note`.
     pub fn stopped_elsewhere(&mut self, id: &str, note: &str) {
         self.owner_stopped.insert(id.to_string());
+        self.stopped_followed.insert(id.to_string());
         self.set_elsewhere(id, false);
         self.halt(id, Status::Stopped, note);
     }
@@ -1085,6 +1091,21 @@ impl Runner {
         });
     }
 
+    /// True while a followed task the owner stopped is still Stopped (it
+    /// lets go of the mark once the task moves on).
+    pub fn held_stopped(&mut self, id: &str) -> bool {
+        if !self.stopped_followed.contains(id) {
+            return false;
+        }
+        let stopped = self
+            .index(id)
+            .is_some_and(|i| self.tasks[i].task.status == Status::Stopped);
+        if !stopped {
+            self.stopped_followed.remove(id);
+        }
+        stopped
+    }
+
     /// Reads what a followed session's transcript gained since byte `from`
     /// (from 0: all of it, afresh). Where the next look starts.
     pub fn follow_session(&mut self, id: &str, from: u64) -> Result<u64, String> {
@@ -1092,6 +1113,10 @@ impl Runner {
             .transcript(id)
             .ok_or("This task has no conversation yet.")?;
         let i = self.index(id).ok_or("That task is gone.")?;
+        // The owner stopped it: it reads Stopped until they continue it.
+        if self.held_stopped(id) {
+            return Ok(std::fs::metadata(&path).map(|m| m.len()).unwrap_or(from));
+        }
         let waiting = !self.tasks[i].asks.is_empty();
         let t = &mut self.tasks[i].task;
         if from == 0 {
