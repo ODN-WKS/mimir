@@ -872,7 +872,7 @@ impl Task {
         } else if self.question_waiting() {
             "Question for you"
         } else if self.live_elsewhere && self.status != Status::Working {
-            "Live elsewhere"
+            "Still running elsewhere"
         } else if self.stopped_unexpectedly() {
             "Stopped unexpectedly"
         } else {
@@ -1404,7 +1404,7 @@ mod tests {
     }
 
     /// One state per task, the same words everywhere: a finished answer is
-    /// Done at once (not Live for minutes), Live elsewhere only for a
+    /// Done at once (not Live for minutes), Still running elsewhere only for a
     /// conversation going on outside, and Working counts work elsewhere.
     #[test]
     fn one_state_per_task() {
@@ -1416,7 +1416,7 @@ mod tests {
         assert_eq!(t.status_words(), "Done");
         assert!(!t.working_now(false));
         t.live_elsewhere = true;
-        assert_eq!(t.status_words(), "Live elsewhere");
+        assert_eq!(t.status_words(), "Still running elsewhere");
         assert!(!t.working_now(false));
         // A followed session whose turn goes on: working, though this PC's
         // Claude isn't.

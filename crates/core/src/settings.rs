@@ -262,6 +262,30 @@ impl Settings {
             && !(self.moves_to_free(model, claude_out) && free_model_here)
     }
 
+    /// What the pill, the panel and the task all say: do this task's words
+    /// go online (Anthropic)? A session Mímir only follows (`outside`) is not
+    /// answered by Mímir, so never. A chat follows the chats setting; a task
+    /// with its own model follows that model; a task without one follows the
+    /// project work setting (the rule the PC uses when it starts the task).
+    pub fn task_shows_online(
+        &self,
+        model: Option<&str>,
+        is_chat: bool,
+        outside: bool,
+        free_model_here: bool,
+    ) -> bool {
+        if outside {
+            return false;
+        }
+        if is_chat {
+            return self.chats_paid();
+        }
+        match model {
+            Some(_) => !crate::models::is_free(model),
+            None => self.task_goes_online(None, false, free_model_here),
+        }
+    }
+
     /// Online (Anthropic) is set up: chats or project work use it.
     pub fn online_set_up(&self) -> bool {
         self.chats_paid() || !self.project_free()
@@ -793,5 +817,48 @@ mod tests {
         assert!(!free.task_goes_online(None, false, true));
         // With nothing to move it to, it is honest: online.
         assert!(free.task_goes_online(None, false, false));
+    }
+
+    #[test]
+    fn the_pill_never_says_online_when_online_is_not_set_up() {
+        for chats in [None, Some("paid"), Some("free")] {
+            for project in [None, Some("free"), Some("claude")] {
+                for model in [None, Some("ollama:qwen"), Some("sonnet")] {
+                    for free_here in [false, true] {
+                        for is_chat in [false, true] {
+                            let s = Settings {
+                                chats_engine: chats.map(Into::into),
+                                project_engine: project.map(Into::into),
+                                ..Settings::default()
+                            };
+                            let w =
+                                format!("{chats:?} {project:?} {model:?} {free_here} {is_chat}");
+                            // A followed session is never said to go online.
+                            assert!(!s.task_shows_online(model, is_chat, true, free_here), "{w}");
+                            let shown = s.task_shows_online(model, is_chat, false, free_here);
+                            if is_chat {
+                                assert_eq!(shown, s.chats_paid(), "{w}");
+                            } else if model.is_none() && free_here && !s.online_set_up() {
+                                // Online not set up and a model here: the task stays on the PC.
+                                assert!(!shown, "{w}");
+                            } else if model.is_none() {
+                                assert_eq!(
+                                    shown,
+                                    s.task_goes_online(None, false, free_here),
+                                    "{w}"
+                                );
+                            } else {
+                                assert_eq!(shown, !crate::models::is_free(model), "{w}");
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        // The case from the field: nothing set up, a chat held as a task
+        // with no model of its own is not "Online".
+        let none = Settings::default();
+        assert!(!none.task_shows_online(None, true, false, true));
+        assert!(!none.task_shows_online(None, false, false, true));
     }
 }

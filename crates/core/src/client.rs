@@ -73,6 +73,12 @@ impl TaskView {
         })
     }
 
+    /// A session going on in another app or a terminal that Mímir only
+    /// follows: it can be stopped there, not carried on here until then.
+    pub fn outside_now(&self) -> bool {
+        self.task.live_elsewhere && !self.running
+    }
+
     /// A Claude Code process runs for this task.
     pub fn running(&self) -> bool {
         self.running
