@@ -2158,9 +2158,12 @@ pub(crate) mod tests {
         assert!(blank_boxes(&mut again, 0, n, 0).is_err());
     }
 
-    /// A zip written by hand (stored entries): (raw name, flags, made by,
-    /// external attributes, data).
-    fn raw_zip(entries: &[(&[u8], u16, u16, u32, &[u8])]) -> Vec<u8> {
+    /// One hand-written zip entry: (raw name, flags, made by, external
+    /// attributes, data).
+    type RawEntry<'a> = (&'a [u8], u16, u16, u32, &'a [u8]);
+
+    /// A zip written by hand (stored entries).
+    fn raw_zip(entries: &[RawEntry]) -> Vec<u8> {
         let (mut out, mut central) = (Vec::new(), Vec::new());
         for (name, flags, by, ext, data) in entries {
             let mut crc = flate2::Crc::new();
