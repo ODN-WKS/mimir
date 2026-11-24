@@ -137,7 +137,12 @@ fn truth() -> Truth {
             five_hour: None,
             as_of: Some(1_794_000_400),
         }),
-        stats: None,
+        stats: Some(TruthStats {
+            cpu: 37.0,
+            mem_used: 12_400_000_000,
+            mem_total: 32_000_000_000,
+            gpu: Some(8.0),
+        }),
     }
 }
 

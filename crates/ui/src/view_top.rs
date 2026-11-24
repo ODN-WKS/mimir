@@ -147,12 +147,13 @@ impl Foot<'_> {
                 }
             }
             if let Some(r) = self.r.filter(|r| r.weekly.is_none()) {
-                let in_use = mimir_core::usage::claude_in_use(
+                let in_use = mimir_core::usage::claude_in_use_now(
                     r.settings.get("chats_engine").and_then(|v| v.as_str()) == Some("paid"),
                     r.settings.get("project_engine").and_then(|v| v.as_str()) == Some("claude"),
+                    r.truth.as_ref().is_some_and(|t| !t.projects.is_empty()),
                     r.tasks
                         .iter()
-                        .any(|t| !mimir_core::models::is_free(t.task.model.as_deref())),
+                        .map(|t| (t.task.model.as_deref(), t.busy())),
                 );
                 let (line, why) = crate::labels::weekly_none(in_use, self.claude_ready);
                 ui.label(RichText::new(line).color(MUTED).size(13.0))

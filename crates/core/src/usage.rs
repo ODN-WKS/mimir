@@ -22,6 +22,10 @@ pub const IDLE_SECS: i64 = 12 * 3600;
 /// How soon to look again when the last look did not work (no current login,
 /// no network), so the figure appears soon after it can (0.09 item 11).
 pub const RETRY_SECS: i64 = 10 * 60;
+/// How long to wait after the first, second and later failed looks in a row
+/// (10 minutes, 1 hour, 12 hours), so an expired login or no network never
+/// means a request every 10 minutes forever.
+pub const BACKOFF_SECS: [i64; 3] = [RETRY_SECS, 3600, 12 * 3600];
 const URL: &str = "https://api.anthropic.com/api/oauth/usage";
 
 /// Whether Claude is in use on this PC, so its login may be read: a paid
@@ -29,6 +33,27 @@ const URL: &str = "https://api.anthropic.com/api/oauth/usage";
 /// runs on a Claude model (the default when no own model is picked).
 pub fn claude_in_use(chats_paid: bool, project_on_claude: bool, task_on_claude: bool) -> bool {
     chats_paid || project_on_claude || task_on_claude
+}
+
+/// The one rule the service and the window both use: Claude is in use when
+/// chats are paid, or Claude is the project engine and a project exists, or
+/// a task that is working right now runs on Claude. `tasks` are each task's
+/// model and whether it is busy now; a task with no model of its own runs on
+/// the project engine's choice. Stopped, finished and archived tasks never
+/// count.
+pub fn claude_in_use_now<'a>(
+    chats_paid: bool,
+    project_on_claude: bool,
+    has_project: bool,
+    tasks: impl IntoIterator<Item = (Option<&'a str>, bool)>,
+) -> bool {
+    let on_claude = tasks.into_iter().any(|(model, busy)| {
+        busy && match model {
+            Some(m) => !crate::models::is_free(Some(m)),
+            None => project_on_claude,
+        }
+    });
+    claude_in_use(chats_paid, project_on_claude && has_project, on_claude)
 }
 
 /// What one look found.
@@ -43,15 +68,15 @@ pub struct Reading {
 pub struct Schedule {
     /// When we last tried (unix seconds); None: never.
     last_try: Option<i64>,
-    /// The last look found nothing (see `RETRY_SECS`).
-    last_failed: bool,
+    /// Looks in a row that found nothing (see `RETRY_SECS`, `BACKOFF_SECS`).
+    failures: u32,
 }
 
 impl Schedule {
     /// Is a look due now? The first one is due at once.
     pub fn due(&self, now: i64, active: bool) -> bool {
-        let gap = if self.last_failed {
-            RETRY_SECS
+        let gap = if self.failures > 0 {
+            BACKOFF_SECS[(self.failures as usize - 1).min(BACKOFF_SECS.len() - 1)]
         } else if active {
             ACTIVE_SECS
         } else {
@@ -70,7 +95,11 @@ impl Schedule {
 
     /// Records how the look ended.
     pub fn ended(&mut self, worked: bool) {
-        self.last_failed = !worked;
+        self.failures = if worked {
+            0
+        } else {
+            self.failures.saturating_add(1)
+        };
     }
 }
 
@@ -319,6 +348,74 @@ mod tests {
         assert!(reading_changed(&old, &new), "0.001 change must be detected");
         // Identical values must not trigger.
         assert!(!reading_changed(&old, &old));
+    }
+
+    #[test]
+    fn p09d_fix_only_work_going_on_now_puts_claude_in_use() {
+        let old_task = [(None, false), (Some("sonnet"), false)];
+        assert!(
+            !claude_in_use_now(false, false, true, old_task),
+            "old tasks never count"
+        );
+        assert!(
+            !claude_in_use_now(false, false, true, [(None, true)]),
+            "no model: the project engine decides (free)"
+        );
+        assert!(claude_in_use_now(false, true, true, [(None, true)]));
+        assert!(claude_in_use_now(
+            false,
+            false,
+            false,
+            [(Some("opus"), true)]
+        ));
+        assert!(!claude_in_use_now(
+            false,
+            false,
+            true,
+            [(Some("ollama:qwen"), true)]
+        ));
+        assert!(!claude_in_use_now(false, true, false, []), "no project");
+        assert!(claude_in_use_now(false, true, true, []));
+        assert!(claude_in_use_now(true, false, false, []));
+    }
+
+    #[test]
+    fn p09d_fix_failed_looks_back_off_ten_minutes_an_hour_twelve_hours() {
+        let mut s = Schedule::default();
+        s.tried(0);
+        s.ended(false);
+        assert!(!s.due(599, true));
+        assert!(s.due(600, true));
+        s.tried(600);
+        s.ended(false);
+        assert!(!s.due(600 + 3599, true));
+        assert!(s.due(600 + 3600, true));
+        s.tried(5000);
+        s.ended(false);
+        assert!(!s.due(5000 + 12 * 3600 - 1, true));
+        assert!(s.due(5000 + 12 * 3600, true));
+        s.tried(100_000);
+        s.ended(false);
+        assert!(!s.due(100_000 + 3600, true), "stays at twelve hours");
+        s.ended(true);
+        assert!(!s.due(100_000 + 600, true), "back to the normal gap");
+        assert!(s.due(100_000 + ACTIVE_SECS, true));
+    }
+
+    #[test]
+    fn p09d_fix_a_missing_or_expired_login_sends_no_request() {
+        let dir = std::env::temp_dir().join(format!("mimir-usage-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let missing = dir.join("none.json");
+        assert!(fetch(&missing, 1000).is_err());
+        let old = dir.join("old.json");
+        std::fs::write(
+            &old,
+            r#"{"claudeAiOauth":{"accessToken":"x","expiresAt":900000}}"#,
+        )
+        .unwrap();
+        assert!(token(&old, 1000).is_none(), "expired: no request");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

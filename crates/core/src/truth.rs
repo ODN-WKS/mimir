@@ -159,9 +159,10 @@ pub fn build(i: Input) -> Truth {
 }
 
 /// A hash of what a person sees: states, counts, titles, project rows, the
-/// PC line, the engine line, and usage to the whole percent. Times are
-/// left out, so a task that keeps working pushes nothing new.
-pub fn seen(t: &Truth) -> u64 {
+/// PC line, the engine line, and usage to the whole percent. Times and the
+/// meters are left out (see [`meters_seen`]), so a task that keeps working
+/// pushes nothing new.
+pub fn seen_rest(t: &Truth) -> u64 {
     let mut h = std::collections::hash_map::DefaultHasher::new();
     t.pc.name.hash(&mut h);
     format!("{:?}", t.pc.level).hash(&mut h);
@@ -205,20 +206,46 @@ pub fn seen(t: &Truth) -> u64 {
             .map(|w| (w.used.round() as i64, w.resets_at))
             .hash(&mut h);
     }
-    // The meters push at a step a person can't tell apart: 5% for the
-    // processor and graphics, 1% for memory.
+    h.finish()
+}
+
+/// The meters at a step a person can't tell apart: 5% for the processor and
+/// graphics, 1 GB for memory.
+pub fn meters_seen(t: &Truth) -> u64 {
+    let mut h = std::collections::hash_map::DefaultHasher::new();
     t.stats
         .as_ref()
         .map(|s| {
             (
                 (s.cpu / 5.0).round() as i64,
                 s.gpu.map(|g| (g / 5.0).round() as i64),
-                (s.mem_used as f64 * 100.0 / s.mem_total.max(1) as f64).round() as i64,
+                (s.mem_used as f64 / 1e9).round() as i64,
                 s.mem_total,
             )
         })
         .hash(&mut h);
     h.finish()
+}
+
+/// Both together: what a person sees.
+pub fn seen(t: &Truth) -> u64 {
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    (seen_rest(t), meters_seen(t)).hash(&mut h);
+    h.finish()
+}
+
+/// How seldom a change of the meters alone goes to the phones.
+pub const METER_PUSH_EVERY: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// Whether a new truth goes out: at once when anything but the meters
+/// changed, and for a meters-only change at most every [`METER_PUSH_EVERY`]
+/// (`since_push`: time since the last push; None: never pushed).
+pub fn push_due(
+    rest_changed: bool,
+    meters_changed: bool,
+    since_push: Option<std::time::Duration>,
+) -> bool {
+    rest_changed || (meters_changed && since_push.is_none_or(|d| d >= METER_PUSH_EVERY))
 }
 
 /// Whether a client should take `new` over what it has: a new run of the
@@ -502,5 +529,29 @@ mod tests {
         assert_eq!(seen(&a), seen(&b), "1% of processor is not news");
         b.stats = Some(stats(60.0, 8_000_000_000));
         assert_ne!(seen(&a), seen(&b), "a loaded PC is news");
+    }
+    #[test]
+    fn p09d_fix_meters_alone_push_at_most_every_ten_seconds_in_coarse_steps() {
+        use std::time::Duration;
+        let stats = |cpu: f32, used: u64| TruthStats {
+            cpu,
+            mem_used: used,
+            mem_total: 32_000_000_000,
+            gpu: None,
+        };
+        let mut i = input(vec![], vec![]);
+        i.stats = Some(stats(20.0, 8_000_000_000));
+        let a = build(i);
+        let mut b = a.clone();
+        b.stats = Some(stats(20.0, 8_400_000_000));
+        assert_eq!(meters_seen(&a), meters_seen(&b), "0.4 GB is not news");
+        b.stats = Some(stats(20.0, 9_100_000_000));
+        assert_ne!(meters_seen(&a), meters_seen(&b), "1 GB is news");
+        assert_eq!(seen_rest(&a), seen_rest(&b), "meters are not the rest");
+        assert!(!push_due(false, true, Some(Duration::from_secs(3))));
+        assert!(push_due(false, true, Some(Duration::from_secs(10))));
+        assert!(push_due(false, true, None));
+        assert!(push_due(true, false, Some(Duration::from_secs(0))));
+        assert!(!push_due(false, false, None));
     }
 }

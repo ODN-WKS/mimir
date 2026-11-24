@@ -345,6 +345,9 @@ struct Service {
     /// shows, when it was built, and the snapshot itself.
     truth: Option<mimir_proto::Truth>,
     truth_seen: u64,
+    /// The meters' coarse hash at the last push, and when anything last went.
+    truth_meters: u64,
+    truth_pushed: Option<Instant>,
     truth_at: Option<Instant>,
     /// The PC's processor, memory and graphics load, sent to phones in the truth.
     meter: crate::pcstats::Meter,
@@ -595,6 +598,8 @@ impl Service {
             chats_unlock: crate::talk_store::Unlock::new(Duration::ZERO),
             truth: None,
             truth_seen: 0,
+            truth_meters: 0,
+            truth_pushed: None,
             truth_at: None,
             meter: crate::pcstats::Meter::new(),
             checks_cache: HashMap::new(),
@@ -4767,18 +4772,26 @@ impl Service {
         self.follow_outside();
         self.refresh_pc_sessions(false);
         // The login is read only while Claude is in use here (a paid chat
-        // choice, Claude for project work, or a project task on a Claude
-        // model); with own models only, never.
-        let tasks_on_claude = self
-            .runner
-            .tasks
+        // choice, Claude for project work, or a task working on Claude now); with own models only, never.
+        let chats = crate::paths::chats_dir().display().to_string();
+        let has_project = self
+            .pickable_projects()
             .iter()
-            .any(|l| !crate::models::is_free(l.task.model.as_deref()));
-        let wanted = crate::usage::claude_in_use(
+            .any(|p| !crate::paths::same(p, &chats));
+        let wanted = crate::usage::claude_in_use_now(
             self.settings.chats_paid(),
             !self.settings.project_free(),
-            tasks_on_claude,
+            has_project,
+            self.runner
+                .tasks
+                .iter()
+                .map(|l| (l.task.model.as_deref(), l.busy())),
         );
+        if !wanted {
+            // Nothing stale is kept or sent once Claude is no longer in use.
+            self.runner.weekly = None;
+            self.runner.five_hour = None;
+        }
         if let Some(p) = self.runner.usage_poller.as_mut() {
             p.wanted = wanted;
         }
@@ -5306,7 +5319,8 @@ impl Service {
         let mut t = self.build_truth();
         t.rev = rev;
         self.truth = Some(t.clone());
-        self.truth_seen = crate::truth::seen(&t);
+        self.truth_seen = crate::truth::seen_rest(&t);
+        self.truth_meters = crate::truth::meters_seen(&t);
         Some(t)
     }
 
@@ -5429,12 +5443,21 @@ impl Service {
         }
         self.truth_at = Some(Instant::now());
         let mut t = self.build_truth();
-        let seen = crate::truth::seen(&t);
-        if self.truth.is_some() && seen == self.truth_seen {
+        let seen = crate::truth::seen_rest(&t);
+        let meters = crate::truth::meters_seen(&t);
+        if self.truth.is_some()
+            && !crate::truth::push_due(
+                seen != self.truth_seen,
+                meters != self.truth_meters,
+                self.truth_pushed.map(|at| at.elapsed()),
+            )
+        {
             return;
         }
         t.rev = self.truth.as_ref().map_or(1, |o| o.rev + 1);
         self.truth_seen = seen;
+        self.truth_meters = meters;
+        self.truth_pushed = Some(Instant::now());
         // Desktop notifications follow the truth's changes of state, unless
         // the window is the one being looked at.
         if let Some(old) = self.truth.as_ref()
