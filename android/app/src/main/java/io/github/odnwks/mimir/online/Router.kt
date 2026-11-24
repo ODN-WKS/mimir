@@ -68,6 +68,26 @@ object Router {
         RegexOption.IGNORE_CASE,
     )
 
+    /**
+     * Products, ratings, prices, reviews, buying and recommendations: the web has these, an
+     * encyclopedia does not (0.09 item 25: "what is highest rated shaving replacement razor
+     * blades" only asked Wikipedia). Asked as a question or a request, not in passing.
+     */
+    private val SHOPPING = Regex(
+        "\\b(?:best|top|highest|top[- ]rated|best[- ]rated|highest[- ]rated|most popular|cheapest|rated|ratings?|reviews?|reviewed|" +
+            "recommend(?:ed|ation|ations)?|buy|buying|purchase|price|prices|cost of|" +
+            "worth (?:it|buying|the money)|deals?|which .{1,40} should i (?:buy|get)|vs\\.?|versus)\\b",
+        RegexOption.IGNORE_CASE,
+    )
+
+    /** The start of a question or request (not a statement): "what is", "which", "can you recommend", "find me". */
+    private val ASKING = Regex(
+        "^(?:please\\s+)?(?:what|which|who|where|how|is|are|should|can|could|do|does|any|tell me|give me|find me|show me|suggest|recommend|i want|i need|i'?m looking)\\b|\\?\\s*$",
+        RegexOption.IGNORE_CASE,
+    )
+
+    private val OWNED = Regex("\\b(my|mine|our|ours|his|her|hers|their|theirs|myself)\\b", RegexOption.IGNORE_CASE)
+
     private val WEATHER = Regex(
         "\\b(weather|forecast)\\b" +
             "|\\b(temperature|humidity)\\s+(outside|today|tonight|tomorrow|right now|now)\\b" +
@@ -125,6 +145,9 @@ object Router {
             if (PERSONAL_PRONOUNS.containsMatchIn(raw)) return null
             return words(raw)?.let { Need.Search(it) }
         }
+        // Product, rating, price, review, buy and recommend questions: the web search first.
+        // Still never about a private person or thing ("my", "his"...): that stays unsearched, as for news.
+        if (SHOPPING.containsMatchIn(t) && ASKING.containsMatchIn(t) && !OWNED.containsMatchIn(t)) return words(t)?.let { Need.Search(it) }
         val e = ENCYCLOPEDIA.find(t) ?: return null
         val subject = e.groupValues[1].trim()
         if (NOT_ENCYCLOPEDIA.containsMatchIn(subject) || subject.split(Regex("\\s+")).size > 8) return null

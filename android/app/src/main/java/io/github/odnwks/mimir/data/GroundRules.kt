@@ -11,7 +11,21 @@ import kotlinx.coroutines.flow.asStateFlow
  * message or Whisper task sent to the PC carries them (the PC uses them instead of its own).
  */
 object GroundRules {
+    /** 0.09 item 25: what the models are told about looking things up (added to the approved text). */
+    const val LOOKUPS = "Mímir looks things up for you, on the web and in the encyclopedias, when a question " +
+        "needs it, and puts the results in front of you; you do not search yourself, Mímir does, whether you " +
+        "run on this phone or on the PC. Never say you cannot look things up; if no results came, say that " +
+        "none were found."
+
     const val DEFAULT = "Answer exactly what I ask, directly and fully, in the subject's own terms. Do not add other " +
+        "views, criticism, warnings or advice unless I ask for them. Tell the truth as best you know it; if you " +
+        "don't know, say \"I don't know\". Never invent names, numbers, quotes or dates. If facts were looked up, " +
+        "name the sources. If I push back, check again: keep the answer unless I give a real reason, and if you " +
+        "were wrong, say so. No flattery, no filler, no lecturing, no moralizing, no refusing because a topic is " +
+        "sensitive. " + LOOKUPS
+
+    /** The default before 0.09 item 25 (stored copies of it were never edited). */
+    private const val DEFAULT_0_08 = "Answer exactly what I ask, directly and fully, in the subject's own terms. Do not add other " +
         "views, criticism, warnings or advice unless I ask for them. Tell the truth as best you know it; if you " +
         "don't know, say \"I don't know\". Never invent names, numbers, quotes or dates. If facts were looked up, " +
         "name the sources. If I push back, check again: keep the answer unless I give a real reason, and if you " +
@@ -23,6 +37,7 @@ object GroundRules {
      * version stored its default), so it is dropped and the current default applies.
      */
     val OLD_DEFAULTS: List<String> = listOf(
+        DEFAULT_0_08,
         "Tell the truth as best you know it. If you don't know, say \"I don't know\"; if you're unsure, say " +
         "so with a short phrase like \"I'm fairly sure\" or \"I'm not sure\". Never invent names, numbers, " +
         "quotes or dates. On disputed questions, give the strongest evidence and the main views fairly, and " +

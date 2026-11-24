@@ -2017,6 +2017,10 @@ impl Service {
                     Ok(_) => String::new(),
                     Err(e) if crate::models::unit_path().is_file() => {
                         eprintln!("mimir: model runner: {e}");
+                        // 0.09 item 25: a phone asking which models this PC has wakes the
+                        // model program (without waiting), so the next look finds it and a
+                        // chat is not handed to the phone's own model for good.
+                        crate::models::wake();
                         "Your PC's model runner isn't answering yet. It starts by itself when a model on this PC is used.".to_string()
                     }
                     Err(e) => e.clone(),

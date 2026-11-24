@@ -172,6 +172,18 @@ Do not add other views, criticism, warnings or advice unless I ask for them. Tel
 as best you know it; if you don't know, say \"I don't know\". Never invent names, numbers, \
 quotes or dates. If facts were looked up, name the sources. If I push back, check again: \
 keep the answer unless I give a real reason, and if you were wrong, say so. No flattery, no \
+filler, no lecturing, no moralizing, no refusing because a topic is sensitive. \
+Mímir looks things up for you, on the web and in the encyclopedias, when a question needs it, \
+and puts the results in front of you; you do not search yourself, Mímir does, whether you run \
+on this phone or on the PC. Never say you cannot look things up; if no results came, say that \
+none were found.";
+
+/// The default before 0.09 item 25 (the look-up sentence was added after it).
+const DEFAULT_0_08: &str = "Answer exactly what I ask, directly and fully, in the subject's own terms. \
+Do not add other views, criticism, warnings or advice unless I ask for them. Tell the truth \
+as best you know it; if you don't know, say \"I don't know\". Never invent names, numbers, \
+quotes or dates. If facts were looked up, name the sources. If I push back, check again: \
+keep the answer unless I give a real reason, and if you were wrong, say so. No flattery, no \
 filler, no lecturing, no moralizing, no refusing because a topic is sensitive.";
 
 /// Earlier default texts of the ground rules. A phone that has not updated yet
@@ -180,6 +192,7 @@ filler, no lecturing, no moralizing, no refusing because a topic is sensitive.";
 /// as "never edited": the current default applies. Add the replaced default here
 /// whenever `DEFAULT_GROUND_RULES` changes.
 pub const OLD_DEFAULTS: &[&str] = &[
+    DEFAULT_0_08,
     "Tell the truth as best you know it. If you don't know, say \"I don't know\"; if you're \
 unsure, say so with a short phrase like \"I'm fairly sure\" or \"I'm not sure\". Never \
 invent names, numbers, quotes or dates. On disputed questions, give the strongest evidence \
@@ -590,6 +603,15 @@ pub fn save_window(v: &serde_json::Value) {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn p09_item25_the_built_in_rules_say_mimir_looks_things_up() {
+        assert!(DEFAULT_GROUND_RULES.contains("Mímir looks things up for you"));
+        assert!(DEFAULT_GROUND_RULES.contains("Never say you cannot look things up"));
+        // The approved text is kept whole, in front of the added sentence.
+        assert!(DEFAULT_GROUND_RULES.starts_with(DEFAULT_0_08));
+        assert!(is_old_default(DEFAULT_0_08));
+    }
+
     #[test]
     fn online_is_set_up_only_when_chats_or_project_work_use_it() {
         let mut s = Settings::default();

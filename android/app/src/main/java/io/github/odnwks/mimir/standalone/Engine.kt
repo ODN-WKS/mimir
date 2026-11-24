@@ -1396,12 +1396,18 @@ class Engine(
         val settings = io.github.odnwks.mimir.online.Online.settings.value
         val which = settings.encyclopedias
         // Until the one-time warning is accepted, Wikipedia alone answers: the first ask is never held up by a question.
-        val wikiOnly = wikipediaOnly.getAndSet(false) || !settings.searchAccepted
+        val declined = wikipediaOnly.getAndSet(false)
+        val wikiOnly = declined || !settings.searchAccepted
         val words = need.words
         _state.update { it.copy(looking = "Looking up $words…") }
         return try {
             val f = io.github.odnwks.mimir.online.Encyclopedia.look(words, which, grok = settings.searchAccepted && !wikiOnly, mode())
             when {
+                // 0.09 item 25: an encyclopedia with no article falls through to the web search (unless "Not now" was just said).
+                (f == null || (f.wikipedia == null && f.grokipedia == null)) && !declined && settings.search -> {
+                    _state.update { it.copy(looking = null) }
+                    search(io.github.odnwks.mimir.online.Router.Need.Search(words), false)
+                }
                 f == null || (f.wikipedia == null && f.grokipedia == null) -> "\n\n[The app looked up \"$words\" in the encyclopedias and found no article. Say so; don't guess.]" to emptyList()
                 else -> Prompt.fetched(io.github.odnwks.mimir.online.Encyclopedia.describe(f), listOfNotNull("Wikipedia".takeIf { f.wikipedia != null }, "Grokipedia".takeIf { f.grokipedia != null }).joinToString(" and "), clock()) to
                     io.github.odnwks.mimir.online.Encyclopedia.sources(f, words)
