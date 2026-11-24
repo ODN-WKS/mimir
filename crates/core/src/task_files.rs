@@ -354,9 +354,61 @@ pub fn named(text: &str, paths: &[PathBuf]) -> String {
     format!("{text}\n\nAttached: {}", list.join(", "))
 }
 
+/// The message as the person wrote it, and the names of what they attached:
+/// the "Attached: /path/a, /path/b" tail that [`named`] adds for Claude Code
+/// is never shown, only each file's own name (without its number and its
+/// local-only marker).
+pub fn split_attached(text: &str) -> (String, Vec<String>) {
+    let Some(at) = text.rfind("Attached: /") else {
+        return (text.to_string(), vec![]);
+    };
+    if at != 0 && !text[..at].ends_with("\n\n") {
+        return (text.to_string(), vec![]);
+    }
+    let tail = &text[at + "Attached: ".len()..];
+    if tail.contains('\n') {
+        return (text.to_string(), vec![]);
+    }
+    let names = tail
+        .split(", /")
+        .map(|p| {
+            let p = p.trim_start_matches('/');
+            let file = p.rsplit('/').next().unwrap_or(p);
+            let file = match file.split_once('-') {
+                Some((n, rest)) if !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()) => rest,
+                _ => file,
+            };
+            file.strip_prefix(LOCAL_ONLY).unwrap_or(file).to_string()
+        })
+        .collect();
+    (text[..at].trim_end().to_string(), names)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn p09_item1_the_attached_tail_becomes_names() {
+        let t = named(
+            "Look at these",
+            &[
+                PathBuf::from("/home/x/.local/share/mimir/task-files/t-1/1-plan.pdf"),
+                PathBuf::from("/home/x/.local/share/mimir/task-files/t-1/2-local-only-a, b.png"),
+            ],
+        );
+        let (text, names) = split_attached(&t);
+        assert_eq!(text, "Look at these");
+        assert_eq!(names, vec!["plan.pdf", "a, b.png"]);
+        assert!(!text.contains("/home"));
+        // Nothing attached: untouched. Words that merely mention it: untouched.
+        assert_eq!(split_attached("Hello"), ("Hello".into(), vec![]));
+        let said = "I wrote Attached: /etc/hosts in a line";
+        assert_eq!(split_attached(said), (said.into(), vec![]));
+        // Only attachments.
+        let (text, names) = split_attached("Attached: /a/b/1-x.jpg");
+        assert_eq!((text.as_str(), names.len()), ("", 1));
+    }
 
     fn tmp(name: &str) -> PathBuf {
         let d =

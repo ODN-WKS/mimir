@@ -1538,7 +1538,7 @@ impl Service {
                 self.runner.set_archived(&task, archived);
                 ok
             }
-            Call::RemoveTask { task } => {
+            Call::RemoveTask { task } | Call::DeleteTask { task } => {
                 let Some(l) = self.task(&task) else { return ok };
                 if l.busy() {
                     return Err("Pause or stop the task before deleting it.".into());

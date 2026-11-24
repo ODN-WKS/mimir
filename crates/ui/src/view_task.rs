@@ -1525,7 +1525,19 @@ fn entry(
         }
         // A message with nothing in it draws nothing (no empty bubble with Copy).
         Entry::You(text) if text.trim().is_empty() => {}
-        Entry::You(text) => {
+        // What was attached is named as small chips, never as the PC's file path.
+        Entry::You(full)
+            if mimir_core::task_files::split_attached(full)
+                .0
+                .trim()
+                .is_empty()
+                && !mimir_core::task_files::split_attached(full).1.is_empty() =>
+        {
+            attached_chips(ui, &mimir_core::task_files::split_attached(full).1);
+        }
+        Entry::You(full) => {
+            let (shown, names) = mimir_core::task_files::split_attached(full);
+            let text = &shown;
             let bubble = ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
                 let frame = egui::Frame::new()
                     .fill(theme::BUBBLE)
@@ -1552,6 +1564,9 @@ fn entry(
                 },
                 actions,
             );
+            if !names.is_empty() {
+                attached_chips(ui, &names);
+            }
             // Undo is always there, quiet until the pointer is near.
             if let Some(task) = undo {
                 let near = ui.rect_contains_pointer(bubble.response.rect.expand(24.0));
@@ -2279,4 +2294,14 @@ mod tests {
         assert!(!is_stop_marker("Please do not interrupt"));
         assert!(!is_stop_marker("[Request interrupted]"));
     }
+}
+
+/// The files and pictures sent with a message: one small named chip each,
+/// right-aligned under the person's words.
+fn attached_chips(ui: &mut egui::Ui, names: &[String]) {
+    ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
+        for name in names.iter().rev() {
+            theme::chip(ui, name, MUTED).on_hover_text("Sent with this message");
+        }
+    });
 }

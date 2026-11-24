@@ -1617,6 +1617,11 @@ pub enum Call {
     RemoveTask {
         task: String,
     },
+    /// A phone's "Delete": the same as `RemoveTask` (the task, its conversation
+    /// and its files on this PC go; refused while the task works).
+    DeleteTask {
+        task: String,
+    },
     /// A note from Mímir in the conversation.
     Note {
         task: String,
@@ -1786,6 +1791,7 @@ impl Call {
             | Call::Continue { .. }
             | Call::Rename { .. }
             | Call::Archive { .. }
+            | Call::DeleteTask { .. }
             | Call::SetModel { .. }
             | Call::SetEffort { .. }
             | Call::DismissQuestion { .. } => true,
