@@ -241,7 +241,8 @@ class LinkStation(
         for ((id, text) in data.outbox) {
             val i = chat.indexOfFirst { it.id == id }
             val mine = ChatEntry.Mine(id, text, Filing(FilingKind.Waiting, ""))
-            if (i >= 0) chat[i] = mine else chat += mine
+            // A waiting message of an older chat stays with that chat (0.09 item 24).
+            if (i >= 0) chat[i] = mine else if (past.none { it.log.contains(id) }) chat += mine
         }
         savedChat = chat.hashCode()
         expireOld()
@@ -871,8 +872,8 @@ class LinkStation(
 
     /** The open conversation, as kept in the chats list (null when there's nothing in it). */
     private fun keepOpen(): KeptChat? {
-        val waiting = data.outbox.map { it.first }.toSet()
-        val said = chat.filter { it !is ChatEntry.IncognitoRunning && it.id !in waiting }
+        // A message still waiting to be sent stays with the chat it was written in (0.09 item 24).
+        val said = chat.filter { it !is ChatEntry.IncognitoRunning }
         if (said.none { it is ChatEntry.Mine || it is ChatEntry.Reply }) return null
         return KeptChat("c-${UUID.randomUUID()}", null, data.chatAt.takeIf { it > 0 } ?: System.currentTimeMillis(), ChatLog.write(said.takeLast(200), filed.filterKeys { k -> said.any { it.id == k } }))
     }
@@ -886,12 +887,10 @@ class LinkStation(
 
     override fun newChat() {
         synchronized(lock) {
-            val kept = keepOpen() ?: return
-            past.add(0, kept)
-            // Messages still waiting to be sent stay, so they aren't lost.
-            val waiting = data.outbox.map { it.first }.toSet()
-            chat.retainAll { it.id in waiting }
-            filed.keys.retainAll(waiting)
+            // The new chat is always empty: what was open is kept (waiting messages with it), notes are dropped.
+            keepOpen()?.let { past.add(0, it) }
+            chat.clear(); filed.clear()
+            data = data.copy(chat = ChatLog.write(chat, filed), chatAt = 0); savedChat = chat.hashCode()
             savePast()
         }
         publish()
@@ -903,11 +902,13 @@ class LinkStation(
             if (i < 0) return
             val pick = past.removeAt(i)
             keepOpen()?.let { past.add(0, it) }
-            val waiting = data.outbox.map { it.first }.toSet()
-            val left = chat.filter { it.id in waiting }
-            chat.clear(); filed.keys.retainAll(waiting)
+            chat.clear(); filed.clear()
             ChatLog.read(pick.log).let { (kept, where) -> chat += kept; filed += where }
-            chat += left
+            // Anything of this chat still waiting to be sent shows as waiting.
+            for ((id, text) in data.outbox) {
+                val i = chat.indexOfFirst { it.id == id }
+                if (i >= 0) chat[i] = ChatEntry.Mine(id, text, Filing(FilingKind.Waiting, ""))
+            }
             savePast()
         }
         publish()

@@ -2,6 +2,7 @@ package io.github.odnwks.mimir.ui
 
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
@@ -344,8 +345,9 @@ class OneChatTest {
         settle(); compose.waitForIdle()
         assertEquals("phone", engine.state.value.chat.turns.last().ran)
         compose.onNodeWithContentDescription("Answered on: This phone").assertDoesNotExist()
-        // Who answers (top bar) offers the PC or this phone.
-        compose.openWhoAnswers()
+        // 0.09 item 26: the phone took over, so the top bar says so at once and says why; it still offers the PC or this phone.
+        compose.onNodeWithTag("who-why").assertIsDisplayed()
+        compose.openWhoAnswers("This phone")
         compose.onNodeWithText(WHO_PHONE_ABOUT).performClick(); compose.waitForIdle()
         assertFalse(engine.state.value.usePc)
     }

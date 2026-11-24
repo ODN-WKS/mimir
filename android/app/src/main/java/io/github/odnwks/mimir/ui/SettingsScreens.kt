@@ -261,6 +261,24 @@ fun GeneralScreen(state: StationState, nav: Navigator) {
             }
             CapsLabel("STARTUP")
             StartupAnimationSetting()
+            CapsLabel("KEYBOARD")
+            KeyboardAutoSetting()
+        }
+    }
+}
+
+/** The switch "Open the keyboard by itself" (on unless chosen off): a new chat and any box that needs typing bring the keyboard up. */
+@Composable
+fun KeyboardAutoSetting() {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val prefs = remember { ctx.getSharedPreferences(PHONE_CHAT_PREFS, 0) }
+    var on by remember { androidx.compose.runtime.mutableStateOf(keyboardAutoOn(ctx)) }
+    Panel(padding = androidx.compose.foundation.layout.PaddingValues(start = 14.dp, end = 14.dp, top = 6.dp, bottom = 6.dp)) {
+        SwitchRow(on, { on = it; prefs.edit().putBoolean(KEYBOARD_AUTO, it).apply() }, Modifier.heightIn(min = 56.dp)) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text("Open the keyboard by itself", style = Type.BodyTight, color = Palette.Text)
+                Text("A new chat and boxes that need typing put the cursor in and show the keyboard", style = Type.Small, color = Palette.TextDim)
+            }
         }
     }
 }

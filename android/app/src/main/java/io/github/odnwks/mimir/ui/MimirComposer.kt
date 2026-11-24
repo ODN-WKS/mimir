@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -57,6 +58,8 @@ fun MimirComposer(
     modifier: Modifier = Modifier,
     /** Files to go with the message: it can be sent with no words. */
     hasFiles: Boolean = false,
+    /** Each rise puts the cursor in the box and opens the keyboard (a new chat, opening the app), when Settings allows it. */
+    focusTick: Int = 0,
     /** Shown at the top of the box: the attached files. */
     above: (@Composable () -> Unit)? = null,
     /** The + at the start of the bottom row (with [ChipFit.Menu], the effort is in its menu). */
@@ -86,6 +89,15 @@ fun MimirComposer(
         // keyboard works. Only a change from outside (cleared after Send, words heard) replaces the text.
         var field by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(androidx.compose.ui.text.input.TextFieldValue(value)) }
         if (field.text != value) field = androidx.compose.ui.text.input.TextFieldValue(value, androidx.compose.ui.text.TextRange(value.length))
+        val focus = androidx.compose.runtime.remember { androidx.compose.ui.focus.FocusRequester() }
+        val ctx = androidx.compose.ui.platform.LocalContext.current
+        val keys = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+        androidx.compose.runtime.LaunchedEffect(focusTick) {
+            if (focusTick > 0 && keyboardAutoOn(ctx)) {
+                androidx.compose.runtime.withFrameNanos { }
+                runCatching { focus.requestFocus(); keys?.show() }
+            }
+        }
         BasicTextField(
             value = field,
             onValueChange = { next -> field = next; if (next.text != value) onValue(next.text) },
@@ -94,7 +106,7 @@ fun MimirComposer(
             textStyle = Type.Body.copy(color = Palette.Text, lineHeight = 16.sp * 1.4f),
             cursorBrush = SolidColor(Palette.BlueLight),
             maxLines = 6,
-            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).semantics { contentDescription = label }
+            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).focusRequester(focus).semantics { contentDescription = label }
                 .messageBoxKeys { if (ready) onSend() },
             decorationBox = { inner ->
                 Box(Modifier.padding(start = 8.dp, end = 8.dp, top = 14.dp, bottom = 4.dp), contentAlignment = Alignment.CenterStart) {

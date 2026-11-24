@@ -24,6 +24,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.Text
+import androidx.compose.ui.platform.testTag
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -87,6 +88,8 @@ fun PhoneChat(
     if (!s.supported && !paired && !onlineOn) return CantRunHere(nav)
     val model = Catalog.byId(s.model)
     var draft by rememberSaveable { mutableStateOf("") }
+    // New chat and opening the app put the cursor in the box and bring the keyboard up (Settings can turn it off).
+    var focusTick by remember { mutableStateOf(1) }
     // The PC answers pings: a message is never "waiting" then, so Send stays on and no stale red line shows (QA2 #7, #15, #19).
     val pcReady = paired && pcOnline && (s.usePc || !s.supported) && !s.whisper
     val waiting = !s.ready && !pcReady && !s.writing && s.chat.turns.lastOrNull()?.user == true && s.stoppedChat != s.chat.id
@@ -168,11 +171,11 @@ fun PhoneChat(
             s.writing -> {}
             s.whisper && s.chat.turns.isNotEmpty() -> { endThen = place; endAsk = true }
             s.whisper -> { engine.endWhisper(); place() }
-            else -> { if (s.chat.turns.isNotEmpty()) engine.newChat(); place() }
+            else -> { engine.newChat(); place() }
         }
         Unit
     }
-    val newChat = { startOn(true) }
+    val newChat = { startOn(true); focusTick++; Unit }
     // Where a Whisper starts: on the PC when paired with a free model there, else on this phone (the PC when the phone can't).
     val whisperHere = {
         when (whisperStartFor(paired, pcFree, pcOnline, s.ready, s.supported)) {
@@ -257,7 +260,10 @@ fun PhoneChat(
             }
         }
         // Who answers (a tap changes it, and holds the chat's other choices), the menu button, and a new chat.
-        val answeringPc = paired && (s.usePc || !s.supported) && !s.whisper && !onlineOn
+        // The phone takes over when the PC or its model is away: the bar says so at once, and why.
+        val lastAnswer = s.chat.turns.lastOrNull { !it.user }
+        val now = whoNow(paired, s.usePc, s.supported && s.ready, pcOnline, lastAnswer?.ran, lastAnswer?.switchNote, s.whisper, onlineOn)
+        val answeringPc = paired && (s.usePc || !s.supported) && !s.whisper && !onlineOn && !now.phoneTookOver
         if (s.whisper || pcWhisper) WhisperTopBar(
             onEnd = { if (pcWhisper) pcWhisper = false else if (!s.writing) engine.endWhisper(told = true) },
             onHold = { draft = ""; files.clear(); pictures.clear(); emergencyExit(ctx, engine, readAloud) },
@@ -274,11 +280,12 @@ fun PhoneChat(
             onPick = if (s.whisper) ({ if (!s.writing) engine.endWhisper(told = true) }) else ({ whoOpen = true }),
             onMore = if (!s.whisper && s.chat.turns.isNotEmpty()) ({ nav.openSheet(chatOptions(s, pcPrivate, if (onlineOn) io.github.odnwks.mimir.online.OnlineModels.answering()?.let { io.github.odnwks.mimir.online.OnlineModels.serviceOf(it).company } else null)) }) else null,
         )
+        now.why?.let { why -> Text(why, style = Type.Small, color = Palette.TextDim, textAlign = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 2.dp).testTag("who-why").semantics { liveRegion = androidx.compose.ui.semantics.LiveRegionMode.Polite }) }
         WhisperHygiene(s.whisper || pcWhisper)
         WhisperEndedNote(s.whisperEnded, engine::dismissWhisperEnded)
         EndWhisperQuestion(endAsk, onCancel = { endAsk = false; endThen = null }) { endAsk = false; engine.endWhisper(); endThen?.invoke(); endThen = null }
         WhisperNeedsMimir(needsMimir, model.sizeText, onGet = { needsMimir = false; nav.open(Screen.Models) }, onClose = { needsMimir = false })
-        val answerer = when { onlineOn -> Answerer.Online; claudeAnswers && pcPrivate -> Answerer.Claude; pcPrivate -> Answerer.Pc; else -> Answerer.Phone }
+        val answerer = when { onlineOn -> Answerer.Online; claudeAnswers && pcPrivate && !now.phoneTookOver -> Answerer.Claude; pcPrivate && !now.phoneTookOver -> Answerer.Pc; else -> Answerer.Phone }
         val showHome = !s.whisper && !pcWhisper && s.chat.turns.isEmpty() && s.chat.queued.isEmpty() && !s.writing && !getting && !renaming
         val first = isFirstOpen(hasChatted, s.earlier.isNotEmpty())
         // The startup animation belongs to the home screen: opening on a chat or a Whisper plays nothing; typing skips it.
@@ -380,6 +387,7 @@ fun PhoneChat(
                     val before = s.chat.turns.getOrNull(i - 1)?.takeIf { it.user }
                     Reply(
                         turn.text, dim = false, sources = turn.sources, note = turn.switchNote, lookUp = lookUp.takeIf { i == s.chat.turns.lastIndex }, openSources = !s.whisper,
+                        author = if (s.whisper) null else answerAuthor(turn, pcName),
                         onTryAgain = if (s.writing || s.whisper || i != s.chat.turns.lastIndex || s.lookupFailed) null else before?.let { { engine.tryAgain() } },
                     )
                 }
@@ -439,8 +447,12 @@ fun PhoneChat(
                 Modifier.startupBottom(startup, on = first),
             )
         }
+        // Claude use left this week, with the model choice (a reading from the PC, or a plain "not read yet").
+        if (paired && claudeOffered && !s.whisper && !pcWhisper) link?.state?.collectAsStateWithLifecycle()?.value?.usage?.let { u ->
+            Text(usageLeftWords(u), style = Type.Small, color = Palette.TextDim, modifier = Modifier.padding(horizontal = 20.dp, vertical = 2.dp).testTag("usage-left"))
+        }
         NoKeyboardLearning(s.whisper || pcWhisper) {
-        MimirComposer(draft, { draft = it; if (it.isNotBlank()) engine.prepare() }, waiting, s.writing, voice, onSend = { send(draft) }, onStop = engine::stop,
+        MimirComposer(draft, { draft = it; if (it.isNotBlank()) engine.prepare() }, waiting, s.writing, voice, onSend = { send(draft) }, onStop = engine::stop, focusTick = focusTick,
             whisper = s.whisper || pcWhisper, waitHint = !paired, modifier = Modifier.startupBottom(startup, on = showHome && first).padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 10.dp),
             hasFiles = files.isNotEmpty() || pictures.isNotEmpty(),
             above = { attach.Chips() },
@@ -450,11 +462,11 @@ fun PhoneChat(
         ) { fit ->
             val installed = Catalog.withOwn().filter { it.id in s.have }
             // Who answers is in the top bar; the chip names the model that does.
-            if (pcPrivate) {
+            if (pcPrivate && !now.phoneTookOver) {
                 val said = claudeModelWord(s.chat.turns.lastOrNull { !it.user && it.ran == "paid" }?.modelWords)
                 val chosen = claudeChoices.firstOrNull { it.id == claudeModel && it.id != "auto" }
                 PcModelChip(
-                    if (claudeAnswers) claudeChipWordFor(chosen?.name, said) else pcModelWord(pcModel),
+                    if (claudeAnswers) claudeChipWordFor(chosen?.name, said) else pcModelWord(pcModel).let { if (it == "Auto-pick") "Your PC's model" else it },
                     if (claudeAnswers) "$pcName picks the model itself; your messages go to Anthropic" else "On $pcName", fit,
                     lastAnswer = if (claudeAnswers) said else null,
                     onUseFree = if (claudeAnswers) ({ onPickEngine("free") }) else null,

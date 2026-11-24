@@ -23,6 +23,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
+import androidx.compose.ui.platform.testTag
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -225,6 +226,7 @@ fun SideMenu(
                     go { if (!state.paired) nav.open(Screen.Pair) else if (state.pcSessions != null) nav.open(Screen.PhonePc) else nav.selectTab(Tab.Status) }
                 }
             }
+            if (state.paired) item("usage") { MenuRow("Claude use left this week", right = usageLeftShort(state.usage), dim = true, modifier = Modifier.testTag("menu-usage")) { go { nav.open(Screen.Models) } } }
             // Press and hold: a Whisper with internet (Mímir on this phone, through Tor), the old "New Whisper-O".
             item("whisper") { MenuRow(MENU_WHISPER, right = "a chat that's never kept", onLongClick = { go { nav.selectTab(Tab.Chat); nav.askChat(ChatAsk.StartWebWhisper) } }) { go { nav.selectTab(Tab.Chat); nav.askChat(ChatAsk.StartWhisper) } } }
             item("chats-head") {

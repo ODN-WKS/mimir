@@ -299,6 +299,7 @@ LazyColumn(
                 val before = s.chat.turns.getOrNull(i - 1)?.takeIf { it.user }
                 Reply(
                     turn.text, dim = false, sources = turn.sources, note = turn.switchNote, lookUp = lookUp.takeIf { i == s.chat.turns.lastIndex }, openSources = !s.whisper,
+                    author = if (s.whisper) null else answerAuthor(turn, "Your PC"),
                     onTryAgain = if (s.whisper || i != s.chat.turns.lastIndex || s.lookupFailed) null else before?.let { q -> { askAgain(q) } },
                 )
             }
@@ -333,12 +334,14 @@ internal fun Reply(
     note: String? = null,
     /** False while it is still being written (R20). */
     buttons: Boolean = true,
+    /** Who wrote it: "This phone · Qwen 3.5", "Your PC · …", "Claude · …" (null: not known). */
+    author: String? = null,
 ) {
     // Mímir's replies are read by the phone's own voice: nothing leaves the phone.
     val id = "mimir-${text.hashCode()}"
     // Listen and Copy get the words without the Markdown marks.
     val plain = androidx.compose.runtime.remember(text) { markdownPlain(text) }
-    Answer(plain, id, dim = dim, sources = sources, openSources = openSources, lookUp = lookUp, onTryAgain = onTryAgain, note = note, buttons = buttons) {
+    Answer(plain, id, dim = dim, sources = sources, openSources = openSources, lookUp = lookUp, onTryAgain = onTryAgain, note = note, buttons = buttons, author = author) {
         MarkdownText(text, style = ChatLook.MessageText, color = if (dim) Palette.TextDim else Palette.Text, linksOpen = openSources)
     }
 }

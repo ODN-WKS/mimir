@@ -29,6 +29,8 @@ class IdleRedrawTest {
 
     private fun idleWrites(station: FakeStation, open: Navigator.() -> Unit): List<String> {
         FakeWeb().install()
+        // The box would hold the cursor (it blinks): this test is about a screen nobody touches.
+        androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>().getSharedPreferences(PHONE_CHAT_PREFS, 0).edit().putBoolean(KEYBOARD_AUTO, false).commit()
         Online.set(Online.Settings())
         val nav = Navigator()
         val engine = testEngine(tmp.newFolder(), ready = true)

@@ -202,6 +202,8 @@ fun Answer(
     share: Boolean = false,
     /** False while the answer is still being written: no Listen or Copy under half an answer (R20). */
     buttons: Boolean = true,
+    /** Who wrote it, one dim line under the answer (null: not shown). */
+    author: String? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -214,6 +216,7 @@ fun Answer(
             }
         }
         if (!dim && buttons) {
+            if (!author.isNullOrBlank()) Text(author, style = Type.Small, color = Palette.TextDim, modifier = Modifier.testTag("answer-author"))
             if (sources.isNotEmpty()) SourcesLine(sources, openSources)
             if (!note.isNullOrBlank()) Text(note, style = Type.Small, color = Palette.TextDim, modifier = Modifier.testTag("switch-note"))
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), itemVerticalAlignment = Alignment.CenterVertically) {
