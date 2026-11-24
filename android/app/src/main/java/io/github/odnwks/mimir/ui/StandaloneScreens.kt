@@ -216,7 +216,7 @@ fun StandaloneScreen(engine: Engine, nav: Navigator) {
                     MessageBox(draft, { draft = it }, "Message $AI_NAME", "Message $AI_NAME", Modifier.weight(1f), keyboardOptions = whisperKeyboard(s.whisper))
                 }
                 if (s.writing) {
-                    RoundButton(Glyphs.Stop, "Stop the reply", engine::stop, filled = true, fill = Palette.RedBorder)
+                    StopControl(engine::stop, shape = StopShape.Round, size = SMALL_BUTTON, fill = Palette.RedBorder, description = "Stop the reply")
                 } else {
                     RoundButton(Glyphs.Send, "Send", { if (engine.send(draft)) draft = "" }, filled = draft.isNotBlank())
                 }

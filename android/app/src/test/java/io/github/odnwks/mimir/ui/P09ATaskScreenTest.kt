@@ -238,3 +238,12 @@ class P09AFixDeleteTest {
         assertEquals(emptySet<String>(), PendingDeletes.all(ctx))
     }
 }
+
+class P09AFix5StopSourceTest {
+    @Test fun p09Fix5NoStandaloneStopIsAPlainOneTapButton() {
+        val f = listOf("src/main", "app/src/main").map { java.io.File(it, "java/io/github/odnwks/mimir/ui/StandaloneScreens.kt") }.first { it.exists() }
+        val stops = f.readLines().filter { "Stop the reply" in it }
+        assertTrue("there is a Stop on the standalone chat", stops.isNotEmpty())
+        assertTrue("every Stop there is the shared guarded control: $stops", stops.all { "StopControl(" in it })
+    }
+}
