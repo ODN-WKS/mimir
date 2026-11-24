@@ -629,6 +629,22 @@ pub struct Truth {
     pub engine: TruthEngine,
     #[serde(default)]
     pub usage: Option<TruthUsage>,
+    /// How busy the PC is right now (the three meters on Your PC).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stats: Option<TruthStats>,
+}
+
+/// The PC's processor, memory and graphics load, as the window shows them.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct TruthStats {
+    /// Processor busy, percent (0 to 100).
+    pub cpu: f32,
+    /// Memory in use and in total, in bytes.
+    pub mem_used: u64,
+    pub mem_total: u64,
+    /// Graphics busy, percent, when the driver reports it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gpu: Option<f32>,
 }
 
 /// A task as clients see it: everything but its conversation, plus what

@@ -5,7 +5,7 @@
 
 use mimir_proto::{
     CheckFacts, PcActivity, TaskState, Truth, TruthCounts, TruthEngine, TruthPc, TruthProject,
-    TruthTask, TruthUsage, WeeklyUse,
+    TruthStats, TruthTask, TruthUsage, WeeklyUse,
 };
 use std::hash::{Hash, Hasher};
 
@@ -50,6 +50,8 @@ pub struct Input<'a> {
     pub projects: Vec<(String, String, Option<CheckFacts>)>,
     pub engine: TruthEngine,
     pub usage: (Option<WeeklyUse>, Option<WeeklyUse>, Option<i64>),
+    /// The PC's processor, memory and graphics load.
+    pub stats: Option<TruthStats>,
 }
 
 /// A task's one state, from fix batch 1's rule: needs the owner, then
@@ -135,7 +137,9 @@ pub fn build(i: Input) -> Truth {
         level: i.activity.map(|a| a.level).unwrap_or_default(),
         line: i.activity.map(|a| a.phone_line.clone()).unwrap_or_default(),
     };
-    let usage = i.engine.paid_on.then_some(TruthUsage {
+    // Whenever a reading exists, whatever model is chosen: the phone shows
+    // the week's use where a person looks first (0.09 item 11).
+    let usage = (i.usage.0.is_some() || i.usage.1.is_some()).then_some(TruthUsage {
         weekly: i.usage.0,
         five_hour: i.usage.1,
         as_of: i.usage.2,
@@ -150,6 +154,7 @@ pub fn build(i: Input) -> Truth {
         projects,
         engine: i.engine,
         usage,
+        stats: i.stats,
     }
 }
 
@@ -200,6 +205,19 @@ pub fn seen(t: &Truth) -> u64 {
             .map(|w| (w.used.round() as i64, w.resets_at))
             .hash(&mut h);
     }
+    // The meters push at a step a person can't tell apart: 5% for the
+    // processor and graphics, 1% for memory.
+    t.stats
+        .as_ref()
+        .map(|s| {
+            (
+                (s.cpu / 5.0).round() as i64,
+                s.gpu.map(|g| (g / 5.0).round() as i64),
+                (s.mem_used as f64 * 100.0 / s.mem_total.max(1) as f64).round() as i64,
+                s.mem_total,
+            )
+        })
+        .hash(&mut h);
     h.finish()
 }
 
@@ -295,6 +313,7 @@ mod tests {
                 None,
                 Some(1),
             ),
+            stats: None,
         }
     }
 
@@ -325,8 +344,8 @@ mod tests {
         assert_eq!((t.projects[0].working, t.projects[0].needs_you), (1, 1));
         // "No checks yet" is never sent: a project without checks has none.
         assert!(t.projects.iter().all(|p| p.checks.is_none()));
-        // Usage only when a paid model is on.
-        assert!(t.usage.is_none());
+        // A reading is sent whichever model is chosen (0.09 item 11).
+        assert!(t.usage.is_some());
     }
 
     #[test]
@@ -344,9 +363,9 @@ mod tests {
     }
 
     #[test]
-    fn usage_shows_with_a_paid_model_and_pushes_only_by_whole_percents() {
+    fn usage_shows_with_any_reading_and_pushes_only_by_whole_percents() {
         let mut i = input(vec![], vec![]);
-        i.engine.paid_on = true;
+        i.engine.paid_on = false;
         let a = build(i);
         assert_eq!(
             a.usage.as_ref().unwrap().weekly.as_ref().unwrap().used,
@@ -454,5 +473,34 @@ mod tests {
         assert_eq!(off.len(), 1, "{off:?}");
         assert!(off[0].0.ends_with("needs you"));
         assert_eq!(notices_with(&old, &new, &|_| false, true).len(), 2);
+    }
+
+    #[test]
+    fn p09_item11_a_reading_is_sent_without_a_paid_model_and_none_when_unread() {
+        let mut i = input(vec![], vec![]);
+        i.engine.paid_on = false;
+        assert!(build(i).usage.is_some());
+        let mut i = input(vec![], vec![]);
+        i.usage = (None, None, None);
+        assert!(build(i).usage.is_none());
+    }
+
+    #[test]
+    fn p09_item6_the_meters_are_in_the_truth_and_push_by_a_visible_step() {
+        let stats = |cpu: f32, used: u64| TruthStats {
+            cpu,
+            mem_used: used,
+            mem_total: 32_000_000_000,
+            gpu: Some(10.0),
+        };
+        let mut i = input(vec![], vec![]);
+        i.stats = Some(stats(20.0, 8_000_000_000));
+        let a = build(i);
+        assert_eq!(a.stats.as_ref().unwrap().cpu, 20.0);
+        let mut b = a.clone();
+        b.stats = Some(stats(21.0, 8_000_000_000));
+        assert_eq!(seen(&a), seen(&b), "1% of processor is not news");
+        b.stats = Some(stats(60.0, 8_000_000_000));
+        assert_ne!(seen(&a), seen(&b), "a loaded PC is news");
     }
 }

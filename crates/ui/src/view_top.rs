@@ -146,7 +146,7 @@ impl Foot<'_> {
             }
             if self.r.is_some_and(|r| r.weekly.is_none()) {
                 ui.label(RichText::new("Weekly use: not read yet").color(MUTED).size(13.0))
-                    .on_hover_text("Your Anthropic plan's 7-day use shows here once it has been read.");
+                    .on_hover_text("Your Anthropic plan's 7-day use shows here once it has been read. If it stays like this: Claude is not signed in on this PC, or the PC is offline. Mímir looks again every 10 minutes.");
             }
             // The 5-hour window, while it is current.
             if let Some(use_) = self

@@ -1,21 +1,22 @@
-//! "This PC right now": processor, memory and graphics load.
+//! "This PC right now": the window's reading (the same meter the phone gets)
+//! plus whether the local model is in memory.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::{Duration, Instant};
-use sysinfo::System;
+use std::time::Duration;
 
 pub struct PcStats {
-    sys: Option<System>,
-    last: Option<Instant>,
-    pub cpu: f32,
-    pub mem_used: u64,
-    pub mem_total: u64,
-    /// AMD graphics load in percent, when the driver reports it.
-    pub gpu: Option<f32>,
+    meter: mimir_core::pcstats::Meter,
     /// The local model is in memory (looked at every few seconds, off the
     /// window's thread).
     loaded: Arc<AtomicBool>,
+}
+
+impl std::ops::Deref for PcStats {
+    type Target = mimir_core::pcstats::Meter;
+    fn deref(&self) -> &Self::Target {
+        &self.meter
+    }
 }
 
 impl PcStats {
@@ -33,12 +34,7 @@ impl PcStats {
         });
         PcStats {
             loaded,
-            sys: System::new().ok(),
-            last: None,
-            cpu: 0.0,
-            mem_used: 0,
-            mem_total: 0,
-            gpu: None,
+            meter: mimir_core::pcstats::Meter::new(),
         }
     }
 
@@ -49,38 +45,6 @@ impl PcStats {
 
     /// Refreshes at most once a second.
     pub fn refresh(&mut self) {
-        if self
-            .last
-            .is_some_and(|t| t.elapsed() < Duration::from_secs(1))
-        {
-            return;
-        }
-        self.last = Some(Instant::now());
-        if let Some(s) = self.sys.as_mut() {
-            s.refresh_cpu_usage();
-            s.refresh_memory();
-            self.cpu = s.global_cpu_usage();
-            self.mem_used = s.total_memory().saturating_sub(s.available_memory());
-            self.mem_total = s.total_memory();
-        }
-        self.gpu = gpu_busy();
+        self.meter.refresh();
     }
-}
-
-fn gpu_busy() -> Option<f32> {
-    let rd = std::fs::read_dir("/sys/class/drm").ok()?;
-    let mut best: Option<f32> = None;
-    for e in rd.flatten() {
-        let name = e.file_name();
-        let name = name.to_string_lossy();
-        if !name.starts_with("card") || name.contains('-') {
-            continue;
-        }
-        if let Ok(s) = std::fs::read_to_string(e.path().join("device/gpu_busy_percent"))
-            && let Ok(v) = s.trim().parse::<f32>()
-        {
-            best = Some(best.map_or(v, |b: f32| b.max(v)));
-        }
-    }
-    best
 }

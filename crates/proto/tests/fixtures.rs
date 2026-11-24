@@ -137,6 +137,7 @@ fn truth() -> Truth {
             five_hour: None,
             as_of: Some(1_794_000_400),
         }),
+        stats: None,
     }
 }
 

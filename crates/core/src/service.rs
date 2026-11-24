@@ -346,6 +346,8 @@ struct Service {
     truth: Option<mimir_proto::Truth>,
     truth_seen: u64,
     truth_at: Option<Instant>,
+    /// The PC's processor, memory and graphics load, sent to phones in the truth.
+    meter: crate::pcstats::Meter,
     /// Each project's core checks, as last read.
     checks_cache: HashMap<String, mimir_proto::CheckFacts>,
     /// The engine's line, read again every 10 s.
@@ -594,6 +596,7 @@ impl Service {
             truth: None,
             truth_seen: 0,
             truth_at: None,
+            meter: crate::pcstats::Meter::new(),
             checks_cache: HashMap::new(),
             engine_words: None,
             model_down: None,
@@ -4763,11 +4766,14 @@ impl Service {
         }
         self.follow_outside();
         self.refresh_pc_sessions(false);
-        // The plan's usage is looked up only when Claude is in use.
-        let wanted = self.settings.chats_paid() || !self.settings.project_free();
+        // Always looked up (a read that costs nothing): the week's use shows
+        // on the PC and the phone whichever model is chosen (0.09 item 11).
         if let Some(p) = self.runner.usage_poller.as_mut() {
-            p.wanted = wanted;
+            p.wanted = true;
         }
+        self.meter.refresh();
+        // Pushed only when the meters moved a step a person can see (truth::seen).
+        self.publish_truth();
         self.runner.tick();
         self.claude_ran_out();
         self.allow_by_rules();
@@ -5397,6 +5403,7 @@ impl Service {
                 self.runner.five_hour.clone(),
                 self.runner.usage_at,
             ),
+            stats: self.meter.facts(),
         })
     }
 

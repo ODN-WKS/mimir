@@ -17,6 +17,9 @@ use std::sync::mpsc::{Receiver, channel};
 pub const ACTIVE_SECS: i64 = 30 * 60;
 /// How often to look while it is not.
 pub const IDLE_SECS: i64 = 12 * 3600;
+/// How soon to look again when the last look did not work (no current login,
+/// no network), so the figure appears soon after it can (0.09 item 11).
+pub const RETRY_SECS: i64 = 10 * 60;
 const URL: &str = "https://api.anthropic.com/api/oauth/usage";
 
 /// What one look found.
@@ -31,12 +34,20 @@ pub struct Reading {
 pub struct Schedule {
     /// When we last tried (unix seconds); None: never.
     last_try: Option<i64>,
+    /// The last look found nothing (see `RETRY_SECS`).
+    last_failed: bool,
 }
 
 impl Schedule {
     /// Is a look due now? The first one is due at once.
     pub fn due(&self, now: i64, active: bool) -> bool {
-        let gap = if active { ACTIVE_SECS } else { IDLE_SECS };
+        let gap = if self.last_failed {
+            RETRY_SECS
+        } else if active {
+            ACTIVE_SECS
+        } else {
+            IDLE_SECS
+        };
         match self.last_try {
             None => true,
             // A clock that went back must not stall the checks.
@@ -46,6 +57,11 @@ impl Schedule {
 
     pub fn tried(&mut self, now: i64) {
         self.last_try = Some(now);
+    }
+
+    /// Records how the look ended.
+    pub fn ended(&mut self, worked: bool) {
+        self.last_failed = !worked;
     }
 }
 
@@ -244,8 +260,14 @@ impl Poller {
                 Ok(res) => {
                     self.pending = None;
                     match res {
-                        Ok(r) => return Some(r),
-                        Err(e) => crate::log::write("usage", "skipped", &e),
+                        Ok(r) => {
+                            self.schedule.ended(true);
+                            return Some(r);
+                        }
+                        Err(e) => {
+                            self.schedule.ended(false);
+                            crate::log::write("usage", "skipped", &e)
+                        }
                     }
                 }
                 Err(std::sync::mpsc::TryRecvError::Empty) => return None,
@@ -298,6 +320,21 @@ mod tests {
         p.wanted = true;
         let _ = p.poll(1000, true);
         assert!(!p.schedule.due(1000, true), "a look was tried");
+    }
+
+    #[test]
+    fn p09_item11_a_failed_look_is_tried_again_in_ten_minutes_not_twelve_hours() {
+        let mut s = Schedule::default();
+        s.tried(1000);
+        s.ended(false);
+        assert!(!s.due(1000 + 9 * 60, false));
+        assert!(s.due(1000 + RETRY_SECS, false));
+        s.tried(1000 + RETRY_SECS);
+        s.ended(true);
+        assert!(
+            !s.due(1000 + RETRY_SECS + 3600, false),
+            "a good look waits 12 h"
+        );
     }
 
     #[test]
