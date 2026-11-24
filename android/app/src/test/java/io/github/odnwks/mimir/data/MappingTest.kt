@@ -241,4 +241,13 @@ class MappingTest {
         // No paid Claude choice: no usage at all (the gauge hides).
         assertEquals(null, Mapping.pageFromTruth(truth.copy(usage = null), old).weeklyUsed)
     }
+
+    @Test
+    fun theWeeklyLineSaysWhyWhenThereIsNoReading() {
+        assertEquals(
+            "Not read yet: sign in to Claude Code on your PC, and check it is online.",
+            Mapping.usageWhy(Usage("—", 0, "", 85)),
+        )
+        assertEquals(null, Mapping.usageWhy(Usage("62%", 62, "", 85)))
+    }
 }

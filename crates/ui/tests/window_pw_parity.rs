@@ -184,7 +184,14 @@ fn the_weekly_use_line_says_so_when_nothing_has_been_read() {
     let Some(home) = TestHome::new() else { return };
     let mut h = home.open_at(1400.0, 800.0);
     assert!(
-        wait_for(&mut h, |h| shows(h, "Weekly use: not read yet")),
+        wait_for(&mut h, |h| [
+            "Weekly use: not read yet",
+            "Weekly use: sign in to Claude Code to see it",
+            "Weekly use: can't reach Anthropic right now",
+            "Weekly use: not read (Claude isn't used here)",
+        ]
+        .iter()
+        .any(|w| shows(h, w))),
         "{}",
         screen_text(&h)
     );

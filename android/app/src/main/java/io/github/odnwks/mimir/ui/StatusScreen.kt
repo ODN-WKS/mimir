@@ -181,6 +181,7 @@ fun StatusScreen(state: StationState, station: io.github.odnwks.mimir.data.Stati
                     Text(listOf(state.usage.percentText, state.usage.resets).filter { it.isNotBlank() }.joinToString(" · "), style = Type.Small, color = Palette.TextDim)
                 }
                 Bar(state.usage.percent / 100f, 6.dp)
+                io.github.odnwks.mimir.data.Mapping.usageWhy(state.usage)?.let { Text(it, style = Type.Small, color = Palette.TextDim) }
             }
             // The near-limit switch sits right under the use it's about (Models keeps a link here).
             if (state.models.local.isNotEmpty() && state.paidOn != false) SwitchRow(state.models.switchToFree, station::setSwitchToFree, Modifier.padding(horizontal = 4.dp)) {

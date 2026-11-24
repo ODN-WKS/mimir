@@ -6,7 +6,9 @@
 //! Code already keeps. Every 30 minutes while Claude is working, every 12
 //! hours while it is not. The login is only read to send that one request;
 //! it is never logged, printed or kept, and never refreshed here (Claude
-//! Code renews it itself): an expired login just skips the check.
+//! Code renews it itself): an expired login just skips the check. It is
+//! only looked at while Claude is in use here (see `claude_in_use`); a
+//! person on their own models only never has it read.
 
 use crate::task::WeeklyUse;
 use serde_json::Value;
@@ -21,6 +23,13 @@ pub const IDLE_SECS: i64 = 12 * 3600;
 /// no network), so the figure appears soon after it can (0.09 item 11).
 pub const RETRY_SECS: i64 = 10 * 60;
 const URL: &str = "https://api.anthropic.com/api/oauth/usage";
+
+/// Whether Claude is in use on this PC, so its login may be read: a paid
+/// chat choice, Claude chosen for project work, or any project task that
+/// runs on a Claude model (the default when no own model is picked).
+pub fn claude_in_use(chats_paid: bool, project_on_claude: bool, task_on_claude: bool) -> bool {
+    chats_paid || project_on_claude || task_on_claude
+}
 
 /// What one look found.
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -235,8 +244,9 @@ pub struct Poller {
     creds: PathBuf,
     pub schedule: Schedule,
     pending: Option<Receiver<Result<Reading, String>>>,
-    /// Looks only happen while Claude is in use (chats or project work on
-    /// it); with free models only, the login is never read.
+    /// Looks only happen while Claude is in use (a paid chat choice, Claude
+    /// for project work, or a project task on a Claude model); with own
+    /// models only and no such task, the login is never read.
     pub wanted: bool,
 }
 
@@ -309,6 +319,14 @@ mod tests {
         assert!(reading_changed(&old, &new), "0.001 change must be detected");
         // Identical values must not trigger.
         assert!(!reading_changed(&old, &old));
+    }
+
+    #[test]
+    fn claude_counts_as_in_use_for_paid_chats_claude_projects_or_a_claude_task() {
+        assert!(!claude_in_use(false, false, false), "own models only");
+        assert!(claude_in_use(true, false, false), "paid chats");
+        assert!(claude_in_use(false, true, false), "Claude for projects");
+        assert!(claude_in_use(false, false, true), "a task on Claude");
     }
 
     #[test]

@@ -4766,10 +4766,21 @@ impl Service {
         }
         self.follow_outside();
         self.refresh_pc_sessions(false);
-        // Always looked up (a read that costs nothing): the week's use shows
-        // on the PC and the phone whichever model is chosen (0.09 item 11).
+        // The login is read only while Claude is in use here (a paid chat
+        // choice, Claude for project work, or a project task on a Claude
+        // model); with own models only, never.
+        let tasks_on_claude = self
+            .runner
+            .tasks
+            .iter()
+            .any(|l| !crate::models::is_free(l.task.model.as_deref()));
+        let wanted = crate::usage::claude_in_use(
+            self.settings.chats_paid(),
+            !self.settings.project_free(),
+            tasks_on_claude,
+        );
         if let Some(p) = self.runner.usage_poller.as_mut() {
-            p.wanted = true;
+            p.wanted = wanted;
         }
         self.meter.refresh();
         // Pushed only when the meters moved a step a person can see (truth::seen).

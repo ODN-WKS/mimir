@@ -234,6 +234,11 @@ object Mapping {
         return Usage("$pct%", pct, resets, 85)
     }
 
+    /** Why the weekly use shows no figure, in words (null when it has one). The phone can't tell
+     *  signed out from offline, so it names both; the PC's window says which. */
+    fun usageWhy(u: Usage): String? =
+        if (u.percentText == "—") "Not read yet: sign in to Claude Code on your PC, and check it is online." else null
+
     /** An update card as the Updates page shows it (newest first comes from the PC). */
     fun update(c: io.github.odnwks.mimir.link.LCard, name: (String) -> String, heard: Boolean, nowSeconds: Long, lengthSeconds: Int?): Update {
         val ago = (nowSeconds - c.time).coerceAtLeast(0)

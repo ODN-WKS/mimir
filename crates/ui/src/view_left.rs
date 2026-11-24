@@ -57,6 +57,7 @@ impl App {
             r: self.station.as_ref().ok(),
             panel: &self.app_panel,
             view: self.view,
+            claude_ready: self.setup.claude_ready(),
         };
         let Ok(r) = &self.station else {
             // Settings stays in reach even with nothing else to show.

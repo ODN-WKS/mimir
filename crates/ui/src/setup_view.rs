@@ -85,8 +85,8 @@ impl SetupPanel {
     }
 
     /// Whether Claude Code is installed and signed in (None while the
-    /// first check runs). Only Settings reads this; nothing else in the
-    /// window asks a person to set Claude up.
+    /// first check runs). Settings and the weekly-use line read this;
+    /// nothing else in the window asks a person to set Claude up.
     pub fn claude_ready(&self) -> Option<bool> {
         let s = self.snap.lock().unwrap();
         s.claude

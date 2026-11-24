@@ -108,6 +108,33 @@ pub fn session_row(title: &str, place: &str) -> String {
     format!("Session {title}, from {place}")
 }
 
+/// The sidebar line (and its hover words) when there is no weekly reading,
+/// by what is known: Claude not in use here (so never read), Claude Code
+/// signed out, or signed in but Anthropic could not be reached.
+pub fn weekly_none(in_use: bool, claude_ready: Option<bool>) -> (&'static str, &'static str) {
+    if !in_use {
+        (
+            "Weekly use: not read (Claude isn't used here)",
+            "Mímir only reads your Anthropic plan's use while Claude is in use here (a paid chat choice, Claude for project work, or a project task on Claude). With your own models only, nothing is read and nothing goes to Anthropic.",
+        )
+    } else {
+        match claude_ready {
+            Some(false) => (
+                "Weekly use: sign in to Claude Code to see it",
+                "Claude Code is not signed in on this PC, so your Anthropic plan's 7-day use can't be read. Sign in under Settings › Models.",
+            ),
+            Some(true) => (
+                "Weekly use: can't reach Anthropic right now",
+                "Your Anthropic plan's 7-day use could not be read just now (the PC may be offline, or the sign-in needs renewing by Claude Code). Mímir looks again every 10 minutes.",
+            ),
+            None => (
+                "Weekly use: not read yet",
+                "Mímir is checking Claude Code and will read your Anthropic plan's 7-day use shortly.",
+            ),
+        }
+    }
+}
+
 /// The plan's weekly use, beside Settings at the foot of the sidebar.
 pub fn weekly_use(percent: f64) -> String {
     format!("{percent:.0}% of weekly limit")
@@ -326,6 +353,27 @@ pub const CHIP_PC_MODEL: &str = "Your PC's model";
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn the_weekly_line_says_why_there_is_no_reading() {
+        use super::weekly_none;
+        let l = |u, r| weekly_none(u, r).0;
+        assert_eq!(
+            l(true, Some(false)),
+            "Weekly use: sign in to Claude Code to see it"
+        );
+        assert_eq!(
+            l(true, Some(true)),
+            "Weekly use: can't reach Anthropic right now"
+        );
+        assert_eq!(l(true, None), "Weekly use: not read yet");
+        assert!(l(false, Some(true)).contains("isn't used here"));
+        assert!(
+            weekly_none(false, None)
+                .1
+                .contains("nothing goes to Anthropic")
+        );
+    }
+
     use super::*;
 
     #[test]

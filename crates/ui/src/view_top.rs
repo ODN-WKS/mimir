@@ -13,6 +13,8 @@ pub(crate) struct Foot<'a> {
     pub r: Option<&'a Station>,
     pub panel: &'a AppPanel,
     pub view: View,
+    /// Claude Code installed and signed in (None while first checked).
+    pub claude_ready: Option<bool>,
 }
 
 fn now() -> i64 {
@@ -144,9 +146,17 @@ impl Foot<'_> {
                     actions.push(Action::OpenModels);
                 }
             }
-            if self.r.is_some_and(|r| r.weekly.is_none()) {
-                ui.label(RichText::new("Weekly use: not read yet").color(MUTED).size(13.0))
-                    .on_hover_text("Your Anthropic plan's 7-day use shows here once it has been read. If it stays like this: Claude is not signed in on this PC, or the PC is offline. Mímir looks again every 10 minutes.");
+            if let Some(r) = self.r.filter(|r| r.weekly.is_none()) {
+                let in_use = mimir_core::usage::claude_in_use(
+                    r.settings.get("chats_engine").and_then(|v| v.as_str()) == Some("paid"),
+                    r.settings.get("project_engine").and_then(|v| v.as_str()) == Some("claude"),
+                    r.tasks
+                        .iter()
+                        .any(|t| !mimir_core::models::is_free(t.task.model.as_deref())),
+                );
+                let (line, why) = crate::labels::weekly_none(in_use, self.claude_ready);
+                ui.label(RichText::new(line).color(MUTED).size(13.0))
+                    .on_hover_text(why);
             }
             // The 5-hour window, while it is current.
             if let Some(use_) = self
