@@ -110,7 +110,8 @@ fun MimirComposer(
         // there is no room for that: the words take a line above, and the rest stays on one row under them.
         androidx.compose.foundation.layout.BoxWithConstraints {
         val chipRoom = (maxWidth - 48.dp * 3 - 24.dp).coerceAtLeast(0.dp)
-        val ownLine = chipRoom < 150.dp
+        val big = androidx.compose.ui.platform.LocalDensity.current.fontScale > 1.05f
+        val ownLine = chipRoom < 150.dp || (big && chipRoom < 260.dp)
         val words: @Composable (Modifier) -> Unit = { m ->
             BasicTextField(
                 value = field,

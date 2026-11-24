@@ -5,6 +5,7 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onLast
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -203,6 +204,8 @@ class EditMessageTest {
         stoppedChat(listOf("Once ", "upon "))
         compose.onNodeWithText("You stopped this answer.").assertIsDisplayed()
         compose.onNodeWithText("Once upon", substring = true).assertIsDisplayed()
+        compose.onAllNodesWithText("Once upon", substring = true).onLast().performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnLongClick)
+        compose.waitForIdle()
         compose.onNodeWithText(TRY_AGAIN).assertIsDisplayed()
         compose.onAllNodesWithText("interrupted", substring = true).fetchSemanticsNodes().let { assertTrue(it.isEmpty()) }
     }

@@ -83,9 +83,11 @@ class R7ChatTest {
     @Test fun anAnswerIsPlainTextWithListenCopyAndTryAgainAndNoBubbleOrName() {
         startOpen()
         compose.onNodeWithText(answer).assertIsDisplayed()
-        compose.onNodeWithText(LISTEN).assertIsDisplayed()
-        compose.onNodeWithText(COPY).assertIsDisplayed()
-        compose.onNodeWithText(TRY_AGAIN).assertIsDisplayed()
+        // The row of buttons is gone; the long press holds them (and the hint says so).
+        compose.onNodeWithText(LISTEN).assertDoesNotExist()
+        compose.onNodeWithText(COPY).assertDoesNotExist()
+        compose.onNodeWithText(TRY_AGAIN).assertDoesNotExist()
+        compose.onNodeWithText("Hold an answer for Listen, Copy and Share").assertIsDisplayed()
         // No "You" above the owner's bubble, no "Mímir" above the answer, no "Your PC"/phone mark under it.
         compose.onNodeWithText("You").assertDoesNotExist()
         compose.onNodeWithText(AI_NAME).assertDoesNotExist()
@@ -95,17 +97,18 @@ class R7ChatTest {
 
     @Test fun listenReadsTheAnswerAndCopyPutsItOnTheClipboard() {
         startOpen()
-        compose.onNodeWithText(LISTEN).performClick(); compose.waitForIdle()
+        compose.holdAnswerAndPick(answer, LISTEN_ITEM)
         assertEquals(listOf(answer), voice.read)
+        // While it reads, a Stop reading control stays one tap away.
         compose.onNodeWithText(STOP_LISTENING).assertIsDisplayed()
-        compose.onNodeWithText(COPY).performClick(); compose.waitForIdle()
+        compose.holdAnswerAndPick(answer, COPY)
         assertEquals(answer, clipboard())
     }
 
     @Test fun tryAgainReplacesTheAnswerAndKeepsTheQuestionOnce() {
         startOpen()
         val firstId = engine.state.value.chat.turns.first().id
-        compose.onNodeWithText(TRY_AGAIN).performClick(); compose.waitForIdle()
+        compose.holdAnswerAndPick(answer, TRY_AGAIN)
         waitFor { !engine.state.value.writing && engine.state.value.chat.turns.size >= 2 && engine.state.value.chat.turns.last().version > 1 }
         val turns = engine.state.value.chat.turns
         // No second turn: the question once, and its one answer, written again with a higher version.
