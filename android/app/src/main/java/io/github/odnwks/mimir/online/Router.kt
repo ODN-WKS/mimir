@@ -74,9 +74,9 @@ object Router {
      * blades" only asked Wikipedia). Asked as a question or a request, not in passing.
      */
     private val SHOPPING = Regex(
-        "\\b(?:best|top|highest|top[- ]rated|best[- ]rated|highest[- ]rated|most popular|cheapest|rated|ratings?|reviews?|reviewed|" +
-            "recommend(?:ed|ation|ations)?|buy|buying|purchase|price|prices|cost of|" +
-            "worth (?:it|buying|the money)|deals?|which .{1,40} should i (?:buy|get)|vs\\.?|versus)\\b",
+        "\\b(?:best|(?:top|highest|best)[- ](?:rated|selling)|most popular|cheapest|ratings?|reviews?|reviewed|" +
+            "recommend(?:ed|ation|ations)?|buy|buying|purchase|prices? (?:of|for)|cost of (?:a|an|new|buying)|" +
+            "worth (?:it|buying|the money)|deals? (?:on|for)|which .{1,40} should i (?:buy|get))\\b",
         RegexOption.IGNORE_CASE,
     )
 
@@ -86,7 +86,16 @@ object Router {
         RegexOption.IGNORE_CASE,
     )
 
-    private val OWNED = Regex("\\b(my|mine|our|ours|his|her|hers|their|theirs|myself)\\b", RegexOption.IGNORE_CASE)
+    /** Pronouns for the person asking or someone else, but not "you" ("can you recommend a tent" is a plain request). */
+    private val SELF_OR_OTHER = Regex(
+        "\\b(my|mine|our|ours|his|her|hers|their|theirs|me|us|him|them|myself|ourselves|himself|herself|themselves|i|we|he|she|they)\\b",
+        RegexOption.IGNORE_CASE,
+    )
+
+    /** "Which laptop should I buy" is a shopping question; "I have depression" is private. */
+    private val SHOULD_I_BUY = Regex("\\bshould i (?:buy|get)\\b", RegexOption.IGNORE_CASE)
+
+    private fun aboutPerson(t: String) = SELF_OR_OTHER.containsMatchIn(SHOULD_I_BUY.replace(t, ""))
 
     private val WEATHER = Regex(
         "\\b(weather|forecast)\\b" +
@@ -147,7 +156,7 @@ object Router {
         }
         // Product, rating, price, review, buy and recommend questions: the web search first.
         // Still never about a private person or thing ("my", "his"...): that stays unsearched, as for news.
-        if (SHOPPING.containsMatchIn(t) && ASKING.containsMatchIn(t) && !OWNED.containsMatchIn(t)) return words(t)?.let { Need.Search(it) }
+        if (SHOPPING.containsMatchIn(t) && ASKING.containsMatchIn(t) && !aboutPerson(t)) return words(t)?.let { Need.Search(it) }
         val e = ENCYCLOPEDIA.find(t) ?: return null
         val subject = e.groupValues[1].trim()
         if (NOT_ENCYCLOPEDIA.containsMatchIn(subject) || subject.split(Regex("\\s+")).size > 8) return null

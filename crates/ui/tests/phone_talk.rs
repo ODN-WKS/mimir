@@ -32,12 +32,20 @@ fn home() -> Option<TestHome> {
 /// A stand-in Ollama: `/api/chat` streams `words` (one piece each), and every
 /// chat request's body is kept.
 fn fake_ollama(words: &'static [&'static str]) -> Arc<Mutex<Vec<serde_json::Value>>> {
-    let asked = Arc::new(Mutex::new(vec![]));
     let l = TcpListener::bind("127.0.0.1:0").unwrap();
     set_env(
         "MIMIR_OLLAMA",
         format!("http://{}", l.local_addr().unwrap()),
     );
+    serve_ollama(l, words)
+}
+
+/// The stand-in Ollama on a listener that is already bound.
+fn serve_ollama(
+    l: TcpListener,
+    words: &'static [&'static str],
+) -> Arc<Mutex<Vec<serde_json::Value>>> {
+    let asked = Arc::new(Mutex::new(vec![]));
     let kept = asked.clone();
     std::thread::spawn(move || {
         for c in l.incoming().flatten() {
@@ -873,5 +881,86 @@ fn p5_the_phone_reads_and_sets_what_answers() {
             }
         )
         .is_err()
+    );
+}
+
+/// 0.09 item 25: a chat that asks for the PC's model while its model program sleeps waits for the
+/// start (the unit is started once), and that same chat is answered by the PC's model.
+#[test]
+fn p09_item25_a_chat_waits_for_the_sleeping_model_program_and_is_answered_by_it() {
+    let Some(home) = home() else { return };
+    let unit = home.root.join(".config/systemd/user/mimir-ollama.service");
+    std::fs::create_dir_all(unit.parent().unwrap()).unwrap();
+    std::fs::write(&unit, "[Service]\nExecStart=/bin/true\n").unwrap();
+    // Nothing listens on this port until the starter has run.
+    let port = {
+        let l = TcpListener::bind("127.0.0.1:0").unwrap();
+        l.local_addr().unwrap().port()
+    };
+    set_env("MIMIR_OLLAMA", format!("http://127.0.0.1:{port}"));
+    let started = home.root.join("ollama-started");
+    let starter = home.root.join("starter.sh");
+    std::fs::write(
+        &starter,
+        format!("#!/bin/sh\necho x >> '{}'\n", started.display()),
+    )
+    .unwrap();
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&starter, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    set_env("MIMIR_OLLAMA_START", &starter);
+    let flag = started.clone();
+    let asked = Arc::new(Mutex::new(None));
+    let slot = asked.clone();
+    std::thread::spawn(move || {
+        while !flag.exists() {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        std::thread::sleep(Duration::from_secs(2));
+        let l = TcpListener::bind(("127.0.0.1", port)).unwrap();
+        *slot.lock().unwrap() = Some(serve_ollama(l, &["Oslo."]));
+    });
+    picked(&home);
+    let mut st = home.service();
+    let (p, mut seen) = paired(&mut st, &["search", "lookup", "talk"]);
+    let t0 = Instant::now();
+    let f: Filed = serde_json::from_value(
+        seen.call(
+            &p,
+            talk(
+                "c1",
+                "t1",
+                vec![user("t1", "What's the capital of Norway?")],
+                None,
+            ),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    assert!(
+        matches!(f, Filed::Talk { .. }),
+        "not answered on the PC: {f:?}"
+    );
+    assert!(seen.until(&p, |s| s.done.contains_key("t1.a")), "no answer");
+    eprintln!("chat answered by the PC's model after {:?}", t0.elapsed());
+    assert_eq!(seen.pieces["t1.a"], "Oslo.");
+    assert!(
+        t0.elapsed() >= Duration::from_secs(1),
+        "the chat did not wait for the model program"
+    );
+    assert_eq!(
+        std::fs::read_to_string(&started).unwrap().lines().count(),
+        1
+    );
+    let kept = asked
+        .lock()
+        .unwrap()
+        .clone()
+        .expect("the stand-in never came up");
+    assert_eq!(
+        kept.lock().unwrap().len(),
+        1,
+        "the PC's model got the chat once"
     );
 }

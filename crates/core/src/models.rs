@@ -513,9 +513,41 @@ pub fn wake() {
     }
 }
 
+/// When the model program was last asked to start (by anyone): one start at
+/// a time, and none again right after one.
+static LAST_START: std::sync::Mutex<Option<Instant>> = std::sync::Mutex::new(None);
+
+/// A look at the models list found the model program asleep: start it, without
+/// waiting and without a second look. Not again while a start is under way
+/// (10 s), nor for 30 s after a start that failed (the same pause a waiting
+/// chat gets). True when a start was asked for now.
+pub fn wake_for_list() -> bool {
+    let pause = if failed_start() {
+        Duration::from_secs(30)
+    } else {
+        Duration::from_secs(10)
+    };
+    {
+        let mut last = LAST_START.lock().unwrap_or_else(|e| e.into_inner());
+        if last.is_some_and(|t| t.elapsed() < pause) {
+            return false;
+        }
+        *last = Some(Instant::now());
+    }
+    start_unit();
+    true
+}
+
+/// The last try to start the model program failed and nothing has answered
+/// since. Reads a flag only (no call), so the service's thread may ask.
+pub fn failed_start() -> bool {
+    DOWN.load(std::sync::atomic::Ordering::SeqCst)
+}
+
 /// Asks systemd to start Ollama's unit, without waiting (a check names its
 /// own starter in `MIMIR_OLLAMA_START`).
 fn start_unit() {
+    *LAST_START.lock().unwrap_or_else(|e| e.into_inner()) = Some(Instant::now());
     let mut c = match std::env::var_os("MIMIR_OLLAMA_START") {
         Some(p) => std::process::Command::new(p),
         None => {
@@ -778,6 +810,27 @@ pub fn out_of_room(error: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    /// 0.09 item 25: asking for the models list does not start the program again while a
+    /// start is under way, nor soon after a failed one (these cases never start anything).
+    #[test]
+    fn the_models_list_starts_the_program_once_and_pauses_after_a_failure() {
+        use std::time::{Duration, Instant};
+        *super::LAST_START.lock().unwrap() = Some(Instant::now() - Duration::from_secs(5));
+        super::DOWN.store(false, std::sync::atomic::Ordering::SeqCst);
+        assert!(
+            !super::wake_for_list(),
+            "a start 5 s ago is still under way"
+        );
+        *super::LAST_START.lock().unwrap() = Some(Instant::now() - Duration::from_secs(20));
+        super::DOWN.store(true, std::sync::atomic::Ordering::SeqCst);
+        assert!(super::failed_start());
+        assert!(
+            !super::wake_for_list(),
+            "a failed start is left alone for 30 s"
+        );
+        super::DOWN.store(false, std::sync::atomic::Ordering::SeqCst);
+    }
+
     #[test]
     fn a_program_that_is_off_keeps_the_last_list() {
         super::keep_look(Ok(vec!["gpt-oss:20b".into()]));

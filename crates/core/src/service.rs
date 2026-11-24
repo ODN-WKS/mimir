@@ -2017,11 +2017,16 @@ impl Service {
                     Ok(_) => String::new(),
                     Err(e) if crate::models::unit_path().is_file() => {
                         eprintln!("mimir: model runner: {e}");
-                        // 0.09 item 25: a phone asking which models this PC has wakes the
-                        // model program (without waiting), so the next look finds it and a
-                        // chat is not handed to the phone's own model for good.
-                        crate::models::wake();
-                        "Your PC's model runner isn't answering yet. It starts by itself when a model on this PC is used.".to_string()
+                        // 0.09 item 25: a phone asking which models this PC has starts
+                        // the model program (without waiting, once), and says so plainly
+                        // when the last start failed. A chat that asks for the PC's model
+                        // waits for the start itself (see `defer_for_model`).
+                        crate::models::wake_for_list();
+                        if crate::models::failed_start() {
+                            crate::models::MODEL_DOWN.to_string()
+                        } else {
+                            "Your PC's model runner isn't answering yet. It starts by itself when a model on this PC is used.".to_string()
+                        }
                     }
                     Err(e) => e.clone(),
                 };
