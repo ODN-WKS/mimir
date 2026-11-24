@@ -67,6 +67,19 @@ class P09ATaskScreenTest {
         assertEquals("Which colour shall I use?", questionQuote(q, null))
         assertEquals("Last line?", questionQuote(Question("q2", "", "", ""), "Intro\n\nLast line?"))
     }
+
+    @Test fun p09FixBQuoteIsTheQuestionSentenceNotTheLeadIn() {
+        val answer = "Tomatoes are botanically fruits, though they are used as vegetables in cooking. Do you prefer cherry or beefsteak?"
+        assertEquals("Do you prefer cherry or beefsteak?", questionQuote(Question("q3", "", "", ""), "First.\n\n$answer"))
+        // No question mark: the PC's text as it is.
+        assertEquals("Pick a colour", questionQuote(Question("q4", "Pick a colour", "", ""), null))
+        // The PC's own text wins and the question sentence is taken from it.
+        assertEquals("Which one?", questionQuote(Question("q5", "Two are free. Which one?", "", ""), "other?"))
+        // Very long question: shortened from the front, the end stays.
+        val long = "Is it " + "really ".repeat(40) + "the one you want?"
+        val out = questionQuote(Question("q6", long, "", ""), null)
+        assertTrue(out.startsWith("…") && out.endsWith("the one you want?") && out.length <= 91)
+    }
 }
 
 @RunWith(RobolectricTestRunner::class)

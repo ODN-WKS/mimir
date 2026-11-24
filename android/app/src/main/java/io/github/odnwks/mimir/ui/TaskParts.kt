@@ -91,9 +91,16 @@ fun questionQuote(q: Question, lastAnswer: String?): String {
     val own = markdownPlain(q.text).trim()
     val from = own.ifBlank {
         markdownPlain(lastAnswer.orEmpty()).lines().map { it.trim() }.lastOrNull { it.isNotEmpty() }.orEmpty()
-    }
-    return from.replace(Regex("\\s+"), " ")
+    }.replace(Regex("\\s+"), " ")
+    // The question itself: the last sentence that ends in "?" (the rest is the lead-in, and the
+    // one-line quote would cut the question off instead). No "?" at all: the whole text.
+    val sentences = Regex("[^.!?]*\\?").findAll(from).map { it.value.trim() }.filter { it.length > 1 }.toList()
+    val ask = sentences.lastOrNull() ?: from
+    // Too long for one line: keep the end, where the question is.
+    return if (ask.length > QUOTE_MAX) "…" + ask.takeLast(QUOTE_MAX - 1).trimStart() else ask
 }
+
+private const val QUOTE_MAX = 90
 
 /**
  * "A question for you", slim: one line above the reply box that quotes the question; a tap shows
