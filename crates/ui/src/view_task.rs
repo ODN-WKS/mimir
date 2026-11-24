@@ -2274,6 +2274,16 @@ fn question_split_kept(ui: &egui::Ui, text: &str) -> Option<(String, String)> {
     split
 }
 
+/// The files and pictures sent with a message: one small named chip each,
+/// right-aligned under the person's words.
+fn attached_chips(ui: &mut egui::Ui, names: &[String]) {
+    ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
+        for name in names.iter().rev() {
+            theme::chip(ui, name, MUTED).on_hover_text("Sent with this message");
+        }
+    });
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2294,14 +2304,4 @@ mod tests {
         assert!(!is_stop_marker("Please do not interrupt"));
         assert!(!is_stop_marker("[Request interrupted]"));
     }
-}
-
-/// The files and pictures sent with a message: one small named chip each,
-/// right-aligned under the person's words.
-fn attached_chips(ui: &mut egui::Ui, names: &[String]) {
-    ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
-        for name in names.iter().rev() {
-            theme::chip(ui, name, MUTED).on_hover_text("Sent with this message");
-        }
-    });
 }
