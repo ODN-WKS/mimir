@@ -108,6 +108,10 @@ fun Composer(
         attach?.Note()
         if (attach?.any == true) Box(Modifier.padding(start = 4.dp, end = 4.dp, bottom = 6.dp)) { attach.Chips() }
         if (optionsNote != null) Text(optionsNote, style = Type.Small, color = Palette.TextDim, modifier = Modifier.padding(start = 6.dp, bottom = 4.dp))
+        // One slim chip (28 dp, a 48 dp touch): on the same line as the words, or on a line above with large text.
+        val slim = chip?.let { it to chipLabel } ?: optionsChip?.let { it to "Model and effort for this task: $it. Change" }
+        val bigText = androidx.compose.ui.platform.LocalDensity.current.fontScale > 1.15f
+        if (slim != null && bigText) SlimChip(slim.first, slim.second, if (chip != null) onChip else onOptions, Modifier.padding(start = 4.dp))
         Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(0.dp)) {
             if (attach != null) attach.Button(attachSight)
             BasicTextField(
@@ -127,9 +131,7 @@ fun Composer(
                     }
                 },
             )
-            // One slim chip (28 dp, a 48 dp touch) on the same line as the + and the words.
-            val slim = chip?.let { it to chipLabel } ?: optionsChip?.let { it to "Model and effort for this task: $it. Change" }
-            if (slim != null) SlimChip(slim.first, slim.second, if (chip != null) onChip else onOptions)
+            if (slim != null && !bigText) SlimChip(slim.first, slim.second, if (chip != null) onChip else onOptions)
             MicButton(voice, micLabel, filled = false, surface = Color.Transparent, size = 36.dp, outline = false)
             val kind = if (sendable) ButtonKind.Send else ButtonKind.Empty
             // Stop is there the whole time something works, typed words or not (owner, 2026-11-22).

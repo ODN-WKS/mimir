@@ -193,7 +193,7 @@ private fun TaskSignLine(task: io.github.odnwks.mimir.data.Task, modifier: Modif
     androidx.compose.runtime.LaunchedEffect(task.sign) { while (true) { now = System.currentTimeMillis(); kotlinx.coroutines.delay(1000) } }
     val shown = task.sign?.shown(now)
     val words = shown?.words ?: task.stateLine.takeIf { task.stateWords == "Working" && it != "Working on it" }.orEmpty()
-    val timer = shown?.timer.orEmpty()
+    val timer = shown?.timer.orEmpty().trim().removePrefix("·").trim()
     val rest = listOf(task.project, if (task.plan) "Plan first" else "", task.model).filter { it.isNotBlank() }.joinToString(" · ")
     if (words.isEmpty() && timer.isEmpty() && rest.isEmpty() && task.riskyMode == null) return
     Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
