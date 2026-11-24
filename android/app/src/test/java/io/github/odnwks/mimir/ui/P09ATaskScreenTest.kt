@@ -6,7 +6,19 @@ import io.github.odnwks.mimir.nav.Navigator
 import io.github.odnwks.mimir.nav.Screen
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onFirst
+import androidx.compose.ui.test.filter
+import androidx.compose.ui.test.performClick
+import io.github.odnwks.mimir.ui.theme.MimirTheme
+import org.junit.Rule
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 
 class P09ATaskScreenTest {
     @Test fun p09Item1AttachedPathsBecomeNames() {
@@ -53,5 +65,33 @@ class P09ATaskScreenTest {
         val q = Question("q1", "**Which** colour\nshall I use?", "", "")
         assertEquals("Which colour shall I use?", questionQuote(q, null))
         assertEquals("Last line?", questionQuote(Question("q2", "", "", ""), "Intro\n\nLast line?"))
+    }
+}
+
+@RunWith(RobolectricTestRunner::class)
+@Config(qualifiers = "w390dp-h844dp-xhdpi")
+class P09ATaskRowsTest {
+    @get:Rule val compose = createComposeRule()
+
+    private fun rowNodes() = compose.onAllNodes(androidx.compose.ui.test.SemanticsMatcher.keyIsDefined(androidx.compose.ui.semantics.SemanticsActions.CustomActions))
+        .filter(androidx.compose.ui.test.hasText("Messages arrive in order"))
+    private fun rows() = rowNodes().fetchSemanticsNodes().size
+
+    @Test fun p09Item4ArchivedAndDeletedTasksLeaveTheProjectRows() {
+        val station = FakeStation()
+        val nav = Navigator()
+        compose.setContent { MimirTheme { AppRoot(station, nav) } }
+        val before = run { compose.waitForIdle(); rows() }
+        nav.open(Screen.Project("Budget-App")); compose.waitForIdle()
+        val onPage = rows()
+        assertTrue("the project page lists the task", onPage > before)
+        val row = rowNodes().onFirst()
+        val archive = row.fetchSemanticsNode().config[androidx.compose.ui.semantics.SemanticsActions.CustomActions].first { it.label == "Archive" }
+        compose.runOnUiThread { archive.action() }
+        compose.waitForIdle()
+        assertEquals(before, rows())
+        compose.onNodeWithContentDescription("Undo: Archived Messages arrive in order").performClick()
+        compose.waitForIdle()
+        assertEquals(onPage, rows())
     }
 }

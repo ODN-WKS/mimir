@@ -80,9 +80,10 @@ fun ProjectScreen(name: String, state: StationState, station: Station, nav: Navi
                 }
             }
             SectionTitle("Tasks", Modifier.padding(start = 4.dp, end = 4.dp, top = 4.dp))
-            if (p.tasks.isEmpty()) Text("No tasks yet. Type below to start one.", style = Type.Label, color = Palette.TextDim, modifier = Modifier.padding(horizontal = 4.dp))
+            val shownTasks = p.tasks.filter { it.taskId !in nav.hiddenTasks && (it.taskId == null || state.archived.none { a -> a.id == it.taskId }) }
+            if (shownTasks.isEmpty()) Text("No tasks yet. Type below to start one.", style = Type.Label, color = Palette.TextDim, modifier = Modifier.padding(horizontal = 4.dp))
             val undo = LocalUndo.current
-            p.tasks.filter { it.taskId !in nav.hiddenTasks }.forEach { t ->
+            shownTasks.forEach { t ->
                 val (fg, bg) = when (t.chip) {
                     Chip.Running -> Palette.Ground to Palette.BlueLight
                     Chip.Idea -> Palette.Text to Palette.Track
