@@ -32,6 +32,7 @@ class P09ChatTruthTest {
     @Test fun phoneAnswerNamesThePhoneAndItsModel() = assertEquals("This phone · Qwen 3.5 4B", answerAuthor(answer("phone", "Qwen 3.5 4B · This phone"), "Home PC"))
     @Test fun pcAnswerNamesYourPcAndItsModel() = assertEquals("Your PC · Qwen 3.6", answerAuthor(answer("pc", "Qwen 3.6"), "Home PC"))
     @Test fun pcAnswerWithOnlyItsNameStillSaysYourPc() = assertEquals("Your PC", answerAuthor(answer("pc", "Home PC"), "Home PC"))
+    @Test fun pcAnswerKeptWithTheModelAndThePcNameSaysTheModelOnce() = assertEquals("Your PC · Qwen 3.6", answerAuthor(answer("pc", "Qwen 3.6 · Home PC"), "Home PC"))
     @Test fun claudeAnswerNamesClaudeAndItsModel() = assertEquals("Claude · Sonnet 4.6", answerAuthor(answer("paid", "claude-sonnet-4-6-20250929"), "Home PC"))
     @Test fun oldAnswerNamesNobody() = assertNull(answerAuthor(answer(null, null), "Home PC"))
 

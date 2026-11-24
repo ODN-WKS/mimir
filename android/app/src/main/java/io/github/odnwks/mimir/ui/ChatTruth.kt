@@ -25,7 +25,8 @@ fun answerAuthor(turn: Turn, pcName: String): String? {
             // An online service the person set up was kept as "Service · model".
             else -> words
         }
-        "pc" -> if (words.isEmpty() || words == pcName) "Your PC" else "Your PC · $words"
+        // The PC's answers were kept as "Qwen 3.6 · <PC name>": the model, once.
+        "pc" -> words.removeSuffix("· $pcName").removeSuffix("· Your PC").trim().let { m -> if (m.isEmpty() || m == pcName) "Your PC" else "Your PC · $m" }
         "paid" -> "Claude" + (claudeModelWord(words)?.let { " · $it" } ?: if (words.isNotEmpty() && !words.startsWith("claude", true)) " · $words" else "")
         else -> null
     }
