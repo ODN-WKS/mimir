@@ -1,9 +1,16 @@
 # Message lint: known findings (rule, file, text). New ones fail
 # tools/check-all.sh. Fix one, then: python3 -I tools/message_lint.py --update
 claude-name	android/app/src/main/java/io/github/odnwks/mimir/data/LinkStation.kt	Claude isn't signed in on your PC. Open Mímir on your PC to sign in, or use your PC's own model.
+claude-name	android/app/src/main/java/io/github/odnwks/mimir/data/Mapping.kt	Not read yet: sign in to Claude Code on your PC, and check it is online.
 claude-name	android/app/src/main/java/io/github/odnwks/mimir/ui/ChatTruth.kt	Claude use left this week: ${100 - u.percent}%
 claude-name	android/app/src/main/java/io/github/odnwks/mimir/ui/ChatTruth.kt	Claude use this week: not read yet
 claude-name	android/app/src/main/java/io/github/odnwks/mimir/ui/SideMenu.kt	Claude use left
+claude-name	crates/ui/src/labels.rs	Claude Code is not signed in on this PC, so your Anthropic plan's 7-day use can't be read. Sign in under Settings › Models.
+claude-name	crates/ui/src/labels.rs	Mímir is checking Claude Code and will read your Anthropic plan's 7-day use shortly.
+claude-name	crates/ui/src/labels.rs	Mímir only reads your Anthropic plan's use while Claude is in use here (a paid chat choice, Claude for project work, or a project task on Claude). With your own models only, nothing is read and nothing goes to Anthropic.
+claude-name	crates/ui/src/labels.rs	Weekly use: not read (Claude isn't used here)
+claude-name	crates/ui/src/labels.rs	Weekly use: sign in to Claude Code to see it
+claude-name	crates/ui/src/labels.rs	Your Anthropic plan's 7-day use could not be read just now (the PC may be offline, or the sign-in needs renewing by Claude Code). Mímir looks again every 10 minutes.
 tech-word	android/app/src/main/java/io/github/odnwks/mimir/standalone/Engine.kt	%.0f tokens a second
 tech-word	crates/core/src/incognito.rs	no socket for loopback
 tech-word	crates/core/src/sockets.rs	no socket was handed over
