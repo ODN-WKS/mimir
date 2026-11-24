@@ -290,7 +290,8 @@ private fun SheetContent(sheet: Sheet, state: StationState, station: Station, na
                 "Delete task", Look.Danger, {
                     // Gone from the lists at once; the PC deletes it when the 8 seconds to undo are up.
                     // The wish is kept on the phone meanwhile, so a closed app still gets it done.
-                    val onTask = nav.current == Screen.Task(id)
+                    // (A task just started here opens under the name it was typed with; its real id comes with the PC's list.)
+                    val onTask = (nav.current as? Screen.Task)?.let { state.task(it.taskId)?.id == id || it.taskId == id } == true
                     nav.hiddenTasks.add(id)
                     PendingDeletes.add(ctx, id)
                     nav.closeSheet()

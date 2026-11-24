@@ -227,6 +227,31 @@ class P09AFixDeleteTest {
         assertEquals(emptySet<String>(), PendingDeletes.all(ctx))
     }
 
+    @Test fun p09Fix2DeletingFromTheTaskScreenLeavesItAtOnce() {
+        ctx.getSharedPreferences(PHONE_CHAT_PREFS, 0).edit().clear().commit()
+        val id = io.github.odnwks.mimir.data.ExampleData.TASK_ALLOW
+        val st = FakeStation()
+        val nav = Navigator()
+        compose.setContent { MimirTheme(reduceMotion = true) { AppRoot(st, nav) } }
+        compose.waitForIdle(); nav.open(Screen.Task(id)); compose.waitForIdle()
+        nav.openSheet(io.github.odnwks.mimir.nav.Sheet.DeleteTask(id)); compose.waitForIdle()
+        compose.onNodeWithText("Delete task").performClick(); compose.waitForIdle()
+        assertTrue("still on the deleted task: ${nav.current}", nav.current != Screen.Task(id))
+        compose.onNodeWithText("Getting this task from your PC", substring = true).assertDoesNotExist()
+    }
+
+    @Test fun p09Fix2DeletingATaskJustStartedOnThisPhoneAlsoLeavesItsScreen() {
+        ctx.getSharedPreferences(PHONE_CHAT_PREFS, 0).edit().clear().commit()
+        val id = io.github.odnwks.mimir.data.ExampleData.TASK_ALLOW
+        val st = FakeStation().also { fs -> fs.set { s -> s.copy(startedTasks = mapOf("Just started" to id)) } }
+        val nav = Navigator()
+        compose.setContent { MimirTheme(reduceMotion = true) { AppRoot(st, nav) } }
+        compose.waitForIdle(); nav.open(Screen.Task("Just started")); compose.waitForIdle()
+        nav.openSheet(io.github.odnwks.mimir.nav.Sheet.DeleteTask(id)); compose.waitForIdle()
+        compose.onNodeWithText("Delete task").performClick(); compose.waitForIdle()
+        assertTrue("still on the deleted task: ${nav.current}", nav.current !is Screen.Task)
+    }
+
     @Test fun p09Fix3AppStartSendsADeleteThatWasNeverSent() {
         ctx.getSharedPreferences(PHONE_CHAT_PREFS, 0).edit().clear().commit()
         val id = io.github.odnwks.mimir.data.ExampleData.TASK_ALLOW
