@@ -204,7 +204,8 @@ fun answerMark(ran: String?, pcName: String, whisper: Boolean): Pair<androidx.co
 /** The effort chip: Quick, Balanced or Thorough. */
 @Composable
 fun EffortChip(current: Effort, model: LocalModel, onChoose: (Effort) -> Unit, fit: ChipFit = ChipFit.Full) {
-    // It always says "Effort:" (the owner asked for it): it never moves into the + menu.
+    // It says "Effort:" while there is room; with the least room it moves into the + menu (Attach's first rows).
+    if (fit == ChipFit.Menu) return
     var open by remember { mutableStateOf(false) }
     Box {
         // "Effort:" stays while it fits; with the least room the word alone ("Thorough") is shown.

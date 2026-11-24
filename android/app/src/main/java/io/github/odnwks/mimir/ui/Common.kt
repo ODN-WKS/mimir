@@ -446,17 +446,24 @@ fun RoundButton(
     /** Read out by TalkBack, and announced when the button turns up (Stop: "Task is working"). */
     stateText: String? = null,
 ) {
+    // Drawn at [size] but always touched at 48 dp or more (accessibility), the circle centred in its target.
+    val touch = maxOf(size, 48.dp)
     Box(
-        Modifier.size(size).alpha(if (enabled) 1f else 0.38f).clip(CircleShape)
-            .background(if (filled) fill else surface)
-            .then(if (!filled && outline) Modifier.border(1.dp, Palette.Outline, CircleShape) else Modifier)
+        Modifier.size(touch).alpha(if (enabled) 1f else 0.38f).clip(CircleShape)
             .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
             .semantics {
                 contentDescription = label
                 if (stateText != null) { stateDescription = stateText; liveRegion = LiveRegionMode.Polite }
             },
         contentAlignment = Alignment.Center,
-    ) { Icon(icon, null, tint = if (filled) Palette.White else Palette.Text, modifier = Modifier.size(iconSize)) }
+    ) {
+        Box(
+            Modifier.size(size).clip(CircleShape)
+                .background(if (filled) fill else surface)
+                .then(if (!filled && outline) Modifier.border(1.dp, Palette.Outline, CircleShape) else Modifier),
+            contentAlignment = Alignment.Center,
+        ) { Icon(icon, null, tint = if (filled) Palette.White else Palette.Text, modifier = Modifier.size(iconSize)) }
+    }
 }
 
 /** A text link with a 48 dp target ("Show the change (2 lines)"). */

@@ -466,7 +466,7 @@ fun PhoneChat(
             hasFiles = files.isNotEmpty() || pictures.isNotEmpty(),
             above = { attach.Chips() },
             attach = { fit ->
-            attach.Button(sight, onModels = { nav.open(Screen.Models) }, model = model)
+            attach.Button(sight, onModels = { nav.open(Screen.Models) }, model = model, effort = s.effort.takeIf { fit == ChipFit.Menu }, onEffort = engine::setEffort)
             },
         ) { fit ->
             val installed = Catalog.withOwn().filter { it.id in s.have }

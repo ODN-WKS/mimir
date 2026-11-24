@@ -4,13 +4,14 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.selection.selectableGroup
@@ -39,6 +40,8 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.odnwks.mimir.data.FakeStation
@@ -58,7 +61,6 @@ import io.github.odnwks.mimir.ui.theme.Type
  * is dimmed while the box is empty. While a task is [working] a red Stop button sits beside Send,
  * typed words or not; a tap within 800 ms of Stop turning up or going is ignored.
  */
-@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 fun Composer(
     value: String,
@@ -88,7 +90,7 @@ fun Composer(
     /** A new task needs words (they name it); a reply can go with only a picture. */
     needsWords: Boolean = false,
 ) {
-    val shape = RoundedCornerShape(24.dp)
+    val shape = RoundedCornerShape(20.dp)
     val sendable = value.isNotBlank() || (attach?.any == true && !needsWords)
     val surface by androidx.compose.animation.animateColorAsState(if (whisper) Palette.WhisperBar else Palette.Bar, io.github.odnwks.mimir.ui.theme.motionSpec(io.github.odnwks.mimir.ui.theme.Motion.SCREEN_MS), label = "box")
     val haptic = LocalHapticFeedback.current
@@ -100,63 +102,35 @@ fun Composer(
     val keyCtx = androidx.compose.ui.platform.LocalContext.current
     LaunchedEffect(Unit) { kotlinx.coroutines.delay(300); if (keyboardAutoOn(keyCtx)) runCatching { focus.requestFocus() } }
     Column(
-        modifier.fillMaxWidth().clip(shape).background(surface).border(1.dp, Palette.Outline, shape)
-            .padding(start = 6.dp, end = 6.dp, top = if (chip != null || optionsChip != null || optionsNote != null) 6.dp else 0.dp, bottom = 0.dp),
+        modifier.fillMaxWidth().testTag(COMPOSER_TAG).clip(shape).background(surface).border(1.dp, Palette.Outline, shape)
+            .padding(start = 4.dp, end = 4.dp, top = if (optionsNote != null) 4.dp else 0.dp, bottom = 0.dp),
     ) {
         attach?.Note()
         if (attach?.any == true) Box(Modifier.padding(start = 4.dp, end = 4.dp, bottom = 6.dp)) { attach.Chips() }
-        if (chip != null || optionsChip != null) FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(0.dp)) {
-        if (chip != null) Row(
-            Modifier.heightIn(min = 40.dp).clip(RoundedCornerShape(12.dp)).clickable(role = Role.Button, onClick = onChip)
-                .semantics(mergeDescendants = true) { contentDescription = chipLabel },
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Row(
-                Modifier.clip(RoundedCornerShape(12.dp)).border(1.dp, Palette.LineStrong, RoundedCornerShape(12.dp))
-                    .padding(start = 10.dp, end = 6.dp, top = 4.dp, bottom = 4.dp),
-                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                Text("To:", style = Type.Small, color = Palette.TextDim)
-                Text(chip, style = Type.Small.copy(fontWeight = FontWeight.Bold), color = Palette.Text, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Icon(Glyphs.Down, null, tint = Palette.TextDim, modifier = Modifier.size(16.dp))
-            }
-        }
-        if (optionsChip != null) Row(
-            Modifier.heightIn(min = 40.dp).clip(RoundedCornerShape(12.dp)).clickable(role = Role.Button, onClick = onOptions)
-                .semantics(mergeDescendants = true) { contentDescription = "Model and effort for this task: $optionsChip. Change" },
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Row(
-                Modifier.clip(RoundedCornerShape(12.dp)).border(1.dp, Palette.LineStrong, RoundedCornerShape(12.dp))
-                    .padding(start = 10.dp, end = 6.dp, top = 4.dp, bottom = 4.dp),
-                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                Text(optionsChip, style = Type.Small.copy(fontWeight = FontWeight.Bold), color = Palette.Text, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Icon(Glyphs.Down, null, tint = Palette.TextDim, modifier = Modifier.size(16.dp))
-            }
-        }
-        }
         if (optionsNote != null) Text(optionsNote, style = Type.Small, color = Palette.TextDim, modifier = Modifier.padding(start = 6.dp, bottom = 4.dp))
-        Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            if (attach != null) Box(Modifier.padding(bottom = 4.dp)) { attach.Button(attachSight) }
-            Box(Modifier.padding(bottom = 4.dp)) { MicButton(voice, micLabel, filled = false, surface = Palette.Card) }
+        Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(0.dp)) {
+            if (attach != null) attach.Button(attachSight)
             BasicTextField(
                 value = value,
                 onValueChange = onValue,
                 textStyle = Type.Body.copy(color = Palette.Text, lineHeight = 16.sp * 1.4f),
                 cursorBrush = SolidColor(Palette.BlueLight),
                 maxLines = 6,
-                modifier = Modifier.weight(1f).heightIn(min = 56.dp).semantics { contentDescription = label }
+                modifier = Modifier.weight(1f).heightIn(min = 48.dp).semantics { contentDescription = label }
                     .focusRequester(focus)
                     // A real keyboard: Enter sends, Shift+Enter is a new line, Tab leaves the box.
                     .messageBoxKeys { if (sendable) onSend() },
                 decorationBox = { inner ->
-                    Box(Modifier.padding(vertical = 16.dp), contentAlignment = Alignment.CenterStart) {
+                    Box(Modifier.padding(start = 6.dp, top = 12.dp, bottom = 12.dp), contentAlignment = Alignment.CenterStart) {
                         if (value.isEmpty()) Text(hint, style = Type.Body.copy(lineHeight = 16.sp * 1.4f), color = Palette.TextDim, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         inner()
                     }
                 },
             )
+            // One slim chip (28 dp, a 48 dp touch) on the same line as the + and the words.
+            val slim = chip?.let { it to chipLabel } ?: optionsChip?.let { it to "Model and effort for this task: $it. Change" }
+            if (slim != null) SlimChip(slim.first, slim.second, if (chip != null) onChip else onOptions)
+            MicButton(voice, micLabel, filled = false, surface = Color.Transparent, size = 36.dp, outline = false)
             val kind = if (sendable) ButtonKind.Send else ButtonKind.Empty
             // Stop is there the whole time something works, typed words or not (owner, 2026-11-22).
             val showStop = working && onStop != null
@@ -173,7 +147,7 @@ fun Composer(
                 armed = false; kotlinx.coroutines.delay(BUTTON_SETTLE_MS); armed = true
             }
             val settled = { armed }
-            Row(Modifier.padding(bottom = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(horizontalArrangement = Arrangement.spacedBy(0.dp), verticalAlignment = Alignment.CenterVertically) {
                 // Stop asks twice or for a 2 second hold (Settings › Look and size › Stop buttons).
                 if (showStop) StopControl({
                     if (settled()) onStop?.invoke()
@@ -185,16 +159,38 @@ fun Composer(
                 }, shape = StopShape.Round, stateText = "Task is working")
                 androidx.compose.animation.Crossfade(kind, animationSpec = io.github.odnwks.mimir.ui.theme.motionSpec(io.github.odnwks.mimir.ui.theme.Motion.SCREEN_MS), label = "send") { k ->
                     when (k) {
-                        ButtonKind.Empty -> RoundButton(Glyphs.Send, "Send", {}, filled = true, enabled = false)
+                        ButtonKind.Empty -> RoundButton(Glyphs.Send, "Send", {}, size = 36.dp, filled = true, enabled = false, iconSize = 20.dp)
                         ButtonKind.Send -> RoundButton(Glyphs.Send, "Send", {
                             if (sendable) {
                                 haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
                                 onSend()
                             }
-                        }, filled = true)
+                        }, size = 36.dp, filled = true, iconSize = 20.dp)
                     }
                 }
             }
+        }
+    }
+}
+
+/** Marks the reply box, so a test can measure it. */
+const val COMPOSER_TAG = "composer"
+
+/** The one slim chip of the reply box: 28 dp high, touched at 48 dp, its words cut with "…". */
+@Composable
+internal fun SlimChip(text: String, label: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val shape = RoundedCornerShape(14.dp)
+    Box(
+        modifier.heightIn(min = 48.dp).widthIn(max = 112.dp).clip(shape).clickable(role = Role.Button, onClick = onClick)
+            .semantics(mergeDescendants = true) { contentDescription = label },
+        contentAlignment = Alignment.Center,
+    ) {
+        Row(
+            Modifier.height(28.dp).clip(shape).border(1.dp, Palette.LineStrong, shape).padding(start = 8.dp, end = 4.dp),
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            Text(text, style = Type.Small.copy(fontWeight = FontWeight.Bold), color = Palette.Text, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+            Icon(Glyphs.Down, null, tint = Palette.TextDim, modifier = Modifier.size(16.dp))
         }
     }
 }
