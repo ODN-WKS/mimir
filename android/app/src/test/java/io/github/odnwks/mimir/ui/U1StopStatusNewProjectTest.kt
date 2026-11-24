@@ -40,14 +40,14 @@ class U1StopStatusNewProjectTest {
         compose.setContent { MimirTheme(reduceMotion = true) { AppRoot(station, nav) } }
         val id = ExampleData.TASK_CELL
         nav.open(Screen.Task(id)); compose.waitForIdle()
-        compose.onNodeWithContentDescription("Stop").assertIsDisplayed()
+        // P10: Stop is the first row of the ⋯ menu (red dot on the button while work runs).
+        compose.onNodeWithContentDescription("Task options").assertIsDisplayed()
         compose.onNodeWithContentDescription("Reply to this task").performTextInput("a few words")
         compose.waitForIdle()
-        compose.onNodeWithContentDescription("Stop").assertIsDisplayed()
         compose.onNodeWithContentDescription("Send").assertIsDisplayed()
         compose.mainClock.advanceTimeBy(BUTTON_SETTLE_MS); compose.waitForIdle()
-        compose.onNodeWithContentDescription("Stop").performClick() // 0.09: the first tap asks "Stop?"
-        compose.onNodeWithContentDescription("Stop").performClick()
+        compose.onNodeWithContentDescription("Task options").performClick(); compose.waitForIdle()
+        compose.onNodeWithText(STOP_MENU_ROW).performClick()
         compose.mainClock.advanceTimeBy(1_000); compose.waitForIdle()
         assertEquals("Stopped", station.state.value.task(id)!!.stateWords)
     }
@@ -93,8 +93,9 @@ class U1StopStatusNewProjectTest {
     @Test fun stopIsThereDuringAPermissionPromptAndSaysTheTaskIsWorking() {
         compose.setContent { MimirTheme(reduceMotion = true) { AppRoot(station, nav) } }
         nav.open(Screen.Task(ExampleData.TASK_ALLOW)); compose.waitForIdle()
-        compose.onNodeWithContentDescription("Stop").assertIsDisplayed()
-        compose.onNode(androidx.compose.ui.test.SemanticsMatcher.expectValue(androidx.compose.ui.semantics.SemanticsProperties.StateDescription, "Task is working")).assertExists()
+        // P10: the ⋯ button says Stop is in the menu while the task works (also during a permission prompt).
+        compose.onNodeWithContentDescription("Task options").assertIsDisplayed()
+        compose.onNode(androidx.compose.ui.test.SemanticsMatcher.expectValue(androidx.compose.ui.semantics.SemanticsProperties.StateDescription, "with Stop")).assertExists()
     }
 
     @Test fun whateverTheClosingWordsAFinishedTaskIsDoneLikeOnThePc() {

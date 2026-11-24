@@ -104,15 +104,20 @@ class AppFlowTest {
         compose.onNodeWithText("PC online · 4 working").assertDoesNotExist()
     }
 
-    @Test fun stopAskFirstAndTheSafeChoiceKeepsGoing() {
+    /** P10: Stop is the menu's first row; opening the menu and tapping it are the two deliberate taps (Confirm), no third. */
+    @Test fun stopFromTheMenuNeedsNoThirdTapAndTheMenuCanBeLeftAlone() {
         start()
         nav.open(Screen.Task("t-allow"))
         compose.onNodeWithContentDescription("Task options").performClick()
-        compose.onNodeWithText("Stop this task…").performClick()
-        compose.onNodeWithText("Keep going").performClick()
+        compose.waitForIdle()
+        // Leaving the menu without tapping Stop keeps the task going.
+        nav.closeSheet(); compose.waitForIdle()
+        assertEquals(false, station.state.value.task("t-allow")!!.stopped)
+        compose.onNodeWithContentDescription("Task options").performClick()
+        compose.onNodeWithText(STOP_MENU_ROW).performClick()
         compose.waitForIdle()
         assertNull(nav.sheet)
-        assertEquals(false, station.state.value.task("t-allow")!!.stopped)
+        assertEquals(true, station.state.value.task("t-allow")!!.stopped)
     }
 
     @Test fun startAnIncognitoTaskAndEndIt() {
@@ -826,11 +831,12 @@ class AppFlowTest {
         compose.onNodeWithContentDescription("Reply to this task").performTextInput("hold on")
         compose.waitForIdle()
         compose.onNodeWithContentDescription("Send").assertIsDisplayed()
-        compose.onNodeWithContentDescription("Stop").assertIsDisplayed()
+        // P10: Stop is the first row of the ⋯ menu, and it stays one open away while typing.
+        compose.onNodeWithContentDescription("Task options").assertIsDisplayed()
         compose.onNodeWithContentDescription("Reply to this task").performTextReplacement("")
         compose.mainClock.advanceTimeBy(300); compose.waitForIdle()
-        compose.onNodeWithContentDescription("Stop").performClick() // 0.09: the first tap asks "Stop?"
-        compose.onNodeWithContentDescription("Stop").performClick()
+        compose.onNodeWithContentDescription("Task options").performClick(); compose.waitForIdle()
+        compose.onNodeWithText(STOP_MENU_ROW).performClick()
         compose.mainClock.advanceTimeBy(1_000); compose.waitForIdle()
         assertEquals("Stopped", station.state.value.task(id)!!.stateWords)
         // "Stopped · Continue", and the command that was running may have been cut off.

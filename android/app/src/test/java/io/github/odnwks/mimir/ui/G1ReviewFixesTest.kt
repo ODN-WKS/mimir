@@ -52,6 +52,6 @@ class G1ReviewFixesTest {
     @Test fun anOlderPcsMenuKeepsStopForATaskGoingOnElsewhere() {
         show(station({ it.copy(liveElsewhere = true, stopped = false) }, null))
         nav.openSheet(Sheet.TaskOptions(id)); compose.waitForIdle()
-        compose.onNodeWithText("Stop this task…").assertIsDisplayed()
+        compose.onNodeWithText(STOP_MENU_ROW).assertIsDisplayed()
     }
 }

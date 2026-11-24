@@ -71,7 +71,7 @@ class F3HuntTest {
         nav.openSheet(Sheet.TaskOptions(id)); compose.waitForIdle()
         compose.onNodeWithText("Rename…").assertIsDisplayed()
         compose.onNodeWithText("Archive").assertIsDisplayed()
-        for (w in listOf("Change the model…", "Ask me first before changes", "Plan first, change nothing yet", "Stop this task…", "Move to another project…", "Always allowed in this task…")) gone(w)
+        for (w in listOf("Change the model…", "Ask me first before changes", "Plan first, change nothing yet", STOP_MENU_ROW, "Move to another project…", "Always allowed in this task…")) gone(w)
     }
 
     // T6: no Stop on a finished task, no second Continue
@@ -80,7 +80,7 @@ class F3HuntTest {
         show(st)
         nav.openSheet(Sheet.TaskOptions(id)); compose.waitForIdle()
         compose.onNodeWithText("Rename…").assertIsDisplayed()
-        gone("Stop this task…"); gone("Continue")
+        gone(STOP_MENU_ROW); gone("Continue")
     }
 
     // T4 / T9 names

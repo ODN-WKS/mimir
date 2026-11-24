@@ -57,8 +57,8 @@ import kotlinx.coroutines.launch
  * a 2 second hold, a second tap that says "Stop?", or nothing. Picked in Settings; Confirm is the default.
  */
 enum class StopMode(val wire: String, val title: String, val about: String) {
-    Hold("hold", "Hold 2 seconds", "Press and hold Stop for 2 seconds. A quick tap does nothing."),
-    Confirm("confirm", "Confirm", "Tap Stop, then tap again while it says “Stop?”."),
+    Hold("hold", "Hold 2 seconds", "Press and hold Stop for 2 seconds (in a task, hold the Stop row in its ⋯ menu). A quick tap does nothing."),
+    Confirm("confirm", "Confirm", "Stop is in the ⋯ menu of a task: open it and tap Stop. Other Stop buttons ask for a second tap while they say “Stop?”."),
     Off("off", "Off", "Stop works with one tap."),
     ;
 

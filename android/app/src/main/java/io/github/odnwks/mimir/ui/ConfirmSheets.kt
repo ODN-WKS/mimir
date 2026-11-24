@@ -148,6 +148,15 @@ private fun SheetContent(sheet: Sheet, state: StationState, station: Station, na
             val id = sheet.taskId
             // Going on in a terminal or the Claude app: it is not Mímir's task to steer, only to follow, rename or put away.
             val elsewhere = task != null && !task.stopped && (task.liveElsewhere || followedElsewhere(state, id))
+            // Stop first (red) while the work runs: opening this menu and tapping Stop are the two deliberate taps.
+            if (task != null && task.showsStop && !task.stopPending && (!elsewhere || state.pcSessions == null)) {
+                val mode = rememberStopMode()
+                if (mode == StopMode.Hold) StopControl(
+                    { station.stopTask(id); nav.closeSheet() }, Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                    shape = StopShape.Wide, fill = Palette.RedBorder, label = STOP_MENU_HOLD, mode = mode,
+                ) else MenuRow(Glyphs.Stop, STOP_MENU_ROW, Palette.Red) { station.stopTask(id); nav.closeSheet() }
+            }
+            if (task != null) MenuRow(Glyphs.Search, if (TaskMenuAsk.finding == id) "Close find" else "Find in this task") { TaskMenuAsk.toggleFind(id); nav.closeSheet() }
             if (task?.change != null) MenuRow(Glyphs.NewDocument, "Show the change") { nav.open(Screen.Change(id)) }
             // Continue only where there is something to carry on: a finished task has the reply box.
             if (!elsewhere) when (task?.stateWords) {
@@ -192,8 +201,6 @@ private fun SheetContent(sheet: Sheet, state: StationState, station: Station, na
                 Icon(Glyphs.Close, null, tint = Palette.TextDim, modifier = Modifier.size(22.dp))
                 Text("Delete (when it stops)", style = Type.BodyTight, color = Palette.TextDim, modifier = Modifier.weight(1f))
             } else MenuRow(Glyphs.Close, "Delete…", Palette.Red) { nav.openSheet(Sheet.DeleteTask(id)) }
-            // Stop is for work that runs: the Stop button is on the task itself while it does.
-            if (task != null && task.showsStop && !task.stopPending && (!elsewhere || state.pcSessions == null)) MenuRow(Glyphs.Stop, "Stop this task…", Palette.Red) { nav.openSheet(Sheet.StopTask(id)) }
             if (!elsewhere) PrivacyLine("Your PC does this task. This phone and your PC talk privately.")
         }
         is Sheet.ChatOptions -> Menu(sheet.title(state)) {
@@ -561,6 +568,17 @@ private fun Ask(
         else BigButton(action, actionLook, onAction, bold = false)
         BigButton(safe, Look.Primary, onSafe)
     }
+}
+
+/** The task menu's Stop row, and what its hold version says. */
+const val STOP_MENU_ROW = "Stop this task"
+const val STOP_MENU_HOLD = "Hold 2 seconds to stop"
+
+/** What the task menu hands back to the open task screen (Find in this task), as the project picker does. */
+object TaskMenuAsk {
+    /** The task whose find box is open (or about to open): the task screen shows its box for this id. */
+    var finding: String? by androidx.compose.runtime.mutableStateOf(null)
+    fun toggleFind(id: String) { finding = if (finding == id) null else id }
 }
 
 /** Under "Delete this task?". */

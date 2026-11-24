@@ -266,7 +266,10 @@ class FindabilityTest {
         assertEquals(Screen.AllTasks(), nav.current)
         // Find in a task.
         nav.open(Screen.Task(ExampleData.TASK_ALLOW)); compose.waitForIdle()
-        compose.onNodeWithContentDescription("Find in this task").performClick()
+        // P10: Find is in the task's ⋯ menu.
+        compose.onNodeWithContentDescription("Task options").performClick()
+        compose.waitForIdle()
+        compose.onNodeWithText("Find in this task").performClick()
         compose.waitForIdle()
         compose.onNodeWithContentDescription("Find in this task").performTextInput("zzzz-nothing")
         compose.waitForIdle()
@@ -329,9 +332,7 @@ class FindabilityTest {
         compose.onNodeWithContentDescription("Task options").performClick()
         compose.waitForIdle()
         tap("Plan first, change nothing yet")
-        // The project and Plan first are a tap away on the state, so the conversation stays clean.
-        compose.onAllNodes(androidx.compose.ui.test.SemanticsMatcher("shows the details") { it.config.getOrElseNullable(androidx.compose.ui.semantics.SemanticsActions.OnClick) { null }?.label == "Show the project and age" })[0].performClick()
-        compose.waitForIdle()
+        // P10: the project, model and Plan first are on the thin line under the top row.
         compose.onNodeWithText("Plan first", substring = true).assertExists()
         compose.onNodeWithContentDescription("Task options").performClick()
         compose.waitForIdle()
@@ -410,7 +411,7 @@ class FindabilityTest {
         val title = station.state.value.task(ExampleData.TASK_ALLOW)!!.title
         heading(title).performClick()
         compose.waitForIdle()
-        for (row in listOf("Rename…", "Stop this task…")) {
+        for (row in listOf("Rename…", STOP_MENU_ROW)) {
             compose.onNodeWithText(row).assertIsDisplayed()
         }
         // The speed slider lives in Settings › Voice, not in a task's menu.

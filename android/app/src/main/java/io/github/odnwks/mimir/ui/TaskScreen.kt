@@ -106,7 +106,8 @@ fun TaskScreen(taskId: String, state: StationState, station: Station, nav: Navig
     // Why an edit was not sent (its box opens again with the words kept).
     var editFailure by rememberSaveable { mutableStateOf<String?>(null) }
     // Find in this task: only the messages with the words show while it's open.
-    var finding by rememberSaveable { mutableStateOf(false) }
+    // Opened from the ⋯ menu's "Find in this task" (the menu hands the task over in TaskMenuAsk).
+    val finding = TaskMenuAsk.finding == task.id
     var find by rememberSaveable { mutableStateOf("") }
     // A PC that lists its sessions: a task going on elsewhere is followed with a banner, Stop and Carry on here.
     val listsSessions = state.pcSessions != null
@@ -118,6 +119,8 @@ fun TaskScreen(taskId: String, state: StationState, station: Station, nav: Navig
     val liveNow = listsSessions && !task.stopped && (task.liveElsewhere || followedElsewhere(state, task.id))
     // The PC's list says it works elsewhere: the follow buttons with Stop show at once.
     if (listsSessions && liveNow) followed = true
+    LaunchedEffect(finding) { if (!finding) find = "" }
+    androidx.compose.runtime.DisposableEffect(task.id) { onDispose { if (TaskMenuAsk.finding == task.id) TaskMenuAsk.finding = null } }
     val words = find.trim().takeIf { finding && it.isNotEmpty() }
     // The PC's own notes about a followed session say what the line and buttons below already say.
     val shownMessages = task.messages.filterNot { m ->
@@ -162,50 +165,17 @@ fun TaskScreen(taskId: String, state: StationState, station: Station, nav: Navig
     BoxWithConstraints(Modifier.fillMaxSize().background(Palette.Ground)) {
         val screenHeight = maxHeight
         Column(Modifier.fillMaxSize()) {
-            BackHeader(
-                task.title, nav::back, subtitle = listOf(task.project, task.model, task.age).filter { it.isNotBlank() }.joinToString(" · "), titleStyle = Type.TaskTitle,
-                subtitleContent = {
-                    // The state line: "Needs you · Mímir · 6 min" (the model is in the task's menu).
-                    // Only the state stays; the project and age are a tap away (the chat area stays clean).
-                    var more by rememberSaveable(task.id) { mutableStateOf(false) }
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        modifier = Modifier.padding(top = 4.dp).heightIn(min = 32.dp).clickable(role = androidx.compose.ui.semantics.Role.Button, onClickLabel = if (more) "Hide the details" else "Show the project and age") { more = !more }
-                            .semantics(mergeDescendants = true) { liveRegion = androidx.compose.ui.semantics.LiveRegionMode.Polite },
-                    ) {
-                        val (fg, bg) = stateColours(task.stateWords)
-                        Tag(task.stateWords, fg, bg)
-                        // A mode that doesn't ask first is always in sight.
-                        task.riskyMode?.let { if (task.yolo) Tag(it, Palette.Ground, Palette.Red) else Tag(it, Palette.AmberInk, Palette.Amber) }
-                        if (more) Text(listOf(task.project, if (task.plan) "Plan first" else "", task.age).filter { it.isNotBlank() }.joinToString(" · "), style = Type.Small, color = Palette.TextDim, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
-                    // What it's doing right now, in words.
-                    // Always a sign of life: sending, got it, the step and how long, or the silence said plainly.
-                    LiveSignLine(task.sign) {
-                        if (task.stateWords == "Working" && task.stateLine != "Working on it") Text(task.stateLine, style = Type.Small, color = Palette.TextSoft, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
-                },
-                action = {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                        // Stop sits beside the title while work runs (a followed session has its own Stop below).
-                        if (task.showsStop && !task.stopPending && !(listsSessions && followed && !carried)) StopControl(
-                            { cutOff = task.steps.lastOrNull()?.startsWith("…") == true; station.stopTask(task.id) },
-                            shape = StopShape.Pill, stateText = "Task is working",
-                        )
-                        IconTarget(Glyphs.Search, if (finding) "Close find" else "Find in this task", { finding = !finding; if (!finding) find = "" })
-                        // Archive, Delete, Refresh, Rename, Move and the rest: a button where people look, as well as the title.
-                        IconTarget(Glyphs.More, TASK_OPTIONS, { nav.openSheet(Sheet.TaskOptions(task.id)) })
-                    }
-                },
-                // A tap on the task's name: everything for this task in one sheet.
-                onTitle = { nav.openSheet(Sheet.TaskOptions(task.id)) }, titleLabel = "Task name, tap for options",
-            )
+            // One row (Back, name, state, ⋯) and one thin line; Stop and Find are in the ⋯ menu.
+            TaskTopBar(task, nav::back, { nav.openSheet(Sheet.TaskOptions(task.id)) })
             if (finding) Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 MessageBox(find, { find = it }, "Find in this task", "Find in this task", Modifier.fillMaxWidth(), autoFocus = true)
-                if (words != null) Text(
-                    when (messages.size) { 0 -> "No message has \"$words\""; 1 -> "1 message has \"$words\""; else -> "${messages.size} messages have \"$words\"" },
-                    style = Type.Small, color = Palette.TextDim,
-                )
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(
+                        if (words == null) "" else when (messages.size) { 0 -> "No message has \"$words\""; 1 -> "1 message has \"$words\""; else -> "${messages.size} messages have \"$words\"" },
+                        style = Type.Small, color = Palette.TextDim, modifier = Modifier.weight(1f),
+                    )
+                    QuietButton("Close find", "Close find") { TaskMenuAsk.finding = null }
+                }
             }
             ConnectionStrip(state, Modifier.padding(bottom = 4.dp))
             // Pinned above the conversation, so it stays in sight while it scrolls.
