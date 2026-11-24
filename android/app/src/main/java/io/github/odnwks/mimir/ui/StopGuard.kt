@@ -129,6 +129,8 @@ fun StopControl(
     val haptic = LocalHapticFeedback.current
     val scope = rememberCoroutineScope()
     val now = { System.currentTimeMillis() }
+    // A hold that ran its 2 seconds already stopped the work; letting go must not count as a tap.
+    var heldDone by remember(mode) { mutableStateOf(false) }
     LaunchedEffect(armed) { if (armed) { delay(STOP_CONFIRM_MS); armed = false } }
     LaunchedEffect(hint) { if (hint) { delay(2_500); hint = false } }
     val fire = { armed = false; hint = false; haptic.performHapticFeedback(HapticFeedbackType.LongPress); onStop() }
@@ -152,17 +154,19 @@ fun StopControl(
                 detectTapGestures(
                     onPress = {
                         if (mode == StopMode.Hold) {
+                            heldDone = false
                             val job = scope.launch {
                                 progress.snapTo(0f)
                                 progress.animateTo(1f, tween(STOP_HOLD_MS, easing = LinearEasing))
                                 progress.snapTo(0f)
+                                heldDone = true
                                 fire()
                             }
                             tryAwaitRelease()
                             if (job.isActive) { job.cancel(); scope.launch { progress.snapTo(0f) } }
                         }
                     },
-                    onTap = { act(guard.tap(now())) },
+                    onTap = { if (heldDone) heldDone = false else act(guard.tap(now())) },
                 )
             }
             .semantics(mergeDescendants = true) {
@@ -175,9 +179,10 @@ fun StopControl(
         contentAlignment = Alignment.Center,
     ) {
         // The hold's fill: grows from the left while the finger stays down.
-        if (mode == StopMode.Hold && progress.value > 0f) Box(
-            Modifier.fillMaxHeight().fillMaxWidth(progress.value).background(Color.Black.copy(alpha = 0.28f)).align(Alignment.CenterStart),
-        )
+        // (Sized from the button's own box: a plain fill-height would take the whole bar's height.)
+        if (mode == StopMode.Hold && progress.value > 0f) Box(Modifier.matchParentSize()) {
+            Box(Modifier.fillMaxHeight().fillMaxWidth(progress.value).background(Color.Black.copy(alpha = 0.28f)).align(Alignment.CenterStart))
+        }
         if (shape == StopShape.Round && !armed && !hint) Icon(Glyphs.Stop, null, tint = Palette.White, modifier = Modifier.size(20.dp))
         else Row(
             Modifier.padding(horizontal = 14.dp, vertical = 8.dp),

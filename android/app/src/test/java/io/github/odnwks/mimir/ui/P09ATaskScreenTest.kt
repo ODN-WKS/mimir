@@ -13,6 +13,8 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.filter
 import androidx.compose.ui.test.performClick
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.test.performTouchInput
 import io.github.odnwks.mimir.ui.theme.MimirTheme
 import androidx.compose.ui.test.performTextInput
 import org.junit.Rule
@@ -132,3 +134,49 @@ class P09AQuestionLineTest {
         assertTrue(compose.onAllNodesWithText("\u201c$q\u201d", substring = true).fetchSemanticsNodes().isEmpty())
     }
 }
+
+@RunWith(RobolectricTestRunner::class)
+@Config(qualifiers = "w390dp-h844dp-xhdpi")
+class P09AHoldFillTest {
+    @get:Rule val compose = createComposeRule()
+
+    @Test fun p09FixAHeldStopKeepsItsSizeInsideATallBar() {
+        compose.mainClock.autoAdvance = false
+        compose.setContent {
+            MimirTheme(reduceMotion = true) {
+                androidx.compose.foundation.layout.Column(androidx.compose.ui.Modifier.androidxFill()) {
+                    androidx.compose.foundation.layout.Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                        androidx.compose.material3.Text("A task title", androidx.compose.ui.Modifier.weight(1f))
+                        StopControl({}, shape = StopShape.Pill, mode = StopMode.Hold)
+                    }
+                }
+            }
+        }
+        compose.mainClock.advanceTimeBy(100)
+        val stop = compose.onNodeWithContentDescription("Stop")
+        val before = stop.fetchSemanticsNode().size.height
+        stop.performTouchInput { down(center) }
+        compose.mainClock.advanceTimeBy(1_000)
+        compose.waitForIdle()
+        val during = stop.fetchSemanticsNode().size.height
+        stop.performTouchInput { up() }
+        assertEquals("the pill keeps its height while held", before, during)
+    }
+
+    @Test fun p09Fix6ReleasingAfterAFinishedHoldDoesNotSayHoldToStop() {
+        var stopped = 0
+        compose.setContent { MimirTheme(reduceMotion = true) { StopControl({ stopped++ }, shape = StopShape.Pill, mode = StopMode.Hold) } }
+        compose.mainClock.autoAdvance = false
+        val stop = compose.onNodeWithContentDescription("Stop")
+        stop.performTouchInput { down(center) }
+        compose.mainClock.advanceTimeBy(STOP_HOLD_MS + 300L)
+        stop.performTouchInput { up() }
+        compose.mainClock.advanceTimeBy(100)
+        compose.mainClock.autoAdvance = true
+        compose.waitForIdle()
+        assertEquals(1, stopped)
+        compose.onNodeWithText("Hold to stop").assertDoesNotExist()
+    }
+}
+
+private fun androidx.compose.ui.Modifier.androidxFill() = this.fillMaxSize()
