@@ -30,6 +30,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -76,8 +78,10 @@ fun TaskRow(
             SwipeButton("Delete", Palette.RedBorder, Palette.Text, buttonDp, "Delete $title") { settle(0f); onDelete() }
         }
         val density = LocalDensity.current
+        // The long-press menu opens on the pressed row, not below it over the next one.
+        var rowHeight by remember { mutableIntStateOf(0) }
         Box(
-            Modifier.padding(end = with(density) { (-offset.value).toDp() })
+            Modifier.padding(end = with(density) { (-offset.value).toDp() }).onSizeChanged { rowHeight = it.height }
                 .draggable(
                     rememberDraggableState { d -> scope.launch { offset.snapTo((offset.value + d).coerceIn(-reveal, 0f)) } },
                     Orientation.Horizontal,
@@ -106,7 +110,7 @@ fun TaskRow(
                 }
                 Tag(state, stateFg, stateBg)
             }
-            DropdownMenu(menu, { menu = false }) {
+            DropdownMenu(menu, { menu = false }, offset = androidx.compose.ui.unit.DpOffset(16.dp, with(density) { -rowHeight.toDp() })) {
                 DropdownMenuItem({ Text("Archive") }, { menu = false; onArchive() })
                 DropdownMenuItem({ Text("Delete", color = Palette.Red) }, { menu = false; onDelete() })
             }
