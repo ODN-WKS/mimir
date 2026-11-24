@@ -117,7 +117,8 @@ class LinkStationWaitingTaskTest {
         assertEquals(id, msgId(newTaskCalls(link).single().second))
         link.reply(newTaskCalls(link).single().first, "\"real-1\"")
         assertTrue("answered, so no longer waiting", until { waitingIds().isEmpty() })
-        assertEquals("real-1", st.state.value.startedTasks[id])
+        // The vault is saved a moment before the state is published: wait for the state, not the file.
+        assertTrue("published", until { st.state.value.startedTasks[id] == "real-1" })
         st.close()
     }
 

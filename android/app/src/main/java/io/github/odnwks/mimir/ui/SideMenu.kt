@@ -226,7 +226,7 @@ fun SideMenu(
                     go { if (!state.paired) nav.open(Screen.Pair) else if (state.pcSessions != null) nav.open(Screen.PhonePc) else nav.selectTab(Tab.Status) }
                 }
             }
-            if (state.paired) item("usage") { MenuRow("Claude use left this week", right = usageLeftShort(state.usage), dim = true, modifier = Modifier.testTag("menu-usage")) { go { nav.open(Screen.Models) } } }
+            if (state.paired) item("usage") { MenuRow(MENU_USAGE, right = usageLeftShort(state.usage), dim = true, ellipsize = true, modifier = Modifier.testTag("menu-usage")) { go { nav.open(Screen.Models) } } }
             // Press and hold: a Whisper with internet (Mímir on this phone, through Tor), the old "New Whisper-O".
             item("whisper") { MenuRow(MENU_WHISPER, right = "a chat that's never kept", onLongClick = { go { nav.selectTab(Tab.Chat); nav.askChat(ChatAsk.StartWebWhisper) } }) { go { nav.selectTab(Tab.Chat); nav.askChat(ChatAsk.StartWhisper) } } }
             item("chats-head") {
@@ -292,6 +292,9 @@ fun SideMenu(
 const val MENU_CHATS_SHOWN = 8
 
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+/** The side menu's Claude use row: short, so it fits a narrow menu (the chat screen says "this week" in full). */
+const val MENU_USAGE = "Claude use left"
+
 @Composable
 private fun MenuRow(
     title: String, modifier: Modifier = Modifier, right: String = "", badge: Int = 0, badgeColor: Color = MenuColors.AmberDeep,
