@@ -46,6 +46,7 @@ class U1StopStatusNewProjectTest {
         compose.onNodeWithContentDescription("Stop").assertIsDisplayed()
         compose.onNodeWithContentDescription("Send").assertIsDisplayed()
         compose.mainClock.advanceTimeBy(BUTTON_SETTLE_MS); compose.waitForIdle()
+        compose.onNodeWithContentDescription("Stop").performClick() // 0.09: the first tap asks "Stop?"
         compose.onNodeWithContentDescription("Stop").performClick()
         compose.mainClock.advanceTimeBy(1_000); compose.waitForIdle()
         assertEquals("Stopped", station.state.value.task(id)!!.stateWords)

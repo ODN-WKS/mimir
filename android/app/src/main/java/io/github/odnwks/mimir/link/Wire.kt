@@ -252,6 +252,8 @@ object Wire {
     fun pause(task: String): String = obj("Pause") { put("task", task) }
     fun continueTask(task: String): String = obj("Continue") { put("task", task) }
     fun rename(task: String, title: String): String = obj("Rename") { put("task", task); put("title", title) }
+    /** The task, its conversation and its files go from the PC (refused while it works). */
+    fun deleteTask(task: String): String = obj("DeleteTask") { put("task", task) }
     fun archive(task: String, archived: Boolean): String = obj("Archive") { put("task", task); put("archived", archived) }
     /** A phone may only switch a task between asking first and planning first. */
     fun setMode(task: String, plan: Boolean): String = obj("SetMode") { put("task", task); put("mode", if (plan) "Plan" else "Ask") }

@@ -25,6 +25,7 @@ import io.github.odnwks.mimir.data.Station
 import io.github.odnwks.mimir.data.StationState
 import io.github.odnwks.mimir.nav.Navigator
 import io.github.odnwks.mimir.nav.Screen
+import io.github.odnwks.mimir.nav.Sheet
 import io.github.odnwks.mimir.ui.theme.Palette
 import io.github.odnwks.mimir.ui.theme.Type
 
@@ -42,8 +43,11 @@ fun ProjectScreen(name: String, state: StationState, station: Station, nav: Navi
                 // While the PC is away the strip under the header says so; the header does not say it again.
                 when { state.pcAway -> ""; running > 0 -> "${running} working"; else -> "nothing working" }).filter { it.isNotBlank() }.joinToString(" · "))
         ConnectionStrip(state, Modifier.padding(bottom = 6.dp))
+        var refreshing by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+        androidx.compose.runtime.LaunchedEffect(refreshing) { if (refreshing) { kotlinx.coroutines.delay(1_200); refreshing = false } }
+        androidx.compose.material3.pulltorefresh.PullToRefreshBox(refreshing, { refreshing = true; station.refresh() }, Modifier.weight(1f).fillMaxWidth()) {
         Column(
-            Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 16.dp),
+            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 16.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             // Checks only where the project has them (Stage 1, section 5).
@@ -77,7 +81,8 @@ fun ProjectScreen(name: String, state: StationState, station: Station, nav: Navi
             }
             SectionTitle("Tasks", Modifier.padding(start = 4.dp, end = 4.dp, top = 4.dp))
             if (p.tasks.isEmpty()) Text("No tasks yet. Type below to start one.", style = Type.Label, color = Palette.TextDim, modifier = Modifier.padding(horizontal = 4.dp))
-            p.tasks.forEach { t ->
+            val undo = LocalUndo.current
+            p.tasks.filter { it.taskId !in nav.hiddenTasks }.forEach { t ->
                 val (fg, bg) = when (t.chip) {
                     Chip.Running -> Palette.Ground to Palette.BlueLight
                     Chip.Idea -> Palette.Text to Palette.Track
@@ -88,13 +93,24 @@ fun ProjectScreen(name: String, state: StationState, station: Station, nav: Navi
                     Chip.Starting, Chip.Live -> Palette.Ground to Palette.BlueLight
                     Chip.NeedsYou -> stateColours(t.chip.label)
                 }
-                ListRow(
+                TaskRow(
+                    t.taskId ?: t.name, t.name,
                     // The state shows once, in the tag; a line under the name only when it says more.
-                    t.name, t.meta.takeIf { it.isNotBlank() && it != t.chip.label },
-                    onClick = t.taskId?.let { id -> { nav.open(Screen.Task(id), tap.last) } },
-                    trailing = { Tag(t.chip.label, fg, bg) },
+                    t.meta.takeIf { it.isNotBlank() && it != t.chip.label }, t.chip.label, fg, bg,
+                    onOpen = t.taskId?.let { id -> { nav.open(Screen.Task(id), tap.last) } },
+                    onArchive = {
+                        t.taskId?.let { id ->
+                            station.archiveTask(id)
+                            undo(Undoable("Archived ${t.name}", undo = { station.unarchiveTask(id) }))
+                        }
+                    },
+                    onDelete = {
+                        val working = t.chip == Chip.Running || t.chip == Chip.Starting || t.chip == Chip.Live
+                        t.taskId?.let { id -> if (working) standIn("Stop this task first, then delete it") else nav.openSheet(Sheet.DeleteTask(id)) }
+                    },
                 )
             }
+        }
         }
         NeedsYouBar(state.needsYou.size, { nav.open(Screen.NeedsYou) }, Modifier.padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 4.dp))
         // The composer, to this project: what's written starts a task here.

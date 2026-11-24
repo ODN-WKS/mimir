@@ -125,7 +125,7 @@ fun MimirComposer(
             // The mic sits before Send: what it hears goes into the box.
             MicButton(voice, "Talk instead of typing", filled = false, surface = androidx.compose.ui.graphics.Color.Transparent, size = TINY_BUTTON, outline = false, onDenied = { micDenied = true })
             when {
-                writing -> RoundButton(Glyphs.Stop, "Stop the reply", onStop, size = SMALL_BUTTON, filled = true, fill = Palette.RedBorder, iconSize = 20.dp)
+                writing -> StopControl(onStop, shape = StopShape.Round, size = SMALL_BUTTON, fill = Palette.RedBorder, description = "Stop the reply")
                 else -> RoundButton(Glyphs.Send, "Send", { if (ready) onSend() }, size = SMALL_BUTTON, filled = true, fill = if (whisper) WhisperTint.Send else Palette.Blue, enabled = ready, iconSize = 20.dp)
             }
         }

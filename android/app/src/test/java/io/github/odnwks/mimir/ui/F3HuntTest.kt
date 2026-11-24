@@ -183,8 +183,10 @@ class F3HuntTest {
     @Test fun t9_aQuestionIsNotRepeatedInItsCard() {
         val q = "Which herb do you prefer: basil or mint?"
         show(station({ it.copy(permission = null, question = io.github.odnwks.mimir.data.Question("q1", q, "", "", emptyList()), messages = listOf(TaskMessage("1", true, q))) }))
-        assertEquals(1, compose.onAllNodesWithText(q, substring = true).fetchSemanticsNodes().size)
-        compose.onNodeWithText("Answer in the box below.").assertIsDisplayed()
+        // 0.09 (item 22): the card is one slim line quoting the question, above the reply box: the answer and that line.
+        assertEquals(2, compose.onAllNodesWithText(q, substring = true).fetchSemanticsNodes().size)
+        gone("A question for you")
+        gone("Answer in the box below.")
     }
 
     // T21: a paused task says "Paused" once, with Continue; the PC's own "Press Continue" note is not repeated

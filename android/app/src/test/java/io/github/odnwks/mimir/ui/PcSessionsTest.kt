@@ -1,6 +1,8 @@
 package io.github.odnwks.mimir.ui
 
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.onAllNodesWithContentDescription
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onAllNodesWithText
@@ -225,11 +227,12 @@ class PcSessionsTest {
         // An older PC that doesn't say where: "your PC".
         assertEquals(null, followedIn(base.state.value.copy(pcSessions = emptyList()), base.state.value.task(id)!!))
         assertEquals("Still running on your PC. Stop it to carry on here.", followBannerText(null))
-        compose.onNodeWithText("■ $FOLLOW_STOP").performClick(); compose.waitForIdle()
+        compose.onNodeWithContentDescription(FOLLOW_STOP).performClick() // 0.09: asks "Stop?" first
+        compose.onNodeWithContentDescription(FOLLOW_STOP).performClick(); compose.waitForIdle()
         assertTrue(base.state.value.task(id)!!.stopped)
         // Once it has stopped: Carry on here is the one button, and the line is gone.
         compose.onNodeWithText(FOLLOW_CARRY_ON).assertIsDisplayed()
-        assertTrue(compose.onAllNodesWithText("■ $FOLLOW_STOP").fetchSemanticsNodes().isEmpty())
+        assertTrue(compose.onAllNodesWithContentDescription(FOLLOW_STOP).fetchSemanticsNodes().isEmpty())
         assertTrue(compose.onAllNodesWithText(followBannerText("the Claude app")).fetchSemanticsNodes().isEmpty())
     }
 }

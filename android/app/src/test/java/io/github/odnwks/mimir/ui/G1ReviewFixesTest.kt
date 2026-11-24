@@ -1,6 +1,7 @@
 package io.github.odnwks.mimir.ui
 
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
@@ -44,7 +45,7 @@ class G1ReviewFixesTest {
     /** The PC's list says it works elsewhere, but the task itself doesn't say so yet: Stop shows at once. */
     @Test fun theListSayingItWorksElsewhereShowsStopAtOnce() {
         show(station({ it.copy(liveElsewhere = false, stopped = false) }, listOf(elsewhere())))
-        compose.onNodeWithText("\u25a0 $FOLLOW_STOP").assertIsDisplayed()
+        compose.onNodeWithContentDescription(FOLLOW_STOP).assertIsDisplayed()
     }
 
     /** An older PC that lists no sessions: the menu keeps a Stop row for a task going on elsewhere. */

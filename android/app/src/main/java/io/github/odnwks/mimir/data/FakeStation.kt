@@ -217,6 +217,16 @@ class FakeStation(initial: StationState = ExampleData.awake()) : Station {
         val t = s.tasks.firstOrNull { it.id == taskId } ?: return@update s
         s.copy(tasks = s.tasks - t, archived = s.archived + t)
     }
+    /** For checks: the PC's reason for refusing a delete (null: it deletes). */
+    var deleteRefusal: String? = null
+    var refreshes = 0
+    override fun refresh() { refreshes++ }
+    override fun deleteTask(taskId: String, done: (String?) -> Unit) {
+        val no = deleteRefusal
+        if (no != null) return done(no)
+        flow.update { s -> s.copy(tasks = s.tasks.filter { it.id != taskId }, archived = s.archived.filter { it.id != taskId }) }
+        done(null)
+    }
     override fun unarchiveTask(taskId: String) = flow.update { s ->
         val t = s.archived.firstOrNull { it.id == taskId } ?: return@update s
         s.copy(tasks = s.tasks + t, archived = s.archived - t)

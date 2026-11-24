@@ -2,6 +2,7 @@ package io.github.odnwks.mimir.nav
 
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 
@@ -96,6 +97,8 @@ fun Screen.opensOnRight(left: Screen): Boolean = when (this) {
 sealed interface Sheet {
     data class TaskOptions(val taskId: String) : Sheet
     data class StopTask(val taskId: String) : Sheet
+    /** "Delete this task?": the task, its conversation and its files on the PC go (after 8 seconds to undo). */
+    data class DeleteTask(val taskId: String) : Sheet
     data class AlwaysAllow(val taskId: String) : Sheet
     /** What a task always allows, each with Stop allowing (from the task's ⋯). */
     data class AlwaysAllowed(val taskId: String) : Sheet
@@ -178,6 +181,8 @@ class Navigator(start: Screen = Screen.Chat) {
     var composeTo: ComposeTo by mutableStateOf(ComposeTo())
     /** The project just chosen in the picker, for the screen that opened it to take. */
     var pickedProject: String? by mutableStateOf(null)
+    /** Tasks deleted a moment ago: hidden from the lists while Undo still shows, then gone from the PC. */
+    val hiddenTasks = mutableStateListOf<String>()
     /** What the phone chat's sheet asked of the open chat (rename, delete, Whisper), for the chat to do. */
     var chatAsk: ChatRequest? by mutableStateOf(null)
 
@@ -289,13 +294,20 @@ class Navigator(start: Screen = Screen.Chat) {
     fun openSheet(s: Sheet) { sheet = s }
     fun closeSheet() { sheet = null }
 
-    /** System Back or a screen's back arrow. Returns false when the app should close. */
+    /**
+     * System Back or a screen's back arrow. Returns false when the app should close.
+     *
+     * The rule (0.09, item 5): Back goes to where you came from, one step. A page that lists things
+     * (a project page, Needs you, All tasks, Settings, Your PC, Updates, Chats) goes straight to the
+     * home chat, so from a task two Backs always reach home, however many pages came before.
+     */
     fun back(): Boolean {
         if (sheet != null) { sheet = null; return true }
         if (detail.isNotEmpty()) { detailForward = false; detail = detail.dropLast(1); return true }
         if (stack.size > 1) {
             lastMove = Move.Back
-            stack = stack.dropLast(1)
+            stack = if (current.backsToHome()) listOf(stack.first().takeIf { it.screen == Screen.Chat } ?: Entry(Screen.Chat, nextKey++))
+            else stack.dropLast(1)
             return true
         }
         if (current != Screen.Chat) {
@@ -305,4 +317,10 @@ class Navigator(start: Screen = Screen.Chat) {
         }
         return false
     }
+}
+
+/** The pages that list things: Back from one of them reaches the home chat (see [Navigator.back]). */
+fun Screen.backsToHome(): Boolean = when (this) {
+    is Screen.Project, Screen.NeedsYou, is Screen.AllTasks, Screen.Settings, Screen.Status, Screen.Updates, Screen.Chats -> true
+    else -> false
 }

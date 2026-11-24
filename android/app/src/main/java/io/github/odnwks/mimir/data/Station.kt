@@ -78,6 +78,13 @@ interface Station {
     fun continueTask(taskId: String)
     fun renameTask(taskId: String, title: String)
     fun archiveTask(taskId: String)
+    /**
+     * Deletes the task on the PC (its conversation and files too). [done] gets null once the PC did it,
+     * or the PC's reason it didn't (for example while the task works).
+     */
+    fun deleteTask(taskId: String, done: (String?) -> Unit = {}) { done("This PC can't delete tasks yet.") }
+    /** Pull to refresh: asks the PC for its newest list of tasks and projects. */
+    fun refresh() {}
     /** The owner tapped OK on a "That didn't work" note: it goes from the chat. */
     fun dismissNote(id: String) {}
     /** Undo of Archive: the task is back in the list. */

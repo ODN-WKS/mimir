@@ -186,10 +186,19 @@ fun TaskScreen(taskId: String, state: StationState, station: Station, nav: Navig
                     }
                 },
                 action = {
-                    IconTarget(Glyphs.Search, if (finding) "Close find" else "Find in this task", { finding = !finding; if (!finding) find = "" })
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                        // Stop sits beside the title while work runs (a followed session has its own Stop below).
+                        if (task.showsStop && !task.stopPending && !(listsSessions && followed && !carried)) StopControl(
+                            { cutOff = task.steps.lastOrNull()?.startsWith("…") == true; station.stopTask(task.id) },
+                            shape = StopShape.Pill, stateText = "Task is working",
+                        )
+                        IconTarget(Glyphs.Search, if (finding) "Close find" else "Find in this task", { finding = !finding; if (!finding) find = "" })
+                        // Archive, Delete, Refresh, Rename, Move and the rest: a button where people look, as well as the title.
+                        IconTarget(Glyphs.More, TASK_OPTIONS, { nav.openSheet(Sheet.TaskOptions(task.id)) })
+                    }
                 },
                 // A tap on the task's name: everything for this task in one sheet.
-                onTitle = { nav.openSheet(Sheet.TaskOptions(task.id)) }, titleLabel = TASK_OPTIONS,
+                onTitle = { nav.openSheet(Sheet.TaskOptions(task.id)) }, titleLabel = "Task name, tap for options",
             )
             if (finding) Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 MessageBox(find, { find = it }, "Find in this task", "Find in this task", Modifier.fillMaxWidth(), autoFocus = true)
@@ -279,13 +288,16 @@ fun TaskScreen(taskId: String, state: StationState, station: Station, nav: Navig
                                 Palette.TextDim,
                             )
                         },
-                    ) else OwnMessage(
-                        m.text, id = "task-${task.id}-${m.id}",
+                    ) else AttachedAware(m.text) { shown, chips ->
+                      if (shown.isNotBlank()) OwnMessage(
+                        shown, id = "task-${task.id}-${m.id}",
+                        under = chips,
                         onEdit = if (quiet && m.id == lastOwn?.id && io.github.odnwks.mimir.link.Wire.entryIndex(task.id, m.id) != null) {
                             { words -> editFailure = null; station.editTaskMessage(task.id, m.id, words.trim()) { why -> editFailure = why } }
                         } else null,
                         editNote = EDIT_TASK_NOTE, editFailure = editFailure, onEditCancel = { editFailure = null },
-                    )
+                      ) else Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.End) { chips?.invoke() }
+                    }
                 }
                 // Carried on in a fresh task: a way to open it, under the note that says so.
                 if (task.messages.lastOrNull()?.let { it.note && it.text == CARRIED_ON_NOTE } == true) {
@@ -306,33 +318,6 @@ fun TaskScreen(taskId: String, state: StationState, station: Station, nav: Navig
                         LinkText("Continue", { station.continueTask(task.id); cutOff = false }, bold = true)
                     }
                     if (cutOff || task.steps.lastOrNull()?.startsWith("…") == true) Text("A command may have been cut off.", style = Type.Small, color = Palette.AmberNote)
-                }
-                task.question?.let { q ->
-                    Panel(background = Palette.AmberCard, border = Palette.AmberBorder, spacing = 10.dp) {
-                        SectionTitle("A question for you", color = Palette.AmberText, style = Type.Label.copy(fontWeight = FontWeight.Bold))
-                        // The question is already in the answer above: said once.
-                        val said = task.messages.lastOrNull { it.fromClaude }?.text.orEmpty().let { last -> q.text.isNotBlank() && markdownPlain(last).contains(markdownPlain(q.text).trim()) }
-                        if (!said) MarkdownText(q.text, style = Type.BodyTight, color = Palette.AmberSoft)
-                        if (q.choices.isEmpty() && q.yes.isEmpty()) Text("Answer in the box below.", style = Type.Small, color = Palette.AmberSoft)
-                        // Claude's offered options, one tap each, none picked for the owner; otherwise the reply box answers.
-                        q.choices.forEachIndexed { i, c ->
-                            BigButton(c, Look.AmberOutline, { station.answerChoice(q.itemId, i) }, height = 48.dp, fontSize = 15)
-                        }
-                        if (q.yes.isNotEmpty()) BigButton(q.yes, Look.Amber, { nav.openSheet(Sheet.Release(task.id)) }, height = 48.dp, fontSize = 15)
-                        BigButton("Keep for later", Look.AmberOutline, { station.answer(q.itemId, Answer.KeepForLater) }, height = 48.dp, fontSize = 15)
-                        Row(
-                            Modifier.heightIn(min = 48.dp).clip(RoundedCornerShape(24.dp))
-                                .clickable(role = Role.Button) {
-                                    task.messages.lastOrNull { it.fromClaude }?.let { station.playMessage(task.id, it.id) }
-                                }
-                                .semantics(mergeDescendants = true) { contentDescription = "Play the question" }
-                                .padding(horizontal = 12.dp),
-                            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            Icon(Glyphs.Play, null, tint = Palette.AmberText, modifier = Modifier.size(16.dp))
-                            Text("Play question", style = Type.Small, color = Palette.AmberText)
-                        }
-                    }
                 }
             }
             }
@@ -376,6 +361,17 @@ fun TaskScreen(taskId: String, state: StationState, station: Station, nav: Navig
                 }
             }
 
+            // The question, slim: one quoted line just above the reply box; a reply makes it go away.
+            var answeredQ by rememberSaveable(task.id) { mutableStateOf<String?>(null) }
+            task.question?.takeIf { it.itemId != answeredQ && !task.waitingToStart }?.let { q ->
+                val quote = questionQuote(q, task.messages.lastOrNull { it.fromClaude }?.text)
+                if (quote.isNotBlank()) QuestionLine(
+                    q, quote,
+                    onChoice = { i -> answeredQ = q.itemId; station.answerChoice(q.itemId, i) },
+                    onYes = { nav.openSheet(Sheet.Release(task.id)) },
+                    onPlay = { task.messages.lastOrNull { it.fromClaude }?.let { station.playMessage(task.id, it.id) } },
+                )
+            }
             val voice = rememberVoiceInput(station, task.id)
             // Going on in a terminal or the Claude app right now: replies go there (one from here
             // would start a second Claude on it), so a note, as on the PC, takes the box's place.
@@ -425,13 +421,11 @@ fun TaskScreen(taskId: String, state: StationState, station: Station, nav: Navig
                                 sendingReply = true
                                 station.replyAsync(task.id, draft.trim(), attach.pictures.toList(), attach.files.toList()) { taken ->
                                     sendingReply = false
-                                    if (taken) { draft = ""; attach.clear() }
+                                    if (taken) { draft = ""; attach.clear(); answeredQ = task.question?.itemId ?: answeredQ }
                                 }
                             }
                         },
-                        // While Claude works, an empty box's button is Stop.
-                        working = task.showsStop && !task.stopPending,
-                        onStop = { cutOff = task.steps.lastOrNull()?.startsWith("…") == true; station.stopTask(task.id) },
+                        // Stop is at the top right, beside the title; the reply box keeps only Send.
                         modifier = Modifier.windowInsetsPadding(WindowInsets.navigationBars.union(WindowInsets.ime))
                             .padding(start = 12.dp, end = 12.dp, top = 10.dp, bottom = 16.dp),
                     )
@@ -663,7 +657,7 @@ private fun FollowBanner(where: String?) {
 @Composable
 private fun FollowButtons(live: Boolean, onStop: () -> Unit, onCarryOn: () -> Unit, modifier: Modifier) {
     Row(modifier.fillMaxWidth()) {
-        if (live) BigButton("\u25a0 $FOLLOW_STOP", Look.Danger, onStop, height = 48.dp)
+        if (live) StopControl(onStop, shape = StopShape.Wide, fill = Palette.RedBorder, label = FOLLOW_STOP)
         else BigButton(FOLLOW_CARRY_ON, Look.Primary, onCarryOn, height = 48.dp)
     }
 }

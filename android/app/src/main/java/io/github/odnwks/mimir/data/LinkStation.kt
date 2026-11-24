@@ -1421,6 +1421,15 @@ class LinkStation(
     override fun renameTask(taskId: String, title: String) { if (title.isNotBlank()) taskCall(Wire.rename(taskId, title.trim())) }
     override fun archiveTask(taskId: String) = taskCall(Wire.archive(taskId, true))
     override fun unarchiveTask(taskId: String) = taskCall(Wire.archive(taskId, false))
+    override fun deleteTask(taskId: String, done: (String?) -> Unit) {
+        val sent = call(Wire.deleteTask(taskId)) { _, err ->
+            if (err != null) note(err)
+            else { synchronized(lock) { tasks.remove(taskId) }; publish(); refreshStatus() }
+            done(err)
+        }
+        if (!sent) { note("Your PC is away: try again when it's back."); done("Your PC is away: try again when it's back.") }
+    }
+    override fun refresh() { refreshStatus(); refreshPcSessions() }
     override fun moveTask(taskId: String, project: String, said: (String) -> Unit) {
         val path = pathOf(project) ?: return said("That project isn't on your PC.")
         // The answer is said where the person is looking (the task page), not left in the chat list.

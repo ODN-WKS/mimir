@@ -829,6 +829,7 @@ class AppFlowTest {
         compose.onNodeWithContentDescription("Stop").assertIsDisplayed()
         compose.onNodeWithContentDescription("Reply to this task").performTextReplacement("")
         compose.mainClock.advanceTimeBy(300); compose.waitForIdle()
+        compose.onNodeWithContentDescription("Stop").performClick() // 0.09: the first tap asks "Stop?"
         compose.onNodeWithContentDescription("Stop").performClick()
         compose.mainClock.advanceTimeBy(1_000); compose.waitForIdle()
         assertEquals("Stopped", station.state.value.task(id)!!.stateWords)

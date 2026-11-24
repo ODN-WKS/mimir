@@ -68,7 +68,8 @@ class TopicAfterStopTest {
         val until = System.currentTimeMillis() + 5_000
         while (!(engine.state.value.writing && engine.state.value.partial.isNotEmpty()) && System.currentTimeMillis() < until) { Thread.sleep(20); compose.mainClock.advanceTimeBy(16) }
         check(engine.state.value.writing) { "not writing: ${engine.state.value}" }
-        compose.onNodeWithContentDescription("Stop the reply").performClick()
+        compose.onNodeWithContentDescription("Stop the reply").performClick() // asks first (Confirm) ...
+        compose.onNodeWithContentDescription("Stop the reply").performClick() // ... then stops
         val until2 = System.currentTimeMillis() + 5_000
         while (engine.state.value.writing && System.currentTimeMillis() < until2) { Thread.sleep(20); compose.mainClock.advanceTimeBy(16) }
         compose.waitForIdle()

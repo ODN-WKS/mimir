@@ -174,16 +174,15 @@ fun Composer(
             }
             val settled = { armed }
             Row(Modifier.padding(bottom = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                if (showStop) RoundButton(Glyphs.Stop, "Stop", {
-                    if (settled()) {
-                        haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
-                        onStop?.invoke()
-                    } else {
+                // Stop asks twice or for a 2 second hold (Settings › Look and size › Stop buttons).
+                if (showStop) StopControl({
+                    if (settled()) onStop?.invoke()
+                    else {
                         // Too soon after Stop turned up: say so rather than doing nothing.
                         haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
                         view.announceForAccessibility("Stop is getting ready. Tap again.")
                     }
-                }, filled = true, fill = Palette.Red, stateText = "Task is working")
+                }, shape = StopShape.Round, stateText = "Task is working")
                 androidx.compose.animation.Crossfade(kind, animationSpec = io.github.odnwks.mimir.ui.theme.motionSpec(io.github.odnwks.mimir.ui.theme.Motion.SCREEN_MS), label = "send") { k ->
                     when (k) {
                         ButtonKind.Empty -> RoundButton(Glyphs.Send, "Send", {}, filled = true, enabled = false)

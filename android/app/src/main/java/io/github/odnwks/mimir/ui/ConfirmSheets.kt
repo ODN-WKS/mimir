@@ -121,6 +121,7 @@ fun SheetHost(state: StationState, station: Station, nav: Navigator) {
 private fun Sheet.title(state: StationState) = when (this) {
     is Sheet.TaskOptions, Sheet.IncognitoOptions -> "Task options"
     is Sheet.StopTask -> "Stop this task?"
+    is Sheet.DeleteTask -> "Delete this task?"
     is Sheet.AlwaysAllowed -> "Always allowed in this task"
     is Sheet.AlwaysAllow -> "Always allow edits to ${state.task(taskId)?.permission?.file ?: "this file"}?"
     is Sheet.Release -> "Release $AI_NAME ${state.task(taskId)?.question?.releaseVersion ?: ""}?"
@@ -183,6 +184,13 @@ private fun SheetContent(sheet: Sheet, state: StationState, station: Station, na
                 station.archiveTask(id); nav.closeSheet(); nav.back()
                 undo(Undoable("Archived ${task?.title ?: "the task"}", undo = { station.unarchiveTask(id) }))
             }
+            MenuRow(Glyphs.Clock, "Refresh") { station.refresh(); nav.closeSheet(); standIn("Asked your PC for the newest") }
+            // Never while it works: the PC refuses, so the menu says when instead.
+            if (task?.showsStop == true) Row(Modifier.fillMaxWidth().heightIn(min = 52.dp).padding(horizontal = 12.dp).semantics(mergeDescendants = true) {},
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                Icon(Glyphs.Close, null, tint = Palette.TextDim, modifier = Modifier.size(22.dp))
+                Text("Delete (when it stops)", style = Type.BodyTight, color = Palette.TextDim, modifier = Modifier.weight(1f))
+            } else MenuRow(Glyphs.Close, "Delete…", Palette.Red) { nav.openSheet(Sheet.DeleteTask(id)) }
             // Stop is for work that runs: the Stop button is on the task itself while it does.
             if (task != null && task.showsStop && !task.stopPending && (!elsewhere || state.pcSessions == null)) MenuRow(Glyphs.Stop, "Stop this task…", Palette.Red) { nav.openSheet(Sheet.StopTask(id)) }
             if (!elsewhere) PrivacyLine("Your PC does this task. This phone and your PC talk privately.")
@@ -270,7 +278,29 @@ private fun SheetContent(sheet: Sheet, state: StationState, station: Station, na
             "Work stops where it is. Changes so far stay on the PC and nothing is released. You can continue it later.",
             "Stop task", Look.Danger, { station.stopTask(sheet.taskId); nav.closeSheet() },
             "Keep going", { nav.closeSheet() },
+            guardedStop = true,
         )
+        is Sheet.DeleteTask -> {
+            val task = state.task(sheet.taskId)
+            val id = sheet.taskId
+            Ask(
+                sheet.title(state),
+                DELETE_TASK_ABOUT,
+                "Delete task", Look.Danger, {
+                    // Gone from the lists at once; the PC deletes it when the 8 seconds to undo are up.
+                    val onTask = nav.current == Screen.Task(id)
+                    nav.hiddenTasks.add(id)
+                    nav.closeSheet()
+                    if (onTask) nav.back()
+                    undo(Undoable(
+                        "Deleted ${task?.title ?: "the task"}",
+                        later = { station.deleteTask(id) { why -> if (why != null) nav.hiddenTasks.remove(id) } },
+                        undo = { nav.hiddenTasks.remove(id) },
+                    ))
+                },
+                "Keep it", { nav.closeSheet() },
+            )
+        }
         is Sheet.AlwaysAllow -> {
             val p = state.task(sheet.taskId)?.permission
             Ask(
@@ -513,6 +543,8 @@ private fun Ask(
     title: String, body: String,
     action: String, actionLook: Look, onAction: () -> Unit,
     safe: String, onSafe: () -> Unit,
+    /** The action is a Stop: it asks for the hold or the second tap chosen in Settings. */
+    guardedStop: Boolean = false,
 ) {
     Column(
         Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 16.dp),
@@ -521,10 +553,14 @@ private fun Ask(
         Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { Handle() }
         SectionTitle(title, style = TextStyle(fontSize = 18.sp, lineHeight = 24.sp, fontWeight = FontWeight.Bold))
         Text(body.forDevice(), style = Type.Label.copy(lineHeight = Type.Label.fontSize * 1.45f), color = Palette.TextDim)
-        BigButton(action, actionLook, onAction, bold = false)
+        if (guardedStop) StopControl(onAction, shape = StopShape.Wide, fill = Palette.RedBorder, label = action)
+        else BigButton(action, actionLook, onAction, bold = false)
         BigButton(safe, Look.Primary, onSafe)
     }
 }
+
+/** Under "Delete this task?". */
+const val DELETE_TASK_ABOUT = "Its conversation and files on your PC go too. You have 8 seconds to undo."
 
 /** What YOLO lets Claude do, shown in full every time before it turns on. */
 const val YOLO_WARNING = "Mímir will not ask first. On your PC it can change and delete files, run programs and use the internet, all without asking.\n\n" +
