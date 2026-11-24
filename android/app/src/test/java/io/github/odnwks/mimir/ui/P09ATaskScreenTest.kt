@@ -14,6 +14,7 @@ import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.filter
 import androidx.compose.ui.test.performClick
 import io.github.odnwks.mimir.ui.theme.MimirTheme
+import androidx.compose.ui.test.performTextInput
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -93,5 +94,28 @@ class P09ATaskRowsTest {
         compose.onNodeWithContentDescription("Undo: Archived Messages arrive in order").performClick()
         compose.waitForIdle()
         assertEquals(onPage, rows())
+    }
+}
+
+@RunWith(RobolectricTestRunner::class)
+@Config(qualifiers = "w390dp-h844dp-xhdpi")
+class P09AQuestionLineTest {
+    @get:Rule val compose = createComposeRule()
+    private val id = io.github.odnwks.mimir.data.ExampleData.TASK_ALLOW
+
+    @Test fun p09Item22TheQuestionIsOneLineAboveTheBoxAndGoesWhenThePersonReplies() {
+        val q = "Which herb do you prefer: basil or mint?"
+        val st = FakeStation().also { fs ->
+            fs.set { s -> s.copy(tasks = s.tasks.map { if (it.id == id) it.copy(permission = null, question = io.github.odnwks.mimir.data.Question("q1", q, "", ""), busy = false, stopped = false, status = "Needs you",
+                messages = listOf(io.github.odnwks.mimir.data.TaskMessage("1", true, q))) else it }) }
+        }
+        val nav = Navigator()
+        compose.setContent { MimirTheme(reduceMotion = true) { AppRoot(st, nav) } }
+        compose.waitForIdle(); nav.open(Screen.Task(id)); compose.waitForIdle()
+        compose.onNodeWithText("\u201c$q\u201d", substring = true).assertExists()
+        compose.onNodeWithContentDescription("Reply to this task").performTextInput("mint")
+        compose.onNodeWithContentDescription("Send").performClick()
+        compose.waitForIdle()
+        assertTrue(compose.onAllNodesWithText("\u201c$q\u201d", substring = true).fetchSemanticsNodes().isEmpty())
     }
 }
