@@ -2,6 +2,9 @@
 
 Every Mímir version, newest first. Full notes for each are in `docs/release-notes/`.
 
+## 0.09
+What got in the way on the phone, fixed: New chat is really new, every answer says who wrote it, look-ups that work and a PC model that starts when needed, Stop at the top with a confirm, a task menu with Archive and Delete, project rows you can archive or delete, your PC's numbers and Claude use on the phone, and quieter notifications. See `docs/release-notes/0.09.md`.
+
 ## 0.08
 Usable for real work from the phone: a live sign of what each task is doing, photos and files in task replies, model and effort per reply, your PC's own tools in Mímir's sessions, Stop for read-aloud, the PC's processor, memory and graphics at the top of the window again, and quieter pop-ups. See `docs/release-notes/0.08.md`.
 
