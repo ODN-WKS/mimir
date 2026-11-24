@@ -141,6 +141,7 @@ private fun Sheet.title(state: StationState) = when (this) {
 private fun SheetContent(sheet: Sheet, state: StationState, station: Station, nav: Navigator) {
     val standIn = LocalStandIn.current
     val undo = LocalUndo.current
+    val ctx = androidx.compose.ui.platform.LocalContext.current.applicationContext
     when (sheet) {
         is Sheet.TaskOptions -> Menu(sheet.title(state)) {
             val task = state.task(sheet.taskId)
@@ -288,14 +289,16 @@ private fun SheetContent(sheet: Sheet, state: StationState, station: Station, na
                 DELETE_TASK_ABOUT,
                 "Delete task", Look.Danger, {
                     // Gone from the lists at once; the PC deletes it when the 8 seconds to undo are up.
+                    // The wish is kept on the phone meanwhile, so a closed app still gets it done.
                     val onTask = nav.current == Screen.Task(id)
                     nav.hiddenTasks.add(id)
+                    PendingDeletes.add(ctx, id)
                     nav.closeSheet()
                     if (onTask) nav.back()
                     undo(Undoable(
                         "Deleted ${task?.title ?: "the task"}",
-                        later = { station.deleteTask(id) { why -> if (why != null) nav.hiddenTasks.remove(id) } },
-                        undo = { nav.hiddenTasks.remove(id) },
+                        later = { sendDelete(station, nav, ctx, id, standIn) },
+                        undo = { nav.hiddenTasks.remove(id); PendingDeletes.remove(ctx, id) },
                     ))
                 },
                 "Keep it", { nav.closeSheet() },
@@ -567,3 +570,30 @@ const val YOLO_WARNING = "Mímir will not ask first. On your PC it can change an
     "Anyone holding this phone unlocked could do the same.\n\n" +
     "This task only. It goes back to Ask me first after 5 hours of work or 24 hours idle.\n\n" +
     "Your PC must allow it: Mímir › Settings › Phones."
+
+/** Asks the PC to delete [id]; if it refuses, the task comes back and the screen says why. */
+fun sendDelete(station: Station, nav: Navigator, ctx: android.content.Context, id: String, say: (String) -> Unit) {
+    station.deleteTask(id) { why ->
+        PendingDeletes.remove(ctx, id)
+        if (why != null) android.os.Handler(android.os.Looper.getMainLooper()).post {
+            nav.hiddenTasks.remove(id)
+            say("Not deleted: $why")
+        }
+    }
+}
+
+/** Deletes asked for but not yet sent (the app was closed within the 8 seconds to undo), kept on this phone. */
+object PendingDeletes {
+    private const val KEY = "pending_task_deletes"
+    fun all(ctx: android.content.Context): Set<String> = prefs(ctx).getStringSet(KEY, emptySet()).orEmpty().toSet()
+    fun add(ctx: android.content.Context, id: String) { prefs(ctx).edit().putStringSet(KEY, all(ctx) + id).apply() }
+    fun remove(ctx: android.content.Context, id: String) { prefs(ctx).edit().putStringSet(KEY, all(ctx) - id).apply() }
+    private fun prefs(ctx: android.content.Context) = ctx.getSharedPreferences(PHONE_CHAT_PREFS, 0)
+}
+
+/** Whether Delete may be offered for a task now: the PC refuses while it works or waits on the person (the task menu's rule). */
+fun canDeleteNow(task: io.github.odnwks.mimir.data.Task?, chip: io.github.odnwks.mimir.data.Chip): Boolean = when {
+    task != null -> !task.showsStop
+    else -> chip != io.github.odnwks.mimir.data.Chip.Running && chip != io.github.odnwks.mimir.data.Chip.Starting &&
+        chip != io.github.odnwks.mimir.data.Chip.Live && chip != io.github.odnwks.mimir.data.Chip.NeedsYou
+}

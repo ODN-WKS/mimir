@@ -106,8 +106,8 @@ fun ProjectScreen(name: String, state: StationState, station: Station, nav: Navi
                         }
                     },
                     onDelete = {
-                        val working = t.chip == Chip.Running || t.chip == Chip.Starting || t.chip == Chip.Live
-                        t.taskId?.let { id -> if (working) standIn("Stop this task first, then delete it") else nav.openSheet(Sheet.DeleteTask(id)) }
+                        // The same rule as the task's own menu: not while it works or waits on the person.
+                        t.taskId?.let { id -> if (!canDeleteNow(state.task(id), t.chip)) standIn("Stop this task first, then delete it") else nav.openSheet(Sheet.DeleteTask(id)) }
                     },
                 )
             }

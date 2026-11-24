@@ -180,3 +180,61 @@ class P09AHoldFillTest {
 }
 
 private fun androidx.compose.ui.Modifier.androidxFill() = this.fillMaxSize()
+
+@RunWith(RobolectricTestRunner::class)
+@Config(qualifiers = "w390dp-h844dp-xhdpi")
+class P09AFixDeleteTest {
+    @get:Rule val compose = createComposeRule()
+    private val ctx get() = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>()
+
+    @Test fun p09Fix1DeleteIsOfferedOnlyWhereThePcWouldDoIt() {
+        val st = FakeStation().state.value
+        val needs = st.tasks.first { it.showsStop }
+        val quiet = st.tasks.first { !it.showsStop }
+        assertEquals(false, canDeleteNow(needs, io.github.odnwks.mimir.data.Chip.NeedsYou))
+        assertEquals(true, canDeleteNow(quiet, io.github.odnwks.mimir.data.Chip.Done))
+        assertEquals(false, canDeleteNow(null, io.github.odnwks.mimir.data.Chip.NeedsYou))
+    }
+
+    @Test fun p09Fix2ADeletedTaskLeavesEveryList() {
+        val st = FakeStation().state.value
+        val id = io.github.odnwks.mimir.data.ExampleData.TASK_ALLOW
+        val gone = st.without(listOf(id))
+        assertTrue(st.tasks.any { it.id == id } && st.needsYou.any { it.taskId == id })
+        assertTrue(gone.tasks.none { it.id == id })
+        assertTrue(gone.needsYou.none { it.taskId == id })
+        assertTrue(gone.projects.all { p -> p.tasks.none { it.taskId == id } })
+        assertEquals(st, st.without(emptyList()))
+    }
+
+    private fun confirmDelete(st: FakeStation, nav: Navigator, id: String) {
+        compose.setContent { MimirTheme(reduceMotion = true) { AppRoot(st, nav) } }
+        compose.waitForIdle(); nav.openSheet(io.github.odnwks.mimir.nav.Sheet.DeleteTask(id)); compose.waitForIdle()
+        compose.onNodeWithText("Delete task").performClick(); compose.waitForIdle()
+    }
+
+    @Test fun p09Fix3AConfirmedDeleteSurvivesTheAppClosingAndFix1TheRefusalIsSaid() {
+        ctx.getSharedPreferences(PHONE_CHAT_PREFS, 0).edit().clear().commit()
+        val id = io.github.odnwks.mimir.data.ExampleData.TASK_ALLOW
+        val st = FakeStation().also { it.deleteRefusal = "It has a separate copy." }
+        val nav = Navigator()
+        confirmDelete(st, nav, id)
+        assertEquals("kept on the phone until sent", setOf(id), PendingDeletes.all(ctx))
+        assertTrue(id in nav.hiddenTasks)
+        compose.mainClock.advanceTimeBy(9_000); compose.waitForIdle()
+        compose.onNodeWithText("Not deleted: It has a separate copy.").assertExists()
+        assertTrue(id !in nav.hiddenTasks)
+        assertEquals(emptySet<String>(), PendingDeletes.all(ctx))
+    }
+
+    @Test fun p09Fix3AppStartSendsADeleteThatWasNeverSent() {
+        ctx.getSharedPreferences(PHONE_CHAT_PREFS, 0).edit().clear().commit()
+        val id = io.github.odnwks.mimir.data.ExampleData.TASK_ALLOW
+        PendingDeletes.add(ctx, id)
+        val st = FakeStation()
+        compose.setContent { MimirTheme(reduceMotion = true) { AppRoot(st, Navigator()) } }
+        compose.waitForIdle()
+        assertTrue("the PC was asked", st.state.value.tasks.none { it.id == id })
+        assertEquals(emptySet<String>(), PendingDeletes.all(ctx))
+    }
+}

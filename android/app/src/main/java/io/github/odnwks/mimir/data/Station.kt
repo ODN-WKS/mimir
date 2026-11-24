@@ -358,6 +358,13 @@ data class StationState(
     fun task(id: String): Task? = tasks.firstOrNull { it.id == id } ?: archived.firstOrNull { it.id == id }
         ?: startedTasks[id]?.takeIf { it.isNotEmpty() }?.let { real -> tasks.firstOrNull { it.id == real } }
     fun project(name: String): Project? = projects.firstOrNull { it.name == name }
+    /** This state with the tasks being deleted taken out of every list they show in (their Undo is still on screen). */
+    fun without(hidden: Collection<String>): StationState = if (hidden.isEmpty()) this else copy(
+        tasks = tasks.filter { it.id !in hidden },
+        archived = archived.filter { it.id !in hidden },
+        needsYou = needsYou.filter { it.taskId == null || it.taskId !in hidden },
+        projects = projects.map { p -> if (p.tasks.any { it.taskId in hidden }) p.copy(tasks = p.tasks.filter { it.taskId !in hidden }) else p },
+    )
 }
 
 data class Pc(

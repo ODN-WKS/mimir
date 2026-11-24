@@ -93,12 +93,22 @@ import androidx.compose.foundation.layout.union
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 fun AppRoot(station: Station, nav: Navigator, chatDraft: String = "", standaloneOk: Boolean = true) {
-    val state by station.state.collectAsStateWithLifecycle()
+    val stationState by station.state.collectAsStateWithLifecycle()
+    // A task being deleted (Undo still showing) is out of every list at once, not only the project page.
+    val hidden = nav.hiddenTasks.toList()
+    val state = remember(stationState, hidden) { stationState.without(hidden) }
     val tracker = remember { TapTracker() }
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val standIn: (String) -> Unit = { text ->
         scope.launch { snackbar.currentSnackbarData?.dismiss(); snackbar.showSnackbar(text) }
+    }
+    val appCtx = LocalContext.current.applicationContext
+    // A delete the person confirmed but the app was closed before it was sent: send it now.
+    LaunchedEffect(Unit) {
+        val pending = PendingDeletes.all(appCtx)
+        nav.hiddenTasks.addAll(pending.filter { it !in nav.hiddenTasks })
+        pending.forEach { id -> sendDelete(station, nav, appCtx, id, standIn) }
     }
     val reduce = LocalReduceMotion.current
     val saveable = rememberSaveableStateHolder()
