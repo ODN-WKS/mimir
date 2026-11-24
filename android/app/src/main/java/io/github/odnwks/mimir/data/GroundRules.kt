@@ -11,7 +11,7 @@ import kotlinx.coroutines.flow.asStateFlow
  * message or Whisper task sent to the PC carries them (the PC uses them instead of its own).
  */
 object GroundRules {
-    /** 0.09 item 25: what the models are told about looking things up (added to the approved text). */
+    /** 0.09 item 25: what the models are told about looking things up (added to the approved text; written out in full in [DEFAULT] too, so the PC's test can read it). */
     const val LOOKUPS = "Mímir looks things up for you, on the web and in the encyclopedias, when a question " +
         "needs it, and puts the results in front of you; you do not search yourself, Mímir does, whether you " +
         "run on this phone or on the PC. Never say you cannot look things up; if no results came, say that " +
@@ -22,7 +22,10 @@ object GroundRules {
         "don't know, say \"I don't know\". Never invent names, numbers, quotes or dates. If facts were looked up, " +
         "name the sources. If I push back, check again: keep the answer unless I give a real reason, and if you " +
         "were wrong, say so. No flattery, no filler, no lecturing, no moralizing, no refusing because a topic is " +
-        "sensitive. " + LOOKUPS
+        "sensitive. Mímir looks things up for you, on the web and in the encyclopedias, when a question " +
+        "needs it, and puts the results in front of you; you do not search yourself, Mímir does, whether you " +
+        "run on this phone or on the PC. Never say you cannot look things up; if no results came, say that " +
+        "none were found."
 
     /** The default before 0.09 item 25 (stored copies of it were never edited). */
     private const val DEFAULT_0_08 = "Answer exactly what I ask, directly and fully, in the subject's own terms. Do not add other " +
