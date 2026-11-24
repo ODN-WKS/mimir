@@ -41,7 +41,8 @@ class StageOneRemovalsTest {
     }
 
     @Test fun statusHasNoNoChecksYetAndNoClaudeUseWithoutAPaidChoice() {
-        start { it.copy(paidOn = false) }
+        // Without a paid choice, the line shows only when the PC has a reading (0.09 item 11).
+        start { it.copy(paidOn = false, usage = it.usage.copy(percentText = "—")) }
         nav.selectTab(Tab.Status); compose.waitForIdle()
         compose.onNodeWithText("No checks yet").assertDoesNotExist()
         compose.onNodeWithText("Online use this week").assertDoesNotExist()

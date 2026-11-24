@@ -148,7 +148,7 @@ object Mapping {
 
     /**
      * The status page as the truth says it: its projects (working and needs-you counts, checks only
-     * where there are any), Claude's use (only while a paid choice is on) and the PC's line. What
+     * where there are any), Claude's use (whenever the PC has a reading) and the PC's line. What
      * only the older page has (a project's version and line) is kept from [page].
      */
     fun pageFromTruth(t: io.github.odnwks.mimir.link.LTruth, page: LStatus?): LStatus {

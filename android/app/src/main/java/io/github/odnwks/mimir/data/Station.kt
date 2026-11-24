@@ -275,6 +275,8 @@ data class StationState(
     val paired: Boolean = true,
     /** A paid Claude choice is on (the PC's truth; null: an older PC that doesn't say). Claude's use shows only then. */
     val paidOn: Boolean? = null,
+    /** The PC's processor, memory and graphics load (null: an older PC that doesn't send it). */
+    val pcStats: PcStats? = null,
     /** The phone has a screen lock (PIN, pattern or fingerprint). Without one, pairing warns once. */
     val screenLock: Boolean = true,
     /** The PC answers chats itself (Stage 1): the one chat (the phone's own chat screen) is used, paired too. */
@@ -673,6 +675,9 @@ enum class Chip(val label: String) {
 }
 
 data class ProjectTask(val taskId: String?, val name: String, val meta: String, val chip: Chip)
+
+/** The PC's load as Your PC shows it: percent for the processor and graphics, bytes for memory. */
+data class PcStats(val cpuPercent: Int, val memUsedBytes: Long, val memTotalBytes: Long, val gpuPercent: Int?)
 
 data class Usage(val percentText: String, val percent: Int, val resets: String, val switchAt: Int)
 

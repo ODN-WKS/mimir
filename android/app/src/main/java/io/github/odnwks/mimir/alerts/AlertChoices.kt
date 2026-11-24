@@ -13,15 +13,16 @@ enum class OutsideMode(val title: String) {
 
 /**
  * Which alerts the person wants (Settings > Notifications > What to tell me). The defaults keep
- * alerts few and true: what needs the person, and one note per finished task; sessions from
- * other apps only when they need the person.
+ * alerts few and true: only what needs the person is on; finished tasks, updates and the ongoing
+ * "working" note stay off until switched on; sessions from other apps only when they need the person.
+ * A choice the person has already saved is kept as it is.
  */
 data class AlertChoices(
     val needsYou: Boolean = true,
-    val taskFinished: Boolean = true,
+    val taskFinished: Boolean = false,
     val outside: OutsideMode = OutsideMode.NeedMe,
-    val updates: Boolean = true,
-    val showWorking: Boolean = true,
+    val updates: Boolean = false,
+    val showWorking: Boolean = false,
 )
 
 /** The pure rules: what is posted for a set of choices. */

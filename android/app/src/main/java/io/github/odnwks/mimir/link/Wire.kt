@@ -173,6 +173,9 @@ object Wire {
                     asOf = long(u, "as_of"),
                 )
             },
+            stats = o.optJSONObject("stats")?.let { s ->
+                LTruthStats(s.optDouble("cpu"), s.optLong("mem_used"), s.optLong("mem_total"), if (s.isNull("gpu") || !s.has("gpu")) null else s.optDouble("gpu"))
+            },
         )
     }
 
@@ -709,8 +712,11 @@ data class LTruthTask(val id: String, val project: String, val title: String, va
 data class LTruthProject(val path: String, val name: String, val lastActivity: Long?, val working: Int, val needsYou: Int, val checks: LChecks?)
 data class LTruthEngine(val chatsWhere: String, val chatsModelWords: String, val answering: Boolean, val paidOn: Boolean)
 
-/** Claude's use in percent and when it resets, only while a paid Claude choice is on. */
+/** Claude's use in percent and when it resets, whenever the PC has a reading. */
 data class LTruthUsage(val weekly: Pair<Double, Long>?, val fiveHour: Pair<Double, Long>?, val asOf: Long?)
+
+/** The PC's load: percent for the processor and graphics ([gpu] null when the PC can't tell), bytes for memory. */
+data class LTruthStats(val cpu: Double, val memUsed: Long, val memTotal: Long, val gpu: Double?)
 
 /** One snapshot of everything the owner sees about the PC's work (crates/proto's `Truth`). */
 data class LTruth(
@@ -724,6 +730,8 @@ data class LTruth(
     val projects: List<LTruthProject>,
     val engine: LTruthEngine,
     val usage: LTruthUsage?,
+    /** The PC's processor, memory and graphics load (absent from an older PC). */
+    val stats: LTruthStats? = null,
 ) {
     /** Whether this snapshot is newer than [old]: a new run of the PC's service, or a higher revision in the same run. */
     fun newerThan(old: LTruth?): Boolean = old == null || runId != old.runId || rev > old.rev

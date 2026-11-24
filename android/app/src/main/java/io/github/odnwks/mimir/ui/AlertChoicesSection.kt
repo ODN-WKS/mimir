@@ -30,6 +30,7 @@ import io.github.odnwks.mimir.ui.theme.Type
 /** The words of "What to tell me" (kept in one place so the tests and the search read the same). */
 object AlertWords {
     const val TITLE = "What to tell me"
+    const val DEFAULT_NOTE = "By default only what needs you alerts you (\"Only when they need me\"). The rest stays off until you switch it on."
     const val NEEDS = "Needs you"
     const val NEEDS_NOTE = "Questions and permissions. So a task never waits on you without you knowing."
     const val FINISHED = "A task finished"
@@ -54,6 +55,7 @@ fun AlertChoicesSection() {
         if (!c.showWorking) io.github.odnwks.mimir.alerts.LinkKeepService.stopNow(context)
     }
     SectionTitle(AlertWords.TITLE, Modifier.padding(start = 8.dp, top = 4.dp))
+    Text(AlertWords.DEFAULT_NOTE, style = Type.Label, color = Palette.TextSoft, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
     Panel(background = Palette.Card, border = Palette.Line) {
         Switch(AlertWords.NEEDS, AlertWords.NEEDS_NOTE, c.needsYou) { v -> change { it.copy(needsYou = v) } }
         Switch(AlertWords.FINISHED, AlertWords.FINISHED_NOTE, c.taskFinished) { v -> change { it.copy(taskFinished = v) } }

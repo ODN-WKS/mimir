@@ -138,6 +138,8 @@ fun StatusScreen(state: StationState, station: io.github.odnwks.mimir.data.Stati
                 return@Column
             }
             val on = state.pc.online
+            // THIS PC: the three meters, first, as in the PC's own window (the PC sends them).
+            state.pcStats?.let { PcMeters(it) }
             Column(
                 Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Palette.Card).border16(Palette.Line).padding(vertical = 16.dp, horizontal = 14.dp)
                     .semantics(mergeDescendants = true) { liveRegion = LiveRegionMode.Polite },
@@ -166,9 +168,9 @@ fun StatusScreen(state: StationState, station: io.github.odnwks.mimir.data.Stati
                     DoingRow(t) { nav.open(Screen.Task(t.id), tap.last) }
                 }
             }
-            // HEALTH (Processor, Memory) is left out: the PC does not send those numbers to the phone yet.
-            // Claude use this week, as one thin line; a tap opens Models. Only while a paid Claude choice is on.
-            if (state.paidOn != false) Column(
+            // Claude use this week, as one thin line; a tap opens Models. Whenever the PC has a reading,
+            // and while a paid Claude choice is on (then "—" until it is read).
+            if (state.paidOn != false || state.usage.percentText != "—") Column(
                 Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable(role = Role.Button, onClickLabel = "Models") { nav.open(Screen.Models, tap.last) }
                     .semantics(mergeDescendants = true) {}
                     .padding(horizontal = 4.dp, vertical = 8.dp),
@@ -189,6 +191,41 @@ fun StatusScreen(state: StationState, station: io.github.odnwks.mimir.data.Stati
             }
         }
         if (state.paired) BigButton("Disconnect this phone", Look.Danger, { nav.openSheet(io.github.odnwks.mimir.nav.Sheet.Unpair) }, Modifier.padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 22.dp), height = 48.dp)
+    }
+}
+
+/** Words for the meters, the same as the PC window's This PC card. */
+object PcMeterWords {
+    const val TITLE = "THIS PC"
+    const val CPU = "Processor"
+    const val MEMORY = "PC memory (RAM)"
+    const val GRAPHICS = "Graphics"
+    fun memory(used: Long, total: Long): String {
+        fun gb(b: Long) = Math.round(b / 1_073_741_824.0)
+        return "${gb(used)} of ${gb(total)} GB"
+    }
+}
+
+/** The PC's processor, memory and graphics, as three labelled bars (graphics only when the PC reports it). */
+@Composable
+fun PcMeters(s: io.github.odnwks.mimir.data.PcStats) {
+    CapsLabel(PcMeterWords.TITLE)
+    Column(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Palette.Card).border16(Palette.Line).padding(vertical = 12.dp, horizontal = 14.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        @Composable fun meter(label: String, value: String, fraction: Float) {
+            Column(Modifier.fillMaxWidth().semantics(mergeDescendants = true) { contentDescription = "$label, $value" }, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text(label, style = Type.Label, color = Palette.TextSoft)
+                    Text(value, style = Type.Small, color = Palette.TextDim)
+                }
+                Bar(fraction.coerceIn(0f, 1f), 6.dp)
+            }
+        }
+        meter(PcMeterWords.CPU, "${s.cpuPercent}%", s.cpuPercent / 100f)
+        meter(PcMeterWords.MEMORY, PcMeterWords.memory(s.memUsedBytes, s.memTotalBytes), s.memUsedBytes.toFloat() / s.memTotalBytes)
+        s.gpuPercent?.let { meter(PcMeterWords.GRAPHICS, "$it%", it / 100f) }
     }
 }
 

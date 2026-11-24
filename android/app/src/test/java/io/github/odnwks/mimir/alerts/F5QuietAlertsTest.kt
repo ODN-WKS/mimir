@@ -30,6 +30,8 @@ class F5QuietAlertsTest {
         c.getSharedPreferences("alert_choices", Context.MODE_PRIVATE).edit().clear().commit()
         c.getSharedPreferences("notified", Context.MODE_PRIVATE).edit().clear().commit()
         c.getSharedPreferences("finished_notified", Context.MODE_PRIVATE).edit().clear().commit()
+        // These tests check each switch when it is on; the quiet defaults are P09Item7QuietDefaultsTest.
+        AlertStore.set(c, AlertChoices(taskFinished = true, updates = true, showWorking = true))
         Notifier.channels(c)
         Notifier.foreground = false
         Notifier.working(c, emptyList())
@@ -45,8 +47,10 @@ class F5QuietAlertsTest {
     private fun posted() = nm.activeNotifications.filter { it.packageName == c.packageName }
 
     @Test fun defaultsAreAsTheOwnerAsked() {
+        c.getSharedPreferences("alert_choices", Context.MODE_PRIVATE).edit().clear().commit()
         val d = AlertStore.get(c)
-        assertTrue(d.needsYou && d.taskFinished && d.updates && d.showWorking)
+        assertTrue(d.needsYou)
+        assertFalse(d.taskFinished || d.updates || d.showWorking)
         assertEquals(OutsideMode.NeedMe, d.outside)
     }
 
