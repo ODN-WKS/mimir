@@ -239,7 +239,7 @@ private fun SheetContent(sheet: Sheet, state: StationState, station: Station, na
             Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { Handle() }
                 SectionTitle(sheet.title(state), style = TextStyle(fontSize = 17.sp, lineHeight = 22.sp, fontWeight = FontWeight.Bold))
-                MessageBox(title, { title = it }, "Task name", "Task name", Modifier.fillMaxWidth())
+                MessageBox(title, { title = it }, "Task name", "Task name", Modifier.fillMaxWidth(), autoFocus = true)
                 BigButton("Rename", Look.Primary, { station.renameTask(sheet.taskId, title); nav.closeSheet() }, height = 48.dp, enabled = title.isNotBlank())
                 BigButton("Cancel", Look.Outline, { nav.closeSheet() }, height = 48.dp)
             }
@@ -401,7 +401,7 @@ fun ChatRulesDialog(current: String, onSave: (String) -> Unit, onClose: () -> Un
     var text by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(current) }
     ChatSheet(CHAT_RULES, onClose) {
         Text("$AI_NAME is told these first, in this chat only. Your rules for every chat still apply.", style = Type.Label, color = Palette.TextSoft)
-        MessageBox(text, { text = it }, "Rules for this chat", "For example: answer in French", Modifier.fillMaxWidth())
+        MessageBox(text, { text = it }, "Rules for this chat", "For example: answer in French", Modifier.fillMaxWidth(), autoFocus = true)
         BigButton("Save", Look.Primary, { onSave(text) }, height = 48.dp)
         BigButton("Cancel", Look.Outline, onClose, height = 48.dp)
     }

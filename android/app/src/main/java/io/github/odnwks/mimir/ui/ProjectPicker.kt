@@ -105,7 +105,7 @@ fun ProjectPicker(current: String, state: StationState, station: Station, nav: N
         }
         val all = if (moving) state.pickable.filter { it != current } else state.pickable
         if (all.size >= SEARCH_FROM) {
-            MessageBox(query, { query = it }, "Search projects", "Search projects", Modifier.fillMaxWidth())
+            MessageBox(query, { query = it }, "Search projects", "Search projects", Modifier.fillMaxWidth(), autoFocus = true)
         }
         val shown = all.filter { query.isBlank() || it.contains(query.trim(), ignoreCase = true) }
         if (all.isEmpty()) {

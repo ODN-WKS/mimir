@@ -303,7 +303,7 @@ fun AllTasksScreen(state: StationState, station: io.github.odnwks.mimir.data.Sta
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             if (state.tasks.isEmpty() && state.archived.isEmpty()) { EmptyState("No tasks yet. Ask for something in Chat and it starts one."); return@Column }
-            MessageBox(query, { query = it }, "Search tasks", "Search tasks and messages", Modifier.fillMaxWidth())
+            MessageBox(query, { query = it }, "Search tasks", "Search tasks and messages", Modifier.fillMaxWidth(), autoFocus = true)
             androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf("All", "Needs you", "Working", "Paused", "Stopped", "Done", "Archived").forEach { f ->
                     val on = f == only

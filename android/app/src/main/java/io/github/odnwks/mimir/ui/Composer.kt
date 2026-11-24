@@ -96,6 +96,9 @@ fun Composer(
     // "Ask Claude" on the tablet's rail (or Ctrl+N) puts the cursor here.
     val ask = io.github.odnwks.mimir.ui.adaptive.LocalAskTick.current
     LaunchedEffect(ask) { if (ask > 0) runCatching { focus.requestFocus() } }
+    // A reply box opens with the cursor in it (when Settings allows it).
+    val keyCtx = androidx.compose.ui.platform.LocalContext.current
+    LaunchedEffect(Unit) { kotlinx.coroutines.delay(300); if (keyboardAutoOn(keyCtx)) runCatching { focus.requestFocus() } }
     Column(
         modifier.fillMaxWidth().clip(shape).background(surface).border(1.dp, Palette.Outline, shape)
             .padding(start = 6.dp, end = 6.dp, top = if (chip != null || optionsChip != null || optionsNote != null) 6.dp else 0.dp, bottom = 0.dp),

@@ -165,6 +165,12 @@ fun AppRoot(station: Station, nav: Navigator, chatDraft: String = "", standalone
             val openMenu: () -> Unit = { if (!permanent) scope.launch { drawer.open() } }
             val closeMenu: () -> Unit = { if (drawer.isOpen) scope.launch { drawer.close() } }
             DrawerBack(drawer, closeMenu)
+            // An open side menu has the keyboard put away, and no box takes it back meanwhile.
+            val menuUp = drawer.currentValue != androidx.compose.material3.DrawerValue.Closed || drawer.targetValue != androidx.compose.material3.DrawerValue.Closed
+            val menuKeys = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+            val menuFocus = androidx.compose.ui.platform.LocalFocusManager.current
+            androidx.compose.runtime.SideEffect { nav.menuOpen = menuUp }
+            LaunchedEffect(menuUp) { if (menuUp) { menuKeys?.hide(); menuFocus.clearFocus() } }
             val ctx = LocalContext.current
             val standalone = LocalStandaloneOk.current
             val given = LocalPhoneEngine.current

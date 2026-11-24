@@ -38,10 +38,11 @@ fun answerAuthor(turn: Turn, pcName: String): String? {
  */
 data class WhoNow(val phoneTookOver: Boolean, val why: String?)
 
-fun whoNow(paired: Boolean, usePc: Boolean, phoneCan: Boolean, pcOnline: Boolean, lastRan: String?, lastNote: String?, whisper: Boolean, online: Boolean): WhoNow {
+fun whoNow(paired: Boolean, usePc: Boolean, phoneCan: Boolean, pcOnline: Boolean, lastRan: String?, lastNote: String?, whisper: Boolean, online: Boolean, answeredAfterChoice: Boolean = true): WhoNow {
     if (!paired || !usePc || !phoneCan || whisper || online) return WhoNow(false, null)
     if (!pcOnline) return WhoNow(true, "Your PC isn't reachable, so this phone answers")
-    if (lastRan == "phone") return WhoNow(true, lastNote?.takeIf { it.isNotBlank() } ?: "Your PC's model isn't running, so this phone answers")
+    // An answer older than the person's choice of "Your PC" is no proof about now.
+    if (lastRan == "phone" && answeredAfterChoice) return WhoNow(true, lastNote?.takeIf { it.isNotBlank() } ?: "Your PC's model isn't running, so this phone answers")
     return WhoNow(false, null)
 }
 

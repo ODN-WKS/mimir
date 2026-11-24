@@ -198,7 +198,7 @@ fun PhonePcScreen(state: StationState, station: Station, nav: Navigator, setting
                     }
                     if (state.owner) SmallButton("Rename", { name = state.pc.name; naming = true }, description = "Rename your PC")
                 } else Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(bottom = 8.dp)) {
-                    MessageBox(name, { name = it.take(40) }, "Your PC's name", "The name your phones see", Modifier.fillMaxWidth())
+                    MessageBox(name, { name = it.take(40) }, "Your PC's name", "The name your phones see", Modifier.fillMaxWidth(), autoFocus = true)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         SmallButton("Save", { station.setPcName(name); naming = false }, description = "Save the name")
                         SmallButton("Cancel", { naming = false })

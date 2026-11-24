@@ -60,6 +60,8 @@ fun MimirComposer(
     hasFiles: Boolean = false,
     /** Each rise puts the cursor in the box and opens the keyboard (a new chat, opening the app), when Settings allows it. */
     focusTick: Int = 0,
+    /** False while a Whisper, a sheet, a dialog or the side menu is up: the keyboard waits (and comes when they go). */
+    focusOk: Boolean = true,
     /** Shown at the top of the box: the attached files. */
     above: (@Composable () -> Unit)? = null,
     /** The + at the start of the bottom row (with [ChipFit.Menu], the effort is in its menu). */
@@ -92,8 +94,10 @@ fun MimirComposer(
         val focus = androidx.compose.runtime.remember { androidx.compose.ui.focus.FocusRequester() }
         val ctx = androidx.compose.ui.platform.LocalContext.current
         val keys = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
-        androidx.compose.runtime.LaunchedEffect(focusTick) {
-            if (focusTick > 0 && keyboardAutoOn(ctx)) {
+        var risen by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(0) }
+        androidx.compose.runtime.LaunchedEffect(focusTick, focusOk) {
+            if (focusTick > risen && focusOk && keyboardAutoOn(ctx)) {
+                risen = focusTick
                 androidx.compose.runtime.withFrameNanos { }
                 runCatching { focus.requestFocus(); keys?.show() }
             }

@@ -319,7 +319,7 @@ fun ChatsScreen(state: StationState, station: Station, engine: Engine?, nav: Nav
     }
     Column(Modifier.fillMaxSize()) {
         BackHeader(EYE_CHATS, nav::back)
-        MessageBox(query, { query = it }, "Search chats", "Search chats", Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp))
+        MessageBox(query, { query = it }, "Search chats", "Search chats", Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), autoFocus = true)
         UndoBar(undo, onUndo = { undo?.invoke(); undo = null }, onGone = { undo = null; engine?.forgetDeleted() })
         // Once, after the first sync: the chats that were with the PC are here now.
         if (one && local?.movedNote == true) {

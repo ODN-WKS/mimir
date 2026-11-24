@@ -176,7 +176,7 @@ fun PairScreen(station: Station, nav: Navigator, screenLock: Boolean = true) {
             Text(CONNECT_INTRO.forDevice(), style = Type.Body, color = Palette.TextSoft)
             NumberedSteps(if (typing) CONNECT_STEPS_PASTE else CONNECT_STEPS)
             if (typing) {
-                MessageBox(typed, { typed = it; if (it.isNotBlank()) { nothingToPaste = false; boxEmpty = false } }, "Pairing code", "The code from your PC", Modifier.fillMaxWidth(), minLines = 3, shape = RoundedCornerShape(16.dp), keyboardOptions = PAIR_CODE_KEYBOARD)
+                MessageBox(typed, { typed = it; if (it.isNotBlank()) { nothingToPaste = false; boxEmpty = false } }, "Pairing code", "The code from your PC", Modifier.fillMaxWidth(), minLines = 3, shape = RoundedCornerShape(16.dp), keyboardOptions = PAIR_CODE_KEYBOARD, autoFocus = true)
                 BigButton("Paste the code", Look.Outline, {
                     val got = pastedCode(clip.getText()?.text)
                     nothingToPaste = got == null

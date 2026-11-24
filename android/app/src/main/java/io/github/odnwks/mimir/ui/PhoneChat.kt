@@ -64,6 +64,9 @@ import androidx.compose.ui.semantics.liveRegion
  * [pcOnline]) and this phone answers otherwise; a small mark under each answer says where it ran.
  */
 @OptIn(ExperimentalLayoutApi::class)
+/** The first rise of the chat after the app starts opens the keyboard once. */
+private object ColdFocus { @Volatile var done = false }
+
 @Composable
 fun PhoneChat(
     engine: Engine?, nav: Navigator, paired: Boolean = false, pcOnline: Boolean = false, pcName: String = "Your PC", menuWaiting: Int = 0,
@@ -89,7 +92,9 @@ fun PhoneChat(
     val model = Catalog.byId(s.model)
     var draft by rememberSaveable { mutableStateOf("") }
     // New chat and opening the app put the cursor in the box and bring the keyboard up (Settings can turn it off).
-    var focusTick by remember { mutableStateOf(1) }
+    // It starts at 0 so returning to the tab or turning the phone never rings it; only a new chat does, and the first rise after the app starts.
+    var focusTick by remember { mutableStateOf(0) }
+    LaunchedEffect(Unit) { if (!ColdFocus.done) { ColdFocus.done = true; focusTick++ } }
     // The PC answers pings: a message is never "waiting" then, so Send stays on and no stale red line shows (QA2 #7, #15, #19).
     val pcReady = paired && pcOnline && (s.usePc || !s.supported) && !s.whisper
     val waiting = !s.ready && !pcReady && !s.writing && s.chat.turns.lastOrNull()?.user == true && s.stoppedChat != s.chat.id
@@ -167,15 +172,15 @@ fun PhoneChat(
     val startOn = { pc: Boolean ->
         val place = { if (paired && s.supported && s.usePc != pc) engine.setUsePc(pc) }
         pcWhisper = false
+        // True only when a new chat really started (not while writing, nor while the question about ending a Whisper opens).
         when {
-            s.writing -> {}
-            s.whisper && s.chat.turns.isNotEmpty() -> { endThen = place; endAsk = true }
-            s.whisper -> { engine.endWhisper(); place() }
-            else -> { engine.newChat(); place() }
+            s.writing -> false
+            s.whisper && s.chat.turns.isNotEmpty() -> { endThen = place; endAsk = true; false }
+            s.whisper -> { engine.endWhisper(); place(); true }
+            else -> { engine.newChat(); place(); true }
         }
-        Unit
     }
-    val newChat = { startOn(true); focusTick++; Unit }
+    val newChat = { if (startOn(true)) focusTick++; Unit }
     // Where a Whisper starts: on the PC when paired with a free model there, else on this phone (the PC when the phone can't).
     val whisperHere = {
         when (whisperStartFor(paired, pcFree, pcOnline, s.ready, s.supported)) {
@@ -262,7 +267,11 @@ fun PhoneChat(
         // Who answers (a tap changes it, and holds the chat's other choices), the menu button, and a new chat.
         // The phone takes over when the PC or its model is away: the bar says so at once, and why.
         val lastAnswer = s.chat.turns.lastOrNull { !it.user }
-        val now = whoNow(paired, s.usePc, s.supported && s.ready, pcOnline, lastAnswer?.ran, lastAnswer?.switchNote, s.whisper, onlineOn)
+        // The last answer is evidence only if it came after the person's latest choice of who answers.
+        var turnsAtChoice by remember { mutableStateOf(0) }
+        var choiceSeen by remember { mutableStateOf(s.usePc) }
+        if (choiceSeen != s.usePc) { choiceSeen = s.usePc; turnsAtChoice = s.chat.turns.size }
+        val now = whoNow(paired, s.usePc, s.supported && s.ready, pcOnline, lastAnswer?.ran, lastAnswer?.switchNote, s.whisper, onlineOn, answeredAfterChoice = s.chat.turns.size > turnsAtChoice)
         val answeringPc = paired && (s.usePc || !s.supported) && !s.whisper && !onlineOn && !now.phoneTookOver
         if (s.whisper || pcWhisper) WhisperTopBar(
             onEnd = { if (pcWhisper) pcWhisper = false else if (!s.writing) engine.endWhisper(told = true) },
@@ -452,7 +461,7 @@ fun PhoneChat(
             Text(usageLeftWords(u), style = Type.Small, color = Palette.TextDim, modifier = Modifier.padding(horizontal = 20.dp, vertical = 2.dp).testTag("usage-left"))
         }
         NoKeyboardLearning(s.whisper || pcWhisper) {
-        MimirComposer(draft, { draft = it; if (it.isNotBlank()) engine.prepare() }, waiting, s.writing, voice, onSend = { send(draft) }, onStop = engine::stop, focusTick = focusTick,
+        MimirComposer(draft, { draft = it; if (it.isNotBlank()) engine.prepare() }, waiting, s.writing, voice, onSend = { send(draft) }, onStop = engine::stop, focusTick = focusTick, focusOk = !s.whisper && !pcWhisper && !endAsk && !whoOpen && !needsMimir && nav.sheet == null && !nav.menuOpen,
             whisper = s.whisper || pcWhisper, waitHint = !paired, modifier = Modifier.startupBottom(startup, on = showHome && first).padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 10.dp),
             hasFiles = files.isNotEmpty() || pictures.isNotEmpty(),
             above = { attach.Chips() },

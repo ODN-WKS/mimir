@@ -226,6 +226,8 @@ object Mapping {
     /** Claude's weekly use, as Status shows it. */
     fun usage(page: LStatus, nowSeconds: Long): Usage {
         val used = page.weeklyUsed ?: return Usage("—", 0, "", 85)
+        // A reading whose reset time has passed is last week's number: it counts as not read.
+        if (page.weeklyResets?.let { it in 1..nowSeconds } == true) return Usage("—", 0, "", 85)
         // The PC sends the share used, 0 to 1 (0.93 is 93%), and rounds it as the phone does here.
         val pct = Math.round(used.coerceIn(0.0, 1.0) * 100).toInt()
         val resets = page.weeklyResets?.let { r -> if (r > nowSeconds) "resets in ${age(r - nowSeconds)}" else "" }.orEmpty()

@@ -172,6 +172,8 @@ class Navigator(start: Screen = Screen.Chat) {
         private set
     var lastMove: Move by mutableStateOf(Move.None)
         private set
+    /** The side menu is open (set by the app root), so no box takes the keyboard meanwhile. */
+    var menuOpen: Boolean by mutableStateOf(false)
     /** Where Chat's composer sends the next message (the "To:" chip). */
     var composeTo: ComposeTo by mutableStateOf(ComposeTo())
     /** The project just chosen in the picker, for the screen that opened it to take. */

@@ -1,5 +1,8 @@
 package io.github.odnwks.mimir.ui
 
+import androidx.compose.foundation.relocation.bringIntoViewRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.foundation.layout.ime
 import io.github.odnwks.mimir.ui.adaptive.forDevice
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
@@ -611,7 +614,23 @@ fun MessageBox(
     shape: Shape = RoundedCornerShape(24.dp),
     keyboardOptions: androidx.compose.foundation.text.KeyboardOptions = androidx.compose.foundation.text.KeyboardOptions.Default,
     keyboardActions: androidx.compose.foundation.text.KeyboardActions = androidx.compose.foundation.text.KeyboardActions.Default,
+    /** A box the person came here to type in takes the cursor and the keyboard by itself (when Settings allows it). */
+    autoFocus: Boolean = false,
 ) {
+    val focus = androidx.compose.runtime.remember { androidx.compose.ui.focus.FocusRequester() }
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val keys = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+    if (autoFocus) androidx.compose.runtime.LaunchedEffect(Unit) {
+        // After a sheet has put the keyboard away as it opens.
+        kotlinx.coroutines.delay(150)
+        if (keyboardAutoOn(ctx)) runCatching { focus.requestFocus(); keys?.show() }
+    }
+    // A box with words keeps the part being changed in view above the keyboard.
+    val inView = androidx.compose.runtime.remember { androidx.compose.foundation.relocation.BringIntoViewRequester() }
+    val keyboard = androidx.compose.foundation.layout.WindowInsets.ime.getBottom(androidx.compose.ui.platform.LocalDensity.current)
+    androidx.compose.runtime.LaunchedEffect(keyboard, value.length / 40) {
+        if (value.isNotEmpty()) { kotlinx.coroutines.delay(60); runCatching { inView.bringIntoView() } }
+    }
     BasicTextField(
         value = value,
         onValueChange = onValue,
@@ -621,7 +640,7 @@ fun MessageBox(
         cursorBrush = SolidColor(Palette.BlueLight),
         minLines = minLines,
         maxLines = maxLines,
-        modifier = modifier.heightIn(min = 48.dp).semantics { contentDescription = label },
+        modifier = modifier.heightIn(min = 48.dp).focusRequester(focus).bringIntoViewRequester(inView).semantics { contentDescription = label },
         decorationBox = { inner ->
             Box(
                 Modifier.clip(shape).background(background).border(1.dp, Palette.Outline, shape)

@@ -723,7 +723,10 @@ class LinkStation(
                 synchronized(lock) {
                     data = data.copy(outbox = data.outbox.filterNot { it.first == id }); saveData()
                     // The PC said no: the line says so (with Try again and Delete) instead of waiting for ever.
-                    if (err != null) chat.indexOfFirst { it.id == id }.let { i -> if (i >= 0) chat[i] = ChatEntry.Mine(id, text, Filing(FilingKind.Failed, "")) }
+                    if (err != null) {
+                        val i = chat.indexOfFirst { it.id == id }
+                        if (i >= 0) chat[i] = ChatEntry.Mine(id, text, Filing(FilingKind.Failed, "")) else updateKept(id, text, Filing(FilingKind.Failed, ""), null)
+                    }
                 }
                 if (err != null) { note(err); publish() }
                 else Wire.filed(ok)?.let { filedAs(id, text, it) }
@@ -735,16 +738,36 @@ class LinkStation(
     /** A chat message was filed: its line says where; a status question gets its answer below it. */
     private fun filedAs(id: String, text: String, f: Filed) {
         synchronized(lock) {
-            filed[id] = f
             val i = chat.indexOfFirst { it.id == id }
-            if (i >= 0) chat[i] = ChatEntry.Mine(id, text, Mapping.filing(f, ::name))
-            if (f is Filed.Status) {
-                val reply = ChatEntry.Reply("r-$id", f.reply, "Play the status")
-                if (i >= 0) chat.add(i + 1, reply) else chat += reply
+            if (i < 0 && past.any { it.log.contains(id) }) {
+                // The message was written in an older chat: it is updated there, never in the open one.
+                updateKept(id, text, Mapping.filing(f, ::name), f)
+            } else {
+                filed[id] = f
+                if (i >= 0) chat[i] = ChatEntry.Mine(id, text, Mapping.filing(f, ::name))
+                if (f is Filed.Status) {
+                    val reply = ChatEntry.Reply("r-$id", f.reply, "Play the status")
+                    if (i >= 0) chat.add(i + 1, reply) else chat += reply
+                }
             }
             if (f is Filed.Idea) ideas[f.project] = ideas[f.project].orEmpty() + text
         }
         publish()
+    }
+
+    /** A message of an older chat got its filing (and a status question its answer): kept in that chat's log. */
+    private fun updateKept(id: String, text: String, filing: Filing?, f: Filed?) {
+        val k = past.indexOfFirst { it.log.contains(id) }
+        if (k < 0) return
+        val (entries, where) = ChatLog.read(past[k].log)
+        val list = ArrayList(entries); val map = HashMap(where)
+        val i = list.indexOfFirst { it.id == id }
+        if (i < 0) return
+        list[i] = ChatEntry.Mine(id, text, filing)
+        if (f != null) map[id] = f
+        if (f is Filed.Status && list.none { it.id == "r-$id" }) list.add(i + 1, ChatEntry.Reply("r-$id", f.reply, "Play the status"))
+        past[k] = past[k].copy(log = ChatLog.write(list, map))
+        savePast()
     }
 
     /** A line in the chat: a problem (red-outlined, with why), unless it's plain news ([problem] false). */

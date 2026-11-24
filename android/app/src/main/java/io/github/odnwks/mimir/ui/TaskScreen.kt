@@ -192,7 +192,7 @@ fun TaskScreen(taskId: String, state: StationState, station: Station, nav: Navig
                 onTitle = { nav.openSheet(Sheet.TaskOptions(task.id)) }, titleLabel = TASK_OPTIONS,
             )
             if (finding) Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                MessageBox(find, { find = it }, "Find in this task", "Find in this task", Modifier.fillMaxWidth())
+                MessageBox(find, { find = it }, "Find in this task", "Find in this task", Modifier.fillMaxWidth(), autoFocus = true)
                 if (words != null) Text(
                     when (messages.size) { 0 -> "No message has \"$words\""; 1 -> "1 message has \"$words\""; else -> "${messages.size} messages have \"$words\"" },
                     style = Type.Small, color = Palette.TextDim,

@@ -110,7 +110,7 @@ fun TopicButton(text: String?, label: String, onClick: () -> Unit, style: androi
 fun TopicEditor(current: String, onCancel: () -> Unit = {}, onDone: (String) -> Unit) {
     var text by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf(current) }
     ChatSheet("Rename this chat", onCancel) {
-        MessageBox(text, { text = it }, "Chat name", "Chat name", Modifier.fillMaxWidth())
+        MessageBox(text, { text = it }, "Chat name", "Chat name", Modifier.fillMaxWidth(), autoFocus = true)
         BigButton("Done", Look.Primary, { onDone(text) }, height = 48.dp)
         BigButton("Cancel", Look.Outline, onCancel, height = 48.dp)
     }
