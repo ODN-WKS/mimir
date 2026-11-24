@@ -109,6 +109,8 @@ fun PcSessionsScreen(
                 style = Type.Small, color = Palette.TextDim,
             )
         }
+        // The PC's processor, memory and graphics, first (0.09 items 6 and 12), while it is there.
+        if (state.pc.online) state.pcStats?.let { Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) { PcMeters(it) } }
         // Under the connection line, where it is seen first (not below a long list).
         Row(
             Modifier.fillMaxWidth().background(Palette.Ground).clickable(role = Role.Button) { nav.open(Screen.PcSettings) }.heightIn(min = 52.dp).padding(horizontal = 22.dp),

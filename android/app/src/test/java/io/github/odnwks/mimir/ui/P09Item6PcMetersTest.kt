@@ -71,4 +71,12 @@ class P09Item6PcMetersTest {
         show(ExampleData.awake().copy(pcStats = null))
         compose.onNodeWithText("THIS PC").assertDoesNotExist()
     }
+
+    @Test fun theMetersAlsoSitAtTheTopOfYourPcWhenThePcListsItsSessions() {
+        val st = ExampleData.awake().copy(pcSessions = emptyList(), pcStats = PcStats(38, 34359738368L, 68719476736L, 12))
+        compose.setContent { MimirTheme(reduceMotion = true) { PcSessionsScreen(st, FakeStation(st), Navigator()) } }
+        compose.waitForIdle()
+        compose.onNodeWithText("THIS PC").assertIsDisplayed()
+        compose.onNodeWithText("38%").assertIsDisplayed()
+    }
 }
