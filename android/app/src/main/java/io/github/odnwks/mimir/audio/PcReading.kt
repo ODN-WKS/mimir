@@ -30,7 +30,8 @@ object PcReading {
     /** True if a tap now is too close to the one before: it is ignored. */
     fun tooSoon(): Boolean = synchronized(lock) {
         val now = clock()
-        if (now - lastTap < QUIET_MS) true else { lastTap = now; false }
+        // A stamp from a clock that has since moved back (checks do this) is not a quick second tap.
+        if (now - lastTap in 0 until QUIET_MS) true else { lastTap = now; false }
     }
 
     /** A reply was asked for. Returns its ticket, or 0 when it is already being read (ignored). */
