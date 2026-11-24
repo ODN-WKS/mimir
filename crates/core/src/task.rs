@@ -50,6 +50,10 @@ pub struct Task {
     /// For a task in a separate copy: the project it is a copy of.
     #[serde(default)]
     pub origin: Option<String>,
+    /// Opened from one of the person's own earlier Claude sessions: Delete never
+    /// removes that session's transcript, which was there before Mímir.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub imported: bool,
     /// A session a project's Remote Control started (from the phone or
     /// claude.ai): the window follows it live and can't write to it. The
     /// address that opens it on claude.ai.
@@ -339,6 +343,7 @@ impl Task {
             title_by_owner: false,
             project,
             origin: None,
+            imported: false,
             from_phone: None,
             started_on_phone: false,
             ground_rules: None,

@@ -1929,6 +1929,22 @@ impl Runner {
         true
     }
 
+    /// Removes the task and, as a phone's Delete promises, the conversation: Claude Code's
+    /// transcript of the task's own session goes too (never one the person opened from their
+    /// own earlier sessions, or a followed one).
+    pub fn delete(&mut self, id: &str) {
+        let session = self.index(id).and_then(|i| {
+            let t = &self.tasks[i].task;
+            (!t.imported && t.host.is_none() && t.from_phone.is_none())
+                .then(|| t.session_id.clone())
+                .flatten()
+        });
+        self.remove(id);
+        if let Some(s) = session {
+            crate::sessions::delete_session(&s);
+        }
+    }
+
     pub fn remove(&mut self, id: &str) {
         if let Some(i) = self.index(id) {
             let mut l = self.tasks.remove(i);

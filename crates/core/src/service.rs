@@ -1146,6 +1146,32 @@ impl Service {
         crate::paths::project_list(&self.settings, self.runner.tasks.iter().map(|l| &l.task))
     }
 
+    /// Takes a task off the PC. [`delete`]: also Claude Code's transcript of its conversation (a
+    /// phone's Delete promises that); a plain remove leaves it to be opened again later.
+    fn remove_task(&mut self, task: &str, delete: bool) -> Result<serde_json::Value, String> {
+        let Some(l) = self.task(task) else {
+            return Ok(serde_json::Value::Null);
+        };
+        if l.busy() {
+            return Err("Pause or stop the task before deleting it.".into());
+        }
+        if l.task.copy_branch.is_some() {
+            return Err(
+                "This task has a separate copy. Bring its changes in or remove \
+                        the copy before deleting the task."
+                    .into(),
+            );
+        }
+        self.queued.remove(task);
+        if delete {
+            self.runner.delete(task);
+        } else {
+            self.runner.remove(task);
+        }
+        crate::needs::remove_rules(&self.store_dir, task);
+        Ok(serde_json::Value::Null)
+    }
+
     /// YOLO goes back to "Ask me first" after 5 hours of work or 24 hours
     /// idle, with a note in the task.
     fn yolo_tick(&mut self) {
@@ -1538,23 +1564,8 @@ impl Service {
                 self.runner.set_archived(&task, archived);
                 ok
             }
-            Call::RemoveTask { task } | Call::DeleteTask { task } => {
-                let Some(l) = self.task(&task) else { return ok };
-                if l.busy() {
-                    return Err("Pause or stop the task before deleting it.".into());
-                }
-                if l.task.copy_branch.is_some() {
-                    return Err(
-                        "This task has a separate copy. Bring its changes in or remove \
-                                the copy before deleting the task."
-                            .into(),
-                    );
-                }
-                self.queued.remove(&task);
-                self.runner.remove(&task);
-                crate::needs::remove_rules(&self.store_dir, &task);
-                ok
-            }
+            Call::RemoveTask { task } => self.remove_task(&task, false),
+            Call::DeleteTask { task } => self.remove_task(&task, true),
             Call::Note { task, text } => {
                 self.runner.note(&task, &text);
                 ok

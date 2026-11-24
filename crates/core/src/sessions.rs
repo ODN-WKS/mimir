@@ -1251,6 +1251,18 @@ pub fn session_file(project: &Path, session: &str) -> PathBuf {
         .join(format!("{session}.jsonl"))
 }
 
+/// Deletes Claude Code's own record of one session (its transcript and the folder of
+/// its side files), wherever it keeps them. Only the exact id is matched.
+pub fn delete_session(session: &str) {
+    if session.is_empty() || session.contains(['/', '\\']) || session.starts_with('.') {
+        return;
+    }
+    if let Some(file) = find_session(session) {
+        let _ = std::fs::remove_file(&file);
+        let _ = std::fs::remove_dir_all(file.with_extension(""));
+    }
+}
+
 /// Finds a session's history wherever Claude Code keeps it (it names the
 /// folder after the resolved path and shortens long ones, so the folder is
 /// looked for, not worked out).
@@ -1441,6 +1453,7 @@ pub fn to_task(s: &PastSession, project: &Path, task_id: String) -> std::io::Res
         }
     }
     t.session_id = Some(s.id.clone());
+    t.imported = true;
     t.status = Status::Done;
     t.add_note(OPENED_NOTE);
     Ok(t)
