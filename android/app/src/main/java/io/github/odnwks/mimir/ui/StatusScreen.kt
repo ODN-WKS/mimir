@@ -224,7 +224,8 @@ fun PcMeters(s: io.github.odnwks.mimir.data.PcStats) {
                 Bar(fraction.coerceIn(0f, 1f), 6.dp)
             }
         }
-        meter(PcMeterWords.CPU, "${s.cpuPercent}%", s.cpuPercent / 100f)
+        // "14/32 threads · 44%": how many of the PC's threads the work fills (owner, 2026-11-25).
+        meter(PcMeterWords.CPU, s.threadsBusy?.let { "$it/${s.threads} threads · ${s.cpuPercent}%" } ?: "${s.cpuPercent}%", s.cpuPercent / 100f)
         meter(PcMeterWords.MEMORY, PcMeterWords.memory(s.memUsedBytes, s.memTotalBytes), s.memUsedBytes.toFloat() / s.memTotalBytes)
         s.gpuPercent?.let { meter(PcMeterWords.GRAPHICS, "$it%", it / 100f) }
     }

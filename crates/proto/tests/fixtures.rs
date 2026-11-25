@@ -142,6 +142,7 @@ fn truth() -> Truth {
             mem_used: 12_400_000_000,
             mem_total: 32_000_000_000,
             gpu: Some(8.0),
+            threads: None,
         }),
     }
 }

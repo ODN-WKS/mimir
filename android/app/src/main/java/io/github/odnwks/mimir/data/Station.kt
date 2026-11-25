@@ -691,7 +691,10 @@ enum class Chip(val label: String) {
 data class ProjectTask(val taskId: String?, val name: String, val meta: String, val chip: Chip)
 
 /** The PC's load as Your PC shows it: percent for the processor and graphics, bytes for memory. */
-data class PcStats(val cpuPercent: Int, val memUsedBytes: Long, val memTotalBytes: Long, val gpuPercent: Int?)
+data class PcStats(val cpuPercent: Int, val memUsedBytes: Long, val memTotalBytes: Long, val gpuPercent: Int?, val threads: Int? = null) {
+    /** Threads' worth of work going on now (the processor load times the threads), when the PC says how many it has. */
+    val threadsBusy: Int? get() = threads?.let { n -> Math.round(cpuPercent * n / 100.0).toInt().coerceIn(0, n) }
+}
 
 data class Usage(val percentText: String, val percent: Int, val resets: String, val switchAt: Int)
 

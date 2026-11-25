@@ -645,6 +645,9 @@ pub struct TruthStats {
     /// Graphics busy, percent, when the driver reports it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub gpu: Option<f32>,
+    /// How many processor threads the PC has (the phone shows "14 of 32 threads"); absent from older PCs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub threads: Option<u32>,
 }
 
 /// A task as clients see it: everything but its conversation, plus what

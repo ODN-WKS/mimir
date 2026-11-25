@@ -174,7 +174,7 @@ object Wire {
                 )
             },
             stats = o.optJSONObject("stats")?.let { s ->
-                LTruthStats(s.optDouble("cpu"), s.optLong("mem_used"), s.optLong("mem_total"), if (s.isNull("gpu") || !s.has("gpu")) null else s.optDouble("gpu"))
+                LTruthStats(s.optDouble("cpu"), s.optLong("mem_used"), s.optLong("mem_total"), if (s.isNull("gpu") || !s.has("gpu")) null else s.optDouble("gpu"), s.optInt("threads", 0).takeIf { it > 0 })
             },
         )
     }
@@ -718,7 +718,7 @@ data class LTruthEngine(val chatsWhere: String, val chatsModelWords: String, val
 data class LTruthUsage(val weekly: Pair<Double, Long>?, val fiveHour: Pair<Double, Long>?, val asOf: Long?)
 
 /** The PC's load: percent for the processor and graphics ([gpu] null when the PC can't tell), bytes for memory. */
-data class LTruthStats(val cpu: Double, val memUsed: Long, val memTotal: Long, val gpu: Double?)
+data class LTruthStats(val cpu: Double, val memUsed: Long, val memTotal: Long, val gpu: Double?, val threads: Int? = null)
 
 /** One snapshot of everything the owner sees about the PC's work (crates/proto's `Truth`). */
 data class LTruth(

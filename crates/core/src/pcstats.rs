@@ -12,6 +12,8 @@ pub struct Meter {
     pub mem_total: u64,
     /// AMD graphics load in percent, when the driver reports it.
     pub gpu: Option<f32>,
+    /// Processor threads (logical processors).
+    pub threads: u32,
 }
 
 impl Default for Meter {
@@ -29,6 +31,7 @@ impl Meter {
             mem_used: 0,
             mem_total: 0,
             gpu: None,
+            threads: 0,
         }
     }
 
@@ -47,6 +50,7 @@ impl Meter {
             self.cpu = s.global_cpu_usage();
             self.mem_used = s.total_memory().saturating_sub(s.available_memory());
             self.mem_total = s.total_memory();
+            self.threads = s.cpus().len() as u32;
         }
         self.gpu = gpu_busy();
     }
@@ -58,6 +62,7 @@ impl Meter {
             mem_used: self.mem_used,
             mem_total: self.mem_total,
             gpu: self.gpu.map(|g| g.clamp(0.0, 100.0)),
+            threads: (self.threads > 0).then_some(self.threads),
         })
     }
 }
