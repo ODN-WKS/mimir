@@ -279,3 +279,14 @@ fun VoicePanel(voice: VoiceInput, heard: (String) -> Unit, modifier: Modifier = 
         }
     }
 }
+
+/** Starts [voice] from somewhere other than the mic button (a menu): asks for the microphone first if needed. */
+@Composable
+fun rememberStartVoice(voice: VoiceInput): () -> Unit {
+    val context = LocalContext.current
+    val ask = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok -> if (ok) voice.start() }
+    return {
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) voice.start()
+        else ask.launch(Manifest.permission.RECORD_AUDIO)
+    }
+}

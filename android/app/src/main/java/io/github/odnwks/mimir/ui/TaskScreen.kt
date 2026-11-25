@@ -164,47 +164,55 @@ fun TaskScreen(taskId: String, state: StationState, station: Station, nav: Navig
     BoxWithConstraints(Modifier.fillMaxSize().background(Palette.Ground)) {
         val screenHeight = maxHeight
         Column(Modifier.fillMaxSize()) {
-            BackHeader(
-                task.title, nav::back, subtitle = listOf(task.project, task.model, task.age).filter { it.isNotBlank() }.joinToString(" · "), titleStyle = Type.TaskTitle,
-                subtitleContent = {
-                    // The state line: "Needs you · Mímir · 6 min" (the model is in the task's menu).
-                    // Only the state stays; the project and age are a tap away (the chat area stays clean).
-                    var more by rememberSaveable(task.id) { mutableStateOf(false) }
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        modifier = Modifier.padding(top = 4.dp).heightIn(min = 32.dp).clickable(role = androidx.compose.ui.semantics.Role.Button, onClickLabel = if (more) "Hide the details" else "Show the project and age") { more = !more }
-                            .semantics(mergeDescendants = true) { liveRegion = androidx.compose.ui.semantics.LiveRegionMode.Polite },
-                    ) {
+            // The top keeps only the state, a small Stop while it works, and the three dots (owner, 2026-11-25):
+            // the title, Back (the phone's own back gesture) and Find (in the menu) give the chat their room.
+            Row(
+                Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp, top = 4.dp),
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                var more by rememberSaveable(task.id) { mutableStateOf(false) }
+                Column(
+                    Modifier.weight(1f).heightIn(min = 48.dp)
+                        .clickable(role = androidx.compose.ui.semantics.Role.Button, onClickLabel = if (more) "Hide the details" else "Show the task name and project") { more = !more }
+                        .semantics(mergeDescendants = true) { liveRegion = androidx.compose.ui.semantics.LiveRegionMode.Polite },
+                    verticalArrangement = Arrangement.Center,
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         val (fg, bg) = stateColours(task.stateWords)
                         Tag(task.stateWords, fg, bg)
                         // A mode that doesn't ask first is always in sight.
                         task.riskyMode?.let { if (task.yolo) Tag(it, Palette.Ground, Palette.Red) else Tag(it, Palette.AmberInk, Palette.Amber) }
-                        if (more) Text(listOf(task.project, if (task.plan) "Plan first" else "", task.age).filter { it.isNotBlank() }.joinToString(" · "), style = Type.Small, color = Palette.TextDim, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        // What it's doing right now, in words, beside the state.
+                        Box(Modifier.weight(1f, fill = false)) {
+                            LiveSignLine(task.sign, Modifier.padding(bottom = 4.dp)) {
+                                if (task.stateWords == "Working" && task.stateLine != "Working on it") Text(task.stateLine, style = Type.Small, color = Palette.TextSoft, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                        }
                     }
-                    // What it's doing right now, in words.
-                    // Always a sign of life: sending, got it, the step and how long, or the silence said plainly.
-                    LiveSignLine(task.sign) {
-                        if (task.stateWords == "Working" && task.stateLine != "Working on it") Text(task.stateLine, style = Type.Small, color = Palette.TextSoft, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
-                },
-                action = {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                        // Stop sits beside the title while work runs (a followed session has its own Stop below).
-                        if (task.showsStop && !task.stopPending && !(listsSessions && followed && !carried)) StopControl(
-                            { cutOff = task.steps.lastOrNull()?.startsWith("…") == true; station.stopTask(task.id) },
-                            shape = StopShape.Pill, stateText = "Task is working",
-                        )
-                        IconTarget(Glyphs.Search, if (finding) "Close find" else "Find in this task", { finding = !finding; if (!finding) find = "" })
-                        // Archive, Delete, Refresh, Rename, Move and the rest: a button where people look, as well as the title.
-                        IconTarget(Glyphs.More, TASK_OPTIONS, { nav.openSheet(Sheet.TaskOptions(task.id)) })
-                    }
-                },
-                // A tap on the task's name: everything for this task in one sheet.
-                onTitle = { nav.openSheet(Sheet.TaskOptions(task.id)) }, titleLabel = "Task name, tap for options",
-                subtitleFullWidth = true,
-            )
+                    if (more) Text(listOf(task.title, task.project, if (task.plan) "Plan first" else "", task.age).filter { it.isNotBlank() }.joinToString(" · "), style = Type.Small, color = Palette.TextDim, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
+                }
+                // Stop: small and round; its confirmation is a ring that unwinds (a followed session has its own Stop below).
+                if (task.showsStop && !task.stopPending && !(listsSessions && followed && !carried)) StopControl(
+                    { cutOff = task.steps.lastOrNull()?.startsWith("…") == true; station.stopTask(task.id) },
+                    shape = StopShape.Round, size = 36.dp, stateText = "Task is working",
+                )
+                // Find, voice typing, Archive, Delete, Rename, Move and the rest.
+                IconTarget(Glyphs.More, TASK_OPTIONS, { nav.openSheet(Sheet.TaskOptions(task.id)) })
+            }
+            // The menu's Find and Talk, done here.
+            val voice = rememberVoiceInput(station, task.id)
+            val startVoice = rememberStartVoice(voice)
+            LaunchedEffect(nav.taskAsk) {
+                when (nav.taskAsk) {
+                    io.github.odnwks.mimir.nav.TASK_ASK_FIND -> { nav.taskAsk = null; finding = true }
+                    io.github.odnwks.mimir.nav.TASK_ASK_TALK -> { nav.taskAsk = null; startVoice() }
+                }
+            }
             if (finding) Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                MessageBox(find, { find = it }, "Find in this task", "Find in this task", Modifier.fillMaxWidth(), autoFocus = true)
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    MessageBox(find, { find = it }, "Find in this task", "Find in this task", Modifier.weight(1f), autoFocus = true)
+                    IconTarget(Glyphs.Close, "Close find", { finding = false; find = "" })
+                }
                 if (words != null) Text(
                     when (messages.size) { 0 -> "No message has \"$words\""; 1 -> "1 message has \"$words\""; else -> "${messages.size} messages have \"$words\"" },
                     style = Type.Small, color = Palette.TextDim,
@@ -222,7 +230,7 @@ fun TaskScreen(taskId: String, state: StationState, station: Station, nav: Navig
                     // A tap on the conversation puts the keyboard away.
                     .pointerInput(Unit) { detectTapGestures(onTap = { focus.clearFocus() }) }
                     .verticalScroll(scroll)
-                    .padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 16.dp),
+                    .padding(start = 12.dp, end = 12.dp, top = 4.dp, bottom = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
                 // A long conversation: one calm line at the top of the conversation (it scrolls, so it never squeezes the reply box).
@@ -375,7 +383,6 @@ fun TaskScreen(taskId: String, state: StationState, station: Station, nav: Navig
                     onPlay = { task.messages.lastOrNull { it.fromClaude }?.let { station.playMessage(task.id, it.id) } },
                 )
             }
-            val voice = rememberVoiceInput(station, task.id)
             // Going on in a terminal or the Claude app right now: replies go there (one from here
             // would start a second Claude on it), so a note, as on the PC, takes the box's place.
             if (task.waitingToStart) Panel(background = Palette.Bar, modifier = Modifier.windowInsetsPadding(WindowInsets.navigationBars).padding(start = 12.dp, end = 12.dp, top = 10.dp, bottom = 16.dp)) {
@@ -414,6 +421,8 @@ fun TaskScreen(taskId: String, state: StationState, station: Station, nav: Navig
                         draft, { draft = it },
                         attach = attach.takeIf { canAttach },
                         optionsChip = optionsWords(task.model, task.effort).takeIf { canOptions },
+                        // Under the box, so the box grows upward; the mic is in the three dots.
+                        optionsBelow = true, showMic = false,
                         onOptions = { nav.openSheet(Sheet.TaskModel(task.id)) },
                         optionsNote = UPDATE_PC_FOR_OPTIONS.takeIf { !canOptions && state.paired },
                         hint = if (state.pcAway) "Reply (${state.waitsUntil})" else "Reply to Mímir",
@@ -430,7 +439,7 @@ fun TaskScreen(taskId: String, state: StationState, station: Station, nav: Navig
                         },
                         // Stop is at the top right, beside the title; the reply box keeps only Send.
                         modifier = Modifier.windowInsetsPadding(WindowInsets.navigationBars.union(WindowInsets.ime))
-                            .padding(start = 12.dp, end = 12.dp, top = 10.dp, bottom = 16.dp),
+                            .padding(start = 8.dp, end = 8.dp, top = 6.dp, bottom = 8.dp),
                     )
                 }
             }

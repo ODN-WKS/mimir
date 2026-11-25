@@ -148,6 +148,9 @@ private fun SheetContent(sheet: Sheet, state: StationState, station: Station, na
             val id = sheet.taskId
             // Going on in a terminal or the Claude app: it is not Mímir's task to steer, only to follow, rename or put away.
             val elsewhere = task != null && !task.stopped && (task.liveElsewhere || followedElsewhere(state, id))
+            // Find and voice typing live here, so the task screen's top keeps only the state and this menu.
+            MenuRow(Glyphs.Search, "Find in this task") { nav.taskAsk = io.github.odnwks.mimir.nav.TASK_ASK_FIND; nav.closeSheet() }
+            if (!elsewhere && task?.waitingToStart != true) MenuRow(Glyphs.Mic, "Talk (voice typing)") { nav.taskAsk = io.github.odnwks.mimir.nav.TASK_ASK_TALK; nav.closeSheet() }
             if (task?.change != null) MenuRow(Glyphs.NewDocument, "Show the change") { nav.open(Screen.Change(id)) }
             // Continue only where there is something to carry on: a finished task has the reply box.
             if (!elsewhere) when (task?.stateWords) {

@@ -181,6 +181,8 @@ class Navigator(start: Screen = Screen.Chat) {
     var composeTo: ComposeTo by mutableStateOf(ComposeTo())
     /** The project just chosen in the picker, for the screen that opened it to take. */
     var pickedProject: String? by mutableStateOf(null)
+    /** What the task's three-dots menu asked of the open task screen ([TASK_ASK_FIND] or [TASK_ASK_TALK]), for it to do. */
+    var taskAsk: String? by mutableStateOf(null)
     /** Tasks deleted a moment ago: hidden from the lists while Undo still shows, then gone from the PC. */
     val hiddenTasks = mutableStateListOf<String>()
     /** What the phone chat's sheet asked of the open chat (rename, delete, Whisper), for the chat to do. */
@@ -324,3 +326,8 @@ fun Screen.backsToHome(): Boolean = when (this) {
     is Screen.Project, Screen.NeedsYou, is Screen.AllTasks, Screen.Settings, Screen.Status, Screen.Updates, Screen.Chats -> true
     else -> false
 }
+
+/** The task menu's "Find in this task". */
+const val TASK_ASK_FIND = "find"
+/** The task menu's "Talk (voice typing)". */
+const val TASK_ASK_TALK = "talk"

@@ -87,6 +87,10 @@ fun Composer(
     optionsNote: String? = null,
     /** A new task needs words (they name it); a reply can go with only a picture. */
     needsWords: Boolean = false,
+    /** The mic button beside the box (off: it shows only while listening, as the way to finish). */
+    showMic: Boolean = true,
+    /** The model and effort chip sits under the box, so the box grows upward on its own. */
+    optionsBelow: Boolean = false,
 ) {
     val shape = RoundedCornerShape(24.dp)
     val sendable = value.isNotBlank() || (attach?.any == true && !needsWords)
@@ -101,11 +105,11 @@ fun Composer(
     LaunchedEffect(Unit) { kotlinx.coroutines.delay(300); if (keyboardAutoOn(keyCtx)) runCatching { focus.requestFocus() } }
     Column(
         modifier.fillMaxWidth().clip(shape).background(surface).border(1.dp, Palette.Outline, shape)
-            .padding(start = 6.dp, end = 6.dp, top = if (chip != null || optionsChip != null || optionsNote != null) 6.dp else 0.dp, bottom = 0.dp),
+            .padding(start = 6.dp, end = 6.dp, top = if (!optionsBelow && (chip != null || optionsChip != null || optionsNote != null)) 6.dp else 0.dp, bottom = if (optionsBelow && (optionsChip != null || optionsNote != null)) 4.dp else 0.dp),
     ) {
         attach?.Note()
         if (attach?.any == true) Box(Modifier.padding(start = 4.dp, end = 4.dp, bottom = 6.dp)) { attach.Chips() }
-        if (chip != null || optionsChip != null) FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(0.dp)) {
+        val chips: @Composable () -> Unit = { if (chip != null || optionsChip != null) FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(0.dp)) {
         if (chip != null) Row(
             Modifier.heightIn(min = 40.dp).clip(RoundedCornerShape(12.dp)).clickable(role = Role.Button, onClick = onChip)
                 .semantics(mergeDescendants = true) { contentDescription = chipLabel },
@@ -135,11 +139,12 @@ fun Composer(
                 Icon(Glyphs.Down, null, tint = Palette.TextDim, modifier = Modifier.size(16.dp))
             }
         }
-        }
-        if (optionsNote != null) Text(optionsNote, style = Type.Small, color = Palette.TextDim, modifier = Modifier.padding(start = 6.dp, bottom = 4.dp))
+        } }
+        if (!optionsBelow) chips()
+        if (optionsNote != null && !optionsBelow) Text(optionsNote, style = Type.Small, color = Palette.TextDim, modifier = Modifier.padding(start = 6.dp, bottom = 4.dp))
         Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             if (attach != null) Box(Modifier.padding(bottom = 4.dp)) { attach.Button(attachSight) }
-            Box(Modifier.padding(bottom = 4.dp)) { MicButton(voice, micLabel, filled = false, surface = Palette.Card) }
+            if (showMic || voice.state == Speaking.Listening) Box(Modifier.padding(bottom = 4.dp)) { MicButton(voice, micLabel, filled = false, surface = Palette.Card) }
             BasicTextField(
                 value = value,
                 onValueChange = onValue,
@@ -196,6 +201,8 @@ fun Composer(
                 }
             }
         }
+        if (optionsBelow) chips()
+        if (optionsNote != null && optionsBelow) Text(optionsNote, style = Type.Small, color = Palette.TextDim, modifier = Modifier.padding(start = 6.dp, bottom = 4.dp))
     }
 }
 

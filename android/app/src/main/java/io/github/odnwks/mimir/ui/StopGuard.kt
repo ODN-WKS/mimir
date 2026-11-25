@@ -142,9 +142,16 @@ fun StopControl(
         }
     }
     val words = when { armed -> "Stop?"; hint -> "Hold to stop"; else -> label }
-    val shapeClip = if (shape == StopShape.Round && !armed && !hint) CircleShape else RoundedCornerShape(if (shape == StopShape.Wide) 12.dp else 24.dp)
+    // The round button never grows: its confirmation is a ring that unwinds around it (owner, 2026-11-25).
+    val round = shape == StopShape.Round
+    val confirmLeft = remember(mode) { Animatable(0f) }
+    LaunchedEffect(armed) {
+        if (armed && round) { confirmLeft.snapTo(1f); confirmLeft.animateTo(0f, tween(STOP_CONFIRM_MS.toInt(), easing = LinearEasing)) }
+        else confirmLeft.snapTo(0f)
+    }
+    val shapeClip = if (round) CircleShape else RoundedCornerShape(if (shape == StopShape.Wide) 12.dp else 24.dp)
     val base = when (shape) {
-        StopShape.Round -> if (!armed && !hint) Modifier.size(size) else Modifier.heightIn(min = size).widthIn(min = size)
+        StopShape.Round -> Modifier.size(size)
         StopShape.Pill -> Modifier.heightIn(min = 40.dp).widthIn(min = 48.dp)
         StopShape.Wide -> Modifier.fillMaxWidth().heightIn(min = 48.dp)
     }
@@ -174,16 +181,29 @@ fun StopControl(
                 contentDescription = description
                 if (stateText != null) { stateDescription = stateText; liveRegion = LiveRegionMode.Polite }
                 else if (armed) { stateDescription = "Tap again to stop"; liveRegion = LiveRegionMode.Polite }
+                else if (hint) { stateDescription = "Hold to stop"; liveRegion = LiveRegionMode.Polite }
                 onClick(label = if (mode == StopMode.Hold) "Stop (asks again)" else "Stop") { act(guard.tap(now(), accessible = true)); true }
             },
         contentAlignment = Alignment.Center,
     ) {
         // The hold's fill: grows from the left while the finger stays down.
         // (Sized from the button's own box: a plain fill-height would take the whole bar's height.)
-        if (mode == StopMode.Hold && progress.value > 0f) Box(Modifier.matchParentSize()) {
+        // Round: the hold and the "tap again" window are a white ring that unwinds to nothing.
+        if (round) {
+            val left = if (mode == StopMode.Hold && progress.value > 0f) 1f - progress.value else confirmLeft.value
+            if (left > 0f) androidx.compose.foundation.Canvas(Modifier.matchParentSize()) {
+                val w = 3.dp.toPx()
+                drawArc(
+                    Palette.White, startAngle = -90f, sweepAngle = 360f * left, useCenter = false,
+                    topLeft = androidx.compose.ui.geometry.Offset(w, w),
+                    size = androidx.compose.ui.geometry.Size(this.size.width - 2 * w, this.size.height - 2 * w),
+                    style = androidx.compose.ui.graphics.drawscope.Stroke(w, cap = androidx.compose.ui.graphics.StrokeCap.Round),
+                )
+            }
+        } else if (mode == StopMode.Hold && progress.value > 0f) Box(Modifier.matchParentSize()) {
             Box(Modifier.fillMaxHeight().fillMaxWidth(progress.value).background(Color.Black.copy(alpha = 0.28f)).align(Alignment.CenterStart))
         }
-        if (shape == StopShape.Round && !armed && !hint) Icon(Glyphs.Stop, null, tint = Palette.White, modifier = Modifier.size(20.dp))
+        if (round) Icon(Glyphs.Stop, null, tint = Palette.White, modifier = Modifier.size(if (size < 40.dp) 14.dp else 20.dp))
         else Row(
             Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
