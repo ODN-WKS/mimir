@@ -182,12 +182,10 @@ fun TaskScreen(taskId: String, state: StationState, station: Station, nav: Navig
                         Tag(task.stateWords, fg, bg)
                         // A mode that doesn't ask first is always in sight.
                         task.riskyMode?.let { if (task.yolo) Tag(it, Palette.Ground, Palette.Red) else Tag(it, Palette.AmberInk, Palette.Amber) }
-                        // What it's doing right now, in words, beside the state.
-                        Box(Modifier.weight(1f, fill = false)) {
-                            LiveSignLine(task.sign, Modifier.padding(bottom = 4.dp)) {
-                                if (task.stateWords == "Working" && task.stateLine != "Working on it") Text(task.stateLine, style = Type.Small, color = Palette.TextSoft, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            }
-                        }
+                    }
+                    // What it's doing right now, in words, under the state: beside it there is no room for both the words and the time.
+                    LiveSignLine(task.sign, Modifier.padding(bottom = 2.dp)) {
+                        if (task.stateWords == "Working" && task.stateLine != "Working on it") Text(task.stateLine, style = Type.Small, color = Palette.TextSoft, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                     if (more) Text(listOf(task.title, task.project, if (task.plan) "Plan first" else "", task.age).filter { it.isNotBlank() }.joinToString(" · "), style = Type.Small, color = Palette.TextDim, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
                 }

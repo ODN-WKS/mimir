@@ -106,7 +106,7 @@ fun Composer(
     LaunchedEffect(Unit) { kotlinx.coroutines.delay(300); if (keyboardAutoOn(keyCtx)) runCatching { focus.requestFocus() } }
     Column(
         modifier.fillMaxWidth().clip(shape).background(surface).border(1.dp, Palette.Outline, shape)
-            .padding(start = 6.dp, end = 6.dp, top = if (!optionsBelow && (chip != null || optionsChip != null || optionsNote != null)) 6.dp else 0.dp, bottom = if (optionsBelow && (optionsChip != null || optionsNote != null)) 4.dp else 0.dp),
+            .padding(start = 6.dp, end = 6.dp, top = if (!optionsBelow && (chip != null || optionsChip != null || optionsNote != null)) 6.dp else 0.dp, bottom = if (optionsBelow) 2.dp else 0.dp),
     ) {
         attach?.Note()
         if (attach?.any == true) Box(Modifier.padding(start = 4.dp, end = 4.dp, bottom = 6.dp)) { attach.Chips() }
@@ -171,7 +171,7 @@ fun Composer(
                         view.announceForAccessibility("Stop is getting ready. Tap again.")
                     }
                 }, shape = StopShape.Round, size = size, stateText = "Task is working")
-                val icon = if (size < 48.dp) 20.dp else 22.dp
+                val icon = when { size < 32.dp -> 16.dp; size < 48.dp -> 20.dp; else -> 22.dp }
                 androidx.compose.animation.Crossfade(kind, animationSpec = io.github.odnwks.mimir.ui.theme.motionSpec(io.github.odnwks.mimir.ui.theme.Motion.SCREEN_MS), label = "send") { k ->
                     when (k) {
                         ButtonKind.Empty -> RoundButton(Glyphs.Send, "Send", {}, size = size, iconSize = icon, filled = true, enabled = false)
@@ -200,7 +200,7 @@ fun Composer(
                     // A real keyboard: Enter sends, Shift+Enter is a new line, Tab leaves the box.
                     .messageBoxKeys { if (sendable) onSend() },
                 decorationBox = { inner ->
-                    Box(Modifier.padding(vertical = if (optionsBelow) 12.dp else 16.dp), contentAlignment = Alignment.CenterStart) {
+                    Box(Modifier.padding(top = if (optionsBelow) 12.dp else 16.dp, bottom = if (optionsBelow) 4.dp else 16.dp), contentAlignment = Alignment.CenterStart) {
                         if (value.isEmpty()) Text(hint, style = Type.Body.copy(lineHeight = 16.sp * 1.4f), color = Palette.TextDim, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         inner()
                     }
@@ -209,10 +209,11 @@ fun Composer(
             if (!optionsBelow) Box(Modifier.padding(bottom = 4.dp)) { buttons(48.dp) }
         }
         // One row under the words (owner, 2026-11-25): + on the left, model and effort in the middle, Send on the right.
-        if (optionsBelow) Row(Modifier.fillMaxWidth().padding(bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) { attach?.Button(attachSight) }
+        // Close to the box's bottom edge (owner, 2026-11-25), Send about 30% smaller than before.
+        if (optionsBelow) Row(Modifier.fillMaxWidth().heightIn(min = 40.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(40.dp), contentAlignment = Alignment.Center) { attach?.Button(attachSight) }
             Box(Modifier.weight(1f), contentAlignment = Alignment.Center) { chips() }
-            Box(Modifier.widthIn(min = 48.dp), contentAlignment = Alignment.CenterEnd) { buttons(40.dp) }
+            Box(Modifier.widthIn(min = 40.dp).padding(end = 4.dp), contentAlignment = Alignment.CenterEnd) { buttons(28.dp) }
         }
         if (optionsNote != null && optionsBelow) Text(optionsNote, style = Type.Small, color = Palette.TextDim, modifier = Modifier.padding(start = 6.dp, bottom = 4.dp))
     }

@@ -55,7 +55,7 @@ fun LiveSignLine(sign: LiveSign?, modifier: Modifier = Modifier, fallback: @Comp
         androidx.compose.foundation.layout.Box(Modifier.size(8.dp).graphicsLayer { alpha = pulse }.background(Palette.TextSoft, CircleShape))
         // Only the state words are announced; the ticking time is not read out every second.
         // The words give way before the timer does, so "· 3 min" is never cut to a lone dot.
-        Text(shown.words, style = Type.Small, color = Palette.TextSoft, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false).semantics { liveRegion = LiveRegionMode.Polite })
+        Text(shown.words, style = Type.Small, color = Palette.TextSoft, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false).semantics { liveRegion = LiveRegionMode.Polite })
         if (shown.timer.isNotEmpty()) Text(shown.timer, style = Type.Small, color = Palette.TextSoft, maxLines = 1, softWrap = false)
     }
 }
