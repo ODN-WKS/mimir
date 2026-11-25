@@ -256,19 +256,20 @@ private fun SheetContent(sheet: Sheet, state: StationState, station: Station, na
                 BigButton("Cancel", Look.Outline, { nav.closeSheet() }, height = 48.dp)
             }
         }
+        // Model and effort both chosen here: a pick stays open (owner, 2026-11-25); back or a swipe closes it.
         is Sheet.TaskModel -> Menu(sheet.title(state)) {
             val now = state.task(sheet.taskId)?.model.orEmpty()
             (state.models.claude + state.models.local).forEach { m ->
                 val current = now == Mapping.modelName(m.id) || now == m.name || now == m.id.removePrefix("ollama:") + " (free)" || (m.id == "auto" && now == Mapping.modelName(null))
                 // Online ones go to Anthropic: marked, so it is plain which ones leave the PC.
-                MenuRow(Glyphs.Models, plainModelName(m.name), checked = current, note = if (m.free) "On your PC" else "Online") { station.setTaskModel(sheet.taskId, m.id); nav.closeSheet() }
+                MenuRow(Glyphs.Models, plainModelName(m.name), checked = current, note = if (m.free) "On your PC" else "Online") { station.setTaskModel(sheet.taskId, m.id) }
             }
             // Effort for this task from now on: only a PC that takes it with a message (task_reply_options).
             if (station.canSetReplyOptions()) {
                 val effortNow = TaskEffort.of(state.task(sheet.taskId)?.effort?.ifEmpty { null })
                 Text("Effort, from now on", style = Type.Small, color = Palette.TextDim, modifier = Modifier.padding(start = 12.dp, top = 10.dp, bottom = 2.dp))
                 TaskEffort.entries.forEach { e ->
-                    MenuRow(Glyphs.Models, e.words, checked = e == effortNow, note = e.about, tick = "Effort chosen") { station.setTaskEffort(sheet.taskId, e.wire); nav.closeSheet() }
+                    MenuRow(Glyphs.Models, e.words, checked = e == effortNow, note = e.about, tick = "Effort chosen") { station.setTaskEffort(sheet.taskId, e.wire) }
                 }
             } else Text(UPDATE_PC_FOR_OPTIONS, style = Type.Small, color = Palette.TextDim, modifier = Modifier.padding(start = 12.dp, top = 10.dp, bottom = 2.dp))
         }
