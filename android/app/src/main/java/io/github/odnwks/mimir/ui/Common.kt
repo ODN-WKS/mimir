@@ -205,22 +205,33 @@ fun BackHeader(
     /** A tap on the title (with its down-chevron) opens everything for this screen, named [titleLabel]. */
     onTitle: (() -> Unit)? = null,
     titleLabel: String = "Options",
+    /** The subtitle content spans the whole width under the title row, instead of sharing the title's column with the actions. */
+    subtitleFullWidth: Boolean = false,
 ) {
-    Row(
-        Modifier.fillMaxWidth().padding(start = 4.dp, end = if (action != null) 4.dp else 16.dp, top = 12.dp, bottom = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
-    ) {
-        // In a tablet's right pane with nothing to go back to, the arrow is left out rather than doing nothing.
-        if (io.github.odnwks.mimir.ui.adaptive.LocalPaneBack.current) IconTarget(backIcon, backLabel, onBack)
-        else Spacer(Modifier.width(12.dp))
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            if (onTitle != null) TopicButton(title, titleLabel, onTitle, titleStyle, maxLines = 3, start = 0.dp)
-            else Text(title, style = titleStyle, color = Palette.Text, modifier = Modifier.semantics { heading() })
-            if (subtitleContent != null) subtitleContent()
-            else if (subtitle != null) Text(subtitle, style = Type.Small, color = Palette.TextDim)
+    val hasBack = io.github.odnwks.mimir.ui.adaptive.LocalPaneBack.current
+    Column(Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 8.dp)) {
+        Row(
+            Modifier.fillMaxWidth().padding(start = 4.dp, end = if (action != null) 4.dp else 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            // In a tablet's right pane with nothing to go back to, the arrow is left out rather than doing nothing.
+            if (hasBack) IconTarget(backIcon, backLabel, onBack)
+            else Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                if (onTitle != null) TopicButton(title, titleLabel, onTitle, titleStyle, maxLines = 3, start = 0.dp)
+                else Text(title, style = titleStyle, color = Palette.Text, modifier = Modifier.semantics { heading() })
+                if (!subtitleFullWidth) {
+                    if (subtitleContent != null) subtitleContent()
+                    else if (subtitle != null) Text(subtitle, style = Type.Small, color = Palette.TextDim)
+                }
+            }
+            action?.invoke()
         }
-        action?.invoke()
+        // Lined up with the title, across the full width (the actions no longer squeeze it).
+        if (subtitleFullWidth && subtitleContent != null) Column(Modifier.fillMaxWidth().padding(start = if (hasBack) 56.dp else 16.dp, end = 16.dp)) {
+            subtitleContent()
+        }
     }
 }
 
@@ -702,6 +713,8 @@ internal fun Tab.glyph() = when (this) {
 fun Tag(text: String, fg: Color, bg: Color, modifier: Modifier = Modifier) {
     Text(
         text, style = TextStyle(fontSize = 13.5.sp, lineHeight = 18.sp, fontWeight = FontWeight.SemiBold), color = fg,
+        // A tag is one line: never squeezed into a column of single letters.
+        maxLines = 1, softWrap = false,
         modifier = modifier.clip(RoundedCornerShape(12.dp)).background(bg).padding(horizontal = 9.dp, vertical = 3.dp),
     )
 }

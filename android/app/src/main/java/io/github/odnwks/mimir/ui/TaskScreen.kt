@@ -122,6 +122,8 @@ fun TaskScreen(taskId: String, state: StationState, station: Station, nav: Navig
     // The PC's own notes about a followed session say what the line and buttons below already say.
     val shownMessages = task.messages.filterNot { m ->
         m.note && ((followed && isFollowNote(m.text)) ||
+            // The words the PC sends Claude to carry on: the "Carried on from a short summary" note already says it.
+            m.text.trim() == io.github.odnwks.mimir.data.CARRY_ON_TEXT ||
             // Nothing runs on after a stop or a pause.
             (m.text == BACKGROUND_NOTE && task.stateWords in setOf("Stopped", "Stopped unexpectedly", "Paused")) ||
             // The box below says it, with Continue.
@@ -199,6 +201,7 @@ fun TaskScreen(taskId: String, state: StationState, station: Station, nav: Navig
                 },
                 // A tap on the task's name: everything for this task in one sheet.
                 onTitle = { nav.openSheet(Sheet.TaskOptions(task.id)) }, titleLabel = "Task name, tap for options",
+                subtitleFullWidth = true,
             )
             if (finding) Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 MessageBox(find, { find = it }, "Find in this task", "Find in this task", Modifier.fillMaxWidth(), autoFocus = true)
