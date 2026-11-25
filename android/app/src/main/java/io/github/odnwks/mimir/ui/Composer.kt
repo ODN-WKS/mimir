@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -142,43 +143,25 @@ fun Composer(
         } }
         if (!optionsBelow) chips()
         if (optionsNote != null && !optionsBelow) Text(optionsNote, style = Type.Small, color = Palette.TextDim, modifier = Modifier.padding(start = 6.dp, bottom = 4.dp))
-        Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            if (attach != null) Box(Modifier.padding(bottom = 4.dp)) { attach.Button(attachSight) }
-            if (showMic || voice.state == Speaking.Listening) Box(Modifier.padding(bottom = 4.dp)) { MicButton(voice, micLabel, filled = false, surface = Palette.Card) }
-            BasicTextField(
-                value = value,
-                onValueChange = onValue,
-                textStyle = Type.Body.copy(color = Palette.Text, lineHeight = 16.sp * 1.4f),
-                cursorBrush = SolidColor(Palette.BlueLight),
-                maxLines = 6,
-                modifier = Modifier.weight(1f).heightIn(min = 56.dp).semantics { contentDescription = label }
-                    .focusRequester(focus)
-                    // A real keyboard: Enter sends, Shift+Enter is a new line, Tab leaves the box.
-                    .messageBoxKeys { if (sendable) onSend() },
-                decorationBox = { inner ->
-                    Box(Modifier.padding(vertical = 16.dp), contentAlignment = Alignment.CenterStart) {
-                        if (value.isEmpty()) Text(hint, style = Type.Body.copy(lineHeight = 16.sp * 1.4f), color = Palette.TextDim, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        inner()
-                    }
-                },
-            )
-            val kind = if (sendable) ButtonKind.Send else ButtonKind.Empty
-            // Stop is there the whole time something works, typed words or not (owner, 2026-11-22).
-            val showStop = working && onStop != null
-            // A tap meant for the button that was there a moment ago does nothing: Stop turning up
-            // under a thumb that was about to press something else.
-            var armed by remember { mutableStateOf(true) }
-            var before by remember { mutableStateOf(showStop) }
-            val view = androidx.compose.ui.platform.LocalView.current
-            LaunchedEffect(showStop) {
-                // Only Stop turning up from nothing holds a tap back (not a change in why it works).
-                val appeared = showStop && !before
-                before = showStop
-                if (!appeared) return@LaunchedEffect
-                armed = false; kotlinx.coroutines.delay(BUTTON_SETTLE_MS); armed = true
-            }
-            val settled = { armed }
-            Row(Modifier.padding(bottom = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+        val kind = if (sendable) ButtonKind.Send else ButtonKind.Empty
+        // Stop is there the whole time something works, typed words or not (owner, 2026-11-22).
+        val showStop = working && onStop != null
+        // A tap meant for the button that was there a moment ago does nothing: Stop turning up
+        // under a thumb that was about to press something else.
+        var armed by remember { mutableStateOf(true) }
+        var before by remember { mutableStateOf(showStop) }
+        val view = androidx.compose.ui.platform.LocalView.current
+        LaunchedEffect(showStop) {
+            // Only Stop turning up from nothing holds a tap back (not a change in why it works).
+            val appeared = showStop && !before
+            before = showStop
+            if (!appeared) return@LaunchedEffect
+            armed = false; kotlinx.coroutines.delay(BUTTON_SETTLE_MS); armed = true
+        }
+        val settled = { armed }
+        // Stop (while it works) and Send, at [size].
+        val buttons: @Composable (androidx.compose.ui.unit.Dp) -> Unit = { size ->
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                 // Stop asks twice or for a 2 second hold (Settings › Look and size › Stop buttons).
                 if (showStop) StopControl({
                     if (settled()) onStop?.invoke()
@@ -187,21 +170,50 @@ fun Composer(
                         haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
                         view.announceForAccessibility("Stop is getting ready. Tap again.")
                     }
-                }, shape = StopShape.Round, stateText = "Task is working")
+                }, shape = StopShape.Round, size = size, stateText = "Task is working")
+                val icon = if (size < 48.dp) 20.dp else 22.dp
                 androidx.compose.animation.Crossfade(kind, animationSpec = io.github.odnwks.mimir.ui.theme.motionSpec(io.github.odnwks.mimir.ui.theme.Motion.SCREEN_MS), label = "send") { k ->
                     when (k) {
-                        ButtonKind.Empty -> RoundButton(Glyphs.Send, "Send", {}, filled = true, enabled = false)
+                        ButtonKind.Empty -> RoundButton(Glyphs.Send, "Send", {}, size = size, iconSize = icon, filled = true, enabled = false)
                         ButtonKind.Send -> RoundButton(Glyphs.Send, "Send", {
                             if (sendable) {
                                 haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
                                 onSend()
                             }
-                        }, filled = true)
+                        }, size = size, iconSize = icon, filled = true)
                     }
                 }
             }
         }
-        if (optionsBelow) chips()
+        Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            if (attach != null && !optionsBelow) Box(Modifier.padding(bottom = 4.dp)) { attach.Button(attachSight) }
+            if (showMic || voice.state == Speaking.Listening) Box(Modifier.padding(bottom = 4.dp)) { MicButton(voice, micLabel, filled = false, surface = Palette.Card) }
+            BasicTextField(
+                value = value,
+                onValueChange = onValue,
+                textStyle = Type.Body.copy(color = Palette.Text, lineHeight = 16.sp * 1.4f),
+                cursorBrush = SolidColor(Palette.BlueLight),
+                maxLines = 6,
+                modifier = Modifier.weight(1f).heightIn(min = if (optionsBelow) 48.dp else 56.dp).semantics { contentDescription = label }
+                    .padding(start = if (optionsBelow) 8.dp else 0.dp, end = if (optionsBelow) 8.dp else 0.dp)
+                    .focusRequester(focus)
+                    // A real keyboard: Enter sends, Shift+Enter is a new line, Tab leaves the box.
+                    .messageBoxKeys { if (sendable) onSend() },
+                decorationBox = { inner ->
+                    Box(Modifier.padding(vertical = if (optionsBelow) 12.dp else 16.dp), contentAlignment = Alignment.CenterStart) {
+                        if (value.isEmpty()) Text(hint, style = Type.Body.copy(lineHeight = 16.sp * 1.4f), color = Palette.TextDim, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        inner()
+                    }
+                },
+            )
+            if (!optionsBelow) Box(Modifier.padding(bottom = 4.dp)) { buttons(48.dp) }
+        }
+        // One row under the words (owner, 2026-11-25): + on the left, model and effort in the middle, Send on the right.
+        if (optionsBelow) Row(Modifier.fillMaxWidth().padding(bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) { attach?.Button(attachSight) }
+            Box(Modifier.weight(1f), contentAlignment = Alignment.Center) { chips() }
+            Box(Modifier.widthIn(min = 48.dp), contentAlignment = Alignment.CenterEnd) { buttons(40.dp) }
+        }
         if (optionsNote != null && optionsBelow) Text(optionsNote, style = Type.Small, color = Palette.TextDim, modifier = Modifier.padding(start = 6.dp, bottom = 4.dp))
     }
 }
