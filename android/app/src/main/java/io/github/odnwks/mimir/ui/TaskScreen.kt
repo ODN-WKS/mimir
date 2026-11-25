@@ -167,12 +167,12 @@ fun TaskScreen(taskId: String, state: StationState, station: Station, nav: Navig
             // The top keeps only the state, a small Stop while it works, and the three dots (owner, 2026-11-25):
             // the title, Back (the phone's own back gesture) and Find (in the menu) give the chat their room.
             Row(
-                Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp, top = 4.dp),
+                Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp),
                 verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 var more by rememberSaveable(task.id) { mutableStateOf(false) }
                 Column(
-                    Modifier.weight(1f).heightIn(min = 48.dp)
+                    Modifier.weight(1f).heightIn(min = 40.dp)
                         .clickable(role = androidx.compose.ui.semantics.Role.Button, onClickLabel = if (more) "Hide the details" else "Show the task name and project") { more = !more }
                         .semantics(mergeDescendants = true) { liveRegion = androidx.compose.ui.semantics.LiveRegionMode.Polite },
                     verticalArrangement = Arrangement.Center,
@@ -182,20 +182,22 @@ fun TaskScreen(taskId: String, state: StationState, station: Station, nav: Navig
                         Tag(task.stateWords, fg, bg)
                         // A mode that doesn't ask first is always in sight.
                         task.riskyMode?.let { if (task.yolo) Tag(it, Palette.Ground, Palette.Red) else Tag(it, Palette.AmberInk, Palette.Amber) }
-                    }
-                    // What it's doing right now, in words, under the state: beside it there is no room for both the words and the time.
-                    LiveSignLine(task.sign, Modifier.padding(bottom = 2.dp)) {
-                        if (task.stateWords == "Working" && task.stateLine != "Working on it") Text(task.stateLine, style = Type.Small, color = Palette.TextSoft, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        // What it's doing right now, on the same line: the words first, the time after them while it fits.
+                        Box(Modifier.weight(1f, fill = false)) {
+                            LiveSignLine(task.sign, oneLine = true) {
+                                if (task.stateWords == "Working" && task.stateLine != "Working on it") Text(task.stateLine, style = Type.Small, color = Palette.TextSoft, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                        }
                     }
                     if (more) Text(listOf(task.title, task.project, if (task.plan) "Plan first" else "", task.age).filter { it.isNotBlank() }.joinToString(" · "), style = Type.Small, color = Palette.TextDim, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
                 }
                 // Stop: small and round; its confirmation is a ring that unwinds (a followed session has its own Stop below).
                 if (task.showsStop && !task.stopPending && !(listsSessions && followed && !carried)) StopControl(
                     { cutOff = task.steps.lastOrNull()?.startsWith("…") == true; station.stopTask(task.id) },
-                    shape = StopShape.Round, size = 36.dp, stateText = "Task is working",
+                    shape = StopShape.Round, size = 26.dp, stateText = "Task is working",
                 )
                 // Find, voice typing, Archive, Delete, Rename, Move and the rest.
-                IconTarget(Glyphs.More, TASK_OPTIONS, { nav.openSheet(Sheet.TaskOptions(task.id)) })
+                IconTarget(Glyphs.More, TASK_OPTIONS, { nav.openSheet(Sheet.TaskOptions(task.id)) }, size = 40.dp)
             }
             // The menu's Find and Talk, done here.
             val voice = rememberVoiceInput(station, task.id)

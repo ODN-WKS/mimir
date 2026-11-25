@@ -192,7 +192,7 @@ fun StopControl(
         if (round) {
             val left = if (mode == StopMode.Hold && progress.value > 0f) 1f - progress.value else confirmLeft.value
             if (left > 0f) androidx.compose.foundation.Canvas(Modifier.matchParentSize()) {
-                val w = 3.dp.toPx()
+                val w = (if (size < 30.dp) 2 else 3).dp.toPx()
                 drawArc(
                     Palette.White, startAngle = -90f, sweepAngle = 360f * left, useCenter = false,
                     topLeft = androidx.compose.ui.geometry.Offset(w, w),
@@ -203,7 +203,7 @@ fun StopControl(
         } else if (mode == StopMode.Hold && progress.value > 0f) Box(Modifier.matchParentSize()) {
             Box(Modifier.fillMaxHeight().fillMaxWidth(progress.value).background(Color.Black.copy(alpha = 0.28f)).align(Alignment.CenterStart))
         }
-        if (round) Icon(Glyphs.Stop, null, tint = Palette.White, modifier = Modifier.size(if (size < 40.dp) 14.dp else 20.dp))
+        if (round) Icon(Glyphs.Stop, null, tint = Palette.White, modifier = Modifier.size(when { size < 30.dp -> 11.dp; size < 40.dp -> 14.dp; else -> 20.dp }))
         else Row(
             Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),

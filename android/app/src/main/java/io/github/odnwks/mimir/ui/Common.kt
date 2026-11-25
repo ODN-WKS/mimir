@@ -287,9 +287,9 @@ fun EmptyState(text: String, modifier: Modifier = Modifier, action: String? = nu
 
 /** A bare 48 dp icon button (back, options). */
 @Composable
-fun IconTarget(icon: ImageVector, label: String, onClick: () -> Unit, tint: Color = Palette.Text) {
+fun IconTarget(icon: ImageVector, label: String, onClick: () -> Unit, tint: Color = Palette.Text, size: Dp = 48.dp) {
     Box(
-        Modifier.size(48.dp).clip(CircleShape).clickable(role = Role.Button, onClickLabel = null, onClick = onClick)
+        Modifier.size(size).clip(CircleShape).clickable(role = Role.Button, onClickLabel = null, onClick = onClick)
             .semantics { contentDescription = label },
         contentAlignment = Alignment.Center,
     ) { Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(24.dp)) }

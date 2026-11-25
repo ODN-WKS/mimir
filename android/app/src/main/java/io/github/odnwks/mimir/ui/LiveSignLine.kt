@@ -23,6 +23,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
@@ -37,7 +38,7 @@ import io.github.odnwks.mimir.ui.theme.Type
  * time it has worked counts up and a long silence shows.
  */
 @Composable
-fun LiveSignLine(sign: LiveSign?, modifier: Modifier = Modifier, fallback: @Composable () -> Unit = {}) {
+fun LiveSignLine(sign: LiveSign?, modifier: Modifier = Modifier, oneLine: Boolean = false, fallback: @Composable () -> Unit = {}) {
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     LaunchedEffect(sign) { while (true) { now = System.currentTimeMillis(); kotlinx.coroutines.delay(1000) } }
     // The live line only when it has something to say; otherwise the plainer line of an older PC.
@@ -49,12 +50,14 @@ fun LiveSignLine(sign: LiveSign?, modifier: Modifier = Modifier, fallback: @Comp
     )
     Row(
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
-        modifier = modifier.padding(top = 4.dp),
+        modifier = modifier.padding(top = if (oneLine) 0.dp else 4.dp),
     ) {
         // Read at draw time: the pulse never recomposes the line.
         androidx.compose.foundation.layout.Box(Modifier.size(8.dp).graphicsLayer { alpha = pulse }.background(Palette.TextSoft, CircleShape))
         // Only the state words are announced; the ticking time is not read out every second.
         // The words give way before the timer does, so "· 3 min" is never cut to a lone dot.
+        // One line (a task's top row): words and time in one text, cut at the end, so the words always show.
+        if (oneLine) { Text(shown.words + shown.timer, style = Type.Small, color = Palette.TextSoft, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.semantics { contentDescription = shown.words }); return@Row }
         Text(shown.words, style = Type.Small, color = Palette.TextSoft, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false).semantics { liveRegion = LiveRegionMode.Polite })
         if (shown.timer.isNotEmpty()) Text(shown.timer, style = Type.Small, color = Palette.TextSoft, maxLines = 1, softWrap = false)
     }
