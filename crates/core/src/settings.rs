@@ -105,9 +105,11 @@ pub struct Settings {
     /// migrate, never written again; `free_when_out` is the switch now.
     #[serde(default, skip_serializing)]
     pub switch_to_free: bool,
-    /// When online use runs out, project work and online chats carry on
-    /// with the PC's own model (None: on). Off: a task asks first, and a
-    /// chat says online is at its limit.
+    /// When online use runs out, or passes 99% this week
+    /// (`usage::FREE_AT_PERCENT`), new project work and online chats go to
+    /// the PC's own model, and a task that hits the limit carries on there
+    /// (None: on). Off: a task asks first, and a chat says online is at its
+    /// limit.
     #[serde(default)]
     pub free_when_out: Option<bool>,
     /// Before Stage 1: the free model tasks fell back to (read once).
@@ -270,8 +272,9 @@ impl Settings {
     }
 
     /// A new project task on `model` is moved to the PC's own model: the
-    /// project work setting is "your PC's model", or online use is out and
-    /// the switch "When online use runs out, use your PC's model" is on.
+    /// project work setting is "your PC's model", or online use is out (or
+    /// past 99% this week: `claude_out` is either) and the switch "When
+    /// online use runs out, use your PC's model" is on.
     pub fn moves_to_free(&self, model: Option<&str>, claude_out: bool) -> bool {
         let power = self.power();
         !crate::models::is_free(model)

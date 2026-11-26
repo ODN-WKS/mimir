@@ -1448,8 +1448,8 @@ impl Service {
                 let mut model = model;
                 // Free models only, or Claude's limit is out: a free model.
                 let claude_model = model.clone();
-                let now = crate::needs::now();
-                let out = self.claude_out_until.filter(|t| *t > now);
+                // Out, or past 99% this week (and which).
+                let out = self.online_low();
                 let power = self.settings.power();
                 let mut on_free = None;
                 if self.settings.moves_to_free(model.as_deref(), out.is_some())
@@ -1490,7 +1490,7 @@ impl Service {
                 };
                 if let Some(name) = on_free {
                     match out {
-                        Some(back_at) if power != settings::Power::FreeOnly => {
+                        Some((back_at, ran_out)) if power != settings::Power::FreeOnly => {
                             self.runner.set_ran_out(
                                 &id,
                                 Some(mimir_proto::RanOut {
@@ -1501,11 +1501,18 @@ impl Service {
                                 false,
                             );
                             let name = crate::models::plain_name(&name);
+                            let why = if ran_out {
+                                "the online limit ran out".to_string()
+                            } else {
+                                format!(
+                                    "online use passed {}% this week",
+                                    crate::usage::FREE_AT_PERCENT
+                                )
+                            };
                             self.runner.note(
                                 &id,
                                 &format!(
-                                    "On {name} because the online limit ran out; online is back \
-                                     at {}.",
+                                    "On {name} because {why}; online is back at {}.",
                                     crate::models::clock(back_at)
                                 ),
                             );
@@ -4532,17 +4539,22 @@ impl Service {
                 why: "That didn't work. Try again.".into(),
             };
         }
-        // Online is at its limit and "When online use runs out, use your
-        // PC's model" is on: the PC's model answers, and says why.
+        // Online is at its limit, or past 99% this week, and "When online
+        // use runs out, use your PC's model" is on: the PC's model answers,
+        // and says why.
         let free_when_out = self.settings.free_when_out_on();
         let mut limit_note = None;
         if paid
             && free_when_out
             && pick.is_some()
-            && let Some(back_at) = self.claude_out()
+            && let Some((back_at, ran_out)) = self.online_low()
         {
             paid = false;
-            limit_note = Some(crate::talk::limit_words(back_at));
+            limit_note = Some(if ran_out {
+                crate::talk::limit_words(back_at)
+            } else {
+                crate::talk::near_limit_words()
+            });
         }
         if pick.is_none() && !paid {
             return Filed::OnPhone {
@@ -5173,6 +5185,17 @@ impl Service {
         self.claude_out_until.filter(|t| *t > crate::needs::now())
     }
 
+    /// Until when new online work goes to the PC's model while "When online
+    /// use runs out, use your PC's model" is on: the limit ran out, or this
+    /// week's use passed 99% (`usage::FREE_AT_PERCENT`). The flag says
+    /// which: true when it ran out.
+    fn online_low(&self) -> Option<(i64, bool)> {
+        self.claude_out().map(|t| (t, true)).or_else(|| {
+            crate::usage::past_free_threshold(self.runner.weekly.as_ref(), crate::needs::now())
+                .map(|t| (t, false))
+        })
+    }
+
     fn free_choice(&self) -> Option<crate::models::FreeModel> {
         let list = crate::models::installed()
             .map(|n| crate::models::catalogue(&n))
@@ -5298,7 +5321,7 @@ impl Service {
         match call {
             Call::NewIncognito { .. } => true,
             Call::NewTask { model, .. } => {
-                let out = self.claude_out_until.filter(|t| *t > crate::needs::now());
+                let out = self.online_low();
                 crate::models::is_free(model.as_deref())
                     || self.settings.moves_to_free(model.as_deref(), out.is_some())
             }

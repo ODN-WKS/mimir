@@ -106,6 +106,15 @@ pub fn limit_words(at: i64) -> String {
     )
 }
 
+/// Under an answer the PC's model wrote because this week's online use
+/// passed 99% (`usage::FREE_AT_PERCENT`).
+pub fn near_limit_words() -> String {
+    format!(
+        "Your PC · Online use passed {}% this week · Your PC answered instead",
+        crate::usage::FREE_AT_PERCENT
+    )
+}
+
 /// The failure a chat shows when online is at its limit and the switch is off.
 pub fn limit_off_words(at: i64) -> String {
     format!(

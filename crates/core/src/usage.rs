@@ -56,6 +56,20 @@ pub fn claude_in_use_now<'a>(
     claude_in_use(chats_paid, project_on_claude && has_project, on_claude)
 }
 
+/// "When online use passes 99% this week, or runs out, your PC's model
+/// takes over": the one threshold, the same on the PC and the phone.
+pub const FREE_AT_PERCENT: i64 = 99;
+
+/// This week's online use is at or past [`FREE_AT_PERCENT`], rounded as the
+/// PC window and the phone show it (98.5% shows as 99%, so it counts): when
+/// the week resets. A reading whose reset time has passed is last week's,
+/// and one with no reset time can't be placed in a week: neither counts.
+pub fn past_free_threshold(weekly: Option<&WeeklyUse>, now: i64) -> Option<i64> {
+    weekly
+        .filter(|w| w.resets_at > now && (w.used * 100.0).round() as i64 >= FREE_AT_PERCENT)
+        .map(|w| w.resets_at)
+}
+
 /// What one look found.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Reading {
@@ -328,6 +342,34 @@ impl Poller {
 
 #[cfg(test)]
 mod tests {
+    /// P23 addendum: at 98% this week work stays online; at 99% and above
+    /// it moves. Last week's reading, or one with no reset time, never moves it.
+    #[test]
+    fn p23_the_threshold_is_99_percent_this_week() {
+        let now = 1_000;
+        let w = |used: f64, resets_at: i64| WeeklyUse { used, resets_at };
+        for (used, moves) in [
+            (0.0, false),
+            (0.86, false),
+            (0.98, false),
+            (0.984, false),
+            (0.985, true),
+            (0.99, true),
+            (0.995, true),
+            (1.0, true),
+        ] {
+            assert_eq!(
+                past_free_threshold(Some(&w(used, 5_000)), now),
+                moves.then_some(5_000),
+                "{used}"
+            );
+        }
+        assert_eq!(past_free_threshold(Some(&w(1.0, 900)), now), None);
+        assert_eq!(past_free_threshold(Some(&w(1.0, 0)), now), None);
+        assert_eq!(past_free_threshold(None, now), None);
+        assert_eq!(FREE_AT_PERCENT, 99);
+    }
+
     use super::*;
 
     #[test]

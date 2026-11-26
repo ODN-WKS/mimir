@@ -624,5 +624,142 @@ fn p23_the_phone_and_the_pc_use_the_same_words() {
             kt.contains(&format!("const val {name} = \"{words}\"")),
             "the phone's {name} isn't \"{words}\""
         );
+    } // One threshold: the words name the PC's own.
+    assert!(
+        station_ui::labels::FREE_WHEN_OUT_ABOUT.starts_with(&format!(
+            "When online use passes {}% this week, or runs out, your PC's model takes over",
+            mimir_core::usage::FREE_AT_PERCENT
+        ))
+    );
+}
+
+/// Plays a run that reports this week's online use at `used` (0 to 1),
+/// with the week resetting far away.
+fn play_week(home: &TestHome, as_name: &str, used: f64) {
+    let text = std::fs::read_to_string(recording("near-limit.jsonl")).unwrap();
+    assert!(text.contains("\\\"utilization\\\":0.86"));
+    std::fs::write(
+        home.streams.join(as_name),
+        text.replace(
+            "\\\"utilization\\\":0.86",
+            &format!("\\\"utilization\\\":{used}"),
+        )
+        .replace("1795154400", &BACK_AT.to_string()),
+    )
+    .unwrap();
+}
+
+/// Owner, 2026-11-26: "can we make the 85% actually 99%". With the switch
+/// on, at 98% this week a new task and an online chat stay online; at 99%
+/// and above (online not yet out) they go to the PC's model and say why.
+/// With the switch off, neither moves at 99% or 100%.
+/// (One check per case: each needs a home of its own.)
+fn week_case(used: f64, on: bool, moves: bool) {
+    {
+        let case = format!("{used} with the switch {}", if on { "on" } else { "off" });
+        let Some(home) = home(serde_json::json!({
+            "project_engine": "claude",
+            "chats_engine": "paid",
+            "free_when_out": on,
+        })) else {
+            return;
+        };
+        fake_ollama();
+        play_week(&home, "run-1.jsonl", used);
+        home.play("run-2.jsonl", "live.jsonl");
+        home.play("run-3.jsonl", "live.jsonl");
+        let mut st = home.service();
+        let (p, mut seen) = paired(&mut st, None);
+
+        // An online task reads this week's use.
+        let first = new_task(&mut st, &home, "Tidy up notes.txt.");
+        assert!(
+            service_until(&mut st, |s| task(s, &first).is_some_and(|v| !v.busy())),
+            "{case}"
+        );
+        assert!(
+            !mimir_core::models::is_free(task(&st, &first).unwrap().task.model.as_deref()),
+            "{case}: the first task wasn't online"
+        );
+
+        // A new task.
+        let second = new_task(&mut st, &home, "What does this project do?");
+        assert!(
+            service_until(&mut st, |s| task(s, &second).is_some_and(|v| !v.busy())),
+            "{case}"
+        );
+        let model = task(&st, &second).unwrap().task.model.clone();
+        let said = notes(&st, &second).iter().any(|n| {
+            n.starts_with("On ")
+                && n.contains("because online use passed 99% this week; online is back at")
+        });
+        if moves {
+            assert_eq!(
+                model.as_deref(),
+                Some(format!("ollama:{FREE}").as_str()),
+                "{case}"
+            );
+            assert!(said, "{case}: it didn't say why: {:?}", notes(&st, &second));
+            let out = task(&st, &second).unwrap().task.ran_out.clone().unwrap();
+            assert!(out.on_free, "{case}");
+            assert_eq!(out.back_at, BACK_AT, "{case}");
+        } else {
+            assert!(
+                !mimir_core::models::is_free(model.as_deref()),
+                "{case}: the new task moved to the PC's model: {model:?}"
+            );
+            assert!(!said, "{case}");
+        }
+
+        // An online chat.
+        let f: Filed = serde_json::from_value(seen.call(&p, chat("t1", "Hello")).unwrap()).unwrap();
+        let Filed::Talk {
+            ran, model_words, ..
+        } = &f
+        else {
+            panic!("{case}: not answered: {f:?}")
+        };
+        if moves {
+            assert_eq!(*ran, mimir_core::proto::Ran::Pc, "{case}: {f:?}");
+            assert_eq!(
+                model_words, "Your PC · Online use passed 99% this week · Your PC answered instead",
+                "{case}"
+            );
+        } else {
+            assert_eq!(*ran, mimir_core::proto::Ran::Paid, "{case}: {f:?}");
+        }
+        assert!(seen.until(&p, |s| s.done.contains_key("t1.a")), "{case}");
+        if moves {
+            let turn = seen.done["t1.a"].clone().unwrap();
+            assert_eq!(turn.text, "PC answer.", "{case}");
+            assert_eq!(turn.ran, Some(mimir_core::proto::Ran::Pc), "{case}");
+            // Only the two tasks went to Claude Code; the chat never tried online.
+            assert_eq!(home.conversations().len(), 2, "{case}");
+        }
     }
+}
+
+#[test]
+fn p23_at_98_percent_with_the_switch_on_work_stays_online() {
+    week_case(0.98, true, false);
+}
+
+#[test]
+fn p23_at_99_percent_with_the_switch_on_work_moves_to_the_pcs_model() {
+    week_case(0.99, true, true);
+}
+
+#[test]
+fn p23_at_100_percent_with_the_switch_on_work_moves_to_the_pcs_model() {
+    week_case(1.0, true, true);
+}
+
+#[test]
+fn p23_at_99_percent_with_the_switch_off_work_stays_online() {
+    week_case(0.99, false, false);
+}
+
+#[test]
+fn p23_at_100_percent_with_the_switch_off_work_stays_online() {
+    week_case(1.0, false, false);
 }

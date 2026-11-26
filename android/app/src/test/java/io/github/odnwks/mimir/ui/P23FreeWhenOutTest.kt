@@ -91,6 +91,16 @@ class P23FreeWhenOutTest {
         compose.onNodeWithText("small jobs use", substring = true).assertDoesNotExist()
     }
 
+    @Test fun theLineSaysThePcsOneThresholdOf99() {
+        // Owner, 2026-11-26: "can we make the 85% actually 99%". The PC moves work at 99% this week, or when out.
+        start { it.copy(models = it.models.copy(switchToFree = true)) }
+        switch().performScrollTo()
+        compose.onNodeWithText(
+            "When online use passes 99% this week, or runs out, your PC's model takes over", substring = true,
+        ).assertExists()
+        compose.onNodeWithText("85%", substring = true).assertDoesNotExist()
+    }
+
     @Test fun thePcsSettingIsWhatThePhoneShows() {
         for (on in listOf(true, false)) {
             val m = Wire.modelList(JSONObject("""{"free":[],"free_model":null,"switch_to_free":$on,"ollama":""}"""))!!

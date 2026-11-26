@@ -209,7 +209,8 @@ fun StatusScreen(state: StationState, station: io.github.odnwks.mimir.data.Stati
 /** "When online use runs out, use your PC's model": the same words as the PC window's Settings › Models. */
 object FreeWhenOut {
     const val TITLE = "When online use runs out, use your PC's model"
-    const val ABOUT = "Chats and project work carry on privately on your PC, and say so, until online is back."
+    /** The 99 is the PC's one threshold (usage.rs FREE_AT_PERCENT); the PC decides, the phone only says it. */
+    const val ABOUT = "When online use passes 99% this week, or runs out, your PC's model takes over for chats and project work, and says so."
     const val NO_MODEL = "Needs a model on your PC first: add one on the PC in Settings › Models."
     const val AWAY = "Your PC is away: change this when it's back."
 }
