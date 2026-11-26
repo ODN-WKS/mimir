@@ -26,10 +26,9 @@ import androidx.compose.ui.unit.dp
 import io.github.odnwks.mimir.standalone.Catalog
 import io.github.odnwks.mimir.standalone.Effort
 import io.github.odnwks.mimir.ui.AttachButton
-import io.github.odnwks.mimir.ui.EffortChip
 import io.github.odnwks.mimir.ui.MimirComposer
-import io.github.odnwks.mimir.ui.ModelChip
-import io.github.odnwks.mimir.ui.PlaceChip
+import io.github.odnwks.mimir.ui.OptionsChip
+import io.github.odnwks.mimir.ui.chipWord
 import io.github.odnwks.mimir.ui.Sight
 import io.github.odnwks.mimir.ui.rememberVoiceInput
 import io.github.odnwks.mimir.ui.theme.MimirTheme
@@ -72,17 +71,12 @@ private fun CheckComposer(paired: Boolean, whisper: Boolean) {
             MimirComposer(
                 draft, { draft = it }, waiting = false, writing = false, voice = voice, onSend = {}, onStop = {},
                 whisper = whisper, modifier = Modifier.padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 10.dp),
-                attach = { fit ->
-                    AttachButton(
-                        Sight.Cannot, filesFull = false, picturesFull = false, onFile = {}, onPhotos = {}, onCamera = {}, onModels = {},
-                        effort = effort.takeIf { fit == io.github.odnwks.mimir.ui.ChipFit.Menu }, model = model, onEffort = {},
-                    )
+                attach = { AttachButton(Sight.Cannot, filesFull = false, picturesFull = false, onFile = {}, onPhotos = {}, onCamera = {}, onModels = {}) },
+                chip = {
+                    val words = (if (paired && !whisper) "Your PC's model" else model.chipWord) + " · " + effort.words
+                    OptionsChip(words, "Model and effort: $words. Change") {}
                 },
-            ) { fit ->
-                if (paired && !whisper) PlaceChip(true, true, "Your PC", {}, phoneCan = true, fit = fit) {}
-                else ModelChip(model, listOf(model), {}, fit) {}
-                EffortChip(effort, model, {}, fit)
-            }
+            )
         }
     }
 }

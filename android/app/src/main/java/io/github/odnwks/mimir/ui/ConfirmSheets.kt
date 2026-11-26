@@ -64,6 +64,7 @@ import io.github.odnwks.mimir.nav.Navigator
 import io.github.odnwks.mimir.nav.Screen
 import io.github.odnwks.mimir.nav.Sheet
 import io.github.odnwks.mimir.nav.TaskChoice
+import io.github.odnwks.mimir.nav.SheetChoice
 import io.github.odnwks.mimir.ui.theme.Motion
 import io.github.odnwks.mimir.ui.theme.Palette
 import io.github.odnwks.mimir.ui.theme.Type
@@ -132,6 +133,7 @@ private fun Sheet.title(state: StationState) = when (this) {
     Sheet.WhereTo -> "Where should this go?"
     is Sheet.NewTaskModel -> "Model for this task"
     is Sheet.ProjectOptions -> project
+    Sheet.ChatModel -> "Model for this chat"
     is Sheet.RenameTask -> "Rename this task"
     is Sheet.TaskModel -> "Model for this task"
     is Sheet.Yolo -> "Go ahead without asking in this task?"
@@ -287,6 +289,10 @@ private fun SheetContent(sheet: Sheet, state: StationState, station: Station, na
                 onEffort = { set(choice.copy(effort = it.orEmpty())) },
                 effortHeading = "Effort",
             )
+        }
+        // The Mímir chat's own models and efforts, in the same sheet; a pick stays open here too.
+        Sheet.ChatModel -> nav.chatChoices?.let { c ->
+            ModelEffortList(sheet.title(state), c.models, c.notes, c.more, "Effort", c.efforts)
         }
         is Sheet.ProjectOptions -> Menu(sheet.title(state)) {
             // Voice typing for the new-task box (the box keeps only +, the chip and Send).
@@ -511,17 +517,27 @@ private fun ModelEffortMenu(
     title: String, state: StationState, canEffort: Boolean,
     isModel: (io.github.odnwks.mimir.data.Model) -> Boolean, onModel: (String) -> Unit,
     effortNow: TaskEffort, onEffort: (String?) -> Unit, effortHeading: String = "Effort, from now on",
-) = Menu(title) {
-    (state.models.claude + state.models.local).forEach { m ->
-        // Online ones go to Anthropic: marked, so it is plain which ones leave the PC.
-        MenuRow(Glyphs.Models, plainModelName(m.name), checked = isModel(m), note = if (m.free) "On your PC" else "Online") { onModel(m.id) }
-    }
+) = ModelEffortList(
+    title,
+    // Online ones go to Anthropic: marked, so it is plain which ones leave the PC.
+    (state.models.claude + state.models.local).map { m -> SheetChoice(plainModelName(m.name), if (m.free) "On your PC" else "Online", isModel(m)) { onModel(m.id) } },
+    effortHeading = effortHeading,
     // Effort: only a PC that takes it (task_reply_options).
-    if (canEffort) {
+    efforts = if (canEffort) TaskEffort.entries.map { e -> SheetChoice(e.words, e.about, e == effortNow) { onEffort(e.wire) } } else null,
+)
+
+/** The model and effort sheet's layout, one for every reply box: model rows, notes, More, then the effort rows (null: [UPDATE_PC_FOR_OPTIONS]). */
+@Composable
+private fun ModelEffortList(
+    title: String, models: List<SheetChoice>, notes: List<String> = emptyList(), more: (() -> Unit)? = null,
+    effortHeading: String, efforts: List<SheetChoice>?,
+) = Menu(title) {
+    models.forEach { m -> MenuRow(Glyphs.Models, m.title, checked = m.chosen, note = m.note) { m.pick() } }
+    notes.forEach { n -> Text(n, style = Type.Small, color = Palette.TextDim, modifier = Modifier.padding(start = 12.dp, end = 12.dp, top = 4.dp, bottom = 2.dp)) }
+    if (more != null) MenuRow(Glyphs.Next, "More in Settings › Who answers", Palette.BlueText) { more() }
+    if (efforts != null) {
         Text(effortHeading, style = Type.Small, color = Palette.TextDim, modifier = Modifier.padding(start = 12.dp, top = 10.dp, bottom = 2.dp))
-        TaskEffort.entries.forEach { e ->
-            MenuRow(Glyphs.Models, e.words, checked = e == effortNow, note = e.about, tick = "Effort chosen") { onEffort(e.wire) }
-        }
+        efforts.forEach { e -> MenuRow(Glyphs.Models, e.title, checked = e.chosen, note = e.note, tick = "Effort chosen") { e.pick() } }
     } else Text(UPDATE_PC_FOR_OPTIONS, style = Type.Small, color = Palette.TextDim, modifier = Modifier.padding(start = 12.dp, top = 10.dp, bottom = 2.dp))
 }
 

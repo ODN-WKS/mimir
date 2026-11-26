@@ -135,6 +135,8 @@ sealed interface Sheet {
      * names the project page's box; null is Chat's box.
      */
     data class NewTaskModel(val project: String? = null) : Sheet
+    /** The Mímir chat's model and effort (its own models, not a task's): what it lists is in [Navigator.chatChoices]. */
+    data object ChatModel : Sheet
     /** A project page's three dots: voice typing for its box. */
     data class ProjectOptions(val project: String) : Sheet
 }
@@ -146,6 +148,15 @@ sealed interface Sheet {
 data class ComposeTo(val project: String = "", val plan: Boolean = false, val model: String = "", val whisper: Boolean = false, val effort: String = "") {
     val auto: Boolean get() = project.isEmpty() && !plan && model.isEmpty() && !whisper && effort.isEmpty()
 }
+
+/** One row of the model and effort sheet: its words, a line under them, whether it is the one in use, and the pick. */
+class SheetChoice(val title: String, val note: String?, val chosen: Boolean, val pick: () -> Unit)
+
+/**
+ * The Mímir chat's own model and effort sheet: its [models], small [notes] under them, [more] (Settings
+ * › Who answers) and its [efforts]. The same layout as a task's; the chat's own actions.
+ */
+class ModelEffortChoices(val models: List<SheetChoice>, val notes: List<String>, val more: () -> Unit, val efforts: List<SheetChoice>)
 
 /** A project page's choice for its next task: a model and an effort ("": the usual ones). */
 data class TaskChoice(val project: String = "", val model: String = "", val effort: String = "")
@@ -189,6 +200,8 @@ class Navigator(start: Screen = Screen.Chat) {
     var menuOpen: Boolean by mutableStateOf(false)
     /** Where Chat's composer sends the next message (the "To:" chip). */
     var composeTo: ComposeTo by mutableStateOf(ComposeTo())
+    /** What the open Mímir chat offers in its model and effort sheet (set by the chat while it shows). */
+    var chatChoices: ModelEffortChoices? by mutableStateOf(null)
     /** The model and effort for the next task a project page's box starts. */
     var newTaskChoice: TaskChoice by mutableStateOf(TaskChoice())
     /** The project just chosen in the picker, for the screen that opened it to take. */

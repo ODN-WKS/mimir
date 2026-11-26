@@ -105,13 +105,13 @@ class AttachState(
 
     /** The + button: Photos, Camera and Files (and Models, when [onModels] is given). */
     @Composable
-    fun Button(sight: Sight, onModels: () -> Unit = {}, model: LocalModel? = null, effort: Effort? = null, onEffort: (Effort) -> Unit = {}) {
+    fun Button(sight: Sight, onModels: () -> Unit = {}) {
         AttachButton(
             sight,
             filesFull = files.size >= Attach.MAX_FILES,
             picturesFull = pictures.size >= Pictures.MAX,
             onFile = ::file, onPhotos = ::photos, onCamera = ::camera, onModels = onModels,
-            model = model, pcFiles = pcReadsFiles, effort = effort, onEffort = onEffort,
+            pcFiles = pcReadsFiles,
         )
     }
 

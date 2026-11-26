@@ -20,7 +20,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
-/** R26: draws "Who answers", the model chip menu and a task screen at 339 dp. Writes only when R26_SHOT names a folder. */
+/** R26: draws "Who answers", the model and effort sheet and a task screen at 339 dp. Writes only when R26_SHOT names a folder. */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(qualifiers = "w339dp-h740dp-xhdpi")
@@ -48,14 +48,19 @@ class R26Shots {
             LChoice("sonnet", "Balanced", "The usual"), LChoice("opus", "Very capable", "For harder work"),
             LChoice("fable", "Most capable", "The newest and strongest"),
         )
-        compose.setContent {
-            MimirTheme(reduceMotion = true) {
-                Box(Modifier.fillMaxSize()) {
-                    PcModelChip(claudeChipWordFor(null, "Sonnet 4.6"), "x", lastAnswer = "Sonnet 4.6", onUseFree = {}, choices = choices, chosenId = "auto") {}
-                }
-            }
+        // P12: the chip's menu is the model and effort sheet, as on a task.
+        val nav = Navigator()
+        compose.setContent { MimirTheme(reduceMotion = true) { AppRoot(FakeStation(), nav) } }
+        compose.waitForIdle()
+        compose.runOnIdle {
+            nav.chatChoices = io.github.odnwks.mimir.nav.ModelEffortChoices(
+                choices.map { c -> io.github.odnwks.mimir.nav.SheetChoice(c.name, claudeAbout(c.id, c.about), c.id == "auto") {} } +
+                    io.github.odnwks.mimir.nav.SheetChoice("Your PC's free model", "Quick answers that stay on your PC", false) {},
+                listOf("Applies to all chats on this PC. $PC_PICKS", "Last answer: Sonnet 4.6"), {},
+                io.github.odnwks.mimir.standalone.Effort.entries.map { e -> io.github.odnwks.mimir.nav.SheetChoice(e.words, e.about, e == io.github.odnwks.mimir.standalone.Effort.Balanced) {} },
+            )
+            nav.openSheet(io.github.odnwks.mimir.nav.Sheet.ChatModel)
         }
-        compose.onNodeWithText("Auto-pick").performClick()
         compose.waitForIdle()
         compose.onRoot().captureRoboImage("$dir/chip_menu.png")
     }

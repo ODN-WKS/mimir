@@ -26,7 +26,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
-/** The model and effort chips on Mímir's message box, with no PC. */
+/** The model and effort chip on Mímir's message box (P12: one "Model · Effort" chip and the task's sheet). */
 @RunWith(RobolectricTestRunner::class)
 @Config(qualifiers = "w339dp-h740dp-xhdpi")
 @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
@@ -45,25 +45,29 @@ class MimirChipsTest {
         return engine to nav
     }
 
-    @Test fun theEffortChipPicksQuickBalancedOrThorough() {
-        val (engine, _) = show()
-        compose.onNodeWithContentDescription("Effort: Balanced. Change effort").assertIsDisplayed().performClick()
+    private val chipLabel get() = "Model and effort: ${chipShort(Catalog.default.chipWord, 16)} · Balanced. Change"
+
+    @Test fun theChipsSheetPicksQuickBalancedOrThorough() {
+        val (engine, nav) = show()
+        compose.onNodeWithContentDescription(chipLabel).assertIsDisplayed().performClick()
         compose.onNodeWithText("Short answers, straight away").assertIsDisplayed()
         compose.onNodeWithText("Quick").performClick()
         compose.runOnIdle { assertEquals(Effort.Quick, engine.state.value.effort) }
-        compose.onNodeWithContentDescription("Effort: Quick. Change effort").assertIsDisplayed()
+        // A pick keeps the sheet open, as on a task.
+        compose.onNodeWithText("Model for this chat").assertIsDisplayed()
+        compose.runOnIdle { nav.closeSheet() }
+        compose.onNodeWithContentDescription("Model and effort: ${chipShort(Catalog.default.chipWord, 16)} · Quick. Change").assertIsDisplayed()
     }
 
-    @Test fun theModelChipShowsWhatAnswersAndListsTheModelsOnThisPhone() {
+    @Test fun theChipShowsWhatAnswersAndItsSheetListsTheModelsOnThisPhone() {
         val (_, nav) = show()
-        val name = Catalog.default.chipName
-        compose.onNodeWithContentDescription("Model: $name. Change model").assertIsDisplayed().performClick()
+        compose.onNodeWithContentDescription(chipLabel).assertIsDisplayed().performClick()
         compose.onNodeWithText(Catalog.default.sizeText, substring = true).assertIsDisplayed()
         compose.onNodeWithText("More in Settings › Who answers").performClick()
         compose.runOnIdle { assertEquals(Screen.Models, nav.current) }
     }
 
-    /** The box is one tidy row under the words (owner, 2026-11-19): +, mic, chips and Send never wrap, at 100% and 150%. */
+    /** The box is one tidy row under the words (P12): +, the chip and Send never wrap, at 100% and 150%; no mic. */
     private fun oneRow(scale: Float, paired: Boolean = false) {
         androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>()
             .getSharedPreferences(io.github.odnwks.mimir.ui.theme.AppSize.PREFS, 0).edit()
@@ -72,20 +76,16 @@ class MimirChipsTest {
             show(paired = paired)
             compose.waitForIdle()
             val send = compose.onNodeWithContentDescription("Send").fetchSemanticsNode().boundsInRoot
-            val where = if (paired) "Model: " else "Model: ${Catalog.default.chipName}. Change model"
-            // With the least room the effort moves into the + menu instead of wrapping.
-            val effortChip = compose.onAllNodesWithContentDescription("Effort: Balanced. Change effort").fetchSemanticsNodes().isNotEmpty()
-            for (d in listOfNotNull("Attach", "Talk instead of typing", where, "Effort: Balanced. Change effort".takeIf { effortChip })) {
+            var left = -1f
+            for (d in listOf("Attach", "Model and effort: ")) {
                 val b = compose.onNodeWithContentDescription(d, substring = true).assertIsDisplayed().fetchSemanticsNode().boundsInRoot
                 assertEquals("$d is on Send's row at ${scale}x", send.center.y, b.center.y, 2f)
                 org.junit.Assert.assertTrue("$d is left of Send at ${scale}x", b.right <= send.left + 1f)
+                org.junit.Assert.assertTrue("$d is right of the one before at ${scale}x", b.left >= left)
+                left = b.right
             }
+            org.junit.Assert.assertTrue("no mic in the box", compose.onAllNodesWithContentDescription("Talk instead of typing").fetchSemanticsNodes().isEmpty())
             compose.onRoot().captureRoboImage("${System.getProperty("roborazzi.outputDir")}/mimir_composer_${scale}${if (paired) "_paired" else ""}.png")
-            if (scale == 1f) org.junit.Assert.assertTrue("at normal size the effort has its own chip", effortChip)
-            if (!effortChip) {
-                compose.onNodeWithContentDescription("Attach").performClick(); compose.waitForIdle()
-                compose.onNodeWithText("Effort: Balanced").assertIsDisplayed()
-            }
         } finally {
             androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>()
                 .getSharedPreferences(io.github.odnwks.mimir.ui.theme.AppSize.PREFS, 0).edit().clear().commit()
@@ -100,10 +100,10 @@ class MimirChipsTest {
 
     @Test fun pairedAtSize150TheBottomRowStillDoesNotWrap() = oneRow(1.5f, paired = true)
 
-    @Test fun withNoModelOnThePhoneYetThereIsNoModelChip() {
+    @Test fun withNoModelOnThePhoneYetTheChipNamesOnlyTheEffort() {
         show(ready = false)
-        compose.onNodeWithContentDescription("Model: ${Catalog.default.chipName}. Change model").assertDoesNotExist()
-        compose.onNodeWithContentDescription("Effort: Balanced. Change effort").assertIsDisplayed()
+        compose.onNodeWithContentDescription(chipLabel).assertDoesNotExist()
+        compose.onNodeWithContentDescription("Model and effort: Balanced. Change").assertIsDisplayed()
     }
 
     @Test fun withAModelThatCantSeeThePlusOffersAFileAndLeadsToModelsForPictures() {
@@ -153,19 +153,17 @@ class MimirChipsTest {
         compose.onNodeWithContentDescription("Send").performClick()
         compose.runOnIdle { assertEquals(1, sent) }
         compose.onNodeWithContentDescription("Remove notes.txt").performClick()
-        compose.onNodeWithContentDescription("Talk instead of typing").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Send").assertIsDisplayed()
     }
 
     private fun bothChipsShowWords(effort: Effort, paired: Boolean = false) {
         val (engine, _) = show(paired = paired)
         compose.runOnIdle { engine.setEffort(effort) }
         compose.waitForIdle()
-        fun words(description: String): String = compose.onNodeWithContentDescription(description, substring = true).assertIsDisplayed()
+        val words = compose.onNodeWithContentDescription("Model and effort: ", substring = true).assertIsDisplayed()
             .fetchSemanticsNode().config.getOrNull(androidx.compose.ui.semantics.SemanticsProperties.Text)?.joinToString { t -> t.text }.orEmpty()
-        val model = words(if (paired) "Model: " else "Model: ${Catalog.default.chipName}. Change model")
-        val eff = words("Effort: ${effort.words}. Change effort")
-        org.junit.Assert.assertTrue("the model chip says words, not only an icon (was '$model')", model.isNotBlank())
-        org.junit.Assert.assertTrue("the effort chip says its word (was '$eff')", eff.contains(effort.words))
+        org.junit.Assert.assertTrue("the chip names a model before the effort (was '$words')", words.substringBefore(" · ").isNotBlank() && words.contains(" · "))
+        org.junit.Assert.assertTrue("the chip says the effort's word (was '$words')", words.endsWith(effort.words))
         compose.onRoot().captureRoboImage("${System.getProperty("roborazzi.outputDir")}/mimir_chips_${effort.words}_${paired}.png")
     }
 

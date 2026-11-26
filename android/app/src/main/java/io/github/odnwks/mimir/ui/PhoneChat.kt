@@ -47,6 +47,7 @@ import io.github.odnwks.mimir.nav.Navigator
 import io.github.odnwks.mimir.nav.Screen
 import io.github.odnwks.mimir.nav.Tab
 import io.github.odnwks.mimir.standalone.Catalog
+import io.github.odnwks.mimir.standalone.Effort
 import io.github.odnwks.mimir.standalone.Engine
 import io.github.odnwks.mimir.standalone.ModelStatus
 import io.github.odnwks.mimir.ui.theme.LocalReduceMotion
@@ -287,7 +288,8 @@ fun PhoneChat(
             onAnswererHold = if (s.whisper) ({ draft = ""; files.clear(); pictures.clear(); emergencyExit(ctx, engine, readAloud) }) else null,
             // A tap: who should answer (in a Whisper, one tap ends it, as its own End).
             onPick = if (s.whisper) ({ if (!s.writing) engine.endWhisper(told = true) }) else ({ whoOpen = true }),
-            onMore = if (!s.whisper && s.chat.turns.isNotEmpty()) ({ nav.openSheet(chatOptions(s, pcPrivate, if (onlineOn) io.github.odnwks.mimir.online.OnlineModels.answering()?.let { io.github.odnwks.mimir.online.OnlineModels.serviceOf(it).company } else null)) }) else null,
+            // Always there outside a Whisper: voice typing for the box is in it.
+            onMore = if (!s.whisper) ({ nav.openSheet(chatOptions(s, pcPrivate, if (onlineOn) io.github.odnwks.mimir.online.OnlineModels.answering()?.let { io.github.odnwks.mimir.online.OnlineModels.serviceOf(it).company } else null).copy(talk = io.github.odnwks.mimir.nav.TALK_MIMIR)) }) else null,
         )
         now.why?.let { why -> Text(why, style = Type.Small, color = Palette.TextDim, textAlign = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 2.dp).testTag("who-why").semantics { liveRegion = androidx.compose.ui.semantics.LiveRegionMode.Polite }) }
         WhisperHygiene(s.whisper || pcWhisper)
@@ -460,31 +462,56 @@ fun PhoneChat(
         if (paired && claudeOffered && !s.whisper && !pcWhisper) link?.state?.collectAsStateWithLifecycle()?.value?.usage?.let { u ->
             Text(usageLeftWords(u), style = Type.Small, color = Palette.TextDim, modifier = Modifier.padding(horizontal = 20.dp, vertical = 2.dp).testTag("usage-left"))
         }
+        // The three dots' "Talk (voice typing)", done here (a Whisper keeps its mic in the box: it has no three dots).
+        val startVoice = rememberStartVoice(voice)
+        LaunchedEffect(nav.taskAsk) {
+            if (nav.taskAsk == io.github.odnwks.mimir.nav.TALK_MIMIR) { nav.taskAsk = null; startVoice() }
+        }
+        // The chip names the model that answers (who answers is in the top bar) and the effort; a tap opens the
+        // same model and effort sheet as a task's, listing this chat's own models and efforts.
+        val installed = Catalog.withOwn().filter { it.id in s.have }
+        val more = { nav.closeSheet(); nav.open(Screen.Models) }
+        val choices: io.github.odnwks.mimir.nav.ModelEffortChoices
+        val modelWord: String?
+        if (pcPrivate && !now.phoneTookOver) {
+            val said = claudeModelWord(s.chat.turns.lastOrNull { !it.user && it.ran == "paid" }?.modelWords)
+            val chosen = claudeChoices.firstOrNull { it.id == claudeModel && it.id != "auto" }
+            val word = if (claudeAnswers) claudeChipWordFor(chosen?.name, said) else pcModelWord(pcModel).let { if (it == "Auto-pick") "Your PC's model" else it }
+            val about = if (claudeAnswers) "$pcName picks the model itself; your messages go to Anthropic" else "On $pcName"
+            val chosenId = claudeModel ?: "auto"
+            val rows = if (claudeAnswers && claudeChoices.isNotEmpty()) claudeChoices.map { c ->
+                io.github.odnwks.mimir.nav.SheetChoice(c.name, c.about.ifBlank { null }?.let { claudeAbout(c.id, it) }, c.id == chosenId) { if (c.id != chosenId) onPickClaudeModel(c.id) }
+            } else listOf(io.github.odnwks.mimir.nav.SheetChoice(word, about, true) {})
+            // Claude answering: a way back to the PC's own free model, right here.
+            val free = if (claudeAnswers) listOf(io.github.odnwks.mimir.nav.SheetChoice("Your PC's free model", "Quick answers that stay on your PC", false) { onPickEngine("free") }) else emptyList()
+            // Whole words on the chip ("Qwen 3.6" from "Qwen 3.6 35B-A3B"), never cut mid-word.
+            modelWord = chipShort(word, 16)
+            choices = io.github.odnwks.mimir.nav.ModelEffortChoices(
+                rows + free,
+                listOfNotNull("Applies to all chats on this PC. $PC_PICKS".takeIf { claudeAnswers && claudeChoices.isNotEmpty() }, said?.takeIf { claudeAnswers }?.let { "Last answer: $it" }),
+                more, emptyList(),
+            )
+        } else {
+            modelWord = chipShort(model.chipWord, 16).takeIf { installed.isNotEmpty() }
+            choices = io.github.odnwks.mimir.nav.ModelEffortChoices(
+                installed.map { m ->
+                    io.github.odnwks.mimir.nav.SheetChoice(m.chipName, m.chipWord + " · " + m.sizeText + if (m.refusalsRemoved) " · uncensored" else "", m.id == model.id) { if (m.id != model.id) engine.choose(m.id) }
+                },
+                emptyList(), more, emptyList(),
+            )
+        }
+        val efforts = Effort.entries.map { e -> io.github.odnwks.mimir.nav.SheetChoice(e.words, effortAbout(e, model), e == s.effort) { if (e != s.effort) engine.setEffort(e) } }
+        val chosenWords = listOfNotNull(modelWord, s.effort.words).joinToString(" · ")
+        androidx.compose.runtime.SideEffect { nav.chatChoices = io.github.odnwks.mimir.nav.ModelEffortChoices(choices.models, choices.notes, choices.more, efforts) }
+        androidx.compose.runtime.DisposableEffect(Unit) { onDispose { nav.chatChoices = null } }
         NoKeyboardLearning(s.whisper || pcWhisper) {
         MimirComposer(draft, { draft = it; if (it.isNotBlank()) engine.prepare() }, waiting, s.writing, voice, onSend = { send(draft) }, onStop = engine::stop, focusTick = focusTick, focusOk = !s.whisper && !pcWhisper && !endAsk && !whoOpen && !needsMimir && nav.sheet == null && !nav.menuOpen,
             whisper = s.whisper || pcWhisper, waitHint = !paired, modifier = Modifier.startupBottom(startup, on = showHome && first).padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 10.dp),
             hasFiles = files.isNotEmpty() || pictures.isNotEmpty(),
             above = { attach.Chips() },
-            attach = { fit ->
-            attach.Button(sight, onModels = { nav.open(Screen.Models) }, model = model, effort = s.effort.takeIf { fit == ChipFit.Menu }, onEffort = engine::setEffort)
-            },
-        ) { fit ->
-            val installed = Catalog.withOwn().filter { it.id in s.have }
-            // Who answers is in the top bar; the chip names the model that does.
-            if (pcPrivate && !now.phoneTookOver) {
-                val said = claudeModelWord(s.chat.turns.lastOrNull { !it.user && it.ran == "paid" }?.modelWords)
-                val chosen = claudeChoices.firstOrNull { it.id == claudeModel && it.id != "auto" }
-                PcModelChip(
-                    if (claudeAnswers) claudeChipWordFor(chosen?.name, said) else pcModelWord(pcModel).let { if (it == "Auto-pick") "Your PC's model" else it },
-                    if (claudeAnswers) "$pcName picks the model itself; your messages go to Anthropic" else "On $pcName", fit,
-                    lastAnswer = if (claudeAnswers) said else null,
-                    onUseFree = if (claudeAnswers) ({ onPickEngine("free") }) else null,
-                    choices = if (claudeAnswers) claudeChoices else emptyList(), chosenId = claudeModel ?: "auto", onChoose = onPickClaudeModel,
-                ) { nav.open(Screen.Models) }
-            }
-            else if (installed.isNotEmpty()) ModelChip(model, installed, engine::choose, fit) { nav.open(Screen.Models) }
-            EffortChip(s.effort, model, engine::setEffort, fit)
-        }
+            attach = { attach.Button(sight, onModels = { nav.open(Screen.Models) }) },
+            chip = { OptionsChip(chosenWords, "Model and effort: $chosenWords. Change", { nav.openSheet(io.github.odnwks.mimir.nav.Sheet.ChatModel) }) },
+        )
         }
         if (showHome && first && !paired && !connectHidden) ConnectHint({ nav.open(Screen.Pair) }, { connectHidden = true; prefs.edit().putBoolean(CONNECT_HIDDEN, true).apply() })
         }

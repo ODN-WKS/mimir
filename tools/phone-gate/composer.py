@@ -3,7 +3,7 @@
 
     composer.py <dump.xml> <screen width px>
 
-Pass when the private note above it is short (at most 18 % of the screen) and the field is on top and, under it, the + (Attach), the mic, every chip and Send share
+Pass when the private note above it is short (at most 18 % of the screen) and the field is on top and, under it, the + (Attach), the mic (a Whisper's box only; P12), every chip and Send share
 one row: their vertical centres within 6 px of each other, nothing wrapped onto a second row,
 Send and the chips fully on the screen. Prints one line, "ok ..." or "BAD ...", and exits 0 or 1.
 """
@@ -36,13 +36,14 @@ def main():
     send = next((b for d, _, _, b in nodes if d in ("Send", "Stop the reply")), None)
     attach = next((b for d, _, _, b in nodes if d == "Attach"), None)
     mic = next((b for d, _, _, b in nodes if d == "Talk instead of typing"), None)
-    if send is None or attach is None or mic is None:
-        missing = [n for n, v in (("Send", send), ("+", attach), ("mic", mic)) if v is None]
+    # The mic is in the chat's three dots (P12); only a Whisper's box keeps it.
+    if send is None or attach is None:
+        missing = [n for n, v in (("Send", send), ("+", attach)) if v is None]
         print("BAD not on the screen: " + ", ".join(missing))
         return 1
     # The chips: described buttons that start below the field's top edge and aren't the three above.
     chips = [b for d, _, _, b in nodes if (d.startswith("Answers come from") or d.startswith("Effort:") or d.startswith("Model") or d.startswith("Answers by")) and b[1] >= field[3] - 4]
-    row = [attach, mic, send] + chips
+    row = [attach, send] + ([mic] if mic else []) + chips
     centres = [(b[1] + b[3]) // 2 for b in row]
     spread = max(centres) - min(centres)
     problems = []

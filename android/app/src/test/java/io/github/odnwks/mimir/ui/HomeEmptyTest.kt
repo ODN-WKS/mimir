@@ -188,20 +188,20 @@ class HomeEmptyTest {
                 val voice = VoiceInput(androidx.compose.ui.platform.LocalContext.current, station = null, phoneSpeech = { null to null })
                 Box(Modifier.padding(horizontal = 12.dp)) {
                     MimirComposer("", {}, waiting = false, writing = false, voice = voice, onSend = {}, onStop = {},
-                        chips = { fit -> ModelChip(model, listOf(model), {}, fit) {}; EffortChip(Effort.Balanced, model, {}, fit) })
+                        chip = { OptionsChip("${model.chipWord} · ${Effort.Balanced.words}", "Model and effort: ${model.chipWord} · ${Effort.Balanced.words}. Change") {} })
                 }
             }
         }
         compose.waitForIdle()
         compose.onNodeWithText("Message Mímir").assertIsDisplayed()
-        compose.onNodeWithContentDescription("Model: ${model.chipName}. Change model").assertIsDisplayed()
-        compose.onNodeWithContentDescription("Effort: Balanced. Change effort").assertIsDisplayed()
+        // P12: one "Model · Effort" chip in the centre of the row, as on a task.
+        compose.onNodeWithContentDescription("Model and effort: ${model.chipWord} · Balanced. Change").assertIsDisplayed()
         val root = compose.onRoot().fetchSemanticsNode().boundsInRoot
         val send = compose.onNodeWithContentDescription("Send").fetchSemanticsNode().boundsInRoot
         val edge = root.right - 12f * 2f // 12 dp of padding at 2x
         assertTrue("Send (${send.right}) stays inside the box edge ($edge)", send.right <= edge)
-        // The model chip shows the beginner word, the effort chip its words.
-        compose.onNodeWithText(model.chipWord).assertIsDisplayed()
+        // The chip shows the beginner word and the effort's word.
+        compose.onNodeWithText("${model.chipWord} · Balanced").assertIsDisplayed()
     }
 
     private fun chipsAt360() {
@@ -211,14 +211,13 @@ class HomeEmptyTest {
                 val voice = VoiceInput(androidx.compose.ui.platform.LocalContext.current, station = null, phoneSpeech = { null to null })
                 Box(Modifier.padding(horizontal = 12.dp)) {
                     MimirComposer("", {}, waiting = false, writing = false, voice = voice, onSend = {}, onStop = {},
-                        chips = { fit -> PcModelChip(pcModelWord("auto"), "On Your PC", fit) {}; EffortChip(Effort.Balanced, model, {}, fit) })
+                        chip = { OptionsChip("${pcModelWord("auto")} · ${Effort.Balanced.words}", "Model and effort. Change") {} })
                 }
             }
         }
         compose.waitForIdle()
-        // The effort chip always says "Effort:", and the model chip says what it is.
-        compose.onNodeWithText("Effort: Balanced").assertIsDisplayed()
-        compose.onNodeWithText("Auto-pick").assertIsDisplayed()
+        // The chip says what the model is and the effort (P12: "Model · Effort", as on a task).
+        compose.onNodeWithText("Auto-pick · Balanced").assertIsDisplayed()
         val root = compose.onRoot().fetchSemanticsNode().boundsInRoot
         val send = compose.onNodeWithContentDescription("Send").fetchSemanticsNode().boundsInRoot
         assertTrue(send.right <= root.right - 12f * root.width / 360f)
@@ -235,7 +234,7 @@ class HomeEmptyTest {
         compose.setContent { CompositionLocalProvider(LocalPhoneEngine provides engine) { MimirTheme { AppRoot(station, Navigator()) } } }
         compose.waitForIdle()
         compose.onAllNodesWithContentDescription("Answers come from", substring = true).assertCountEquals(0)
-        compose.onNodeWithContentDescription("Effort: Balanced. Change effort").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Model and effort:", substring = true).assertIsDisplayed()
     }
 
     @Test fun haloIsCenteredOnThePupilAndTheClosedEye() {
