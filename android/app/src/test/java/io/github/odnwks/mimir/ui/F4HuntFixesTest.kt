@@ -175,7 +175,7 @@ class F4HuntFixesTest {
     @Test fun r15r16r19Names() {
         assertEquals("Keep the app up to date", APP_UPDATES_SWITCH)
         assertTrue("Ingrid is a voice", SETTINGS_VOICE_LINE.contains("voice"))
-        assertFalse(MENU_UPDATES == APP_UPDATES_SWITCH)
+        assertFalse(MENU_RECENT == APP_UPDATES_SWITCH)
     }
 
     /** R20: under half an answer, no Listen; P15: Copy is in the hold menu only. */

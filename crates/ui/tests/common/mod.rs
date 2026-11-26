@@ -747,3 +747,23 @@ pub fn scroll_side_list_down(h: &mut Harness<'static, App>) {
         h.step();
     }
 }
+
+/// P17 (owner, 2026-11-25): a new task in a project is named by its start
+/// time on this PC's clock ("Nov 25, 5:50 PM"). The names for this minute
+/// and the one before, as a check may start a task just before it turns.
+pub fn time_names() -> [String; 2] {
+    use mimir_core::runner::{ClockTime, time_title};
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i64;
+    [now, now - 60].map(|t| {
+        let c = ClockTime::at(t);
+        time_title(c, c.year)
+    })
+}
+
+/// The time name of the task a check just started, as the window shows it.
+pub fn shown_time_name(h: &Harness<'static, App>) -> Option<String> {
+    time_names().into_iter().find(|n| shows(h, n))
+}

@@ -27,17 +27,18 @@ class StageOneRemovalsTest {
         return st
     }
 
-    @Test fun theMenuAlwaysHasUpdates() {
-        // An owner-reported bug: Updates vanished when there were none. It is a menu row paired or not, with or without updates.
+    @Test fun theMenuAlwaysHasRecentActivity() {
+        // An owner-reported bug: Updates vanished when there were none. P17: Recent activity took its row, and it is
+        // a menu row paired or not, with or without anything in it.
         assertEquals(Tab.entries, Tab.shown(paired = true, anyUpdates = false))
         assertEquals(Tab.entries, Tab.shown(paired = true, anyUpdates = true))
         assertEquals(Tab.entries, Tab.shown(paired = false, anyUpdates = false))
         start { it.copy(updates = emptyList()) }
         compose.openMenu()
-        compose.onNodeWithText(MENU_UPDATES).assertExists()
+        compose.onNodeWithText(MENU_RECENT).assertExists()
         compose.onNodeWithText(MENU_PC).assertExists()
-        compose.menuRow(MENU_UPDATES)
-        assertEquals(Tab.Updates, nav.selectedTab)
+        compose.menuRow(MENU_RECENT)
+        assertEquals(Screen.Recent, nav.current)
     }
 
     @Test fun statusHasNoNoChecksYetAndNoClaudeUseWithoutAPaidChoice() {

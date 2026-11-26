@@ -89,10 +89,11 @@ class AppFlowTest {
         start()
         compose.menuRow(MENU_PC)
         heading("Your PC").assertIsDisplayed()
-        compose.menuRow(MENU_UPDATES)
+        // P17: Recent activity took the Updates row's place.
+        compose.menuRow(MENU_RECENT)
         compose.waitForIdle()
-        heading("Updates").assertIsDisplayed()
-        assertEquals(Tab.Updates, nav.selectedTab)
+        heading(RECENT_TITLE).assertIsDisplayed()
+        assertEquals(Screen.Recent, nav.current)
         // Settings is the menu's last row.
         compose.openSettings()
         heading("Settings").assertIsDisplayed()
@@ -878,9 +879,10 @@ class AppFlowTest {
         compose.onNodeWithContentDescription(MENU_BUTTON, substring = true).assertIsDisplayed()
         compose.menuRow(MENU_PC)
         assertEquals(Tab.Status, nav.selectedTab)
-        // Every home screen has the menu button to go on from.
-        compose.menuRow(MENU_UPDATES)
-        assertEquals(Tab.Updates, nav.selectedTab)
+        // Every home screen has the menu button to go on from (P17: Recent activity has it too).
+        compose.menuRow(MENU_RECENT)
+        assertEquals(Screen.Recent, nav.current)
+        compose.onNodeWithContentDescription(MENU_BUTTON, substring = true).assertIsDisplayed()
     }
 
     @Test fun aTabletSaysTabletWhereAPhoneSaysPhone() {

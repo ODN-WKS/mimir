@@ -332,6 +332,7 @@ private fun ScreenFor(screen: Screen, state: io.github.odnwks.mimir.data.Station
         }
         Screen.Status -> StatusScreen(state, station, nav)
         Screen.Updates -> UpdatesScreen(state, station, nav)
+        Screen.Recent -> RecentActivityScreen(state, station, LocalPhoneEngine.current ?: if (keepsChatsHere(LocalStandaloneOk.current, state.paired)) Engine.get(LocalContext.current) else null, nav)
         Screen.Settings -> SettingsScreen(state, nav)
         Screen.NeedsYou -> NeedsYouScreen(state, station, nav)
         is Screen.Task -> TaskScreen(screen.taskId, state, station, nav)

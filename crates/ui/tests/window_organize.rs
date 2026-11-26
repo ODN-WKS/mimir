@@ -651,6 +651,8 @@ fn tidy_projects_shows_every_change_then_makes_it() {
         click(&mut h, &go);
     }
     let random = s(&projects.join("General"));
+    // P17: the task started above is named by its start time.
+    let [named, named_before] = time_names();
     let want = [
         ("Test".to_string(), s(&station), true),
         (
@@ -659,7 +661,8 @@ fn tidy_projects_shows_every_change_then_makes_it() {
             true,
         ),
         // One short message: a test chat, archived as it goes.
-        ("Tidy up notes.txt.".to_string(), s(&budgetapp), true),
+        (named, s(&budgetapp), true),
+        (named_before, s(&budgetapp), true),
     ];
     let tidied = wait_for(&mut h, |_| {
         let waiting = stored_tasks(&home)
