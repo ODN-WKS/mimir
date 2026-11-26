@@ -2,17 +2,19 @@ package io.github.odnwks.mimir.online
 
 /**
  * A web page as plain words: its title, headings and paragraphs, with scripts, styles, menus,
- * headers, footers and forms left out. Nothing on the page is run.
+ * headers, footers and small forms left out. Nothing on the page is run.
  */
 object PageText {
     data class Page(val title: String, val text: String)
 
     private val DROP = Regex(
-        "<(script|style|noscript|svg|nav|header|footer|form|aside|iframe|template|button|select)\\b[^>]*>.*?</\\1\\s*>|<!--.*?-->",
+        "<(script|style|noscript|svg|nav|header|footer|aside|iframe|template|button|select)\\b[^>]*>.*?</\\1\\s*>|<!--.*?-->",
         setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE),
     )
     private val BLOCK = Regex("</?(p|div|br|li|h[1-6]|tr|section|article|blockquote|pre|table|ul|ol|dd|dt)\\b[^>]*>", RegexOption.IGNORE_CASE)
     private val TAG = Regex("<[^>]+>")
+    private val FORM = Regex("<form\\b[^>]*>(.*?)</form\\s*>", setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE))
+    private val PARA = Regex("<p\\b", RegexOption.IGNORE_CASE)
     private val TITLE = Regex("<title[^>]*>(.*?)</title>", setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE))
 
     /** A page is read to about this long (the phone reads its prompt slowly: about 50 words a second). */
@@ -24,7 +26,12 @@ object PageText {
         // The main part when the page marks one; otherwise the body.
         val main = Regex("<(main|article)\\b[^>]*>(.*?)</\\1>", setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE)).find(html)?.groupValues?.get(2)
             ?: html.substringAfter("<body", html)
-        val text = decode(main.replace(DROP, " ").replace(BLOCK, "\n").replace(TAG, " "))
+        // A small form (a search box, a sign-up) goes; one wrapping the page's text stays.
+        val kept = main.replace(DROP, " ").replace(FORM) { f ->
+            val inside = f.groupValues[1]
+            if (PARA.containsMatchIn(inside) || untagged(inside).count { !it.isWhitespace() } >= FORM_TEXT) " $inside " else " "
+        }
+        val text = decode(kept.replace(BLOCK, "\n").replace(TAG, " "))
             .lines().map { it.replace(Regex("[ \\t\\u00a0]+"), " ").trim() }
             .filter { it.length > 1 }
             .joinToString("\n")
@@ -38,7 +45,6 @@ object PageText {
         "<(script|style|noscript|template|svg|textarea)\\b[^>]*>.*?</\\1\\s*>|<!--.*?-->|<!\\[CDATA\\[.*?]]>",
         setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE),
     )
-    private val ANY_TAG = Regex("<(/?)([a-zA-Z][a-zA-Z0-9-]*)([^>]*)>")
     private val NOT_TEXT = setOf(
         "head", "title", "script", "style", "noscript", "template", "svg", "nav", "header", "footer", "aside",
         "form", "iframe", "button", "select", "textarea", "dialog", "menu",
@@ -69,34 +75,122 @@ object PageText {
         val selfClosing get() = attrs.trimEnd().endsWith("/")
     }
 
-    private fun tags(html: String) = ANY_TAG.findAll(html).map {
-        Tag(it.groupValues[1] == "/", it.groupValues[2].lowercase(), it.groupValues[3], it.range.first, it.range.last + 1)
-    }.toList()
-
-    /** Index (in [tags]) of the tag closing the one at [open], or -1 when it is never closed. */
-    private fun closing(tags: List<Tag>, open: Int): Int {
-        val name = tags[open].name
-        var depth = 1
-        for (j in open + 1 until tags.size) {
-            val t = tags[j]
-            if (t.name != name) continue
-            if (t.close) depth-- else if (!t.selfClosing) depth++
-            if (depth == 0) return j
+    /**
+     * Every tag in [html], in order. Quoted attribute values are skipped whole, so a ">" inside one
+     * (`data-a="x>"`) does not end the tag. One pass, no regex backtracking.
+     */
+    private fun tags(html: String): List<Tag> {
+        val out = ArrayList<Tag>()
+        val n = html.length
+        var i = html.indexOf('<')
+        while (i in 0 until n) {
+            var k = i + 1
+            val close = k < n && html[k] == '/'
+            if (close) k++
+            val nameStart = k
+            if (k < n && html[k].isAsciiLetter()) {
+                k++
+                while (k < n && (html[k].isAsciiLetter() || html[k] in '0'..'9' || html[k] == '-')) k++
+                val nameEnd = k
+                // The attributes, up to the first ">" outside a quoted value. A quote opens a value only
+                // after "=", as in a browser; one never closed swallows the rest of the page, as in a browser.
+                var end = -1
+                var afterEquals = false
+                while (k < n) {
+                    val c = html[k]
+                    if (c == '>') { end = k; break }
+                    if (afterEquals && (c == '"' || c == '\'')) {
+                        val q = html.indexOf(c, k + 1)
+                        if (q < 0) { end = n - 1; break }
+                        k = q + 1
+                        afterEquals = false
+                    } else {
+                        if (c == '=') afterEquals = true else if (!c.isWhitespace()) afterEquals = false
+                        k++
+                    }
+                }
+                if (end >= 0) {
+                    out += Tag(close, html.substring(nameStart, nameEnd).lowercase(), html.substring(nameEnd, maxOf(nameEnd, end)), i, end + 1)
+                    i = if (end + 1 < n) html.indexOf('<', end + 1) else -1
+                    continue
+                }
+            }
+            i = html.indexOf('<', i + 1)
         }
-        return -1
+        return out
     }
 
-    /** [html] without the elements (and their insides) that [drop] picks. */
-    private fun without(html: String, drop: (Tag) -> Boolean): String {
+    private fun Char.isAsciiLetter() = this in 'a'..'z' || this in 'A'..'Z'
+
+    /** [html] with its tags taken out. */
+    private fun untagged(html: String): String {
+        val out = StringBuilder(html.length)
+        var pos = 0
+        for (t in tags(html)) { out.append(html, pos, t.start); pos = t.end }
+        return out.append(html, pos, html.length).toString()
+    }
+
+    /**
+     * For each tag, the index of the tag that closes it, or -1 (a closing tag, or one never closed).
+     * One pass with a stack of open tags per name, so a page of unclosed tags stays fast.
+     */
+    private fun closers(tags: List<Tag>): IntArray {
+        val match = IntArray(tags.size) { -1 }
+        val open = HashMap<String, ArrayList<Int>>()
+        for ((j, t) in tags.withIndex()) {
+            if (!t.close) {
+                if (!t.selfClosing) open.getOrPut(t.name) { ArrayList() }.add(j)
+            } else {
+                val stack = open[t.name] ?: continue
+                if (stack.isNotEmpty()) match[stack.removeAt(stack.size - 1)] = j
+            }
+        }
+        return match
+    }
+
+    /** A form is page furniture (a search box, a sign-up) when it holds no paragraph and under this much text. */
+    private const val FORM_TEXT = 200
+
+    /**
+     * [html] without the parts never read: menus, page headers, footers, side parts, small forms,
+     * hidden parts. An article's own `<header>` (its title and lead) stays, and so does a form that
+     * wraps the whole page (some sites put every page inside one).
+     */
+    private fun withoutFurniture(html: String): String {
         val tags = tags(html)
+        val match = closers(tags)
+        // Text characters (not spaces) before each tag, and paragraphs opened before it: a form's insides in O(1).
+        val textBefore = IntArray(tags.size + 1)
+        val parasBefore = IntArray(tags.size + 1)
+        var prevEnd = 0
+        for ((k, t) in tags.withIndex()) {
+            var c = 0
+            for (x in prevEnd until t.start) if (!html[x].isWhitespace()) c++
+            textBefore[k + 1] = textBefore[k] + c
+            parasBefore[k + 1] = parasBefore[k] + if (!t.close && t.name == "p") 1 else 0
+            prevEnd = t.end
+        }
+        fun small(i: Int, j: Int) = parasBefore[j] - parasBefore[i + 1] == 0 && textBefore[j + 1] - textBefore[i + 1] < FORM_TEXT
+
         val out = StringBuilder(html.length)
         var pos = 0
         var i = 0
+        var inArticle = 0
         while (i < tags.size) {
             val t = tags[i]
-            if (t.close || t.start < pos || !drop(t)) { i++; continue }
+            val j = if (t.close || t.name in VOID || t.selfClosing) -1 else match[i]
+            val drop = !t.close && when {
+                hidden(t.attrs) -> true
+                t.name == "header" -> inArticle == 0
+                t.name == "form" -> j >= 0 && small(i, j)
+                else -> t.name in NOT_TEXT
+            }
+            if (!drop) {
+                if (t.name == "article" && !t.selfClosing) { if (!t.close) inArticle++ else if (inArticle > 0) inArticle-- }
+                i++
+                continue
+            }
             out.append(html, pos, t.start).append(' ')
-            val j = if (t.name in VOID || t.selfClosing) -1 else closing(tags, i)
             if (j < 0) { pos = t.end; i++ } else { pos = tags[j].end; i = j + 1 }
         }
         out.append(html, pos, html.length)
@@ -106,12 +200,13 @@ object PageText {
     /** The insides of each top-level [name] element in [html]. */
     private fun insides(html: String, name: String): List<String> {
         val tags = tags(html)
+        val match = closers(tags)
         val out = ArrayList<String>()
         var i = 0
         while (i < tags.size) {
             val t = tags[i]
             if (t.close || t.name != name) { i++; continue }
-            val j = closing(tags, i)
+            val j = match[i]
             if (j < 0) { out += html.substring(t.end); break }
             out += html.substring(t.end, tags[j].start)
             i = j + 1
@@ -119,18 +214,20 @@ object PageText {
         return out
     }
 
+    /** The part of the page its words come from: the longest `<article>`, else `<main>`, else the body; furniture and hidden parts gone. */
+    private fun region(html: String): String {
+        val clean = withoutFurniture(html.replace(RAW, " "))
+        return insides(clean, "article").maxByOrNull { untagged(it).trim().length }
+            ?: insides(clean, "main").firstOrNull()
+            ?: clean.substringAfter("<body", clean).let { if (it === clean) it else it.substringAfter('>') }
+    }
+
     /**
      * The page's main text: `<article>` (the longest) or `<main>` when the page marks one, else the
      * body; menus, headers, footers, side parts, forms, scripts and hidden parts dropped; headings,
      * list items and table rows each on their own line; lines mostly made of link text dropped.
      */
-    fun main(html: String): String {
-        val clean = without(html.replace(RAW, " ")) { it.name in NOT_TEXT || hidden(it.attrs) }
-        val region = insides(clean, "article").maxByOrNull { it.replace(ANY_TAG, "").trim().length }
-            ?: insides(clean, "main").firstOrNull()
-            ?: clean.substringAfter("<body", clean).let { if (it === clean) it else it.substringAfter('>') }
-        return lines(region).joinToString("\n")
-    }
+    fun main(html: String): String = lines(region(html)).joinToString("\n")
 
     /** [html] as lines of text, each block its own line, mostly-link lines left out. */
     private fun lines(html: String): List<String> {
@@ -172,21 +269,26 @@ object PageText {
     private val META_CONTENT = Regex("content\\s*=\\s*[\"']([^\"']+)[\"']", RegexOption.IGNORE_CASE)
     private val TIME = Regex("<time\\b[^>]*\\bdatetime\\s*=\\s*[\"']([^\"']+)[\"']", RegexOption.IGNORE_CASE)
 
-    /** When the page says it was published, as "2026-11-02": JSON-LD datePublished, then article:published_time, then the first `<time datetime>`; null if none. */
+    /**
+     * When the page says it was published, as "2026-11-02": JSON-LD datePublished, then
+     * article:published_time, then a `<time datetime>` inside the article [main] reads (not a
+     * sidebar's), then the first one on the page; a date that can't exist (2026-02-31) is skipped; null if none.
+     */
     fun date(html: String): String? {
         val found = sequenceOf(
             { LD_DATE.find(html)?.groupValues?.get(1) },
             { META.findAll(html).firstOrNull { META_PUBLISHED.containsMatchIn(it.value) }?.let { META_CONTENT.find(it.value)?.groupValues?.get(1) } },
+            { TIME.find(region(html))?.groupValues?.get(1) },
             { TIME.find(html)?.groupValues?.get(1) },
         ).mapNotNull { it()?.let(::day) }
         return found.firstOrNull()
     }
 
+    /** The "2026-11-02" in [value], or null when there is none or it is not a real day. */
     private fun day(value: String): String? {
         val m = ISO_DAY.find(value) ?: return null
-        val month = m.groupValues[2].toInt()
-        val d = m.groupValues[3].toInt()
-        return m.value.takeIf { month in 1..12 && d in 1..31 }
+        val (y, month, d) = m.destructured
+        return m.value.takeIf { runCatching { java.time.LocalDate.of(y.toInt(), month.toInt(), d.toInt()) }.isSuccess }
     }
 
     const val PASSAGE_MIN = 50

@@ -118,11 +118,26 @@ object Router {
         RegexOption.IGNORE_CASE,
     )
 
+    /** Units of measure (not money), for "how much is a mile in kilometres". */
+    private const val UNITS =
+        "(?:milli|centi|kilo)?(?:met(?:re|er)s?|grams?|lit(?:re|er)s?)|mm|cm|km|kg|mg|ml|g|m|l" +
+            "|miles?|inch(?:es)?|feet|foot|ft|yards?|yds?|nautical miles|light years?" +
+            "|pounds?|lbs?|ounces?|oz|fluid ounces?|fl oz|stones?|tons?|tonnes?" +
+            "|cups?|tablespoons?|tbsp|teaspoons?|tsp|pints?|quarts?|gallons?" +
+            "|acres?|hectares?|square (?:met(?:re|er)s?|feet|miles|kilomet(?:re|er)s?)|cubic \\w+" +
+            "|celsius|fahrenheit|kelvin|degrees(?: celsius| fahrenheit)?" +
+            "|seconds?|minutes?|hours?|days?|weeks?|months?|years?|mph|km/h|kph|knots?" +
+            "|calories|kilocalories|kcal|kilojoules|joules|watts?|kilowatts?|horsepower|bytes|kilobytes|megabytes|gigabytes|terabytes"
+
     /** "What day is it today": the app gives the model the date; no lookup. */
     private val NOT_TIMELY = Regex(
         "\\bwhat(?:'s|\\s+is)?\\s+(?:the\\s+)?(?:day|date)\\b|\\btoday'?s date\\b|\\bwhat day\\b|\\bcurrent (?:time|date|day)\\b" +
             // A sum: "how much is 2 plus 2", "how much is 15% of 80".
-            "|^how much (?:is|are)\\s+[-\\d.,\\s]*\\d\\s*(?:plus|minus|times|divided|multiplied|over|squared|cubed|to the power|percent|%|x(?=\\s*\\d)|[-+*/×÷^])",
+            "|^how much (?:is|are)\\s+[-\\d.,\\s]*\\d\\s*(?:plus|minus|times|divided|multiplied|over|squared|cubed|to the power|percent|%|x(?=\\s*\\d)|[-+*/×÷^])" +
+            // A unit conversion: "how much is a kilometre in miles", "how much are 3 dozen eggs in grams".
+            // Money is not a unit: "how much is 100 dollars in pounds" changes by the day, so it still searches.
+            "|^how much (?:is|are)\\s+(?!.*(?:\\b(?:dollars?|euros?|pesos?|yen|yuan|rupees?|francs?|krona|krone|kronor|rubles?|roubles?|won|bucks|cents?|pence|bitcoins?|btc|usd|eur|gbp|cad|aud|jpy|sterling|currency)\\b|[$£€¥₹]))" +
+            ".{1,60}?\\s+in\\s+(?:$UNITS)\\s*[?.!]*\\s*$",
         RegexOption.IGNORE_CASE,
     )
 
