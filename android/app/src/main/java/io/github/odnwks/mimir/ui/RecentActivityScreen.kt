@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -15,12 +16,14 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
@@ -54,6 +57,16 @@ const val RECENT_TITLE = "Recent activity"
 const val RECENT_TODAY = "TODAY"
 const val RECENT_EARLIER = "EARLIER"
 const val RECENT_EMPTY = "Nothing yet. Your chats and project work show here."
+/** The dim link at the page's foot when every report has been heard (P19). */
+const val PAST_UPDATES = "Past updates"
+/** The test tag on the "Listen to N new updates" line (P19). */
+const val LISTEN_UPDATES_TAG = "listen-updates"
+
+/** "Listen to 3 new updates" (one: "Listen to 1 new update"): the line above TODAY (P19). */
+fun listenNewWords(n: Int): String = "Listen to $n new ${if (n == 1) "update" else "updates"}"
+
+/** Whether any finished-task report has been heard: then the page's foot links to past updates. */
+fun heardUpdates(state: StationState): Boolean = state.updates.any { it.heard == io.github.odnwks.mimir.data.Heard.Heard }
 
 /** What colour an item's state is: green while it works, amber when it needs the owner, else dim. */
 enum class RecentTone { Working, Needs, Dim }
@@ -146,6 +159,11 @@ fun RecentActivityScreen(state: StationState, station: Station, engine: Engine?,
     val local = engine?.state?.collectAsStateWithLifecycle()?.value
     val items = recentActivity(state, local, now)
     val tap = LocalTapTracker.current
+    // The spoken reports live on the Updates screen (P19): a line at the top while some are unheard,
+    // else a dim link at the foot when there are heard ones, else nothing.
+    val unheard = unheardUpdates(state)
+    val past = unheard == 0 && heardUpdates(state)
+    val openUpdates = { nav.open(Screen.Updates, tap.last) }
     Column(Modifier.fillMaxSize().background(Palette.Ground)) {
         Row(Modifier.fillMaxWidth().padding(start = 4.dp, end = 4.dp, top = 12.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             MenuButton()
@@ -153,14 +171,17 @@ fun RecentActivityScreen(state: StationState, station: Station, engine: Engine?,
             Spacer(Modifier.size(48.dp))
         }
         if (items.isEmpty()) {
+            if (unheard > 0) ListenUpdatesLine(unheard, openUpdates, Modifier.padding(horizontal = 12.dp))
             Text(
                 RECENT_EMPTY, style = Type.Body, color = Palette.TextSoft, textAlign = TextAlign.Center,
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 28.dp),
             )
+            if (past) PastUpdatesLink(openUpdates)
             return@Column
         }
         val (today, earlier) = items.partition { recentIsToday(it.at, now) }
         LazyColumn(Modifier.weight(1f).fillMaxWidth(), contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 12.dp, end = 12.dp, bottom = 16.dp)) {
+            if (unheard > 0) item("listen-updates") { ListenUpdatesLine(unheard, openUpdates) }
             for ((head, list) in listOf(RECENT_TODAY to today, RECENT_EARLIER to earlier)) {
                 if (list.isEmpty()) continue
                 item("head-$head") { CapsLabel(head, Modifier.padding(start = 2.dp, top = 8.dp, bottom = 4.dp)) }
@@ -171,8 +192,35 @@ fun RecentActivityScreen(state: StationState, station: Station, engine: Engine?,
                     }
                 }
             }
+            if (past) item("past-updates") { PastUpdatesLink(openUpdates) }
         }
     }
+}
+
+/**
+ * One slim line above TODAY: the small Listen pill's look (a play mark, 26 dp high, 48 dp to touch)
+ * with dim words. A tap opens Updates, where Play all reads them one after another.
+ */
+@Composable
+private fun ListenUpdatesLine(n: Int, onOpen: () -> Unit, modifier: Modifier = Modifier) {
+    Row(modifier.fillMaxWidth().padding(start = 2.dp, top = 6.dp, bottom = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            // A small clickable still gets its 48 dp touch area, without making the line tall.
+            Modifier.testTag(LISTEN_UPDATES_TAG).heightIn(min = ChatLook.PillHeight).clip(ChatLook.pillShape)
+                .clickable(role = Role.Button, onClickLabel = "Open updates", onClick = onOpen)
+                .border(1.dp, ChatLook.ButtonBorder, ChatLook.pillShape).padding(horizontal = 10.dp),
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp),
+        ) {
+            Icon(Glyphs.Play, null, tint = RecentColors.Dim, modifier = Modifier.size(11.dp))
+            Text(listenNewWords(n), style = TextStyle(fontSize = 13.sp, lineHeight = 17.sp), color = RecentColors.Dim, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+    }
+}
+
+/** The dim "Past updates" link at the page's foot, when every report has been heard. */
+@Composable
+private fun PastUpdatesLink(onOpen: () -> Unit) {
+    Box(Modifier.fillMaxWidth().padding(top = 8.dp), contentAlignment = Alignment.Center) { LinkText(PAST_UPDATES, onOpen, color = RecentColors.Dim) }
 }
 
 @Composable
