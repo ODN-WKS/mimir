@@ -12,4 +12,12 @@ class VerifyTest {
         assertEquals("No sources.", Verify.citations("No sources [1].", 0))
         assertEquals("Plain text, nothing cited.", Verify.citations("Plain text, nothing cited.", 3))
     }
+
+    @Test fun codeYearsAndLargeNumbersAreLeftAlone() {
+        // Review 2026-11-25: brackets that are not source numbers must survive.
+        assertEquals("Use `arr[0]` and `x[7]` [1].", Verify.citations("Use `arr[0]` and `x[7]` [1].", 2))
+        assertEquals("```\nval a = b[9]\n```\nDone [1].", Verify.citations("```\nval a = b[9]\n```\nDone [1].", 1))
+        assertEquals("The [2024] report [1].", Verify.citations("The [2024] report [1].", 1))
+        assertEquals("Item [42] stays.", Verify.citations("Item [42] stays.", 3))
+    }
 }

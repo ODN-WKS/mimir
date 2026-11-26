@@ -13,7 +13,7 @@ object Reader {
     const val PAGE_MS = 2_500
 
     /** A page's HTML is looked at up to this many characters. */
-    const val HTML_CHARS = 200_000
+    const val HTML_CHARS = 100_000
 
     /** Reading stops this long before the lookup's time limit, so the answer still has time. */
     const val SPARE_MS = 700L
@@ -28,8 +28,16 @@ object Reader {
         val reads = picked.mapIndexed { i, r ->
             val job = jobs[i]
             val left = stop - System.currentTimeMillis()
-            val got = if (left > 0) runCatching { job.get(left, java.util.concurrent.TimeUnit.MILLISECONDS) }.getOrNull()
-                else if (job.isDone) runCatching { job.get() }.getOrNull() else null
+            val got = try {
+                if (left > 0) job.get(left, java.util.concurrent.TimeUnit.MILLISECONDS) else if (job.isDone) job.get() else null
+            } catch (e: InterruptedException) {
+                // Stop: nothing more is read or waited for.
+                jobs.forEach { it.cancel(true) }
+                Thread.currentThread().interrupt()
+                return picked.map { PageRead(it, null) }
+            } catch (e: Exception) {
+                null
+            }
             if (got == null) job.cancel(true)
             got ?: PageRead(r, null)
         }

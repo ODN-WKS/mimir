@@ -1413,7 +1413,10 @@ class Engine(
         try {
             val reads = io.github.odnwks.mimir.online.Reader.read(picked, mode())
             val question = _state.value.chat.turns.lastOrNull { it.user }?.text ?: words
-            val chosen = io.github.odnwks.mimir.online.Rank.choose(question, words, reads)
+            val ranked = io.github.odnwks.mimir.online.Rank.choose(question, words, reads)
+                .filter { io.github.odnwks.mimir.online.Evidence.clean(it.quote).isNotEmpty() }
+            val renumber = ranked.map { it.n }.distinct().withIndex().associate { (i, n) -> n to i + 1 }
+            val chosen = ranked.map { it.copy(n = renumber.getValue(it.n)) }
             if (chosen.isEmpty()) return null
             val block = io.github.odnwks.mimir.online.Evidence.block(words, chosen, reads.count { it.text != null })
             val sources = chosen.distinctBy { it.n }.sortedBy { it.n }.map { io.github.odnwks.mimir.online.Source(it.site, it.url, words, via = via) }
