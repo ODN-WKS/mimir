@@ -2,6 +2,9 @@
 
 Every Mímir version, newest first. Full notes for each are in `docs/release-notes/`.
 
+## 0.10
+The phone's conversations, easier to follow and the same everywhere: one reply box with one model and effort chip, a grey bubble around every answer, a small Listen button, times and read receipts on every message with the answering model beside them, moving dots while the AI works, Recent activity in place of Updates, project tasks named by their start time, a slim checks line, and temperatures on Your PC. See `docs/release-notes/0.10.md`.
+
 ## 0.09
 What got in the way on the phone, fixed: New chat is really new, every answer says who wrote it, look-ups that work and a PC model that starts when needed, Stop at the top with a confirm, a task menu with Archive and Delete, project rows you can archive or delete, your PC's numbers and Claude use on the phone, and quieter notifications. See `docs/release-notes/0.09.md`.
 
