@@ -420,9 +420,8 @@ fun TaskScreen(taskId: String, state: StationState, station: Station, nav: Navig
                     Composer(
                         draft, { draft = it },
                         attach = attach.takeIf { canAttach },
-                        optionsChip = optionsWords(task.model, task.effort).takeIf { canOptions },
-                        // Under the box, so the box grows upward; the mic is in the three dots.
-                        optionsBelow = true, showMic = false,
+                        // An old PC takes a model but no effort: the chip names the model only, the note says why.
+                        optionsChip = optionsWords(task.model, task.effort, withEffort = canOptions),
                         onOptions = { nav.openSheet(Sheet.TaskModel(task.id)) },
                         optionsNote = UPDATE_PC_FOR_OPTIONS.takeIf { !canOptions && state.paired },
                         hint = if (state.pcAway) "Reply (${state.waitsUntil})" else "Reply to Mímir",

@@ -258,6 +258,8 @@ class FakeStation(initial: StationState = ExampleData.awake()) : Station {
         s.copy(tasks = s.tasks.map { if (it.id == taskId) it.copy(title = f(it.title)) else it })
     }
 
+    /** The model and effort each started task carried (null: the usual one). Checks read this. */
+    val startedOptions = mutableListOf<Pair<String?, String?>>()
     /** What started tasks carried: (words, picture count, file names, effort). Checks read this. */
     val startedWith = mutableListOf<List<Any?>>()
     override fun startTask(
@@ -265,6 +267,7 @@ class FakeStation(initial: StationState = ExampleData.awake()) : Station {
         pictures: List<io.github.odnwks.mimir.standalone.TurnPicture>, files: List<io.github.odnwks.mimir.standalone.TurnFile>, effort: String?,
     ): String {
         if (pictures.isNotEmpty() || files.isNotEmpty() || effort != null) startedWith += listOf(text, pictures.size, files.map { it.name }, effort)
+        startedOptions += model to effort
         val clean = text.trim().ifEmpty { "New task" }
         val title = clean.split(' ').take(4).joinToString(" ").trimEnd('.', ',')
         if (incognito) {
@@ -280,7 +283,7 @@ class FakeStation(initial: StationState = ExampleData.awake()) : Station {
         flow.update { s ->
             s.copy(
                 tasks = s.tasks + Task(id, title, project, (s.models.claude + s.models.local).firstOrNull { it.id == model }?.name ?: s.models.selectedName, "just now", emptyList(),
-                    listOf(TaskMessage(newId("r"), fromClaude = false, text = clean)), null, null, null, status = "Working", busy = true),
+                    listOf(TaskMessage(newId("r"), fromClaude = false, text = clean)), null, null, null, status = "Working", busy = true, effort = effort.orEmpty()),
                 pc = s.pc.copy(tasksRunning = s.pc.tasksRunning + 1),
             )
         }

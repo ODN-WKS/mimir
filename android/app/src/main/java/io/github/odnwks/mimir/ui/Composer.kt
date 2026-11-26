@@ -4,7 +4,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -54,13 +53,12 @@ import io.github.odnwks.mimir.ui.theme.Palette
 import io.github.odnwks.mimir.ui.theme.Type
 
 /**
- * The one composer (proposal 3.3): a rounded box with an optional "To:" chip over one line of
- * text that grows to six. The mic has its own spot at the start of the line, away from Send, so
- * a tap meant for Send or Stop can never start listening; what it hears goes into the box. Send
- * is dimmed while the box is empty. While a task is [working] a red Stop button sits beside Send,
- * typed words or not; a tap within 800 ms of Stop turning up or going is ignored.
+ * The one reply box (owner's standard, 2026-11-25: the task screen's box): the words on top, one
+ * line that grows to six, and under them one row ([ReplyRow]): + on the left, the "Model · Effort"
+ * chip in the centre, a small round Send on the right. There is no mic in the box: voice typing is
+ * in the screen's three-dots menu, and while it listens a mic shows beside the words as the way to
+ * finish. Send is dimmed while the box is empty.
  */
-@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 fun Composer(
     value: String,
@@ -71,28 +69,19 @@ fun Composer(
     micLabel: String,
     onSend: () -> Unit,
     modifier: Modifier = Modifier,
-    chip: String? = null,
-    chipLabel: String = "",
-    onChip: () -> Unit = {},
     /** A Whisper: the box turns teal like the chat (the colour fades in). */
     whisper: Boolean = false,
-    working: Boolean = false,
-    onStop: (() -> Unit)? = null,
-    /** Pictures and files for this message (the + beside the mic, the chips above the words); null: this box takes none. */
+    /** Pictures and files for this message (the + on the left, the chips above the words); null: this box takes none. */
     attach: AttachState? = null,
     /** What the attach menu says about pictures (the PC takes them on a task's message). */
     attachSight: Sight = Sight.Sees,
-    /** The "Model · Effort" chip for this task (null: not shown) and what it opens. */
+    /** The "Model · Effort" chip (null: not shown) and what it opens. */
     optionsChip: String? = null,
     onOptions: () -> Unit = {},
-    /** Said in place of the chip when this PC can't take them yet. */
+    /** Said under the row when this PC can't take the choice yet. */
     optionsNote: String? = null,
     /** A new task needs words (they name it); a reply can go with only a picture. */
     needsWords: Boolean = false,
-    /** The mic button beside the box (off: it shows only while listening, as the way to finish). */
-    showMic: Boolean = true,
-    /** The model and effort chip sits under the box, so the box grows upward on its own. */
-    optionsBelow: Boolean = false,
 ) {
     val shape = RoundedCornerShape(24.dp)
     val sendable = value.isNotBlank() || (attach?.any == true && !needsWords)
@@ -107,120 +96,92 @@ fun Composer(
     LaunchedEffect(Unit) { kotlinx.coroutines.delay(300); if (keyboardAutoOn(keyCtx)) runCatching { focus.requestFocus() } }
     Column(
         modifier.fillMaxWidth().testTag(COMPOSER_TAG).clip(shape).background(surface).border(1.dp, Palette.Outline, shape)
-            .padding(start = 6.dp, end = 6.dp, top = if (!optionsBelow && (chip != null || optionsChip != null || optionsNote != null)) 6.dp else 0.dp, bottom = if (optionsBelow) 2.dp else 0.dp),
+            .padding(start = 6.dp, end = 6.dp, bottom = 2.dp),
     ) {
         attach?.Note()
-        if (attach?.any == true) Box(Modifier.padding(start = 4.dp, end = 4.dp, bottom = 6.dp)) { attach.Chips() }
-        val chips: @Composable () -> Unit = { if (chip != null || optionsChip != null) FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(0.dp)) {
-        if (chip != null) Row(
-            Modifier.heightIn(min = 40.dp).clip(RoundedCornerShape(12.dp)).clickable(role = Role.Button, onClick = onChip)
-                .semantics(mergeDescendants = true) { contentDescription = chipLabel },
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Row(
-                Modifier.clip(RoundedCornerShape(12.dp)).border(1.dp, Palette.LineStrong, RoundedCornerShape(12.dp))
-                    .padding(start = 10.dp, end = 6.dp, top = 4.dp, bottom = 4.dp),
-                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                Text("To:", style = Type.Small, color = Palette.TextDim)
-                Text(chip, style = Type.Small.copy(fontWeight = FontWeight.Bold), color = Palette.Text, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Icon(Glyphs.Down, null, tint = Palette.TextDim, modifier = Modifier.size(16.dp))
-            }
-        }
-        if (optionsChip != null) Row(
-            Modifier.heightIn(min = 40.dp).clip(RoundedCornerShape(12.dp)).clickable(role = Role.Button, onClick = onOptions)
-                .semantics(mergeDescendants = true) { contentDescription = "Model and effort for this task: $optionsChip. Change" },
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Row(
-                Modifier.clip(RoundedCornerShape(12.dp)).border(1.dp, Palette.LineStrong, RoundedCornerShape(12.dp))
-                    .padding(start = 10.dp, end = 6.dp, top = 4.dp, bottom = 4.dp),
-                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                Text(optionsChip, style = Type.Small.copy(fontWeight = FontWeight.Bold), color = Palette.Text, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Icon(Glyphs.Down, null, tint = Palette.TextDim, modifier = Modifier.size(16.dp))
-            }
-        }
-        } }
-        if (!optionsBelow) chips()
-        if (optionsNote != null && !optionsBelow) Text(optionsNote, style = Type.Small, color = Palette.TextDim, modifier = Modifier.padding(start = 6.dp, bottom = 4.dp))
-        val kind = if (sendable) ButtonKind.Send else ButtonKind.Empty
-        // Stop is there the whole time something works, typed words or not (owner, 2026-11-22).
-        val showStop = working && onStop != null
-        // A tap meant for the button that was there a moment ago does nothing: Stop turning up
-        // under a thumb that was about to press something else.
-        var armed by remember { mutableStateOf(true) }
-        var before by remember { mutableStateOf(showStop) }
-        val view = androidx.compose.ui.platform.LocalView.current
-        LaunchedEffect(showStop) {
-            // Only Stop turning up from nothing holds a tap back (not a change in why it works).
-            val appeared = showStop && !before
-            before = showStop
-            if (!appeared) return@LaunchedEffect
-            armed = false; kotlinx.coroutines.delay(BUTTON_SETTLE_MS); armed = true
-        }
-        val settled = { armed }
-        // Stop (while it works) and Send, at [size].
-        val buttons: @Composable (androidx.compose.ui.unit.Dp) -> Unit = { size ->
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                // Stop asks twice or for a 2 second hold (Settings › Look and size › Stop buttons).
-                if (showStop) StopControl({
-                    if (settled()) onStop?.invoke()
-                    else {
-                        // Too soon after Stop turned up: say so rather than doing nothing.
-                        haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
-                        view.announceForAccessibility("Stop is getting ready. Tap again.")
-                    }
-                }, shape = StopShape.Round, size = size, stateText = "Task is working")
-                val icon = when { size < 32.dp -> 16.dp; size < 48.dp -> 20.dp; else -> 22.dp }
-                androidx.compose.animation.Crossfade(kind, animationSpec = io.github.odnwks.mimir.ui.theme.motionSpec(io.github.odnwks.mimir.ui.theme.Motion.SCREEN_MS), label = "send") { k ->
-                    when (k) {
-                        ButtonKind.Empty -> RoundButton(Glyphs.Send, "Send", {}, size = size, iconSize = icon, filled = true, enabled = false)
-                        ButtonKind.Send -> RoundButton(Glyphs.Send, "Send", {
-                            if (sendable) {
-                                haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
-                                onSend()
-                            }
-                        }, size = size, iconSize = icon, filled = true)
-                    }
-                }
-            }
-        }
+        if (attach?.any == true) Box(Modifier.padding(start = 4.dp, end = 4.dp, top = 6.dp, bottom = 6.dp)) { attach.Chips() }
         Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            if (attach != null && !optionsBelow) Box(Modifier.padding(bottom = 4.dp)) { attach.Button(attachSight) }
-            if (showMic || voice.state == Speaking.Listening) Box(Modifier.padding(bottom = 4.dp)) { MicButton(voice, micLabel, filled = false, surface = Palette.Card) }
+            // Voice typing started from the three dots: the mic shows only while it listens, to finish.
+            if (voice.state == Speaking.Listening) Box(Modifier.padding(bottom = 4.dp)) { MicButton(voice, micLabel, filled = false, surface = Palette.Card) }
             BasicTextField(
                 value = value,
                 onValueChange = onValue,
                 textStyle = Type.Body.copy(color = Palette.Text, lineHeight = 16.sp * 1.4f),
                 cursorBrush = SolidColor(Palette.BlueLight),
                 maxLines = 6,
-                modifier = Modifier.weight(1f).heightIn(min = if (optionsBelow) 48.dp else 56.dp).semantics { contentDescription = label }
-                    .padding(start = if (optionsBelow) 8.dp else 0.dp, end = if (optionsBelow) 8.dp else 0.dp)
+                modifier = Modifier.weight(1f).heightIn(min = 48.dp).semantics { contentDescription = label }
+                    .padding(horizontal = 8.dp)
                     .focusRequester(focus)
                     // A real keyboard: Enter sends, Shift+Enter is a new line, Tab leaves the box.
                     .messageBoxKeys { if (sendable) onSend() },
                 decorationBox = { inner ->
-                    Box(Modifier.padding(top = if (optionsBelow) 12.dp else 16.dp, bottom = if (optionsBelow) 4.dp else 16.dp), contentAlignment = Alignment.CenterStart) {
+                    Box(Modifier.padding(top = 12.dp, bottom = 4.dp), contentAlignment = Alignment.CenterStart) {
                         if (value.isEmpty()) Text(hint, style = Type.Body.copy(lineHeight = 16.sp * 1.4f), color = Palette.TextDim, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         inner()
                     }
                 },
             )
-            if (!optionsBelow) Box(Modifier.padding(bottom = 4.dp)) { buttons(48.dp) }
         }
-        // One row under the words (owner, 2026-11-25): + on the left, model and effort in the middle, Send on the right.
-        // Close to the box's bottom edge (owner, 2026-11-25), Send about 30% smaller than before.
-        if (optionsBelow) Row(Modifier.fillMaxWidth().heightIn(min = 40.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(40.dp), contentAlignment = Alignment.Center) { attach?.Button(attachSight) }
-            Box(Modifier.weight(1f), contentAlignment = Alignment.Center) { chips() }
-            Box(Modifier.widthIn(min = 40.dp).padding(end = 4.dp), contentAlignment = Alignment.CenterEnd) { buttons(28.dp) }
-        }
-        if (optionsNote != null && optionsBelow) Text(optionsNote, style = Type.Small, color = Palette.TextDim, modifier = Modifier.padding(start = 6.dp, bottom = 4.dp))
+        ReplyRow(
+            plus = { attach?.Button(attachSight) },
+            chip = { if (optionsChip != null) OptionsChip(optionsChip, "Model and effort for this task: $optionsChip. Change", onOptions) },
+            send = {
+                SendButton(sendable) {
+                    haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
+                    onSend()
+                }
+            },
+        )
+        if (optionsNote != null) Text(optionsNote, style = Type.Small, color = Palette.TextDim, modifier = Modifier.padding(start = 6.dp, bottom = 4.dp))
     }
 }
 
-private enum class ButtonKind { Empty, Send }
+/**
+ * The reply box's one row under the words (owner, 2026-11-25), the same on every screen: [plus]
+ * on the left, [chip] in the centre, [send] on the right, close to the box's bottom edge.
+ */
+@Composable
+fun ReplyRow(plus: @Composable () -> Unit, chip: @Composable () -> Unit, send: @Composable () -> Unit) {
+    Row(Modifier.fillMaxWidth().heightIn(min = 40.dp).testTag(REPLY_ROW_TAG), verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(40.dp), contentAlignment = Alignment.Center) { plus() }
+        Box(Modifier.weight(1f), contentAlignment = Alignment.Center) { chip() }
+        Box(Modifier.widthIn(min = 40.dp).padding(end = 4.dp), contentAlignment = Alignment.CenterEnd) { send() }
+    }
+}
+
+/** The reply box's Send: drawn [SEND_SIZE] (touched at 48 dp), dimmed until there is something to send. */
+@Composable
+fun SendButton(ready: Boolean, fill: androidx.compose.ui.graphics.Color = Palette.Blue, onSend: () -> Unit) {
+    androidx.compose.animation.Crossfade(ready, animationSpec = io.github.odnwks.mimir.ui.theme.motionSpec(io.github.odnwks.mimir.ui.theme.Motion.SCREEN_MS), label = "send") { r ->
+        RoundButton(Glyphs.Send, "Send", { if (r) onSend() }, size = SEND_SIZE, iconSize = 16.dp, filled = true, fill = fill, enabled = r, drawnTag = SEND_DOT_TAG)
+    }
+}
+
+/** The "Opus 5.5 · Default Effort ⌄" chip in the centre of the reply box's row: a tap opens the model and effort sheet. */
+@Composable
+fun OptionsChip(words: String, description: String, onClick: () -> Unit) {
+    Row(
+        Modifier.heightIn(min = 40.dp).clip(RoundedCornerShape(12.dp)).clickable(role = Role.Button, onClick = onClick)
+            .semantics(mergeDescendants = true) { contentDescription = description },
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Row(
+            Modifier.clip(RoundedCornerShape(12.dp)).border(1.dp, Palette.LineStrong, RoundedCornerShape(12.dp))
+                .padding(start = 10.dp, end = 6.dp, top = 4.dp, bottom = 4.dp),
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text(words, style = Type.Small.copy(fontWeight = FontWeight.Bold), color = Palette.Text, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+            Icon(Glyphs.Down, null, tint = Palette.TextDim, modifier = Modifier.size(16.dp))
+        }
+    }
+}
+
+/** Send's drawn size on the reply box (owner, 2026-11-25). */
+val SEND_SIZE = 28.dp
+
+/** Test tags: the reply box's row, and Send's drawn circle. */
+const val REPLY_ROW_TAG = "reply-row"
+const val SEND_DOT_TAG = "send-dot"
 
 /** Taps this soon after the composer's button changes are ignored. */
 const val BUTTON_SETTLE_MS = 800L
@@ -375,7 +336,7 @@ fun WhereToSheet(state: StationState, nav: Navigator, canEffort: Boolean = false
                 }
                 val model = (state.models.claude + state.models.local).firstOrNull { it.id == to.model }
                 Row(
-                    Modifier.fillMaxWidth().heightIn(min = 56.dp).clip(RoundedCornerShape(12.dp)).clickable(role = Role.Button) { nav.openSheet(Sheet.ComposeModel) },
+                    Modifier.fillMaxWidth().heightIn(min = 56.dp).clip(RoundedCornerShape(12.dp)).clickable(role = Role.Button) { nav.openSheet(Sheet.NewTaskModel()) },
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Column(Modifier.weight(1f)) {
@@ -386,7 +347,7 @@ fun WhereToSheet(state: StationState, nav: Navigator, canEffort: Boolean = false
                 }
                 // Effort for this task: only a PC that takes it with the task (task_reply_options).
                 Row(
-                    Modifier.fillMaxWidth().heightIn(min = 56.dp).clip(RoundedCornerShape(12.dp)).then(if (canEffort) Modifier.clickable(role = Role.Button) { nav.openSheet(Sheet.ComposeEffort) } else Modifier),
+                    Modifier.fillMaxWidth().heightIn(min = 56.dp).clip(RoundedCornerShape(12.dp)).then(if (canEffort) Modifier.clickable(role = Role.Button) { nav.openSheet(Sheet.NewTaskModel()) } else Modifier),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Column(Modifier.weight(1f)) {
@@ -433,32 +394,5 @@ private fun WhereRow(title: String, about: String?, selected: Boolean, recommend
             if (about != null) Text(about, style = Type.Small, color = Palette.TextDim)
         }
         if (recommended) Tag("Default", Palette.BlueText, Palette.BlueIcon)
-    }
-}
-
-/** The model for the task the composer starts (this task only; the usual one stays). */
-@Composable
-fun ComposeModelSheet(state: StationState, nav: Navigator) {
-    Column(Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, top = 10.dp, bottom = 12.dp).selectableGroup()) {
-        Box(Modifier.fillMaxWidth().padding(bottom = 8.dp), contentAlignment = Alignment.Center) { SheetHandle() }
-        SectionTitle("Model for this task", Modifier.padding(start = 12.dp, end = 12.dp, top = 4.dp, bottom = 4.dp), style = Type.SheetTitle)
-        val back = { id: String -> nav.composeTo = nav.composeTo.copy(model = id); nav.openSheet(Sheet.WhereTo) }
-        WhereRow("Your usual", state.models.selectedName, nav.composeTo.model.isEmpty()) { back("") }
-        (state.models.claude + state.models.local).forEach { m ->
-            WhereRow(m.name, m.note, nav.composeTo.model == m.id) { back(m.id) }
-        }
-    }
-}
-
-/** The effort for the task the composer starts (this task only). */
-@Composable
-fun ComposeEffortSheet(nav: Navigator) {
-    Column(Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, top = 10.dp, bottom = 12.dp).selectableGroup()) {
-        Box(Modifier.fillMaxWidth().padding(bottom = 8.dp), contentAlignment = Alignment.Center) { SheetHandle() }
-        SectionTitle("Effort for this task", Modifier.padding(start = 12.dp, end = 12.dp, top = 4.dp, bottom = 4.dp), style = Type.SheetTitle)
-        val now = TaskEffort.of(nav.composeTo.effort.ifEmpty { null })
-        TaskEffort.entries.forEach { e ->
-            WhereRow(e.words, e.about, now == e) { nav.composeTo = nav.composeTo.copy(effort = e.wire.orEmpty()); nav.openSheet(Sheet.WhereTo) }
-        }
     }
 }

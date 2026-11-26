@@ -55,6 +55,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
@@ -445,6 +446,8 @@ fun RoundButton(
     outline: Boolean = true,
     /** Read out by TalkBack, and announced when the button turns up (Stop: "Task is working"). */
     stateText: String? = null,
+    /** A test tag on the drawn circle (checks measure its size apart from the touch target). */
+    drawnTag: String? = null,
 ) {
     // Drawn at [size] but always touched at 48 dp or more (accessibility), the circle centred in its target.
     val touch = maxOf(size, 48.dp)
@@ -458,7 +461,7 @@ fun RoundButton(
         contentAlignment = Alignment.Center,
     ) {
         Box(
-            Modifier.size(size).clip(CircleShape)
+            Modifier.size(size).then(if (drawnTag != null) Modifier.testTag(drawnTag) else Modifier).clip(CircleShape)
                 .background(if (filled) fill else surface)
                 .then(if (!filled && outline) Modifier.border(1.dp, Palette.Outline, CircleShape) else Modifier),
             contentAlignment = Alignment.Center,

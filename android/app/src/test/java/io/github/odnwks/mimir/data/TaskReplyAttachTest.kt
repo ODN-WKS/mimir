@@ -184,8 +184,9 @@ class TaskReplyAttachTest {
     @Test fun theNewTaskScreenKeepsEffortInItsOptionsAndAnOldPcHidesIt() {
         assertTrue(io.github.odnwks.mimir.nav.ComposeTo().auto)
         assertFalse(io.github.odnwks.mimir.nav.ComposeTo(effort = "max").auto)
-        assertEquals("low", io.github.odnwks.mimir.ui.nextEffort(""))
-        assertEquals("", io.github.odnwks.mimir.ui.nextEffort("max"))
+        // The effort is picked in the model and effort sheet now (P12), not stepped through on a chip.
+        assertEquals("Opus 5.5 · High", io.github.odnwks.mimir.ui.optionsWords("Opus 5.5", "high"))
+        assertEquals("Opus 5.5", io.github.odnwks.mimir.ui.optionsWords("Opus 5.5", "high", withEffort = false))
         assertFalse(FakeStation().also { it.optionsOk = false }.canSetReplyOptions())
     }
 }

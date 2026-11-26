@@ -63,6 +63,7 @@ import io.github.odnwks.mimir.data.StationState
 import io.github.odnwks.mimir.nav.Navigator
 import io.github.odnwks.mimir.nav.Screen
 import io.github.odnwks.mimir.nav.Sheet
+import io.github.odnwks.mimir.nav.TaskChoice
 import io.github.odnwks.mimir.ui.theme.Motion
 import io.github.odnwks.mimir.ui.theme.Palette
 import io.github.odnwks.mimir.ui.theme.Type
@@ -129,8 +130,8 @@ private fun Sheet.title(state: StationState) = when (this) {
     Sheet.Unpair -> "Unpair this phone?"
     is Sheet.ProjectPicker -> "Project"
     Sheet.WhereTo -> "Where should this go?"
-    Sheet.ComposeModel -> "Model for this task"
-    Sheet.ComposeEffort -> "Effort for this task"
+    is Sheet.NewTaskModel -> "Model for this task"
+    is Sheet.ProjectOptions -> project
     is Sheet.RenameTask -> "Rename this task"
     is Sheet.TaskModel -> "Model for this task"
     is Sheet.Yolo -> "Go ahead without asking in this task?"
@@ -202,6 +203,9 @@ private fun SheetContent(sheet: Sheet, state: StationState, station: Station, na
         is Sheet.ChatOptions -> Menu(sheet.title(state)) {
             // Only things about this chat (the voice settings are in Settings › Voice).
             val ask = { a: io.github.odnwks.mimir.nav.ChatAsk -> nav.closeSheet(); nav.askChat(a) }
+            // The box keeps only +, the chip and Send: where it goes and voice typing are here.
+            sheet.where?.let { w -> ChatMenuRow("To: $w", "Where your next message goes") { nav.openSheet(Sheet.WhereTo) } }
+            sheet.talk?.let { t -> ChatMenuRow("Talk (voice typing)", "Speak, and the words go into the box") { nav.taskAsk = t; nav.closeSheet() } }
             if (sheet.canRename) ChatMenuRow(CHAT_RENAME) { ask(io.github.odnwks.mimir.nav.ChatAsk.Rename) }
             ChatMenuRow(CHAT_COPY) { ask(io.github.odnwks.mimir.nav.ChatAsk.CopyChat) }
             ChatMenuRow(CHAT_RULES, CHAT_RULES_ABOUT) { ask(io.github.odnwks.mimir.nav.ChatAsk.Rules) }
@@ -257,21 +261,36 @@ private fun SheetContent(sheet: Sheet, state: StationState, station: Station, na
             }
         }
         // Model and effort both chosen here: a pick stays open (owner, 2026-11-25); back or a swipe closes it.
-        is Sheet.TaskModel -> Menu(sheet.title(state)) {
+        is Sheet.TaskModel -> {
             val now = state.task(sheet.taskId)?.model.orEmpty()
-            (state.models.claude + state.models.local).forEach { m ->
-                val current = now == Mapping.modelName(m.id) || now == m.name || now == m.id.removePrefix("ollama:") + " (free)" || (m.id == "auto" && now == Mapping.modelName(null))
-                // Online ones go to Anthropic: marked, so it is plain which ones leave the PC.
-                MenuRow(Glyphs.Models, plainModelName(m.name), checked = current, note = if (m.free) "On your PC" else "Online") { station.setTaskModel(sheet.taskId, m.id) }
+            ModelEffortMenu(
+                sheet.title(state), state, station.canSetReplyOptions(),
+                isModel = { m -> now == Mapping.modelName(m.id) || now == m.name || now == m.id.removePrefix("ollama:") + " (free)" || (m.id == "auto" && now == Mapping.modelName(null)) },
+                onModel = { station.setTaskModel(sheet.taskId, it) },
+                effortNow = TaskEffort.of(state.task(sheet.taskId)?.effort?.ifEmpty { null }),
+                onEffort = { station.setTaskEffort(sheet.taskId, it) },
+            )
+        }
+        // The same sheet for the task a box starts: the choice stays with the box until it sends.
+        is Sheet.NewTaskModel -> {
+            val project = sheet.project
+            val choice = if (project == null) nav.composeTo.let { TaskChoice(model = it.model, effort = it.effort) }
+                else nav.newTaskChoice.takeIf { it.project == project } ?: TaskChoice(project)
+            val set = { c: TaskChoice ->
+                if (project == null) nav.composeTo = nav.composeTo.copy(model = c.model, effort = c.effort) else nav.newTaskChoice = c.copy(project = project)
             }
-            // Effort for this task from now on: only a PC that takes it with a message (task_reply_options).
-            if (station.canSetReplyOptions()) {
-                val effortNow = TaskEffort.of(state.task(sheet.taskId)?.effort?.ifEmpty { null })
-                Text("Effort, from now on", style = Type.Small, color = Palette.TextDim, modifier = Modifier.padding(start = 12.dp, top = 10.dp, bottom = 2.dp))
-                TaskEffort.entries.forEach { e ->
-                    MenuRow(Glyphs.Models, e.words, checked = e == effortNow, note = e.about, tick = "Effort chosen") { station.setTaskEffort(sheet.taskId, e.wire) }
-                }
-            } else Text(UPDATE_PC_FOR_OPTIONS, style = Type.Small, color = Palette.TextDim, modifier = Modifier.padding(start = 12.dp, top = 10.dp, bottom = 2.dp))
+            ModelEffortMenu(
+                sheet.title(state), state, station.canSetReplyOptions(),
+                isModel = { m -> m.id == choice.model.ifEmpty { state.models.selected } },
+                onModel = { set(choice.copy(model = it)) },
+                effortNow = TaskEffort.of(choice.effort.ifEmpty { null }),
+                onEffort = { set(choice.copy(effort = it.orEmpty())) },
+                effortHeading = "Effort",
+            )
+        }
+        is Sheet.ProjectOptions -> Menu(sheet.title(state)) {
+            // Voice typing for the new-task box (the box keeps only +, the chip and Send).
+            MenuRow(Glyphs.Mic, "Talk (voice typing)") { nav.taskAsk = io.github.odnwks.mimir.nav.TALK_PROJECT; nav.closeSheet() }
         }
         Sheet.IncognitoOptions -> Menu(sheet.title(state)) {
             PrivacyLine("Whisper mode: the internet is cut off for this task, nothing leaves your PC, and it's read aloud by this phone's voice only.")
@@ -339,8 +358,6 @@ private fun SheetContent(sheet: Sheet, state: StationState, station: Station, na
         )
         is Sheet.ProjectPicker -> ProjectPicker(sheet.current, state, station, nav, sheet.newProject, sheet.back, sheet.open, sheet.justChat)
         Sheet.WhereTo -> WhereToSheet(state, nav, canEffort = station.canSetReplyOptions())
-        Sheet.ComposeModel -> ComposeModelSheet(state, nav)
-        Sheet.ComposeEffort -> ComposeEffortSheet(nav)
         Sheet.Unpair -> Ask(
             sheet.title(state),
             "This phone forgets your PC at once. To cut it off on the PC side too, remove it in $AI_NAME on the PC (Settings › Phones). You can pair again later with a new code.",
@@ -482,6 +499,30 @@ private fun Menu(title: String, rows: @Composable ColumnScope.() -> Unit) {
             style = Type.SheetTitle, maxLines = 2)
         rows()
     }
+}
+
+/**
+ * The model and effort sheet (owner, 2026-11-25), one for every reply box: the models, then the
+ * effort ("Default Effort" first). A pick stays open; back or a swipe closes it. A PC too old to
+ * take an effort says so in its place.
+ */
+@Composable
+private fun ModelEffortMenu(
+    title: String, state: StationState, canEffort: Boolean,
+    isModel: (io.github.odnwks.mimir.data.Model) -> Boolean, onModel: (String) -> Unit,
+    effortNow: TaskEffort, onEffort: (String?) -> Unit, effortHeading: String = "Effort, from now on",
+) = Menu(title) {
+    (state.models.claude + state.models.local).forEach { m ->
+        // Online ones go to Anthropic: marked, so it is plain which ones leave the PC.
+        MenuRow(Glyphs.Models, plainModelName(m.name), checked = isModel(m), note = if (m.free) "On your PC" else "Online") { onModel(m.id) }
+    }
+    // Effort: only a PC that takes it (task_reply_options).
+    if (canEffort) {
+        Text(effortHeading, style = Type.Small, color = Palette.TextDim, modifier = Modifier.padding(start = 12.dp, top = 10.dp, bottom = 2.dp))
+        TaskEffort.entries.forEach { e ->
+            MenuRow(Glyphs.Models, e.words, checked = e == effortNow, note = e.about, tick = "Effort chosen") { onEffort(e.wire) }
+        }
+    } else Text(UPDATE_PC_FOR_OPTIONS, style = Type.Small, color = Palette.TextDim, modifier = Modifier.padding(start = 12.dp, top = 10.dp, bottom = 2.dp))
 }
 
 @Composable

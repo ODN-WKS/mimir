@@ -38,6 +38,8 @@ fun ProjectScreen(name: String, state: StationState, station: Station, nav: Navi
     val running = p.tasksRunning
     Column(Modifier.fillMaxSize().background(Palette.Ground)) {
         BackHeader(p.name, nav::back, backLabel = "Back to status",
+            // Voice typing for the box below (the box keeps only +, the chip and Send).
+            action = { IconTarget(Glyphs.More, "Options for ${p.name}", { nav.openSheet(Sheet.ProjectOptions(p.name)) }) },
             // The folder's full path means nothing on a phone: only a short description shows.
             subtitle = listOf(p.about.takeUnless { it.startsWith("/") || it.startsWith("~") }.orEmpty(),
                 // While the PC is away the strip under the header says so; the header does not say it again.
@@ -119,11 +121,18 @@ fun ProjectScreen(name: String, state: StationState, station: Station, nav: Navi
         var problem by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf("") }
         if (problem.isNotEmpty()) Text(problem, style = Type.Small, color = Palette.AmberNote, modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp))
         val voice = rememberVoiceInput(station)
+        // The three dots' "Talk (voice typing)", done here.
+        val startVoice = rememberStartVoice(voice)
+        androidx.compose.runtime.LaunchedEffect(nav.taskAsk) {
+            if (nav.taskAsk == io.github.odnwks.mimir.nav.TALK_PROJECT) { nav.taskAsk = null; startVoice() }
+        }
         VoicePanel(voice, heard = { draft = withHeard(draft, it) }, Modifier.padding(top = 4.dp))
         val attach = rememberAttach(bigPictures = true, pcReadsFiles = true, key = "project-${p.name}")
-        var effort by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf("") }
+        // The model and effort for the task this box starts: the same chip and sheet as a task's reply box.
+        val choice = nav.newTaskChoice.takeIf { it.project == p.name } ?: io.github.odnwks.mimir.nav.TaskChoice(p.name)
         var starting by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
         val canOptions = station.canSetReplyOptions()
+        val modelName = (state.models.claude + state.models.local).firstOrNull { it.id == choice.model }?.name ?: state.models.selectedName
         Composer(
             draft, { draft = it },
             hint = if (state.pcAway) "Message Mímir (${state.waitsUntil})" else "New task in ${p.name}",
@@ -132,18 +141,23 @@ fun ProjectScreen(name: String, state: StationState, station: Station, nav: Navi
                 // The pictures are saved off the main thread; the box keeps its content until they are.
                 if (!starting) {
                     starting = true
-                    station.startTaskAsync(draft.trim(), p.name, incognito = false, pictures = attach.pictures.toList(), files = attach.files.toList(), effort = effort.ifEmpty { null }) { id ->
+                    station.startTaskAsync(
+                        draft.trim(), p.name, incognito = false, model = choice.model.ifEmpty { null },
+                        pictures = attach.pictures.toList(), files = attach.files.toList(),
+                        // An old PC takes no effort: none is sent (its note says so).
+                        effort = choice.effort.ifEmpty { null }.takeIf { canOptions },
+                    ) { id ->
                         starting = false
                         if (id.isEmpty()) problem = station.startProblem().ifEmpty { "The task couldn't start." } + " Your words are kept here."
-                        else { draft = ""; problem = ""; attach.clear(); effort = ""; nav.open(Screen.Task(id)) }
+                        else { draft = ""; problem = ""; attach.clear(); nav.newTaskChoice = io.github.odnwks.mimir.nav.TaskChoice(); nav.open(Screen.Task(id)) }
                     }
                 }
             },
             modifier = Modifier.padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 10.dp),
-            chip = p.name, chipLabel = "To: ${p.name}",
             attach = attach.takeIf { station.canAttachToTasks() }, needsWords = true,
-            optionsChip = ("Effort: " + TaskEffort.of(effort.ifEmpty { null }).let { if (it == TaskEffort.Usual) "usual" else it.words }).takeIf { canOptions },
-            onOptions = { effort = nextEffort(effort) },
+            optionsChip = optionsWords(modelName, choice.effort, withEffort = canOptions),
+            onOptions = { nav.openSheet(Sheet.NewTaskModel(p.name)) },
+            optionsNote = UPDATE_PC_FOR_OPTIONS.takeIf { !canOptions && state.paired },
         )
     }
 }

@@ -117,7 +117,11 @@ sealed interface Sheet {
     /** [pc]: the paired PC answers this chat (its privacy words say so). */
     data class ChatOptions(val topic: String?, val canRename: Boolean, val whisper: Boolean, val canWhisper: Boolean, val pc: Boolean = false, /** The company an online model belongs to, when it answers this chat: its messages go there. */ val online: String? = null,
         /** Bytes of this chat sent to the PC and the lookups made in it, when this chat counts them (-1: not counted here). */
-        val sentToPc: Long = -1, val lookups: Int = 0) : Sheet
+        val sentToPc: Long = -1, val lookups: Int = 0,
+        /** Chat's "To:" words (it opens "Where should this go?"): the box has no room for it. Null: not offered. */
+        val where: String? = null,
+        /** What "Talk (voice typing)" asks of the open chat ([TALK_CHAT] or [TALK_MIMIR]); null: not offered. */
+        val talk: String? = null) : Sheet
     /**
      * Choose a project (or make one on the PC). The choice goes back to [back] (the composer's
      * "Where should this go?"), opens the project's page ([open]), or goes to the screen that
@@ -126,10 +130,13 @@ sealed interface Sheet {
     data class ProjectPicker(val current: String, val newProject: Boolean = false, val back: Sheet? = null, val open: Boolean = false, val justChat: Boolean = false) : Sheet
     /** The composer's "Where should this go?": Auto or a project, and options for this one task. */
     data object WhereTo : Sheet
-    /** The model for the task the composer starts. */
-    data object ComposeModel : Sheet
-    /** The effort for the task the composer starts. */
-    data object ComposeEffort : Sheet
+    /**
+     * The model and effort for the task a box starts (the same sheet as a task's own): [project]
+     * names the project page's box; null is Chat's box.
+     */
+    data class NewTaskModel(val project: String? = null) : Sheet
+    /** A project page's three dots: voice typing for its box. */
+    data class ProjectOptions(val project: String) : Sheet
 }
 
 /**
@@ -139,6 +146,9 @@ sealed interface Sheet {
 data class ComposeTo(val project: String = "", val plan: Boolean = false, val model: String = "", val whisper: Boolean = false, val effort: String = "") {
     val auto: Boolean get() = project.isEmpty() && !plan && model.isEmpty() && !whisper && effort.isEmpty()
 }
+
+/** A project page's choice for its next task: a model and an effort ("": the usual ones). */
+data class TaskChoice(val project: String = "", val model: String = "", val effort: String = "")
 
 /** How the last screen change happened; it picks the animation. */
 sealed interface Move {
@@ -179,6 +189,8 @@ class Navigator(start: Screen = Screen.Chat) {
     var menuOpen: Boolean by mutableStateOf(false)
     /** Where Chat's composer sends the next message (the "To:" chip). */
     var composeTo: ComposeTo by mutableStateOf(ComposeTo())
+    /** The model and effort for the next task a project page's box starts. */
+    var newTaskChoice: TaskChoice by mutableStateOf(TaskChoice())
     /** The project just chosen in the picker, for the screen that opened it to take. */
     var pickedProject: String? by mutableStateOf(null)
     /** What the task's three-dots menu asked of the open task screen ([TASK_ASK_FIND] or [TASK_ASK_TALK]), for it to do. */
@@ -331,3 +343,9 @@ fun Screen.backsToHome(): Boolean = when (this) {
 const val TASK_ASK_FIND = "find"
 /** The task menu's "Talk (voice typing)". */
 const val TASK_ASK_TALK = "talk"
+/** "Talk (voice typing)" from Chat's three dots, for Chat's box. */
+const val TALK_CHAT = "talk-chat"
+/** "Talk (voice typing)" from the Mímir chat's three dots, for its box. */
+const val TALK_MIMIR = "talk-mimir"
+/** "Talk (voice typing)" from a project page's three dots, for its new-task box. */
+const val TALK_PROJECT = "talk-project"

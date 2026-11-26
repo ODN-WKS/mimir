@@ -133,8 +133,10 @@ fun ChatScreen(state: StationState, station: Station, nav: Navigator, initialDra
             instead = if (state.incognito != null) ({ nav.open(Screen.IncognitoTask, tap.last) }) else null,
             // A tap: who should answer (in a Whisper on the PC, it ends the Whisper).
             onPick = if (to.whisper) ({ nav.composeTo = to.copy(whisper = false) }) else ({ whoOpen = true }),
-            onMore = if (!whispering && state.chat.any { it is ChatEntry.Mine || it is ChatEntry.Reply }) ({
-                nav.openSheet(io.github.odnwks.mimir.nav.Sheet.ChatOptions(topic = null, canRename = false, whisper = false, canWhisper = false, pc = true))
+            // Always there (not while writing a Whisper): where the next message goes and voice typing live in it.
+            onMore = if (!to.whisper) ({
+                nav.openSheet(io.github.odnwks.mimir.nav.Sheet.ChatOptions(topic = null, canRename = false, whisper = false, canWhisper = false, pc = true,
+                    where = to.chipWords().takeIf { state.paired }, talk = io.github.odnwks.mimir.nav.TALK_CHAT))
             }) else null,
         )
         // Only while it matters (the PC away): one small line under the bar, so the bar itself never changes.
@@ -300,8 +302,15 @@ LazyColumn(
         val attach = rememberAttach(bigPictures = true, pcReadsFiles = true, key = "chat")
         VoicePanel(voice, heard = { draft = withHeard(draft, it) }, Modifier.padding(top = 4.dp))
 
-        // The one composer: "To:" picks where it goes. Only it rides the keyboard (the list above
-        // just gets shorter).
+        // The three dots' "Talk (voice typing)", done here.
+        val startVoice = rememberStartVoice(voice)
+        androidx.compose.runtime.LaunchedEffect(nav.taskAsk) {
+            if (nav.taskAsk == io.github.odnwks.mimir.nav.TALK_CHAT) { nav.taskAsk = null; startVoice() }
+        }
+        // The one reply box (owner, 2026-11-25): +, the model and effort chip, Send. "To:" has no room
+        // in the row at large text, so it is in the three dots. Only the box rides the keyboard.
+        val canOptions = station.canSetReplyOptions()
+        val modelName = (state.models.claude + state.models.local).firstOrNull { it.id == to.model }?.name ?: state.models.selectedName
         Composer(
             draft, { draft = it },
             hint = when {
@@ -314,9 +323,8 @@ LazyColumn(
             attach = attach.takeIf { !to.auto && station.canAttachToTasks() }, needsWords = true,
             onSend = { if (sendFromChat(draft, state, station, nav, engine, attach.pictures.toList(), attach.files.toList())) { draft = ""; attach.clear() } },
             modifier = Modifier.imePadding().padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 10.dp),
-            chip = if (state.paired) to.chipWords() else null,
-            chipLabel = "To: ${to.chipWords()}. Choose where this goes",
-            onChip = { nav.openSheet(io.github.odnwks.mimir.nav.Sheet.WhereTo) },
+            optionsChip = if (state.paired) optionsWords(modelName, to.effort, withEffort = canOptions) else null,
+            onOptions = { nav.openSheet(io.github.odnwks.mimir.nav.Sheet.NewTaskModel()) },
             whisper = to.whisper,
         )
     }

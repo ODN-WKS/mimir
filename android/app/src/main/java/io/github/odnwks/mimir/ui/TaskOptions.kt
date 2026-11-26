@@ -20,9 +20,6 @@ enum class TaskEffort(val words: String, val wire: String?, val about: String) {
 /** What an old PC says in place of the model and effort choice. */
 const val UPDATE_PC_FOR_OPTIONS = "Update Mímir on your PC to change this here"
 
-/** The words on the chip beside the reply box: "Model · Effort". */
-fun optionsWords(model: String, effort: String): String =
-    listOf(plainModelName(model).ifBlank { "Auto" }, TaskEffort.of(effort.ifEmpty { null }).let { it.words }).joinToString(" · ")
-
-/** The next effort level in the list, round to the usual one (one tap on a chip steps through them). */
-fun nextEffort(wire: String): String = TaskEffort.entries.let { all -> all[(all.indexOf(TaskEffort.of(wire.ifEmpty { null })) + 1) % all.size] }.wire.orEmpty()
+/** The words on the reply box's chip: "Model · Effort" ([withEffort] false, a PC too old to take one: the model only). */
+fun optionsWords(model: String, effort: String, withEffort: Boolean = true): String =
+    listOfNotNull(plainModelName(model).ifBlank { "Auto" }, TaskEffort.of(effort.ifEmpty { null }).words.takeIf { withEffort }).joinToString(" · ")
