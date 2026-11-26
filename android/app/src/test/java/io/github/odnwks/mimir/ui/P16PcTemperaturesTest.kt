@@ -33,6 +33,8 @@ import java.io.File
 /** P16: the processor and graphics lines on Your PC start with their temperature, as plain text (owner, 2026-11-25). */
 @RunWith(RobolectricTestRunner::class)
 @Config(qualifiers = "w390dp-h844dp-xhdpi")
+// Real text measuring, so a line too long for its room shows (the default draws text with no width).
+@org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
 class P16PcTemperaturesTest {
     @get:Rule val compose = createComposeRule()
 
@@ -96,8 +98,13 @@ class P16PcTemperaturesTest {
             val results = mutableListOf<TextLayoutResult>()
             n.fetchSemanticsNode().config[SemanticsActions.GetTextLayoutResult].action?.invoke(results)
             val r = results.single()
-            assertTrue("clipped: $t", !r.hasVisualOverflow)
-            assertTrue("past the edge: $t", n.getBoundsInRoot().right <= 320.dp)
+            val box = n.getBoundsInRoot()
+            assertTrue("past the edge: $t", box.left >= 0.dp && box.right <= 320.dp)
+            // Every line of words fits inside the text's own box.
+            for (i in 0 until r.lineCount) {
+                val w = r.getLineRight(i) - r.getLineLeft(i)
+                assertTrue("line $i of \"$t\" is wider than its room: $w > ${r.size.width}", w <= r.size.width + 0.5f)
+            }
             // Lines only ever break at a space, never inside a word.
             for (i in 0 until r.lineCount - 1) {
                 val end = r.getLineEnd(i)
