@@ -205,6 +205,8 @@ object PcMeterWords {
         fun gb(b: Long) = Math.round(b / 1_073_741_824.0)
         return "${gb(used)} of ${gb(total)} GB"
     }
+    /** The temperature first, at the far left of the values (owner, 2026-11-25): "61 °C · 44%"; just the rest when it can't be read. */
+    fun withTemp(tempC: Int?, rest: String): String = tempC?.let { "$it °C · $rest" } ?: rest
 }
 
 /** The PC's processor, memory and graphics, as three labelled bars (graphics only when the PC reports it). */
@@ -225,9 +227,10 @@ fun PcMeters(s: io.github.odnwks.mimir.data.PcStats) {
             }
         }
         // "14/32 threads · 44%": how many of the PC's threads the work fills (owner, 2026-11-25).
-        meter(PcMeterWords.CPU, s.threadsBusy?.let { "$it/${s.threads} threads · ${s.cpuPercent}%" } ?: "${s.cpuPercent}%", s.cpuPercent / 100f)
+        val cpu = s.threadsBusy?.let { "$it/${s.threads} threads · ${s.cpuPercent}%" } ?: "${s.cpuPercent}%"
+        meter(PcMeterWords.CPU, PcMeterWords.withTemp(s.cpuTempC, cpu), s.cpuPercent / 100f)
         meter(PcMeterWords.MEMORY, PcMeterWords.memory(s.memUsedBytes, s.memTotalBytes), s.memUsedBytes.toFloat() / s.memTotalBytes)
-        s.gpuPercent?.let { meter(PcMeterWords.GRAPHICS, "$it%", it / 100f) }
+        s.gpuPercent?.let { meter(PcMeterWords.GRAPHICS, PcMeterWords.withTemp(s.gpuTempC, "$it%"), it / 100f) }
     }
 }
 

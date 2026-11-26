@@ -695,6 +695,14 @@ pub struct TruthStats {
     /// How many processor threads the PC has (the phone shows "14 of 32 threads"); absent from older PCs.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub threads: Option<u32>,
+    /// Processor temperature, whole degrees Celsius (the average of the core
+    /// sensors); absent when it can't be read and from older PCs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cpu_temp_c: Option<i32>,
+    /// Graphics chip temperature, whole degrees Celsius; absent when it can't
+    /// be read and from older PCs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gpu_temp_c: Option<i32>,
 }
 
 /// A task as clients see it: everything but its conversation, plus what

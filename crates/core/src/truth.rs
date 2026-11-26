@@ -520,6 +520,8 @@ mod tests {
             mem_total: 32_000_000_000,
             gpu: Some(10.0),
             threads: None,
+            cpu_temp_c: None,
+            gpu_temp_c: None,
         };
         let mut i = input(vec![], vec![]);
         i.stats = Some(stats(20.0, 8_000_000_000));
@@ -540,6 +542,8 @@ mod tests {
             mem_total: 32_000_000_000,
             gpu: None,
             threads: None,
+            cpu_temp_c: None,
+            gpu_temp_c: None,
         };
         let mut i = input(vec![], vec![]);
         i.stats = Some(stats(20.0, 8_000_000_000));

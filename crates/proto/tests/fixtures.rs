@@ -143,6 +143,8 @@ fn truth() -> Truth {
             mem_total: 32_000_000_000,
             gpu: Some(8.0),
             threads: None,
+            cpu_temp_c: Some(61),
+            gpu_temp_c: Some(54),
         }),
     }
 }
@@ -897,4 +899,22 @@ fn write_the_examples() {
         with_files.join("\n") + "\n",
     )
     .unwrap();
+}
+
+#[test]
+fn stats_carry_the_temperatures_and_parse_without_them() {
+    let t = truth();
+    let json = serde_json::to_value(t.stats.as_ref().unwrap()).unwrap();
+    assert_eq!(json["cpu_temp_c"], 61);
+    assert_eq!(json["gpu_temp_c"], 54);
+    // A message from an older PC (or one without readable sensors) has neither.
+    let old: TruthStats = serde_json::from_str(
+        r#"{"cpu":37.0,"mem_used":12400000000,"mem_total":32000000000,"gpu":8.0}"#,
+    )
+    .unwrap();
+    assert_eq!(old.cpu_temp_c, None);
+    assert_eq!(old.gpu_temp_c, None);
+    // And left out on the wire when unknown.
+    let back = serde_json::to_string(&old).unwrap();
+    assert!(!back.contains("temp"), "{back}");
 }
