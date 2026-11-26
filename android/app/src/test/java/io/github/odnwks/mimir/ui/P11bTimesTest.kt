@@ -148,7 +148,7 @@ class P11bTimesTest {
         val waiting = TaskMessage("t1-6", false, "are you there?", atMs = now - 61_000, receipt = MessageReceipt.Delivered, model = opus)
         val t = conversation(status = "Working", busy = true, steps = listOf("… Running the tests"), extra = listOf(waiting))
         show(t.copy(messages = t.messages.map { if (it.id == "t1-2") it.copy(receipt = MessageReceipt.Read) else it }))
-        compose.onNodeWithText("Not read yet: Claude is busy with a step").assertExistsQuietly()
+        compose.onNodeWithText("Not read yet: the AI is busy with a step").assertExistsQuietly()
         // The message sent 10 s ago (Sent) doesn't say it yet; one already Read never does.
         assertEquals(1, compose.onAllNodesWithTag(NOT_READ_TAG, useUnmergedTree = true).fetchSemanticsNodes().size)
     }

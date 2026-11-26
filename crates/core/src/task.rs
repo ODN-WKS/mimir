@@ -46,9 +46,7 @@ pub fn switch_sentence(short: &str) -> &'static str {
         WHY_PICKED => "You picked this model or effort level for the task.",
         WHY_AUTO => "The task's model is Auto, and Auto picked this model for the message.",
         WHY_LIMIT => "Claude's usage limit ran out, so the task carried on on a model on your PC.",
-        _ => {
-            "Claude Code did not say why the model or effort changed, and Mímir did not change it."
-        }
+        _ => "The AI did not say why the model or effort changed, and Mímir did not change it.",
     }
 }
 

@@ -141,7 +141,7 @@ fun switchLineWords(m: TaskMessage, before: TaskMessage?): String {
 
 const val REASON_NOT_REPORTED = "reason not reported"
 /** The full reason when the PC gave none (the same sentence as the PC's own). */
-const val NOT_REPORTED_SENTENCE = "Claude Code did not say why the model or effort changed, and Mímir did not change it."
+const val NOT_REPORTED_SENTENCE = "The AI did not say why the model or effort changed, and Mímir did not change it."
 
 /** The reply before [m] (in [all]) that names its model: what a switch is from. */
 fun replyBefore(all: List<TaskMessage>, m: TaskMessage): TaskMessage? {
@@ -152,9 +152,9 @@ fun replyBefore(all: List<TaskMessage>, m: TaskMessage): TaskMessage? {
 
 /** Why the owner's message is not read yet, in words, after a minute at Sent or Delivered while the task works. */
 fun notReadYetWords(r: MessageReceipt, busyWithStep: Boolean): String = when {
-    r == MessageReceipt.Sent -> "Not read yet: your PC has it and hands it to Claude when Claude is ready"
-    busyWithStep -> "Not read yet: Claude is busy with a step"
-    else -> "Not read yet: Claude takes it in when it finishes what it is doing"
+    r == MessageReceipt.Sent -> "Not read yet: your PC has it and hands it to the AI when the AI is ready"
+    busyWithStep -> "Not read yet: the AI is busy with a step"
+    else -> "Not read yet: the AI takes it in when it finishes what it is doing"
 }
 
 /** The receipt circle: Sent an empty circle, Delivered a circle with a check, Read a filled circle. */
@@ -271,7 +271,7 @@ fun ThinkingBubble(modifier: Modifier = Modifier) {
     Row(
         modifier.size(MetaLook.ThinkingWidth, MetaLook.ThinkingHeight).clip(ChatLook.replyShape).background(Palette.Card)
             .border(1.dp, Palette.Line, ChatLook.replyShape)
-            .testTag(THINKING_TAG).semantics { contentDescription = "Claude is thinking" },
+            .testTag(THINKING_TAG).semantics { contentDescription = "The AI is thinking" },
         horizontalArrangement = Arrangement.spacedBy(5.dp, Alignment.CenterHorizontally), verticalAlignment = Alignment.CenterVertically,
     ) {
         repeat(3) { i ->
