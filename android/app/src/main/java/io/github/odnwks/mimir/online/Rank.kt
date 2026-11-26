@@ -47,8 +47,11 @@ object Rank {
 
     private val WORD = Regex("[\\p{L}\\p{N}]+")
 
+    /** The words of [text] that say what it is about: [terms] without the stop words, once each. */
+    internal fun content(text: String): Set<String> = terms(text).filterTo(LinkedHashSet()) { it !in STOP }
+
     /** Lower-case words, a plural "s" taken off, so "prices" meets "price". */
-    private fun terms(text: String): List<String> = WORD.findAll(text.lowercase()).map { stem(it.value) }.toList()
+    internal fun terms(text: String): List<String> = WORD.findAll(text.lowercase()).map { stem(it.value) }.toList()
 
     private fun stem(w: String): String =
         if (w.length > 3 && w.endsWith('s') && !w.endsWith("ss") && !w.endsWith("us") && !w.endsWith("is")) w.dropLast(1) else w

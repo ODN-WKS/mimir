@@ -53,6 +53,10 @@ object Net {
         maxBytes: Int = 2_000_000, timeoutMs: Int = READ_MS,
         /** Keep the first [maxBytes] of a longer page instead of failing ("the page is too big"). */
         cut: Boolean = false,
+        /** List the try in [LookupLog] even when it brings nothing back (once, as one that got no bytes). */
+        listFailed: Boolean = false,
+        /** No second try after a connect timeout: the caller has somewhere else to ask in the time left. */
+        onceIfSilent: Boolean = false,
     ): Got {
         if (!Online.allowed(mode)) throw Refused(if (mode == ChatMode.Whisper) "a Whisper is offline" else "looking things up is off")
         // Kept answers: only in a normal chat (a Whisper keeps nothing).
@@ -63,25 +67,33 @@ object Net {
         // A Whisper with internet goes through Tor only, never directly: no Tor, no lookup.
         val tor = mode == ChatMode.WhisperWeb
         val end = minOf(now() + BUDGET_MS, deadline.get() ?: Long.MAX_VALUE)
-        while (true) {
-            if (tor) checkForTor(url) else checkShape(url)
-            val req = Request(url, mapOf("User-Agent" to AGENT, "Accept-Language" to "en", "Accept" to accept.joinToString()), if (tor) timeoutMs * 3 else timeoutMs, maxBytes, cut)
-            val (r, route, asked) = if (tor) Triple(torTransport(req), LookupLog.Route.Tor, listOf(LookupLog.Route.Tor)) else fetch(req, mode, end)
-            if (r.status in 300..399 && r.location != null) {
-                if (++hops > 2) throw Failed("the site sent the app round in circles", r.status)
-                url = URL(url, r.location)
-                continue
+        var tried = false
+        var listed = false
+        try {
+            while (true) {
+                if (tor) checkForTor(url) else checkShape(url)
+                val req = Request(url, mapOf("User-Agent" to AGENT, "Accept-Language" to "en", "Accept" to accept.joinToString()), if (tor) timeoutMs * 3 else timeoutMs, maxBytes, cut)
+                tried = true
+                val (r, route, asked) = if (tor) Triple(torTransport(req), LookupLog.Route.Tor, listOf(LookupLog.Route.Tor)) else fetch(req, mode, end, onceIfSilent)
+                if (r.status in 300..399 && r.location != null) {
+                    if (++hops > 2) throw Failed("the site sent the app round in circles", r.status)
+                    url = URL(url, r.location)
+                    continue
+                }
+                if (r.status !in 200..299) throw Failed(if (r.status >= 500) "the site is having trouble just now" else "the site wouldn't show that page", r.status)
+                val type = r.type.substringBefore(';').trim().lowercase()
+                if (type !in accept) throw Refused("not a page that can be read ($type)")
+                val text = String(r.body, Charsets.UTF_8)
+                // Both ways were asked: both are listed in the Privacy check, honestly.
+                asked.filter { it != route }.forEach { LookupLog.add(LookupLog.Entry(clock(), site, words, it, 0), mode) }
+                LookupLog.add(LookupLog.Entry(clock(), site, words, route, r.body.size.toLong()), mode)
+                listed = true
+                val got = Got(text, r.body.size.toLong(), type)
+                if (keep > 0) synchronized(cache) { cache[address] = clock() to got }
+                return got
             }
-            if (r.status !in 200..299) throw Failed(if (r.status >= 500) "the site is having trouble just now" else "the site wouldn't show that page", r.status)
-            val type = r.type.substringBefore(';').trim().lowercase()
-            if (type !in accept) throw Refused("not a page that can be read ($type)")
-            val text = String(r.body, Charsets.UTF_8)
-            // Both ways were asked: both are listed in the Privacy check, honestly.
-            asked.filter { it != route }.forEach { LookupLog.add(LookupLog.Entry(clock(), site, words, it, 0), mode) }
-            LookupLog.add(LookupLog.Entry(clock(), site, words, route, r.body.size.toLong()), mode)
-            val got = Got(text, r.body.size.toLong(), type)
-            if (keep > 0) synchronized(cache) { cache[address] = clock() to got }
-            return got
+        } finally {
+            if (listFailed && tried && !listed) LookupLog.add(LookupLog.Entry(clock(), site, words, if (tor) LookupLog.Route.Tor else LookupLog.Route.Phone, 0), mode)
         }
     }
 
@@ -98,9 +110,11 @@ object Net {
 
     /**
      * A lookup that couldn't be done, with the cause in plain words ("this phone has no signal").
-     * [status] is what the site answered with, or null when no answer came from it.
+     * [status] is what the site answered with, or null when no answer came from it. [dead] is true
+     * when every try found nobody there at all (see [nobodyThere]); a site that connected and was
+     * slow, reset the connection or failed its secure link is not dead.
      */
-    class Failed(why: String, val status: Int? = null) : java.io.IOException(why)
+    class Failed(why: String, val status: Int? = null, val dead: Boolean = false) : java.io.IOException(why)
 
     /** The PC can't be asked right now (not connected, or it didn't answer). */
     class PcAway(why: String = "your PC is away") : java.io.IOException(why)
@@ -263,7 +277,7 @@ object Net {
      * one way, a failure is tried once more if time is left. Throws [Failed] with every way's
      * cause in plain words.
      */
-    private fun fetch(req: Request, mode: ChatMode, end: Long): Triple<Reply, LookupLog.Route, List<LookupLog.Route>> {
+    private fun fetch(req: Request, mode: ChatMode, end: Long, onceIfSilent: Boolean): Triple<Reply, LookupLog.Route, List<LookupLog.Route>> {
         val pc = viaPc.takeIf { mode == ChatMode.Normal && pcMay(req.url) }
         val ways = listOfNotNull(LookupLog.Route.Phone, pc?.let { LookupLog.Route.Pc })
         val answers = java.util.concurrent.LinkedBlockingQueue<Pair<LookupLog.Route, Result<Reply>>>()
@@ -298,12 +312,15 @@ object Net {
         ways.forEach(::start)
         var waiting = ways.size
         var retried = false
+        /** Every try so far found nobody there. */
+        var dead = true
         val problems = LinkedHashMap<LookupLog.Route, Throwable>()
         var badAnswer: Pair<Reply, LookupLog.Route>? = null
         while (waiting > 0) {
             val left = end - now()
             val got = if (left > 0) answers.poll(left, java.util.concurrent.TimeUnit.MILLISECONDS) else null
             if (got == null) {
+                dead = false
                 // Out of time: the ways still out are counted as too slow.
                 ways.filter { it !in problems }.forEach { problems[it] = java.net.SocketTimeoutException(SLOW) }
                 break
@@ -316,9 +333,13 @@ object Net {
             // A site that's down on one way may answer on the other.
             if (reply != null && reply.status < 500) return Triple(reply, way, ways)
             if (reply != null) badAnswer = reply to way
+            val error = result.exceptionOrNull()
+            if (error == null || !nobodyThere(error)) dead = false
             problems[way] = result.exceptionOrNull() ?: Failed("the site is having trouble just now")
             // Every way failed: this phone tries once more, if there's time for it.
-            if (waiting == 0 && !retried && end - now() > 2_000 && problems[LookupLog.Route.Phone] != null && badAnswer == null) {
+            if (waiting == 0 && !retried && end - now() > 2_000 && problems[LookupLog.Route.Phone] != null && badAnswer == null &&
+                !(onceIfSilent && connectTimeout(problems[LookupLog.Route.Phone]))
+            ) {
                 retried = true
                 problems.remove(LookupLog.Route.Phone)
                 start(LookupLog.Route.Phone)
@@ -326,8 +347,29 @@ object Net {
             }
         }
         badAnswer?.let { return Triple(it.first, it.second, ways) }
-        throw Failed(why(problems))
+        throw Failed(why(problems), dead = dead)
     }
+
+    /**
+     * Whether [e] says the site could not be reached at all: no such name, the connection refused,
+     * or no answer to connecting. Not a reset (it can be a block), a broken secure link, or a
+     * timeout after connecting.
+     */
+    private fun nobodyThere(e: Throwable): Boolean = when (e) {
+        is java.net.UnknownHostException -> true
+        is java.net.ConnectException -> generateSequence<Throwable>(e) { it.cause }.take(4).none { NOT_REFUSED.containsMatchIn(it.message.orEmpty()) }
+        else -> connectTimeout(e)
+    }
+
+    /**
+     * A timeout while connecting, told from a timeout while reading by its words: Java says
+     * "connect timed out", Android "failed to connect to ... after 2500ms". A read or secure-link
+     * timeout says neither.
+     */
+    private fun connectTimeout(e: Throwable?): Boolean = e is java.net.SocketTimeoutException && CONNECT_TIMEOUT.containsMatchIn(e.message.orEmpty())
+
+    private val CONNECT_TIMEOUT = Regex("connect timed out|failed to connect to ", RegexOption.IGNORE_CASE)
+    private val NOT_REFUSED = Regex("reset|ECONNRESET|unreachable|ENETUNREACH|EHOSTUNREACH", RegexOption.IGNORE_CASE)
 
     /** An error's words for the log: no web addresses (they hold the coordinates or the words looked up), and short. */
     private fun safe(m: String?): String = m.orEmpty().replace(Regex("https?://\\S+"), "<address>").take(80)
