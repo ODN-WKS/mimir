@@ -31,6 +31,15 @@ pub(crate) fn cpu_words(pct: f32) -> String {
     format!("{pct:.0}%")
 }
 
+/// The temperature first, at the far left of the values (owner,
+/// 2026-11-25): "61 °C · 44%"; just the rest when it can't be read.
+pub(crate) fn with_temp(temp_c: Option<i32>, rest: String) -> String {
+    match temp_c {
+        Some(t) => format!("{t} °C · {rest}"),
+        None => rest,
+    }
+}
+
 /// "31 of 62 GB".
 pub(crate) fn memory_words(used: u64, total: u64) -> String {
     let g = |b: u64| (b as f64 / 1_073_741_824.0).round();
@@ -86,7 +95,12 @@ impl App {
         theme::caps(ui, "This PC");
         let s = &self.stats;
         card(ui, |ui| {
-            stat(ui, "Processor", cpu_words(s.cpu), s.cpu / 100.0);
+            stat(
+                ui,
+                "Processor",
+                with_temp(s.cpu_temp_c, cpu_words(s.cpu)),
+                s.cpu / 100.0,
+            );
             if s.mem_total > 0 {
                 stat(
                     ui,
@@ -96,7 +110,12 @@ impl App {
                 );
             }
             if let Some(g) = s.gpu {
-                stat(ui, "Graphics", format!("{g:.0}%"), g / 100.0);
+                stat(
+                    ui,
+                    "Graphics",
+                    with_temp(s.gpu_temp_c, format!("{g:.0}%")),
+                    g / 100.0,
+                );
             }
         });
     }
@@ -535,6 +554,13 @@ mod tests {
         assert_eq!(cpu_words(4.0), "4%");
         assert_eq!(cpu_words(45.0), "45%");
         assert_eq!(cpu_words(88.0), "88%");
+    }
+
+    #[test]
+    fn the_temperature_comes_first_and_only_when_read() {
+        assert_eq!(with_temp(Some(61), cpu_words(44.0)), "61 °C · 44%");
+        assert_eq!(with_temp(Some(54), "12%".into()), "54 °C · 12%");
+        assert_eq!(with_temp(None, cpu_words(44.0)), "44%");
     }
 
     #[test]

@@ -212,7 +212,7 @@ class WireTest {
         assertEquals(true, truth.engine.paidOn)
         assertEquals(62.0, truth.usage!!.weekly!!.first, 0.001)
         assertEquals(null, truth.usage!!.fiveHour)
-        assertEquals(LTruthStats(37.0, 12_400_000_000L, 32_000_000_000L, 8.0), truth.stats)
+        assertEquals(LTruthStats(37.0, 12_400_000_000L, 32_000_000_000L, 8.0, cpuTempC = 61, gpuTempC = 54), truth.stats)
         // A restart of the PC's service (new run) is always newer; the same run needs a higher revision.
         assertTrue(truth.newerThan(null))
         assertTrue(truth.copy(runId = "r2", rev = 1).newerThan(truth))

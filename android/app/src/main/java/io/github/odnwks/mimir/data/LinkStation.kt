@@ -1726,7 +1726,7 @@ class LinkStation(
         return base.copy(
             screenLock = secure(),
             paidOn = t?.engine?.paidOn,
-            pcStats = t?.stats?.takeIf { it.memTotal > 0 }?.let { PcStats(Math.round(it.cpu).toInt().coerceIn(0, 100), it.memUsed, it.memTotal, it.gpu?.let { g -> Math.round(g).toInt().coerceIn(0, 100) }, it.threads) },
+            pcStats = t?.stats?.takeIf { it.memTotal > 0 }?.let { PcStats(Math.round(it.cpu).toInt().coerceIn(0, 100), it.memUsed, it.memTotal, it.gpu?.let { g -> Math.round(g).toInt().coerceIn(0, 100) }, it.threads, it.cpuTempC, it.gpuTempC) },
             pcTalks = data.pcTalks,
             pcFinished = Wire.FINISHED_EVENTS in pcFeatures,
             pcSessions = if (Wire.PC_SESSIONS in pcFeatures && isOwner()) pcSessionList?.map { l ->
