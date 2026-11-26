@@ -40,6 +40,11 @@ data class LocalModel(
     /** A model a Refresh found: the repository it comes from and when (ms since 1970); "" and 0 for the listed ones. */
     val source: String = "",
     val foundAt: Long = 0,
+    /**
+     * In a normal chat with web search on, it is told it may ask for a lookup with one line
+     * ("SEARCH: <words>", [Prompt.ASK_SEARCH]). Off: only the app's own rules and the safety net look things up.
+     */
+    val asksToSearch: Boolean = true,
 ) {
     val file: String get() = "$id.gguf"
     val visionFile: String get() = "$id.vision"
@@ -319,9 +324,24 @@ object Prompt {
         "marked as fetched information with its source. Use it, and say where it came from. Without it you have no " +
         "current information (weather, news, prices, today's date): say so plainly rather than guess. Use short paragraphs."
 
-    /** The built-in instructions when the ground rules are off, for a chat that may look things up. */
-    const val SYSTEM_ONLINE = "$ONLINE Answer exactly what is asked, clearly and directly, in the subject's own terms. Don't add " +
+    /** How the built-in instructions go on after [ONLINE]. */
+    private const val ANSWER = " Answer exactly what is asked, clearly and directly, in the subject's own terms. Don't add " +
         "other views, warnings or advice unless asked, and don't lecture or moralise."
+
+    /** The built-in instructions when the ground rules are off, for a chat that may look things up. */
+    const val SYSTEM_ONLINE = "$ONLINE$ANSWER"
+
+    /**
+     * Told after [ONLINE] in a normal chat with web search on (P21 stage 2): the model may ask for
+     * a lookup with one line, which the app hides, looks up and asks again. The owner may change the words.
+     */
+    const val ASK_SEARCH = "If you need facts you were not given (anything current or recent, a price, a score, a schedule, " + // lint:log-only
+        "a release, who holds a job now, or anything you are not sure of), do not answer: reply with one line only, SEARCH: " +
+        "and the best search words. The app looks it up and asks you again. For general knowledge, just answer."
+
+    /** The day [at] (not the time, so the prompt's start changes once a day) and [ASK_SEARCH]. */
+    fun askSearch(at: Long): String =
+        "Today is " + java.text.SimpleDateFormat("EEEE d MMMM yyyy", java.util.Locale.ENGLISH).format(java.util.Date(at)) + ". " + ASK_SEARCH
 
     /** How fetched information goes into the owner's message: marked, and as information only. */
     fun fetched(block: String, site: String, at: String): String =
@@ -359,8 +379,9 @@ object Prompt {
         ((ground?.let { listOf(it) } ?: emptyList()) + listOfNotNull(chatRules.trim().takeIf { it.isNotEmpty() }?.let { "Rules for this chat only:\n$it" }, NO_GUESS)).joinToString("\n\n")
 
     /** The instructions: with ground rules, where it runs and the rules; with them off, the built-in ones. [chatRules] are this chat's own, told after them. */
-    fun system(rules: String? = io.github.odnwks.mimir.data.GroundRules.current, online: Boolean = false, chatRules: String = ""): String {
-        val base = if (rules == null) (if (online) SYSTEM_ONLINE else SYSTEM) else "${if (online) ONLINE else PLACE}\n\n$rules"
+    fun system(rules: String? = io.github.odnwks.mimir.data.GroundRules.current, online: Boolean = false, chatRules: String = "", ask: String? = null): String {
+        val where = if (online && ask != null) "$ONLINE $ask" else ONLINE
+        val base = if (rules == null) (if (online) "$where$ANSWER" else SYSTEM) else "${if (online) where else PLACE}\n\n$rules"
         return base + chatTail(chatRules)
     }
 
@@ -385,8 +406,10 @@ object Prompt {
         head: Boolean = false,
         /** Rules for this chat only ([LocalChat.rules]). */
         chatRules: String = "",
+        /** With [online]: today's date and the model's way to ask for a lookup ([askSearch]); null leaves it out. */
+        ask: String? = if (online) askSearch(System.currentTimeMillis()) else null,
     ): String = buildString {
-        val sys = if (brief) system(rules, online, chatRules) + BRIEF else system(rules, online, chatRules)
+        val sys = if (brief) system(rules, online, chatRules, ask) + BRIEF else system(rules, online, chatRules, ask)
         val last = turns.lastIndex
         fun said(i: Int, t: Turn) = t.forModel(sees) + if (i == last && t.user && fetched != null) fetched else earlier[t.id].takeIf { t.user && t.id.isNotEmpty() }.orEmpty()
         when (format) {

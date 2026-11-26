@@ -88,7 +88,11 @@ class NeverStuckTest {
         val took = e.done(2_000)
         assertTrue("took $took ms", took < 2_000)
         assertEquals("Paris is the capital.", e.state.value.chat.turns.last().text)
-        assertTrue("the second read starts with the first one", model.prompts[1].startsWith(model.prompts[0]))
+        // P21 stage 2: with Think first, a short decision with thinking off comes first (its answer is dropped).
+        assertEquals(Engine.DECIDE_TOKENS, model.limits[0])
+        assertTrue(model.prompts[0].endsWith(Prompt.NO_THOUGHT))
+        assertEquals(3, model.prompts.size)
+        assertTrue("the second read starts with the first one", model.prompts[2].startsWith(model.prompts[1]))
     }
 
     @Test fun aReplyThatNeverEndsIsStoppedAndSaysSo() {

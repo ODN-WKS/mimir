@@ -1214,9 +1214,11 @@ class Engine(
     /**
      * Looks up what the last message needs before Mímir answers (only in normal mode with lookups
      * on; never in a Whisper). Returns the marked information and its sources, or null when the
-     * reply must wait (a question is showing: the place, or the one-time search warning).
+     * reply must wait (a question is showing: the place, or the one-time search warning). With
+     * [asked] (what the model asked for, its words checked), that is looked up instead of what the
+     * Router finds in the owner's words.
      */
-    private fun lookUp(turns: List<Turn>): Pair<String?, List<io.github.odnwks.mimir.online.Source>>? {
+    private fun lookUp(turns: List<Turn>, asked: io.github.odnwks.mimir.online.Router.Need? = null): Pair<String?, List<io.github.odnwks.mimir.online.Source>>? {
         val forced = forcedSearch.getAndSet(null)
         val tapped = tappedPage.getAndSet(null)
         if (skipLookup.getAndSet(false)) return noLookup
@@ -1230,7 +1232,7 @@ class Engine(
         val previous = turns.dropLast(1).lastOrNull { it.user }?.text
         return io.github.odnwks.mimir.online.Net.within(budget) {
             if (tapped != null) page(tapped)
-            else when (val need = forced ?: io.github.odnwks.mimir.online.Router.need(last.text) ?: (if (mode() == io.github.odnwks.mimir.online.ChatMode.Normal) io.github.odnwks.mimir.online.Router.followUp(last.text, previous) else null)) {
+            else when (val need = forced ?: asked ?: io.github.odnwks.mimir.online.Router.need(last.text) ?: (if (mode() == io.github.odnwks.mimir.online.ChatMode.Normal) io.github.odnwks.mimir.online.Router.followUp(last.text, previous) else null)) {
                 is io.github.odnwks.mimir.online.Router.Need.Weather -> weather(need)
                 is io.github.odnwks.mimir.online.Router.Need.Search -> search(need, forced != null)
                 is io.github.odnwks.mimir.online.Router.Need.Encyclopedia -> encyclopedia(need)
@@ -1525,13 +1527,25 @@ class Engine(
             val earlier = synchronized(fetchedFor) { HashMap(fetchedFor) }
             val online = io.github.odnwks.mimir.online.Online.allowed(mode())
             val r = runCatching {
-                runner.warm(Prompt.build(model.format, st.chat.turns + Turn(true, ""), brief = st.effort == Effort.Quick, online = online, earlier = earlier, head = true, chatRules = st.chat.rules))
+                runner.warm(Prompt.build(model.format, st.chat.turns + Turn(true, ""), brief = st.effort == Effort.Quick, online = online, earlier = earlier, head = true, chatRules = st.chat.rules, ask = askLine(model, mode())))
             }.getOrDefault("")
             if (!st.whisper) Log.i(TAG, "ready ahead:$timing read=${runCatching { JSONObject(r).optInt("new_prompt_tokens") }.getOrDefault(-1)}tok total=${(System.nanoTime() - t0) / 1_000_000}ms")
             lastReplyAt = now()
             idler.schedule({ writer.execute { unloadIfIdle() } }, UNLOAD_IDLE_MS, java.util.concurrent.TimeUnit.MILLISECONDS)
         }
     }
+
+    /**
+     * Today's date and the model's way to ask for a lookup itself ([Prompt.askSearch]), for a
+     * normal chat with lookups and web search on and a model that asks; null otherwise (a
+     * Whisper never has it).
+     */
+    private fun askLine(model: LocalModel, mode: io.github.odnwks.mimir.online.ChatMode): String? =
+        if (searchable(mode) && model.asksToSearch) Prompt.askSearch(now()) else null
+
+    /** A normal chat with lookups and web search on: the model may ask for a lookup, and the safety net may look one up. */
+    private fun searchable(mode: io.github.odnwks.mimir.online.ChatMode) = mode == io.github.odnwks.mimir.online.ChatMode.Normal &&
+        io.github.odnwks.mimir.online.Online.allowed(mode) && io.github.odnwks.mimir.online.Online.settings.value.search
 
     private fun write(model: LocalModel) {
         val started = System.nanoTime()
@@ -1543,14 +1557,26 @@ class Engine(
         val chatId = _state.value.chat.id
         val mode = mode()
         val online = io.github.odnwks.mimir.online.Online.allowed(mode)
+        // "Answer without looking it up" or "Not now": nothing is looked up for this answer, not even when the model asks.
+        val skipped = skipLookup.get()
+        val searchable = searchable(mode) && !skipped
+        val ask = if (skipped) null else askLine(model, mode)
+        val effort = _state.value.effort
+        val owner = _state.value.chat.turns.lastOrNull()?.takeIf { it.user }
+        // The reference rule: the owner's words point back ("search for the cheaper one"), so the
+        // model, which has read the chat, gives the words first.
+        val routed = if (ask != null && owner != null && _state.value.chat.turns.size > 1 && forcedSearch.get() == null && tappedPage.get() == null) {
+            io.github.odnwks.mimir.online.Router.need(owner.text)
+        } else null
+        val refer = routed != null && pointsBack(routed)
         // The lookup starts at once on its own thread; meanwhile this one loads the model and
         // reads the chat so far, so neither waits for the other.
         val lookupMs = java.util.concurrent.atomic.AtomicLong(-1)
-        val lookup = java.util.concurrent.FutureTask { lookUp(_state.value.chat.turns).also { lookupMs.set(ms()) } }
-        lookups.execute(lookup)
-        if (!load(model, timing)) { lookup.cancel(true); return }
+        fun startLookup(need: io.github.odnwks.mimir.online.Router.Need?) =
+            java.util.concurrent.FutureTask { lookUp(_state.value.chat.turns, need).also { lookupMs.set(ms()) } }.also { lookups.execute(it) }
+        var lookup = if (refer) null else startLookup(null)
+        if (!load(model, timing)) { lookup?.cancel(true); return }
         lastUsed[model.id] = now()
-        val effort = _state.value.effort
         var turns = _state.value.chat.turns
         // Pictures in the chat: the vision part loads the first time one is sent (it needs memory).
         var sees = false
@@ -1565,134 +1591,257 @@ class Engine(
             }
         }
         val earlier = synchronized(fetchedFor) { HashMap(fetchedFor) }
-        // The chat up to the new message is read while the lookup fetches (the lookup goes after it).
-        if (!sees && !stopReply.get() && !lookup.isDone) {
+        fun prompt(think: Boolean, fetched: String?) = Prompt.build(
+            model.format, turns, think, brief = effort == Effort.Quick, sees = sees, online = online, fetched = fetched, earlier = earlier,
+            chatRules = _state.value.chat.rules, ask = ask,
+        )
+        fun pictures() = if (sees) Prompt.pictures(turns).map { it.jpeg } else emptyList()
+
+        /**
+         * The short decision, with thinking off and at most [DECIDE_TOKENS]: the words of the
+         * model's SEARCH: line, or null for an answer (which is dropped). It stops as soon as it can tell.
+         */
+        fun decide(): String? {
+            val d0 = ms()
+            val out = StringBuilder()
+            var pieces = 0
+            var words: String? = null
+            runCatching {
+                runner.reply(prompt(false, null), DECIDE_TOKENS, PieceSink { bytes ->
+                    out.append(String(bytes, Charsets.UTF_8))
+                    pieces++
+                    when (val a = asked(Thought.split(out.toString(), model.format, false).second, pieces)) {
+                        is Ask.Unsure -> !stopReply.get()
+                        is Ask.Plain -> false
+                        is Ask.Line -> { if (a.done) words = a.words; !a.done && !stopReply.get() }
+                    }
+                }, pictures())
+            }
+            if (words == null) (asked(Thought.split(out.toString(), model.format, false).second, 0) as? Ask.Line)?.let { words = it.words }
+            timing.append(" decide=").append(ms() - d0).append("ms")
+            return words?.takeIf { it.isNotBlank() }
+        }
+
+        /** The model's words, checked ([io.github.odnwks.mimir.online.QueryGuard]), as what to look up; null when nothing is left. */
+        fun modelNeed(words: String): io.github.odnwks.mimir.online.Router.Need? {
+            val chat = _state.value.chat.turns
+            val ownerText = owner?.text.orEmpty()
+            val attached = chat.flatMap { it.files }.map { it.text }.filter { it.isNotBlank() }.joinToString("\n").ifBlank { null }
+            val safe = io.github.odnwks.mimir.online.QueryGuard.safe(
+                words, io.github.odnwks.mimir.online.Router.lookUp(ownerText)?.words ?: ownerText,
+                chat.filter { it.user }.map { it.text }, attached, io.github.odnwks.mimir.online.Online.settings.value.place?.name,
+            )
+            val searchWords = io.github.odnwks.mimir.online.Router.words(safe) ?: return null
+            return io.github.odnwks.mimir.online.Router.need(searchWords) ?: io.github.odnwks.mimir.online.Router.Need.Search(searchWords)
+        }
+
+        /** Waits for [task] as long as a lookup may take; null when the reply must stop here (Stop, or a question showing). */
+        fun await(task: java.util.concurrent.FutureTask<Pair<String?, List<io.github.odnwks.mimir.online.Source>>?>, since: Long):
+            Pair<String?, List<io.github.odnwks.mimir.online.Source>>? {
+            // The lookup: never longer than its budget (Tor waits as long as it says on screen).
+            val l0 = ms()
+            val cap = if (mode == io.github.odnwks.mimir.online.ChatMode.WhisperWeb) Long.MAX_VALUE / 4 else LOOKUP_WAIT_MS
+            var got: Pair<String?, List<io.github.odnwks.mimir.online.Source>>? = null
+            while (true) {
+                if (stopReply.get()) {
+                    task.cancel(true)
+                    _state.update { it.copy(looking = null, reading = false) }
+                    return null
+                }
+                try {
+                    got = task.get(100, java.util.concurrent.TimeUnit.MILLISECONDS) ?: run {
+                        // A question shows first (the place, or the one-time search warning).
+                        _state.update { it.copy(reading = false) }
+                        return null
+                    }
+                    break
+                } catch (e: java.util.concurrent.TimeoutException) {
+                    if (ms() - since < cap) continue
+                    task.cancel(true)
+                    timing.append(" lookup=timeout")
+                    // PHE-09: cancel lookup and clear stale state
+                    _state.update { it.copy(looking = null, lookupFailed = true) }
+                    got = LATE to emptyList()
+                    break
+                } catch (e: Exception) {
+                    if (!whisper) Log.w(TAG, "lookup crashed: ${(e.cause ?: e).javaClass.simpleName}")
+                    _state.update { it.copy(looking = null, lookupFailed = true) }
+                    got = LATE to emptyList()
+                    break
+                }
+            }
+            val looked = got
+            val block = looked.first
+            if (block != null) timing.append(" lookup=").append(lookupMs.get()).append("ms waited=").append(ms() - l0).append("ms block=").append(block.length).append("ch")
+            val asking = _state.value.chat.turns.lastOrNull()?.takeIf { it.user }
+            if (block != null && asking != null && asking.id.isNotEmpty() && block.contains("[Information the app fetched")) {
+                synchronized(fetchedFor) { fetchedFor[asking.id] = block }
+                // The PC's answers to a follow-up get it too.
+                Prompt.earlier(block)?.let { lastLookup[chatId] = it }
+            }
+            return looked
+        }
+
+        var lookupFrom = 0L
+        if (refer) {
+            // The model's words first (the Router's when it gives none), then the lookup.
+            val need = decide()?.let { modelNeed(it) }
+            lookupFrom = ms()
+            lookup = startLookup(need)
+        } else if (!sees && !stopReply.get() && lookup?.isDone == false) {
+            // The chat up to the new message is read while the lookup fetches (the lookup goes after it).
             val w0 = ms()
             _state.update { if (it.chat.id != chatId || it.looking != null) it else it.copy(reading = true) }
-            val warm = runCatching { runner.warm(Prompt.build(model.format, turns, brief = effort == Effort.Quick, online = online, earlier = earlier, head = true, chatRules = _state.value.chat.rules)) }.getOrDefault("")
+            val warm = runCatching {
+                runner.warm(Prompt.build(model.format, turns, brief = effort == Effort.Quick, online = online, earlier = earlier, head = true, chatRules = _state.value.chat.rules, ask = ask))
+            }.getOrDefault("")
             timing.append(" warm=").append(ms() - w0).append("ms")
             runCatching { JSONObject(warm).optInt("new_prompt_tokens", -1) }.getOrNull()?.takeIf { it >= 0 }?.let { timing.append("/").append(it).append("tok") }
         }
-        // The lookup: never longer than its budget (Tor waits as long as it says on screen).
-        val l0 = ms()
-        val cap = if (mode == io.github.odnwks.mimir.online.ChatMode.WhisperWeb) Long.MAX_VALUE / 4 else LOOKUP_WAIT_MS
-        var looked: Pair<String?, List<io.github.odnwks.mimir.online.Source>>? = null
-        while (true) {
-            if (stopReply.get()) {
-                lookup.cancel(true)
-                _state.update { it.copy(looking = null, reading = false) }
-                return
-            }
-            try {
-                looked = lookup.get(100, java.util.concurrent.TimeUnit.MILLISECONDS) ?: run {
-                    // A question shows first (the place, or the one-time search warning).
-                    _state.update { it.copy(reading = false) }
-                    return
-                }
-                break
-            } catch (e: java.util.concurrent.TimeoutException) {
-                if (ms() < cap) continue
-                lookup.cancel(true)
-                timing.append(" lookup=timeout")
-                // PHE-09: cancel lookup and clear stale state
-                _state.update { it.copy(looking = null, lookupFailed = true) }
-                looked = LATE to emptyList()
-                break
-            } catch (e: Exception) {
-                if (!whisper) Log.w(TAG, "lookup crashed: ${(e.cause ?: e).javaClass.simpleName}")
-                _state.update { it.copy(looking = null, lookupFailed = true) }
-                looked = LATE to emptyList()
-                break
-            }
-        }
-        val (block, sources) = looked!!
-        if (block != null) timing.append(" lookup=").append(lookupMs.get()).append("ms waited=").append(ms() - l0).append("ms block=").append(block.length).append("ch")
-        val asking = _state.value.chat.turns.lastOrNull()?.takeIf { it.user }
-        if (block != null && asking != null && asking.id.isNotEmpty() && block.contains("[Information the app fetched")) {
-            synchronized(fetchedFor) { fetchedFor[asking.id] = block }
-            // The PC's answers to a follow-up get it too.
-            Prompt.earlier(block)?.let { lastLookup[chatId] = it }
-        }
+        var (block, sources) = await(lookup!!, lookupFrom) ?: return
         if (stopReply.get()) { _state.update { it.copy(reading = false) }; return }
         // A lookup's answer is a plain fact: no long thought before it (Think first stays for the rest).
         val think = effort.thinks(model) && block == null
-        val limit = if (block != null) minOf(LOOKUP_REPLY_TOKENS, if (effort == Effort.Quick) Effort.QUICK_TOKENS else MAX_REPLY_TOKENS) else effort.maxTokens(model)
+        fun limitFor(fetched: String?) =
+            if (fetched != null) minOf(LOOKUP_REPLY_TOKENS, if (effort == Effort.Quick) Effort.QUICK_TOKENS else MAX_REPLY_TOKENS) else effort.maxTokens(model)
+        // The model may ask for a lookup only before any fetched text is in this message's prompt, so a web page can never start one.
+        val honour = ask != null && block == null && !refer
         _state.update { if (it.chat.id != chatId) it else it.copy(looking = null, reading = true, readingFound = block != null) }
-        val out = StringBuilder()
-        val g0 = ms()
         var firstPiece = -1L
         var firstWord = -1L
         var thoughtEnd = -1L
-        var forced = false
         var tooLong = false
         var stats: JSONObject? = null
-        val sink = PieceSink { bytes ->
-            out.append(String(bytes, Charsets.UTF_8))
-            val t = ms()
-            if (firstPiece < 0) firstPiece = t
-            val (thought, answer) = Thought.split(out.toString(), model.format, think)
-            if (thoughtEnd < 0 && answer.isNotEmpty() && thought.isNotEmpty()) thoughtEnd = t
-            if (firstWord < 0 && answer.isNotBlank()) firstWord = t
-            // A Whisper wiped meanwhile must not leave words in the chat that took its place.
-            _state.update { if (it.chat.id != chatId) it else it.copy(partial = answer, reading = false, thinking = (thought.isNotEmpty() || think) && answer.isEmpty()) }
-            when {
-                stopReply.get() -> false
-                // Nothing may run forever: the whole reply has a time limit.
-                t > REPLY_MAX_MS -> { tooLong = true; false }
-                // Thinking that runs too long is closed, and the answer is written from it.
-                think && !forced && answer.isEmpty() && t - g0 > THINK_MAX_MS -> { forced = true; false }
-                else -> true
-            }
-        }
         // PHE-25: context overflow warning
         val totalChars = turns.sumOf { it.text.length + it.files.sumOf { f -> f.text.length } }
         if (totalChars > 16000) {
             android.util.Log.w("Engine", "PHE-25: context ~${totalChars/4} tokens, may overflow")
             // truncate oldest file text if attached files are large
         }
-        // PHE-23: reset ready-ahead flag when new task starts
-        while (true) {
-            if (stopReply.get()) { /* PHE-08: abandon cleanly before read */ return }
-            val prompt = Prompt.build(model.format, turns, think, brief = effort == Effort.Quick, sees = sees, online = online, fetched = block, earlier = earlier, chatRules = _state.value.chat.rules)
-            val pictures = if (sees) Prompt.pictures(turns).map { it.jpeg } else emptyList()
-            out.setLength(0)
-            forced = false
-            var result = JSONObject(runner.reply(prompt, limit, sink, pictures))
-            val error = result.optString("error")
-            // Too long for the model's memory: the oldest exchange drops out and it tries again.
-            if (error == "context" && turns.size > 2) { turns = turns.drop(2); continue }
-            if (forced && !stopReply.get() && !tooLong) {
-                timing.append(" thought-cut=").append(ms()).append("ms")
-                out.append(if (model.format == Format.Gemma4) Thought.GEMMA_CLOSE else "\n</think>\n\n")
-                val more = JSONObject(runner.reply(prompt + out.toString(), minOf(LOOKUP_REPLY_TOKENS * 2, limit), sink, pictures))
-                if (more.optString("error").isEmpty()) result = more
-            }
-            val err = result.optString("error")
-            if (err.isNotEmpty() && err != "stopped") {
-                _state.update {
-                    it.copy(problem = when (err) {
-                        "context" -> "That message is too long for this model."
-                        "picture", "pictures" -> "A picture couldn't be read. Try another one."
-                        else -> "Something went wrong while answering. Try again."
-                    })
+
+        /**
+         * One reply, streamed; with [honour], its start is held back until it is clear it is not a
+         * SEARCH: line, and such a line is never shown: the model is stopped at its end and its
+         * words are returned. Null when it was stopped before it began.
+         */
+        fun pass(fetched: String?, thinks: Boolean, limit: Int, honour: Boolean): Pair<String, String?>? {
+            val out = StringBuilder()
+            val g0 = ms()
+            var forced = false
+            var answerPieces = 0
+            var words: String? = null
+            val sink = PieceSink { bytes ->
+                out.append(String(bytes, Charsets.UTF_8))
+                val t = ms()
+                if (firstPiece < 0) firstPiece = t
+                val (thought, answer) = Thought.split(out.toString(), model.format, thinks)
+                if (answer.isNotEmpty()) answerPieces++
+                val a = if (honour) asked(answer, answerPieces) else Ask.Plain
+                if (a is Ask.Line && a.done) words = a.words
+                val shown = if (a is Ask.Plain) answer else ""
+                if (thoughtEnd < 0 && answer.isNotEmpty() && thought.isNotEmpty()) thoughtEnd = t
+                if (firstWord < 0 && shown.isNotBlank()) firstWord = t
+                // A Whisper wiped meanwhile must not leave words in the chat that took its place.
+                _state.update { if (it.chat.id != chatId) it else it.copy(partial = shown, reading = false, thinking = (thought.isNotEmpty() || thinks) && answer.isEmpty()) }
+                when {
+                    stopReply.get() -> false
+                    // The model asked for a lookup: the rest of its reply isn't needed.
+                    a is Ask.Line && a.done -> false
+                    // Nothing may run forever: the whole reply has a time limit.
+                    t > REPLY_MAX_MS -> { tooLong = true; false }
+                    // Thinking that runs too long is closed, and the answer is written from it.
+                    thinks && !forced && answer.isEmpty() && t - g0 > THINK_MAX_MS -> { forced = true; false }
+                    else -> true
                 }
             }
-            if (err.isEmpty()) {
-                stats = result
-                val tokens = result.optInt("gen_tokens")
-                val gms = result.optLong("gen_ms").coerceAtLeast(1)
-                _state.update { it.copy(speed = "%.0f tokens a second".format(tokens * 1000.0 / gms)) }
+            // PHE-23: reset ready-ahead flag when new task starts
+            while (true) {
+                if (stopReply.get()) { /* PHE-08: abandon cleanly before read */ return null }
+                val prompt = prompt(thinks, fetched)
+                val pictures = pictures()
+                out.setLength(0)
+                answerPieces = 0
+                forced = false
+                var result = JSONObject(runner.reply(prompt, limit, sink, pictures))
+                val error = result.optString("error")
+                // Too long for the model's memory: the oldest exchange drops out and it tries again.
+                if (error == "context" && turns.size > 2) { turns = turns.drop(2); continue }
+                if (forced && !stopReply.get() && !tooLong) {
+                    timing.append(" thought-cut=").append(ms()).append("ms")
+                    out.append(if (model.format == Format.Gemma4) Thought.GEMMA_CLOSE else "\n</think>\n\n")
+                    val more = JSONObject(runner.reply(prompt + out.toString(), minOf(LOOKUP_REPLY_TOKENS * 2, limit), sink, pictures))
+                    if (more.optString("error").isEmpty()) result = more
+                }
+                val err = result.optString("error")
+                if (err.isNotEmpty() && err != "stopped") {
+                    _state.update {
+                        it.copy(problem = when (err) {
+                            "context" -> "That message is too long for this model."
+                            "picture", "pictures" -> "A picture couldn't be read. Try another one."
+                            else -> "Something went wrong while answering. Try again."
+                        })
+                    }
+                }
+                if (err.isEmpty()) {
+                    stats = result
+                    val tokens = result.optInt("gen_tokens")
+                    val gms = result.optLong("gen_ms").coerceAtLeast(1)
+                    _state.update { it.copy(speed = "%.0f tokens a second".format(tokens * 1000.0 / gms)) }
+                }
+                break
             }
-            break
+            val answer = Thought.split(out.toString(), model.format, thinks).second
+            if (honour && words == null) (asked(answer, 0) as? Ask.Line)?.let { words = it.words }
+            return answer to words
+        }
+
+        /** Looks [need] up as the app's own lookups do (same time limit, same lines, same sources); false when the reply must stop here. */
+        fun lookFor(need: io.github.odnwks.mimir.online.Router.Need?): Boolean {
+            if (need == null) return true
+            _state.update { if (it.chat.id != chatId) it else it.copy(partial = "") }
+            val got = await(startLookup(need), ms()) ?: return false
+            block = got.first
+            sources = got.second
+            if (stopReply.get()) { _state.update { it.copy(reading = false) }; return false }
+            _state.update { if (it.chat.id != chatId) it else it.copy(looking = null, reading = true, readingFound = block != null) }
+            return true
+        }
+
+        // Think first: a short decision with thinking off comes first, so a question that needs a lookup isn't thought about first.
+        val decided = if (honour && think) decide() else null
+        var answer: String
+        var thinks = think
+        if (decided != null) {
+            if (!lookFor(modelNeed(decided))) return
+            thinks = false
+            answer = (pass(block, false, limitFor(block), false) ?: return).first
+        } else {
+            val (first, words) = pass(block, think, limitFor(block), honour) ?: return
+            answer = first
+            if (words != null && !stopReply.get()) {
+                // The model asked: its line is never shown or kept, and it answers again from what was found (never asking twice).
+                if (!lookFor(modelNeed(words))) return
+                thinks = false
+                answer = (pass(block, false, limitFor(block), false) ?: return).first
+            } else if (searchable && block == null && !tooLong && !stopReply.get() && couldNotLook(answer)) {
+                // The safety net: an answer that says it couldn't look it up is looked up once, and replaced.
+                val need = owner?.let { io.github.odnwks.mimir.online.Router.lookUp(it.text) }
+                if (need != null) {
+                    timing.append(" safety-net")
+                    if (!lookFor(need)) return
+                    thinks = false
+                    answer = (pass(block, false, limitFor(block), false) ?: return).first
+                }
+            }
         }
         if (!whisper) {
             stats?.let { r ->
                 timing.append(" read=").append(r.optInt("new_prompt_tokens")).append("/").append(r.optInt("prompt_tokens")).append("tok in ").append(r.optLong("prompt_ms")).append("ms")
                     .append(" wrote=").append(r.optInt("gen_tokens")).append("tok in ").append(r.optLong("gen_ms")).append("ms threads=").append(r.optInt("threads"))
             }
-            Log.i(TAG, "reply timing:$timing first-piece=${firstPiece}ms thought-end=${thoughtEnd}ms first-word=${firstWord}ms total=${ms()}ms think=$think${if (tooLong) " too-long" else ""}")
+            Log.i(TAG, "reply timing:$timing first-piece=${firstPiece}ms thought-end=${thoughtEnd}ms first-word=${firstWord}ms total=${ms()}ms think=$thinks${if (tooLong) " too-long" else ""}")
         }
-        var reply = cited(Thought.split(out.toString(), model.format, think).second.trim(), block, sources.size)
+        var reply = cited(answer.trim(), block, sources.size)
         if (tooLong && reply.isNotEmpty()) reply += "\n\n(Stopped here: it was taking too long on this phone.)"
         if (tooLong && reply.isEmpty()) _state.update { it.copy(problem = TOO_LONG) }
         // The chat was ended (a Whisper wiped) while it wrote: the words go nowhere.
@@ -2437,6 +2586,64 @@ class Engine(
         @Volatile var LOOKUP_WAIT_MS = io.github.odnwks.mimir.online.Net.BUDGET_MS + 1_500L
         /** A lookup's answer is short: a few lines about what was found. */
         const val LOOKUP_REPLY_TOKENS = 512
+        /** The most a model's own ask for a lookup ("SEARCH: <words>", one line) may run to, and the short decision call before Think first. */
+        const val DECIDE_TOKENS = 24
+        /** A model's ask for a lookup is one line of at most this many characters and words. */
+        const val ASK_CHARS = 120
+        const val ASK_WORDS = 12
+        private const val SEARCH_MARK = "SEARCH:"
+
+        /** What the start of an answer says about a SEARCH: line (P21 stage 2). */
+        internal sealed interface Ask {
+            /** Too short to tell yet: held back. */
+            object Unsure : Ask
+            /** An answer: shown as it comes. */
+            object Plain : Ask
+            /** A SEARCH: line: its [words] so far, and [done] once the line ended or reached its cap. */
+            data class Line(val words: String, val done: Boolean) : Ask
+        }
+
+        /** [answer] so far (after [pieces] pieces of it): a SEARCH: line (any case, after spaces), an answer, or not clear yet. */
+        internal fun asked(answer: String, pieces: Int): Ask {
+            val t = answer.trimStart()
+            if (t.length < SEARCH_MARK.length) return if (SEARCH_MARK.startsWith(t, ignoreCase = true)) Ask.Unsure else Ask.Plain
+            if (!t.startsWith(SEARCH_MARK, ignoreCase = true)) return Ask.Plain
+            val rest = t.substring(SEARCH_MARK.length)
+            val line = rest.substringBefore('\n').trim()
+            val count = line.split(Regex("\\s+")).count { it.isNotEmpty() }
+            val done = '\n' in rest || pieces >= DECIDE_TOKENS || line.length > ASK_CHARS || count > ASK_WORDS
+            val words = line.split(Regex("\\s+")).filter { it.isNotEmpty() }.take(ASK_WORDS).joinToString(" ").take(ASK_CHARS).trim()
+            return Ask.Line(words, done)
+        }
+
+        private val POINTS_BACK = Regex("\\b(?:that|it|this|those|same|before|earlier|again)\\b|\\bthe \\p{L}+er one\\b", RegexOption.IGNORE_CASE)
+        private val FILLER = setOf(
+            "a", "an", "the", "of", "in", "on", "at", "for", "to", "and", "or", "is", "are", "was", "were", "be", "what", "who",
+            "how", "which", "about", "with", "by", "from", "me", "one", "ones", "some", "any",
+        )
+
+        /**
+         * The reference rule: a search's words that point back to the chat ("that", "the cheaper
+         * one") or hold fewer than 3 words of substance. The weather has its own follow-ups.
+         */
+        internal fun pointsBack(need: io.github.odnwks.mimir.online.Router.Need): Boolean {
+            val words = when (need) {
+                is io.github.odnwks.mimir.online.Router.Need.Search -> need.words
+                is io.github.odnwks.mimir.online.Router.Need.Encyclopedia -> need.words
+                is io.github.odnwks.mimir.online.Router.Need.Weather -> return false
+            }
+            return POINTS_BACK.containsMatchIn(words) ||
+                words.split(Regex("\\s+")).map { it.lowercase().trim { c -> !c.isLetterOrDigit() } }.count { it.isNotEmpty() && it !in FILLER } < 3
+        }
+
+        private val COULD_NOT_LOOK = Regex(
+            "\\b(?:couldn't|could not|can't|cannot|can not) look\\b(?! at)|\\bno web search results\\b|\\b(?:haven't|have not) looked up\\b|" + // lint:log-only
+                "\\b(?:don't|do not) have (?:any )?current\\b|\\bnot able to browse\\b|\\bno looked-up\\b",
+            RegexOption.IGNORE_CASE,
+        )
+
+        /** The safety net: an answer that says it couldn't look something up or has no current information. */
+        internal fun couldNotLook(answer: String): Boolean = COULD_NOT_LOOK.containsMatchIn(answer.replace('\u2019', '\''))
         /** What Mímir is told when a lookup failed: the reason is the connection, never the place or the words. A button under the answer does the retrying. */
         fun lookupFailedNote(what: String, why: String): String =
             "\n\n[The app tried to $what but couldn't: $why. Say so plainly in one sentence, with that reason. " +
