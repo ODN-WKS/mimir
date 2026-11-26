@@ -31,6 +31,16 @@ object PageText {
         return Page(title, cut(text, maxChars))
     }
 
+    /** The page's main text (P21 stage 1). STUB: piece A replaces the body. */
+    fun main(html: String): String = of(html, 200_000).text
+
+    /** When the page says it was published ("2026-11-02"), or null. STUB: piece A replaces the body. */
+    fun date(html: String): String? = null
+
+    /** [text] in pieces of 50 to 90 words with their nearest heading. STUB: piece A replaces the body. */
+    fun passages(text: String): List<Passage> =
+        text.split(Regex("\\s+")).filter { it.isNotEmpty() }.chunked(70).mapIndexed { i, w -> Passage(w.joinToString(" "), "", i) }
+
     /** Cut at a line or sentence end near [max]. */
     fun cut(text: String, max: Int): String {
         if (text.length <= max) return text
