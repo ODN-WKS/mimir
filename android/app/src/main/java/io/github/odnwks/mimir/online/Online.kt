@@ -34,6 +34,8 @@ object Online {
         val searchAccepted: Boolean = false,
         /** Which encyclopedias "what is / who was" questions read: both, compared, unless changed. */
         val encyclopedias: Encyclopedias = Encyclopedias.Both,
+        /** The owner accepted the one-time warning that Mímir reads the top pages a search finds. */
+        val pagesAccepted: Boolean = false,
     )
 
     private val _settings = MutableStateFlow(Settings())
@@ -46,7 +48,8 @@ object Online {
         prefs = p
         val place = p.getString("place_name", null)?.let { Place(it, p.getFloat("place_lat", 0f).toDouble(), p.getFloat("place_lon", 0f).toDouble()) }
         _settings.value = Settings(p.getBoolean("lookups", true), place, p.getBoolean("search", true), p.getBoolean("search_accepted", false),
-            runCatching { Encyclopedias.valueOf(p.getString("encyclopedias", null) ?: "") }.getOrDefault(Encyclopedias.Both))
+            runCatching { Encyclopedias.valueOf(p.getString("encyclopedias", null) ?: "") }.getOrDefault(Encyclopedias.Both),
+            p.getBoolean("pages_accepted", false))
     }
 
     fun set(s: Settings) {
@@ -55,6 +58,7 @@ object Online {
             putBoolean("lookups", s.lookups)
             putBoolean("search", s.search)
             putBoolean("search_accepted", s.searchAccepted)
+            putBoolean("pages_accepted", s.pagesAccepted)
             putString("encyclopedias", s.encyclopedias.name)
             if (s.place == null) { remove("place_name"); remove("place_lat"); remove("place_lon") }
             else { putString("place_name", s.place.name); putFloat("place_lat", s.place.lat.toFloat()); putFloat("place_lon", s.place.lon.toFloat()) }

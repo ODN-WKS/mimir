@@ -18,8 +18,11 @@ object Net {
     /** What came back: the text, how many bytes were received, and the type. */
     data class Got(val text: String, val bytes: Long, val type: String)
 
-    /** One request as the transport sees it (no body: it can only read). */
-    data class Request(val url: URL, val headers: Map<String, String>, val timeoutMs: Int, val maxBytes: Int)
+    /**
+     * One request as the transport sees it (no body: it can only read). With [cut], a page longer
+     * than [maxBytes] is read up to there and kept, instead of failing as too big.
+     */
+    data class Request(val url: URL, val headers: Map<String, String>, val timeoutMs: Int, val maxBytes: Int, val cut: Boolean = false)
 
     /** A reply before it's checked: a redirect's next address, or the body. */
     data class Reply(val status: Int, val location: String?, val type: String, val body: ByteArray, val connectMs: Long = -1)
@@ -48,6 +51,8 @@ object Net {
         address: String, mode: ChatMode, words: String, site: String = hostOf(address),
         accept: Set<String> = setOf("application/json", "text/html", "text/plain"),
         maxBytes: Int = 2_000_000, timeoutMs: Int = READ_MS,
+        /** Keep the first [maxBytes] of a longer page instead of failing ("the page is too big"). */
+        cut: Boolean = false,
     ): Got {
         if (!Online.allowed(mode)) throw Refused(if (mode == ChatMode.Whisper) "a Whisper is offline" else "looking things up is off")
         // Kept answers: only in a normal chat (a Whisper keeps nothing).
@@ -60,7 +65,7 @@ object Net {
         val end = minOf(now() + BUDGET_MS, deadline.get() ?: Long.MAX_VALUE)
         while (true) {
             if (tor) checkForTor(url) else checkShape(url)
-            val req = Request(url, mapOf("User-Agent" to AGENT, "Accept-Language" to "en", "Accept" to accept.joinToString()), if (tor) timeoutMs * 3 else timeoutMs, maxBytes)
+            val req = Request(url, mapOf("User-Agent" to AGENT, "Accept-Language" to "en", "Accept" to accept.joinToString()), if (tor) timeoutMs * 3 else timeoutMs, maxBytes, cut)
             val (r, route, asked) = if (tor) Triple(torTransport(req), LookupLog.Route.Tor, listOf(LookupLog.Route.Tor)) else fetch(req, mode, end)
             if (r.status in 300..399 && r.location != null) {
                 if (++hops > 2) throw Failed("the site sent the app round in circles")
@@ -450,22 +455,31 @@ object Net {
             val location = c.getHeaderField("Location")
             val type = c.contentType.orEmpty()
             if (status !in 200..299) return Reply(status, location, type, ByteArray(0), connectMs)
-            val out = ByteArrayOutputStream()
             val until = System.currentTimeMillis() + r.timeoutMs
-            c.inputStream.use { inp ->
-                val buf = ByteArray(16 * 1024)
-                while (true) {
-                    val n = inp.read(buf)
-                    if (n < 0) break
-                    out.write(buf, 0, n)
-                    if (out.size() > r.maxBytes) throw java.io.IOException("the page is too big")
-                    if (System.currentTimeMillis() > until) throw java.net.SocketTimeoutException("the site was too slow")
-                }
-            }
-            return Reply(status, location, type, out.toByteArray(), connectMs)
+            val body = c.inputStream.use { inp -> readBody(inp, r.maxBytes, r.cut, until) }
+            return Reply(status, location, type, body, connectMs)
         } finally {
             c.disconnect()
         }
+    }
+
+    /**
+     * A reply's body, read until [until]: more than [maxBytes] fails as "the page is too big",
+     * unless [cut], when the first [maxBytes] are kept and the rest is never read.
+     */
+    internal fun readBody(inp: java.io.InputStream, maxBytes: Int, cut: Boolean, until: Long): ByteArray {
+        val out = ByteArrayOutputStream()
+        val buf = ByteArray(16 * 1024)
+        while (true) {
+            val want = if (cut) minOf(buf.size, maxBytes - out.size()) else buf.size
+            if (want <= 0) break
+            val n = inp.read(buf, 0, want)
+            if (n < 0) break
+            out.write(buf, 0, n)
+            if (!cut && out.size() > maxBytes) throw java.io.IOException("the page is too big")
+            if (System.currentTimeMillis() > until) throw java.net.SocketTimeoutException("the site was too slow")
+        }
+        return out.toByteArray()
     }
 
     /**

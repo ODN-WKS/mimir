@@ -61,7 +61,7 @@ object Stations {
                     if (why == "network available") io.github.odnwks.mimir.standalone.Engine.made()?.networkBack()
                 }
                 // Mímir's searches go through the owner's own SearXNG on the PC while it's connected.
-                io.github.odnwks.mimir.online.Search.viaPc = { q -> s.webSearch(q)?.let(io.github.odnwks.mimir.online.Search::fromPc) }
+                io.github.odnwks.mimir.online.Search.viaPc = { q -> s.webSearch(q, io.github.odnwks.mimir.online.Search.PC_MAX)?.let(io.github.odnwks.mimir.online.Search::fromPc) }
                 // The weather and the encyclopedias are asked both ways at once: from this phone and through the PC.
                 io.github.odnwks.mimir.online.Net.viaPc = { r -> s.lookup(r.url.toString(), r.timeoutMs.toLong()) }
                 io.github.odnwks.mimir.online.Net.phoneOnline = { online(app) }
