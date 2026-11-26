@@ -1575,9 +1575,11 @@ pub enum Call {
         entry: usize,
     },
     /// The models to offer: the reply is `{"free": [FreeModel…], "free_model",
-    /// "switch_to_free", "ollama": "" or why free models can't run now}`.
+    /// "switch_to_free" (the owner's "When online use runs out, use your PC's
+    /// model"), "ollama": "" or why free models can't run now}`.
     Models,
-    /// "Switch to free near my limit" and the free model it uses.
+    /// "When online use runs out, use your PC's model" (`switch_to_free`,
+    /// the PC's `free_when_out`; owner only) and the free model it uses.
     SetFreeChoice {
         switch_to_free: Option<bool>,
         free_model: Option<String>,

@@ -183,9 +183,10 @@ fn p8_models_list_free_ones_with_the_refusals_note() {
         free_model: None,
     })
     .unwrap();
-    // "Switch near my limit" is gone in Stage 1: it stays off.
+    // P23: the field now sets "When online use runs out, use your PC's
+    // model", and true means on.
     let v = st.call_wait(Call::Models).unwrap();
-    assert_eq!(v["switch_to_free"], false);
+    assert_eq!(v["switch_to_free"], true);
     let r = st.call_wait(Call::SetFreeChoice {
         switch_to_free: None,
         free_model: Some("claude-opus-5-5".into()),

@@ -375,12 +375,25 @@ impl App {
                     "Online is optional. To use it, set up an Anthropic plan in the last section of this page.",
                 ));
             }
-            if !free {
-                ui.label(small(
-                    "When your Anthropic plan can't answer (it ran out, you are signed out, or you are offline), your PC's \
-                     model carries on and tells you.",
-                ));
+            // One switch, shown the same on the phone's Status.
+            ui.add_space(4.0);
+            let has_model = !mimir_core::models::cached().is_empty();
+            let mut on = has_model && self.settings.free_when_out_on();
+            if ui
+                .add_enabled(
+                    has_model,
+                    egui::Checkbox::new(&mut on, crate::labels::FREE_WHEN_OUT),
+                )
+                .changed()
+            {
+                self.settings.free_when_out = Some(on);
+                self.settings_dirty = true;
             }
+            ui.label(small(if has_model {
+                crate::labels::FREE_WHEN_OUT_ABOUT
+            } else {
+                crate::labels::FREE_WHEN_OUT_NO_MODEL
+            }));
         });
     }
 

@@ -246,8 +246,8 @@ class MappingTest {
     fun theWeeklyLineSaysWhyWhenThereIsNoReading() {
         assertEquals(
             "Not read yet: sign in to Claude Code on your PC, and check it is online.",
-            Mapping.usageWhy(Usage("—", 0, "", 85)),
+            Mapping.usageWhy(Usage("—", 0, "")),
         )
-        assertEquals(null, Mapping.usageWhy(Usage("62%", 62, "", 85)))
+        assertEquals(null, Mapping.usageWhy(Usage("62%", 62, "")))
     }
 }

@@ -357,7 +357,7 @@ class FindabilityTest {
     @Test fun switchToFreeSitsUnderClaudeUseOnStatus() {
         start()
         tab("Status")
-        val switch = compose.onNode(hasText("Switch to free near my limit") and SemanticsMatcher.keyIsDefined(SemanticsProperties.ToggleableState), useUnmergedTree = false)
+        val switch = compose.onNode(hasText(FreeWhenOut.TITLE) and SemanticsMatcher.keyIsDefined(SemanticsProperties.ToggleableState), useUnmergedTree = false)
         switch.performScrollTo().assertIsOn().performClick()
         compose.waitForIdle()
         assertFalse(station.state.value.models.switchToFree)

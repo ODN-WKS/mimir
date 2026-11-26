@@ -490,10 +490,12 @@ fun SwitchRow(
     onChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
     on: Color = Palette.BlueLight,
+    enabled: Boolean = true,
     content: @Composable RowScope.() -> Unit,
 ) {
     Row(
-        modifier.fillMaxWidth().heightIn(min = 48.dp).toggleable(value = checked, role = Role.Switch, onValueChange = onChange),
+        modifier.fillMaxWidth().heightIn(min = 48.dp).toggleable(value = checked, enabled = enabled, role = Role.Switch, onValueChange = onChange)
+            .then(if (enabled) Modifier else Modifier.alpha(0.5f)),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {

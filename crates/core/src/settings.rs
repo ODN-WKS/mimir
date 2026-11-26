@@ -101,10 +101,15 @@ pub struct Settings {
     /// ("Recipes" for Recipe-Box).
     #[serde(default)]
     pub aliases: std::collections::HashMap<String, Vec<String>>,
-    /// Before Stage 1: "Switch to free near my limit". Read once to
-    /// migrate, never written again (always off).
+    /// Before Stage 1: an older switch of the same name. Read once to
+    /// migrate, never written again; `free_when_out` is the switch now.
     #[serde(default, skip_serializing)]
     pub switch_to_free: bool,
+    /// When online use runs out, project work and online chats carry on
+    /// with the PC's own model (None: on). Off: a task asks first, and a
+    /// chat says online is at its limit.
+    #[serde(default)]
+    pub free_when_out: Option<bool>,
     /// Before Stage 1: the free model tasks fell back to (read once).
     #[serde(default, skip_serializing)]
     pub free_model: Option<String>,
@@ -259,14 +264,18 @@ impl Settings {
         );
     }
 
+    /// "When online use runs out, use your PC's model" (on unless turned off).
+    pub fn free_when_out_on(&self) -> bool {
+        self.free_when_out != Some(false) && !self.ask_before_free
+    }
+
     /// A new project task on `model` is moved to the PC's own model: the
-    /// project work setting is "your PC's model", or Claude's limit is out and
-    /// the owner didn't ask to be asked first.
+    /// project work setting is "your PC's model", or online use is out and
+    /// the switch "When online use runs out, use your PC's model" is on.
     pub fn moves_to_free(&self, model: Option<&str>, claude_out: bool) -> bool {
         let power = self.power();
         !crate::models::is_free(model)
-            && (power == Power::FreeOnly
-                || (power == Power::Backup && claude_out && !self.ask_before_free))
+            && (power == Power::FreeOnly || (claude_out && self.free_when_out_on()))
     }
 
     /// Where the words of a new project task go: online (Anthropic) or not.
@@ -830,7 +839,47 @@ mod tests {
         }
     }
 
-    /// P3: the pill before sending, the service and the task's own line all
+    /// P23: "When online use runs out, use your PC's model" is on until
+    /// turned off, is kept in the service's part, and decides whether a new
+    /// task moves to the PC's model while online is out.
+    #[test]
+    fn p23_free_when_out_is_on_by_default_kept_and_obeyed() {
+        let s: Settings = serde_json::from_str("{}").unwrap();
+        assert!(s.free_when_out_on());
+        // An older file with the old key on (or off) reads as on: the old
+        // switch never did this, so nobody turned this one off.
+        for old in [true, false] {
+            let j = serde_json::json!({"switch_to_free": old, "project_engine": "claude"});
+            let mut s: Settings = serde_json::from_value(j.clone()).unwrap();
+            s.migrate_engines(&j);
+            assert!(s.free_when_out_on(), "old key {old}");
+        }
+        // Off is saved, travels in the service's part and comes back.
+        let off = Settings {
+            free_when_out: Some(false),
+            ..Default::default()
+        };
+        let part = service_part(&off);
+        assert_eq!(part["free_when_out"], false);
+        assert!(!with_part(&Settings::default(), &part).free_when_out_on());
+        let back: Settings = serde_json::from_str(&serde_json::to_string(&off).unwrap()).unwrap();
+        assert!(!back.free_when_out_on());
+        // Project work online: a new task moves to the PC's model only while
+        // online is out and the switch is on.
+        for on in [None, Some(true), Some(false)] {
+            let s = Settings {
+                project_engine: Some("claude".into()),
+                free_when_out: on,
+                ..Default::default()
+            };
+            let moves = on != Some(false);
+            assert_eq!(s.moves_to_free(None, true), moves, "{on:?}");
+            assert_eq!(s.moves_to_free(Some("auto"), true), moves, "{on:?}");
+            assert!(!s.moves_to_free(None, false), "{on:?}");
+            assert_eq!(s.task_goes_online(None, true, true), !moves, "{on:?}");
+        }
+    }
+
     /// ask the same rule, for every combination of the settings.
     #[test]
     fn where_the_words_go_is_one_rule_for_every_combination() {

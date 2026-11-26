@@ -703,7 +703,7 @@ impl Service {
             "power": format!("{:?}", s.power()),
             "chats_paid": s.chats_paid(),
             "project_free": s.project_free(),
-            "ask_before_free": s.ask_before_free,
+            "free_when_out": s.free_when_out_on(),
             "finish_summary": s.finish_summary,
             "devlog_chats": s.devlog_chats(),
         });
@@ -1741,6 +1741,7 @@ impl Service {
                     self.settings.ground_rules.clone(),
                     self.settings.ground_rules_on,
                 );
+                let free_when_out = self.settings.free_when_out_on();
                 self.settings = settings::with_part(&self.settings, &settings);
                 if rules
                     != (
@@ -1759,6 +1760,10 @@ impl Service {
                 self.broadcast(Event::Settings {
                     settings: settings::service_part(&self.settings),
                 });
+                if free_when_out != self.settings.free_when_out_on() {
+                    // The phones show the switch as the PC has it.
+                    self.broadcast_chat(crate::people::OWNER, Event::ModelsChanged);
+                }
                 ok
             }
             Call::Transcript { task } => Ok(self
@@ -2182,7 +2187,9 @@ impl Service {
                 Ok(json!({
                     "free": if owner { json!(free) } else { json!([]) },
                     "free_model": if owner { json!(self.free_choice().map(|f| f.id)) } else { Value::Null },
-                    "switch_to_free": owner && self.settings.switch_to_free,
+                    // "When online use runs out, use your PC's model" (the
+                    // field older phones already read).
+                    "switch_to_free": owner && self.settings.free_when_out_on(),
                     "ollama": if owner { why } else { String::new() },
                     "refusals_removed_note": crate::models::REFUSALS_REMOVED,
                     "fit_note": crate::models::FIT_NOTE,
@@ -2293,20 +2300,31 @@ impl Service {
                 switch_to_free,
                 free_model,
             } => {
-                // "Switch near my limit" is gone (Stage 1): always off.
-                if let Some(_on) = switch_to_free {
-                    self.settings.switch_to_free = false;
+                // The owner's plan and the owner's PC: only the owner says.
+                if switch_to_free.is_some() && self.person_of(client) != crate::people::OWNER {
+                    return Err("refused: only the PC's owner changes this".into());
+                }
+                if let Some(m) = &free_model
+                    && !crate::models::is_free(Some(m))
+                {
+                    return Err("refused: not a free model".into());
+                }
+                // "When online use runs out, use your PC's model".
+                let was = self.settings.free_when_out_on();
+                if let Some(on) = switch_to_free {
+                    self.settings.free_when_out = Some(on);
                 }
                 if let Some(m) = free_model {
-                    if !crate::models::is_free(Some(&m)) {
-                        return Err("refused: not a free model".into());
-                    }
                     self.settings.free_model = Some(m);
                 }
                 self.settings.save();
                 self.broadcast(Event::Settings {
                     settings: settings::service_part(&self.settings),
                 });
+                if was != self.settings.free_when_out_on() {
+                    // The owner's other phones show it at once.
+                    self.broadcast_chat(crate::people::OWNER, Event::ModelsChanged);
+                }
                 ok
             }
             Call::ContinueOnClaude { task } => {
@@ -4514,6 +4532,18 @@ impl Service {
                 why: "That didn't work. Try again.".into(),
             };
         }
+        // Online is at its limit and "When online use runs out, use your
+        // PC's model" is on: the PC's model answers, and says why.
+        let free_when_out = self.settings.free_when_out_on();
+        let mut limit_note = None;
+        if paid
+            && free_when_out
+            && pick.is_some()
+            && let Some(back_at) = self.claude_out()
+        {
+            paid = false;
+            limit_note = Some(crate::talk::limit_words(back_at));
+        }
         if pick.is_none() && !paid {
             return Filed::OnPhone {
                 why: no_model_words(owner, crate::engine::load().as_ref()),
@@ -4545,6 +4575,8 @@ impl Service {
         let answer = crate::talk::answer_id(&a.turn_id);
         let (mut ran, mut model_words) = if paid {
             (mimir_proto::Ran::Paid, "Online · paid".to_string())
+        } else if let Some(words) = limit_note {
+            (mimir_proto::Ran::Pc, words)
         } else {
             let title = pick.as_ref().map(|p| p.title.as_str()).unwrap_or("");
             (
@@ -4733,6 +4765,7 @@ impl Service {
             pictures,
             switch_note,
             backups,
+            free_when_out,
         };
         // A chat counts as using the chat model, so nothing treats it as
         // unused.
@@ -5135,6 +5168,11 @@ impl Service {
     /// Tells clients what changed since they were last told.
     /// The free model for near-limit tasks: the owner's pick if installed,
     /// else the best tested one.
+    /// Until when online use is out (the plan's limit ran out), if it is now.
+    fn claude_out(&self) -> Option<i64> {
+        self.claude_out_until.filter(|t| *t > crate::needs::now())
+    }
+
     fn free_choice(&self) -> Option<crate::models::FreeModel> {
         let list = crate::models::installed()
             .map(|n| crate::models::catalogue(&n))
@@ -5190,9 +5228,10 @@ impl Service {
             let when = crate::models::clock(back_at);
             let free = self.free_choice();
             let said = match (self.settings.power(), free) {
-                // Asking first: the model isn't woken for the question, only
-                // when the owner says yes.
-                (settings::Power::Backup, f) if self.settings.ask_before_free => {
+                // "When online use runs out, use your PC's model" is off: it
+                // stops and offers to carry on. The model isn't woken for
+                // the offer, only when the owner says yes.
+                (settings::Power::Backup, f @ Some(_)) if !self.settings.free_when_out_on() => {
                     self.runner.set_ran_out(
                         &id,
                         Some(mimir_proto::RanOut {
@@ -5200,7 +5239,9 @@ impl Service {
                             claude_model,
                             on_free: false,
                         }),
-                        true,
+                        // Stopped, with its button to carry on (a "needs you"
+                        // mark would be cleared at once: no question waits).
+                        false,
                     );
                     let t = format!(
                         "The online limit ran out in \"{title}\". Online is back at {when}; it can \
@@ -5354,7 +5395,11 @@ impl Service {
                 && !l.task.incognito
                 && !crate::models::is_free(l.task.model.as_deref())
         });
-        let needed = wake_for_limit(self.settings.power(), self.settings.ask_before_free, hit);
+        let needed = wake_for_limit(
+            self.settings.power(),
+            !self.settings.free_when_out_on(),
+            hit,
+        );
         if !needed {
             return true;
         }

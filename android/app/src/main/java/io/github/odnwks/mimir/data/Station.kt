@@ -733,7 +733,7 @@ data class PcStats(
     val threadsBusy: Int? get() = threads?.let { n -> Math.round(cpuPercent * n / 100.0).toInt().coerceIn(0, n) }
 }
 
-data class Usage(val percentText: String, val percent: Int, val resets: String, val switchAt: Int)
+data class Usage(val percentText: String, val percent: Int, val resets: String)
 
 enum class Heard { New, Heard }
 

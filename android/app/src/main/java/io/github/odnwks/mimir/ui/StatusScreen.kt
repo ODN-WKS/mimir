@@ -183,16 +183,35 @@ fun StatusScreen(state: StationState, station: io.github.odnwks.mimir.data.Stati
                 Bar(state.usage.percent / 100f, 6.dp)
                 io.github.odnwks.mimir.data.Mapping.usageWhy(state.usage)?.let { Text(it, style = Type.Small, color = Palette.TextDim) }
             }
-            // The near-limit switch sits right under the use it's about (Models keeps a link here).
-            if (state.models.local.isNotEmpty() && state.paidOn != false) SwitchRow(state.models.switchToFree, station::setSwitchToFree, Modifier.padding(horizontal = 4.dp)) {
+            // The PC's one switch, right under the use it's about (Models keeps a link here). It shows the
+            // PC's own setting; it can change while the PC is reached and has a model to carry on with.
+            val hasModel = state.models.local.isNotEmpty()
+            val canChange = on && hasModel
+            // The owner's plan and PC: someone else's phone doesn't change it.
+            if (state.owner) SwitchRow(canChange && state.models.switchToFree, station::setSwitchToFree, Modifier.padding(horizontal = 4.dp), enabled = canChange) {
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text("Switch to free near my limit", style = Type.BodyTight, color = Palette.Text)
-                    Text("When online use passes ${state.usage.switchAt}% this week, small jobs use ${state.models.freeFallback} instead", style = Type.Small, color = Palette.TextDim)
+                    Text(FreeWhenOut.TITLE, style = Type.BodyTight, color = Palette.Text)
+                    Text(
+                        when {
+                            !on -> FreeWhenOut.AWAY
+                            !hasModel -> FreeWhenOut.NO_MODEL
+                            else -> FreeWhenOut.ABOUT
+                        },
+                        style = Type.Small, color = Palette.TextDim,
+                    )
                 }
             }
         }
         if (state.paired) BigButton("Disconnect this phone", Look.Danger, { nav.openSheet(io.github.odnwks.mimir.nav.Sheet.Unpair) }, Modifier.padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 22.dp), height = 48.dp)
     }
+}
+
+/** "When online use runs out, use your PC's model": the same words as the PC window's Settings › Models. */
+object FreeWhenOut {
+    const val TITLE = "When online use runs out, use your PC's model"
+    const val ABOUT = "Chats and project work carry on privately on your PC, and say so, until online is back."
+    const val NO_MODEL = "Needs a model on your PC first: add one on the PC in Settings › Models."
+    const val AWAY = "Your PC is away: change this when it's back."
 }
 
 /** Words for the meters, the same as the PC window's This PC card. */

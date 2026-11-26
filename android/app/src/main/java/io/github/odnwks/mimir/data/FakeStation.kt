@@ -496,7 +496,7 @@ object ExampleData {
         needsYou = needsYou,
         tasks = tasks,
         projects = projects,
-        usage = Usage("[example 62%]", 62, "Mon", 85),
+        usage = Usage("[example 62%]", 62, "Mon"),
         updates = updates,
         player = Player("u-allow", playing = true, positionSeconds = 8, speed = 1.25f),
         models = models,

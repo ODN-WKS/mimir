@@ -269,6 +269,14 @@ pub const OPEN_ON_CLAUDE_AI: &str = "Open on claude.ai";
 /// Settings › Models: the rules sent with every task.
 pub const GROUND_RULES: &str = "Rules for every chat";
 pub const GROUND_RULES_SEND: &str = "Send these with every chat and task";
+/// Settings › Models › Who answers, and the phone's Status: the one switch.
+pub const FREE_WHEN_OUT: &str = "When online use runs out, use your PC's model";
+/// Under it, while it can work.
+pub const FREE_WHEN_OUT_ABOUT: &str =
+    "Chats and project work carry on privately on your PC, and say so, until online is back.";
+/// Under it, when the PC has no model to carry on with.
+pub const FREE_WHEN_OUT_NO_MODEL: &str =
+    "Needs a model on your PC first: download one from the Model Store below.";
 pub const GROUND_RULES_NOTE: &str = "Online answers follow their own safety rules on top of these; your PC's model and the phone's models follow these as written.";
 /// Settings: the card of experiments, and its first switch.
 pub const LABS: &str = "Labs";

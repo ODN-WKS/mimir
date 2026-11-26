@@ -91,6 +91,36 @@ pub struct Job {
     pub switch_note: Option<String>,
     /// Who tries next when this model fails on a picture (once each).
     pub backups: Vec<Backup>,
+    /// "When online use runs out, use your PC's model": when online is at
+    /// its limit, the PC's model answers instead. Off: the chat says online
+    /// is at its limit.
+    pub free_when_out: bool,
+}
+
+/// Under an answer the PC's model wrote because online is at its limit
+/// (`at`: when it is back, 0 when not known).
+pub fn limit_words(at: i64) -> String {
+    format!(
+        "Your PC · Online is at its limit{} · Your PC answered instead",
+        until(at)
+    )
+}
+
+/// The failure a chat shows when online is at its limit and the switch is off.
+pub fn limit_off_words(at: i64) -> String {
+    format!(
+        "Online is at its limit{}. To have your PC's model answer meanwhile, turn on \
+         \"When online use runs out, use your PC's model\".",
+        until(at)
+    )
+}
+
+fn until(at: i64) -> String {
+    if at > 0 {
+        format!(" until {}", crate::models::clock(at))
+    } else {
+        String::new()
+    }
 }
 
 /// Another way to answer a picture message when the first one fails.
@@ -408,7 +438,15 @@ impl Talk {
                     Err(_) if self.lock().stopped.contains(&job.answer_id) => {
                         Err("Stopped.".into())
                     }
-                    // The free model is always Claude's backup.
+                    // The switch is off: at the limit, the chat says so.
+                    Err(why)
+                        if !job.free_when_out && crate::models::claude_limit(&why).is_some() =>
+                    {
+                        Err(limit_off_words(
+                            crate::models::claude_limit(&why).unwrap_or(0),
+                        ))
+                    }
+                    // The free model is Claude's backup.
                     Err(why) if !job.model.is_empty() => {
                         let mut free = job.clone();
                         free.paid = None;
@@ -420,14 +458,7 @@ impl Talk {
                         // at the limit, not just the first time.
                         if let Some(at) = crate::models::claude_limit(&why) {
                             s.limit_said = true;
-                            let when = if at > 0 {
-                                format!(" until {}", crate::models::clock(at))
-                            } else {
-                                String::new()
-                            };
-                            free.model_words = format!(
-                                "Your PC · Online is at its limit{when} · Your PC answered instead"
-                            );
+                            free.model_words = limit_words(at);
                         }
                         if let Some(c) = &mut s.current {
                             c.1.clear();
@@ -1166,6 +1197,7 @@ mod tests {
             pictures: vec![],
             switch_note: None,
             backups: vec![],
+            free_when_out: true,
         }
     }
 
@@ -1407,6 +1439,65 @@ mod tests {
         assert_eq!(turn.switch_note, None);
         assert!(turn.model_words.unwrap().starts_with("Your PC"));
         let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// P23: online at its limit. With "When online use runs out, use your
+    /// PC's model" on, the PC's model answers and says why; off, the chat
+    /// says online is at its limit and no PC model answers.
+    #[test]
+    fn p23_at_the_limit_a_chat_follows_the_switch() {
+        use std::os::unix::fs::PermissionsExt;
+        for on in [true, false] {
+            let d =
+                std::env::temp_dir().join(format!("talk-paid-limit-{on}-{}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&d);
+            std::fs::create_dir_all(&d).unwrap();
+            let prog = d.join("claude");
+            std::fs::write(
+                &prog,
+                "#!/bin/sh\ncat >/dev/null\n\
+                 echo '{\"type\":\"result\",\"is_error\":true,\
+                 \"result\":\"Claude AI usage limit reached|4102444800\"}'\n",
+            )
+            .unwrap();
+            std::fs::set_permissions(&prog, std::fs::Permissions::from_mode(0o755)).unwrap();
+            let (t, rx) = engine(vec![r#"{"message":{"content":"Hi"},"done":true}"#]);
+            let mut j = job(&format!("lim{on}"), "Hello");
+            j.free_when_out = on;
+            j.paid = Some(Paid {
+                model: None,
+                program: prog,
+                dir: d.join("run"),
+            });
+            assert_eq!(t.submit(j), Ok(None));
+            let (_, _, result) = until_done(&rx);
+            let when = crate::models::clock(4_102_444_800);
+            if on {
+                let turn = result.unwrap();
+                assert_eq!(turn.ran, Some(Ran::Pc));
+                assert_eq!(
+                    turn.model_words.as_deref(),
+                    Some(
+                        format!(
+                            "Your PC · Online is at its limit until {when} · Your PC answered instead"
+                        )
+                        .as_str()
+                    )
+                );
+            } else {
+                let why = result.unwrap_err();
+                assert!(
+                    why.starts_with(&format!("Online is at its limit until {when}")),
+                    "{why}"
+                );
+                assert!(
+                    why.contains("When online use runs out, use your PC's model"),
+                    "{why}"
+                );
+                assert!(!why.contains('|'), "raw words shown: {why}");
+            }
+            let _ = std::fs::remove_dir_all(&d);
+        }
     }
 
     #[test]

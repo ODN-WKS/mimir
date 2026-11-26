@@ -1574,8 +1574,14 @@ class LinkStation(
         publish()
     }
 
+    /** "When online use runs out, use your PC's model": shown at once, then as the PC keeps it. */
     override fun setSwitchToFree(on: Boolean) {
-        call(Wire.setFreeChoice(on, null)) { _, err -> if (err != null) note(err); refreshModels() }
+        synchronized(lock) { pcModels = pcModels?.copy(switchToFree = on) }
+        publish()
+        if (!call(Wire.setFreeChoice(on, null)) { _, err -> if (err != null) note(err); refreshModels() }) {
+            note("Your PC is away: try again when it's back.")
+            refreshModels()
+        }
     }
 
     override fun continueOnClaude(taskId: String) {
@@ -2044,7 +2050,7 @@ class LinkStation(
             needsYou = emptyList(),
             tasks = emptyList(),
             projects = emptyList(),
-            usage = Usage("—", 0, "", 85),
+            usage = Usage("—", 0, ""),
             updates = emptyList(),
             player = Player(null, playing = false, positionSeconds = 0, speed = 1f),
             models = Models(emptyList(), emptyList(), "auto", switchToFree = false, freeFallback = ""),

@@ -128,7 +128,7 @@ fun ModelsSection(state: StationState, station: Station, nav: Navigator, phone: 
             if (m.local.isNotEmpty() && power != Power.ClaudeOnly) {
                 // The switch itself sits under Claude use on Status, the use it's about.
                 ListRow(
-                    "Switch to free near my limit", (if (m.switchToFree) "On" else "Off") + " · it's under Online use on Status",
+                    FreeWhenOut.TITLE, (if (m.switchToFree) "On" else "Off") + " · it's under Online use on Status",
                     { nav.selectTab(io.github.odnwks.mimir.nav.Tab.Status) }, Modifier.padding(top = 4.dp),
                 )
                 Text(
