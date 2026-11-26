@@ -126,7 +126,12 @@ pub fn all_projects<'a>(
     tasks: impl IntoIterator<Item = &'a crate::task::Task>,
 ) -> Vec<String> {
     let mut all = settings.projects.clone();
-    for t in tasks.into_iter().filter(|t| !t.archived) {
+    // Owner's hard rule (2026-11-26): projects are only ones the owner makes. A
+    // session Mímir found running elsewhere (a helper, a script) never adds one.
+    for t in tasks
+        .into_iter()
+        .filter(|t| !t.archived && !t.imported && !t.outside)
+    {
         let home = t.home_project().to_string();
         if !all.iter().any(|p| same(p, &home)) && !helper_copy(&home) {
             all.push(home);
@@ -472,6 +477,11 @@ mod new_project_tests {
             all_projects(&Settings::default(), &tasks),
             vec![s(&real), s(&plain)]
         );
+        // Owner's hard rule (2026-11-26): a session found running elsewhere never adds a project.
+        let mut found = crate::task::Task::new("t9".into(), "x".into(), s(&plain), 0);
+        found.imported = true;
+        found.outside = true;
+        assert!(all_projects(&Settings::default(), [&found]).is_empty());
         // A copy the owner saved on purpose stays.
         let saved = Settings {
             projects: vec![s(&copy)],
