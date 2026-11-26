@@ -650,13 +650,17 @@ impl Task {
         };
         match before {
             Some(b) if model.is_some() && b != (model, effort) => {
-                let short = self
-                    .switch_why
-                    .take()
-                    .unwrap_or_else(|| WHY_NOT_REPORTED.to_string());
+                // A reason saved for the next run is not this run's: a
+                // change inside the run still answering has none reported.
+                let short = if self.switch_armed {
+                    self.switch_armed = false;
+                    self.switch_why.take()
+                } else {
+                    None
+                }
+                .unwrap_or_else(|| WHY_NOT_REPORTED.to_string());
                 meta.switched_why = Some(switch_sentence(&short).to_string());
                 meta.switched = Some(short);
-                self.switch_armed = false;
             }
             // The reason was for a run that answers just as before.
             _ if self.switch_armed => {
@@ -720,35 +724,38 @@ impl Task {
         }
     }
 
-    /// The owner's message at `hint` (where it was added) was written to
-    /// Claude Code's live input. If entries moved since, the oldest message
-    /// still waiting is the one (they go in order).
-    pub fn mark_delivered(&mut self, hint: usize) {
-        let waiting = |t: &Task, i: usize| {
-            matches!(t.entries.get(i), Some(Entry::You(_)))
-                && t.entry_meta.get(i).and_then(|m| m.receipt) == Some(Receipt::Sent)
-        };
-        let at = if waiting(self, hint) {
-            Some(hint)
-        } else {
-            (0..self.entries.len()).find(|i| waiting(self, *i))
-        };
-        if let Some(i) = at {
+    /// The owner's message at `i` was written to Claude Code's live input.
+    /// Only that entry: a place that no longer holds a message still Sent
+    /// marks nothing (never an older message that was lost).
+    pub fn mark_delivered(&mut self, i: usize) {
+        if self.sent_at(i) {
             self.entry_meta[i].receipt = Some(Receipt::Delivered);
         }
     }
 
+    /// Entry `i` is the owner's message, still Sent.
+    fn sent_at(&self, i: usize) -> bool {
+        matches!(self.entries.get(i), Some(Entry::You(_)))
+            && self.entry_meta.get(i).and_then(|m| m.receipt) == Some(Receipt::Sent)
+    }
+
+    /// Where the owner's message sent at `sent` (unix ms) sits now, if it
+    /// is still Sent (entries before it may have gone since).
+    pub fn sent_message(&self, sent: i64) -> Option<usize> {
+        (0..self.entries.len())
+            .find(|i| self.sent_at(*i) && self.entry_meta.get(*i).and_then(|m| m.at) == Some(sent))
+    }
+
     /// Claude Code echoed a message it took in (`--replay-user-messages`):
-    /// the owner's message it carries is Read, and so is any sent before it
-    /// that is still not marked (they are taken in order).
+    /// the owner's message it carries is Read, and so is any delivered
+    /// before it that is still not marked (they are taken in order). Only
+    /// Delivered messages: one still Sent never reached Claude Code (Stop
+    /// dropped it), even when a later one has the same words.
     fn echoed(&mut self, text: &str) {
         let open: Vec<usize> = (0..self.entries.len())
             .filter(|i| {
                 matches!(self.entries[*i], Entry::You(_))
-                    && matches!(
-                        self.entry_meta.get(*i).and_then(|m| m.receipt),
-                        Some(Receipt::Sent | Receipt::Delivered)
-                    )
+                    && self.entry_meta.get(*i).and_then(|m| m.receipt) == Some(Receipt::Delivered)
             })
             .collect();
         let said = |i: usize| match &self.entries[i] {

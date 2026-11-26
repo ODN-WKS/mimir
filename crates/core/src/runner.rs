@@ -52,9 +52,10 @@ pub struct Live {
     bg_seen: u8,
     /// The note was said for this turn.
     bg_noted: bool,
-    /// The owner's messages (where they sit in the task) queued for a host
-    /// still starting: Delivered once it is up and took them.
-    held_delivery: Vec<usize>,
+    /// The owner's messages (by the time each was sent) queued for a host
+    /// still starting: Delivered once that same run is up and took them.
+    /// Emptied whenever the run is taken away or replaced.
+    held_delivery: Vec<i64>,
     /// The turn's start time was set for this working stretch (a time from
     /// before a restart or a takeover is never shown).
     pub(crate) turn_clocked: bool,
@@ -69,6 +70,13 @@ pub struct Live {
 }
 
 impl Live {
+    /// Takes the run away. What waited for its host to come up never
+    /// reached Claude Code, so it stays Sent.
+    fn take_run(&mut self) -> Option<Session> {
+        self.held_delivery.clear();
+        self.session.take()
+    }
+
     /// Tests only: a task with nothing running.
     #[cfg(test)]
     pub fn for_test(task: Task) -> Live {
@@ -809,7 +817,10 @@ impl Runner {
         let Some(at) = entry else { return };
         let l = &mut self.tasks[i];
         if l.session.as_ref().is_some_and(|s| s.connecting()) {
-            l.held_delivery.push(at);
+            // Kept by when it was sent: its place may move before then.
+            if let Some(sent) = l.task.meta(at).at {
+                l.held_delivery.push(sent);
+            }
             return;
         }
         l.task.mark_delivered(at);
@@ -867,7 +878,7 @@ impl Runner {
     /// carries the owner's message at `entry`, if any).
     fn start_and_send(&mut self, i: usize, line: &str, entry: Option<usize>) {
         // Not running (or input closed): start Claude Code again.
-        self.tasks[i].session = None;
+        drop(self.tasks[i].take_run());
         let folder = self.tasks[i].task.project.clone();
         if !Path::new(&folder).is_dir() && self.tasks[i].task.origin.is_some() {
             self.fail(
@@ -1089,6 +1100,9 @@ impl Runner {
         }
         l.task.add_note(note);
         l.dirty = true;
+        // A message still waiting for the run's host to come up never
+        // reaches Claude Code now: it stays Sent.
+        l.held_delivery.clear();
         let had_background = std::mem::take(&mut l.background);
         if let Some(s) = &mut l.session {
             if had_background {
@@ -1175,7 +1189,7 @@ impl Runner {
     fn restart_when_idle(&mut self, i: usize) {
         let l = &mut self.tasks[i];
         if !l.busy()
-            && let Some(mut s) = l.session.take()
+            && let Some(mut s) = l.take_run()
         {
             s.kill();
         }
@@ -1528,7 +1542,7 @@ impl Runner {
     /// Ends Claude Code for this task here (another session takes over).
     pub fn end_session(&mut self, id: &str) {
         if let Some(i) = self.index(id)
-            && let Some(mut s) = self.tasks[i].session.take()
+            && let Some(mut s) = self.tasks[i].take_run()
         {
             s.kill();
         }
@@ -1556,7 +1570,7 @@ impl Runner {
         });
         self.drop_local_only_files(id);
         if let Some(i) = self.index(id)
-            && let Some(mut s) = self.tasks[i].session.take()
+            && let Some(mut s) = self.tasks[i].take_run()
         {
             s.kill();
         }
@@ -2099,8 +2113,10 @@ impl Runner {
             if !l.held_delivery.is_empty() && !s.connecting() {
                 let held = std::mem::take(&mut l.held_delivery);
                 if s.input_open() {
-                    for at in held {
-                        l.task.mark_delivered(at);
+                    for sent in held {
+                        if let Some(at) = l.task.sent_message(sent) {
+                            l.task.mark_delivered(at);
+                        }
                     }
                     l.dirty = true;
                 }
@@ -2307,7 +2323,7 @@ impl Runner {
                     && !matches!(l.task.status, Status::Stopped | Status::Paused);
                 let died_busy = (l.background || l.bg_seen > 0 || said_busy || killed_outside)
                     && !matches!(l.task.status, Status::Stopped | Status::Paused);
-                l.session = None;
+                drop(l.take_run());
                 self.own_ended
                     .insert(l.task.id.clone(), crate::needs::now());
                 l.background = false;
@@ -2375,7 +2391,7 @@ impl Runner {
                 && s.detach()
             {
                 l.dirty = true;
-                drop(l.session.take());
+                drop(l.take_run());
                 continue;
             }
             while let Some(p) = l.asks.pop_front() {
@@ -2395,8 +2411,7 @@ impl Runner {
             std::thread::sleep(std::time::Duration::from_millis(50));
         }
         for l in &mut self.tasks {
-            if l.session.take().is_some()
-                && matches!(l.task.status, Status::Working | Status::NeedsYou)
+            if l.take_run().is_some() && matches!(l.task.status, Status::Working | Status::NeedsYou)
             {
                 l.task.status = Status::Paused;
                 l.task.add_note(CLOSED_WHILE_WORKING);

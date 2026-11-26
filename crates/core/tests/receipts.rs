@@ -243,7 +243,114 @@ fn a_switch_mimir_did_not_make_says_reason_not_reported() {
     assert!(m.switched_why.is_some());
     // The usage limit moved it: that reason is given.
     t.switch_why = Some(mimir_core::task::WHY_LIMIT.into());
+    t.switch_armed = true; // the run it moved to starts
     t.apply(&Event::Model("qwen3.6:35b".into()), 0);
     t.apply(&Event::Text("Four.".into()), 0);
     assert_eq!(t.meta(3).switched.as_deref(), Some("usage limit"));
+}
+
+// Fix round 1 (review 18:32).
+
+/// A message that never reached Claude Code (dropped by Stop) stays Sent
+/// when a later one is echoed, even one with the same words ("continue").
+#[test]
+fn a_message_that_never_reached_claude_code_is_never_marked_read() {
+    use mimir_core::events::Event;
+    let mut t = Task::new("1-1-3".into(), "Lost".into(), "/p".into(), 0);
+    t.add_you("continue"); // lost: never written to a run
+    t.add_you("continue"); // sent again, and this one reached it
+    t.mark_delivered(1);
+    t.apply(&Event::Echo("continue".into()), 0);
+    assert_eq!(t.meta(0).receipt, Some(Receipt::Sent), "{:?}", t.metas());
+    assert_eq!(t.meta(1).receipt, Some(Receipt::Read), "{:?}", t.metas());
+    // A lost message before one that is echoed is not read either.
+    t.add_you("Tidy the notes folder."); // lost
+    t.add_you("What is 2+2?");
+    t.mark_delivered(3);
+    t.apply(&Event::Echo("What is 2+2?".into()), 0);
+    assert_eq!(t.meta(2).receipt, Some(Receipt::Sent), "{:?}", t.metas());
+    assert_eq!(t.meta(3).receipt, Some(Receipt::Read), "{:?}", t.metas());
+}
+
+/// A place that no longer holds a waiting message marks nothing: never the
+/// oldest message still Sent (one that was lost).
+#[test]
+fn a_stale_place_never_marks_a_lost_message_delivered() {
+    let mut t = Task::new("1-1-4".into(), "Stale".into(), "/p".into(), 0);
+    t.add_you("A message Stop dropped."); // lost
+    t.add_note("A note.");
+    t.mark_delivered(1);
+    t.mark_delivered(7);
+    assert_eq!(t.meta(0).receipt, Some(Receipt::Sent), "{:?}", t.metas());
+}
+
+/// A message held for a run whose host was still starting, when that run is
+/// ended before it came up, is not marked Delivered by the next run.
+#[test]
+fn a_message_held_for_a_run_that_went_away_is_not_delivered_by_the_next() {
+    let dir0 = std::env::temp_dir().join(format!("mimir-receipts-slowhost-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir0);
+    std::fs::create_dir_all(&dir0).unwrap();
+    // A host that never answers: up for a second, then gone, so a run waits
+    // that long for it and then runs here.
+    let slow = dir0.join("slow-host");
+    std::fs::write(&slow, "#!/bin/sh\nsleep 1\n").unwrap();
+    let mut p = std::fs::metadata(&slow).unwrap().permissions();
+    std::os::unix::fs::PermissionsExt::set_mode(&mut p, 0o755);
+    std::fs::set_permissions(&slow, p).unwrap();
+    // SAFETY: nextest runs each check in its own process.
+    unsafe {
+        std::env::set_var("MIMIR_HOSTS", "plain");
+        std::env::set_var("MIMIR_TEST_PROGRAM", &slow);
+        std::env::set_var("XDG_STATE_HOME", dir0.join("state"));
+        std::env::set_var("XDG_RUNTIME_DIR", dir0.join("run"));
+    }
+    let hold = dir0.join("hold");
+    let (mut r, dir) = runner_with(
+        "held",
+        &[("resume.jsonl", "run-1.jsonl")],
+        vec![("FAKE_CLAUDE_HOLD_ECHO".into(), hold.display().to_string())],
+    );
+    let id = r.new_task(&dir.join("proj"), "Tidy up the notes folder.");
+    assert_eq!(you(&r, &id, 0).receipt, Some(Receipt::Sent));
+    // Its run is ended while its host is still starting: the message is lost.
+    r.end_session(&id);
+    r.send_with(&id, "What is in hello.txt?", &[]);
+    until(&mut r, "the second message reads Delivered", |r| {
+        you(r, &id, 1).receipt == Some(Receipt::Delivered)
+    });
+    assert_eq!(you(&r, &id, 0).receipt, Some(Receipt::Sent));
+    std::fs::write(&hold, "").unwrap();
+    until(&mut r, "the second message reads Read", |r| {
+        you(r, &id, 1).receipt == Some(Receipt::Read)
+    });
+    assert_eq!(you(&r, &id, 0).receipt, Some(Receipt::Sent));
+    let _ = std::fs::remove_dir_all(&dir);
+    let _ = std::fs::remove_dir_all(&dir0);
+}
+
+/// A reason saved for the next run is not used by a model change inside the
+/// run still answering; that run's change reads "reason not reported".
+#[test]
+fn a_reason_for_the_next_run_is_not_used_by_the_current_one() {
+    use mimir_core::events::Event;
+    let mut t = Task::new("1-1-5".into(), "Next".into(), "/p".into(), 0);
+    t.apply(&Event::Model("claude-opus-5-5".into()), 0);
+    t.apply(&Event::Text("One.".into()), 0);
+    // The owner picks another model; it applies from the next run.
+    t.switch_why = Some(WHY_PICKED.into());
+    t.apply(&Event::Model("claude-sonnet-5-5".into()), 0);
+    t.apply(&Event::Text("Two.".into()), 0);
+    let m = t.meta(1);
+    assert_eq!(m.switched.as_deref(), Some(WHY_NOT_REPORTED), "{m:?}");
+    assert_eq!(
+        t.switch_why.as_deref(),
+        Some(WHY_PICKED),
+        "kept for the next run"
+    );
+    // The next run starts with it.
+    t.switch_armed = true;
+    t.apply(&Event::Model("claude-opus-5-5".into()), 0);
+    t.apply(&Event::Text("Three.".into()), 0);
+    assert_eq!(t.meta(2).switched.as_deref(), Some(WHY_PICKED));
 }
