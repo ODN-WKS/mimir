@@ -214,7 +214,8 @@ data class KeptChat(val id: String, val name: String?, val at: Long, val log: St
         val topic = name?.takeIf { it.isNotBlank() }
             ?: entries.firstNotNullOfOrNull { (it as? ChatEntry.Mine)?.text?.let(io.github.odnwks.mimir.standalone.LocalChat::topicOf) }
         val words = entries.joinToString(" ") { e -> when (e) { is ChatEntry.Mine -> e.text; is ChatEntry.Reply -> e.paragraphs.joinToString(" "); else -> "" } }
-        return PastChat(id, topic ?: "Chat", at, entries.count { it is ChatEntry.Mine || it is ChatEntry.Reply }, words.take(4000))
+        val first = entries.firstNotNullOfOrNull { (it as? ChatEntry.Mine)?.text?.takeIf { t -> t.isNotBlank() } }.orEmpty()
+        return PastChat(id, topic ?: "Chat", at, entries.count { it is ChatEntry.Mine || it is ChatEntry.Reply }, words.take(4000), first.take(300))
     }
 
     companion object {
@@ -233,7 +234,8 @@ data class KeptChat(val id: String, val name: String?, val at: Long, val log: St
 }
 
 /** How an earlier conversation shows in the chats list. */
-data class PastChat(val id: String, val title: String, val at: Long, val messages: Int, val words: String = "")
+/** [first]: the first message's words (Recent activity's second line). */
+data class PastChat(val id: String, val title: String, val at: Long, val messages: Int, val words: String = "", val first: String = "")
 
 /** Where a session on the PC is at. */
 enum class PcSessionState { Working, Idle, Ended }

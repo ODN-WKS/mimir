@@ -33,6 +33,8 @@ sealed interface Screen {
     data object Chat : Screen
     data object Status : Screen
     data object Updates : Screen
+    /** Recent activity (P17): every conversation, chats and project tasks, newest first (from the side menu). */
+    data object Recent : Screen
     /** Settings, behind the cog on each tab: Voice, Who answers, Your PC, Privacy, Look and size, Storage, Help and about. */
     data object Settings : Screen
     data object NeedsYou : Screen
@@ -327,7 +329,7 @@ class Navigator(start: Screen = Screen.Chat) {
      * System Back or a screen's back arrow. Returns false when the app should close.
      *
      * The rule (0.09, item 5): Back goes to where you came from, one step. A page that lists things
-     * (a project page, Needs you, All tasks, Settings, Your PC, Updates, Chats) goes straight to the
+     * (a project page, Needs you, All tasks, Settings, Your PC, Updates, Recent activity, Chats) goes straight to the
      * home chat, so from a task two Backs always reach home, however many pages came before.
      */
     fun back(): Boolean {
@@ -350,7 +352,7 @@ class Navigator(start: Screen = Screen.Chat) {
 
 /** The pages that list things: Back from one of them reaches the home chat (see [Navigator.back]). */
 fun Screen.backsToHome(): Boolean = when (this) {
-    is Screen.Project, Screen.NeedsYou, is Screen.AllTasks, Screen.Settings, Screen.Status, Screen.Updates, Screen.Chats -> true
+    is Screen.Project, Screen.NeedsYou, is Screen.AllTasks, Screen.Settings, Screen.Status, Screen.Updates, Screen.Recent, Screen.Chats -> true
     else -> false
 }
 

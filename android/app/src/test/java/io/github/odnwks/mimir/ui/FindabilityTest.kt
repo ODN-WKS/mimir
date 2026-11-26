@@ -98,7 +98,10 @@ class FindabilityTest {
 
     /** The home screens are rows of the side menu now ("Status" is "Your PC"; unpaired that row opens pairing, so go straight there). */
     private fun tab(name: String) {
-        if (name == "Status") nav.selectTab(io.github.odnwks.mimir.nav.Tab.Status) else compose.menuRow(name)
+        // P17: the menu's Updates row became Recent activity; the Updates page itself is still there.
+        if (name == "Status") nav.selectTab(io.github.odnwks.mimir.nav.Tab.Status)
+        else if (name == "Updates") nav.selectTab(io.github.odnwks.mimir.nav.Tab.Updates)
+        else compose.menuRow(name)
         compose.waitForIdle()
     }
 

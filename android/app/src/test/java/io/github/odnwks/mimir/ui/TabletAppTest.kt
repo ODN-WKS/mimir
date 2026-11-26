@@ -161,9 +161,9 @@ class TabletAppTest {
         start()
         menuButton().assertIsDisplayed()
         assertEquals(false, nav.twoPanes)
-        rail(MENU_UPDATES)
-        assertEquals(Tab.Updates, nav.selectedTab)
-        shot("w600_updates")
+        rail(MENU_RECENT)
+        assertEquals(Screen.Recent, nav.current)
+        shot("w600_recent")
     }
 
     @Config(qualifiers = "w390dp-h844dp-xhdpi")

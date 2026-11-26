@@ -32,7 +32,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
-/** The side menu (redesign R3): its order, Updates always there, Projects below Chats, folds remembered, every place reachable. */
+/** The side menu (redesign R3): its order, Recent activity always there (P17, where Updates was), Projects below Chats, folds remembered, every place reachable. */
 @RunWith(RobolectricTestRunner::class)
 @Config(qualifiers = "w390dp-h844dp-xhdpi")
 class SideMenuTest {
@@ -58,7 +58,7 @@ class SideMenuTest {
     @Test fun theMenuListsEverythingInTheOrderOfTheMockup() {
         start()
         compose.openMenu()
-        val order = listOf(MENU_SEARCH, MENU_NEW_CHAT, MENU_NEEDS_YOU, MENU_UPDATES, MENU_PC, MENU_WHISPER, MENU_CHATS.uppercase(), MENU_PROJECTS.uppercase(), MENU_SETTINGS)
+        val order = listOf(MENU_SEARCH, MENU_NEW_CHAT, MENU_WHISPER, MENU_NEEDS_YOU, MENU_RECENT, MENU_PC, MENU_CHATS.uppercase(), MENU_PROJECTS.uppercase(), MENU_SETTINGS)
         val tops = order.map { w ->
             if (w == MENU_SEARCH) compose.onNodeWithContentDescription(MENU_SEARCH, substring = true).getUnclippedBoundsInRoot().top else top(w)
         }
@@ -69,18 +69,18 @@ class SideMenuTest {
         compose.onNodeWithText(AI_NAME).assertDoesNotExist()
     }
 
-    @Test fun updatesIsAlwaysThereEvenWithNoneAndUnpaired() {
-        start(FakeStation(ExampleData.awake().let { it.copy(updates = emptyList()) }))
+    @Test fun recentActivityIsAlwaysThereEvenWithNothing() {
+        start(FakeStation(ExampleData.awake().let { it.copy(updates = emptyList(), tasks = emptyList()) }))
         compose.openMenu()
-        compose.onNodeWithText(MENU_UPDATES).assertIsDisplayed()
-        compose.onNodeWithText(MENU_UPDATES).performClick(); compose.waitForIdle()
-        assertEquals(Tab.Updates, nav.selectedTab)
+        compose.onNodeWithText(MENU_RECENT).assertIsDisplayed()
+        compose.onNodeWithText(MENU_RECENT).performClick(); compose.waitForIdle()
+        assertEquals(Screen.Recent, nav.current)
     }
 
     @Test fun unpairedThereIsNoProjectsSectionAndYourPcOpensPairing() {
         start(FakeStation(LinkStation.empty("test").copy(paired = false)))
         compose.openMenu()
-        compose.onNodeWithText(MENU_UPDATES).assertIsDisplayed()
+        compose.onNodeWithText(MENU_RECENT).assertIsDisplayed()
         compose.onNodeWithText(MENU_PROJECTS.uppercase()).assertDoesNotExist()
         compose.onNodeWithText("not connected").assertIsDisplayed()
         compose.onNodeWithText(MENU_PC).performClick(); compose.waitForIdle()
@@ -130,7 +130,7 @@ class SideMenuTest {
         start(FakeStation(ExampleData.awake().copy(pcTalks = true)))
         compose.menuRow(MENU_NEEDS_YOU); assertEquals(Screen.NeedsYou, nav.current)
         nav.back(); compose.waitForIdle()
-        compose.menuRow(MENU_UPDATES); assertEquals(Tab.Updates, nav.selectedTab)
+        compose.menuRow(MENU_RECENT); assertEquals(Screen.Recent, nav.current)
         nav.back(); compose.waitForIdle()
         compose.menuRow(MENU_PC); assertEquals(Tab.Status, nav.selectedTab)
         nav.back(); compose.waitForIdle()

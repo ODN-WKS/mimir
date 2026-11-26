@@ -88,7 +88,6 @@ private object MenuColors {
     val Dim = Color(0xFF9AA1AD)
     val Amber = Color(0xFFF3C969)
     val AmberDeep = Color(0xFFE0A92B)
-    val Blue = Color(0xFF3B82F6)
     val Border = Color(0xFF2B2F37)
     val Tint = Color(0xFF1C2744)
 }
@@ -172,7 +171,6 @@ private val PcGreen = Color(0xFF8FE0B4)
 const val MENU_SEARCH = "Search chats"
 const val MENU_NEW_CHAT = "New chat"
 const val MENU_NEEDS_YOU = "Needs you"
-const val MENU_UPDATES = "Updates"
 const val MENU_PC = "Your PC"
 const val MENU_WHISPER = "Whisper"
 const val MENU_CHATS = "Chats"
@@ -184,7 +182,7 @@ const val MENU_BUTTON = "Menu"
 const val MENU_NO_CHATS = "No chats yet."
 
 /**
- * The menu, top to bottom: search, New chat, Needs you, Updates, Your PC, Whisper, the folding Chats
+ * The menu, top to bottom (P17): search, New chat, Whisper, Needs you, Recent activity, Your PC, the folding Chats
  * and Projects (paired only), and Settings pinned at the bottom. [close] shuts the drawer after a choice.
  */
 @Composable
@@ -201,7 +199,7 @@ fun SideMenu(
     val capped = if (q.isEmpty()) shownChats.take(MENU_CHATS_SHOWN) else shownChats
     val go = { action: () -> Unit -> action(); close() }
     val needs = state.needsYou.size
-    val unheard = unheardUpdates(state)
+    val working = recentWorking(state)
     val one = !state.paired || state.pcTalks
 
     Column(modifier.background(MenuColors.Background).fillMaxSize()) {
@@ -217,8 +215,11 @@ fun SideMenu(
                     Text(MENU_NEW_CHAT, style = RowText.copy(fontWeight = FontWeight.SemiBold), color = Palette.Text)
                 }
             }
+            // Under New chat (owner, 2026-11-25). Press and hold: a Whisper with internet (Mímir on this phone, through Tor), the old "New Whisper-O".
+            item("whisper") { MenuRow(MENU_WHISPER, right = "a chat that's never kept", onLongClick = { go { nav.selectTab(Tab.Chat); nav.askChat(ChatAsk.StartWebWhisper) } }) { go { nav.selectTab(Tab.Chat); nav.askChat(ChatAsk.StartWhisper) } } }
             if (state.owner) item("needs") { MenuRow(MENU_NEEDS_YOU, badge = needs, badgeColor = MenuColors.AmberDeep) { go { nav.open(Screen.NeedsYou) } } }
-            item("updates") { MenuRow(MENU_UPDATES, badge = unheard, badgeColor = MenuColors.Blue) { go { nav.selectTab(Tab.Updates) } } }
+            // P17: every conversation, newest first; "N working" in green while something works.
+            item("recent") { MenuRow(MENU_RECENT, right = if (working > 0) "$working working" else "", rightColor = PcGreen) { go { nav.open(Screen.Recent) } } }
             item("pc") {
                 val running = pcRunning(state)
                 MenuRow(MENU_PC, right = pcMenuRight(state), rightColor = if (running > 0) PcGreen else MenuColors.Dim) {
@@ -227,22 +228,12 @@ fun SideMenu(
                 }
             }
             if (state.paired) item("usage") { MenuRow(MENU_USAGE, right = usageLeftShort(state.usage), dim = true, ellipsize = true, modifier = Modifier.testTag("menu-usage")) { go { nav.open(Screen.Models) } } }
-            // Press and hold: a Whisper with internet (Mímir on this phone, through Tor), the old "New Whisper-O".
-            item("whisper") { MenuRow(MENU_WHISPER, right = "a chat that's never kept", onLongClick = { go { nav.selectTab(Tab.Chat); nav.askChat(ChatAsk.StartWebWhisper) } }) { go { nav.selectTab(Tab.Chat); nav.askChat(ChatAsk.StartWhisper) } } }
             item("chats-head") {
                 Section(MENU_CHATS, if (shownChats.isEmpty()) "" else "${shownChats.size}", fold.chatsOpen, amber = false, fold::toggleChats)
             }
             if (fold.chatsOpen) {
                 items(capped, key = { "chat-${it.key}" }) { c ->
-                    val openIt = {
-                        if (c.mimir) {
-                            if (!c.open) engine?.open(c.id)
-                            if (state.paired && !one) nav.open(Screen.Standalone) else nav.selectTab(Tab.Chat)
-                        } else {
-                            if (!c.open) station.openPastChat(c.id)
-                            nav.selectTab(Tab.Chat)
-                        }
-                    }
+                    val openIt = { openListedChat(c, state, engine, station, nav) }
                     MenuRow(
                         c.title.ifBlank { "New chat" }, right = menuTime(c.at, now), dim = false, ellipsize = true,
                         // Press and hold: that chat opens, with its own menu (Rename, Copy, Rules, What was sent, Delete).
