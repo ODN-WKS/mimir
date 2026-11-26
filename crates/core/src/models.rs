@@ -738,19 +738,16 @@ pub fn start_program() {
     forget_cached();
 }
 
-/// Keeps what a look found: a program that doesn't answer leaves the models
-/// its files show, else the list as it was (never an empty list that reads
-/// "nothing installed").
+/// Keeps what a look found: a program that doesn't answer leaves the list as
+/// it was (never an empty list that reads "nothing installed"), and with
+/// nothing kept yet, the models its files show.
 fn keep_look(found: Result<Vec<String>, String>) {
     let off = found.is_err();
     OFF.store(off, std::sync::atomic::Ordering::SeqCst);
     let names = installed_or_on_disk(&found);
     if let Ok(mut g) = CACHE.lock() {
-        let list = if off && names.is_empty() {
-            g.take().map(|(_, l)| l).unwrap_or_default()
-        } else {
-            catalogue(&names)
-        };
+        let kept = g.take().map(|(_, l)| l).filter(|l| off && !l.is_empty());
+        let list = kept.unwrap_or_else(|| catalogue(&names));
         *g = Some((Instant::now(), list));
     }
 }
