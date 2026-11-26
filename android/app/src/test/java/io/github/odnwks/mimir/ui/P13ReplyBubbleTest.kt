@@ -67,8 +67,9 @@ class P13ReplyBubbleTest {
         compose.waitForIdle()
         val b = bubbles()
         assertSeparate(b)
-        // Listen, Copy and Share: once each, under the finished reply and above the one still being written.
-        for (word in listOf(LISTEN, COPY, SHARE)) {
+        // Listen: once, under the finished reply and above the one still being written. P15: no Copy or Share there.
+        for (word in listOf(COPY, SHARE)) assertEquals("no $word under a reply", 0, tops(word).size)
+        for (word in listOf(LISTEN)) {
             val at = tops(word)
             assertEquals("$word once, under the finished reply only", 1, at.size)
             assertTrue("$word sits under the first bubble", at[0] >= b[0].bottom)
@@ -97,7 +98,8 @@ class P13ReplyBubbleTest {
         compose.waitForIdle()
         val b = bubbles()
         assertSeparate(b)
-        for (word in listOf(LISTEN, COPY, SHARE)) {
+        for (word in listOf(COPY, SHARE)) assertEquals("no $word under a reply", 0, tops(word).size)
+        for (word in listOf(LISTEN)) {
             val at = tops(word).sorted()
             assertEquals("$word under each finished reply", 2, at.size)
             assertTrue("$word under the first bubble, above the second", at[0] >= b[0].bottom && at[0] < b[1].top)

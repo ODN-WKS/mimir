@@ -178,18 +178,18 @@ class F4HuntFixesTest {
         assertFalse(MENU_UPDATES == APP_UPDATES_SWITCH)
     }
 
-    /** R20: under half an answer, no Listen or Copy. */
+    /** R20: under half an answer, no Listen; P15: Copy is in the hold menu only. */
     @Test fun r20NoButtonsUnderAnAnswerBeingWritten() {
         compose.setContent { MimirTheme(reduceMotion = true) { Column { Reply("Half an ans", dim = false, buttons = false); Reply("A whole one.", dim = false) } } }
         compose.waitForIdle()
-        // P13: buttons under the whole answer only; a half answer has no hold menu either, a whole one has.
+        // Listen under the whole answer only; a half answer has no hold menu either, a whole one has.
         assertEquals(1, compose.onAllNodesWithText(LISTEN, useUnmergedTree = true).fetchSemanticsNodes().size)
         compose.onAllNodesWithText("Half an ans", substring = true).onLast().performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnLongClick)
         compose.waitForIdle()
-        assertEquals(1, compose.onAllNodesWithText("Copy", useUnmergedTree = true).fetchSemanticsNodes().size)
+        assertEquals(0, compose.onAllNodesWithText("Copy", useUnmergedTree = true).fetchSemanticsNodes().size)
         compose.onAllNodesWithText("A whole one.", substring = true).onLast().performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnLongClick)
         compose.waitForIdle()
-        // The visible Copy and the menu's Copy.
-        assertEquals(2, compose.onAllNodesWithText("Copy", useUnmergedTree = true).fetchSemanticsNodes().size)
+        // P15: only the menu's Copy (none under the answer).
+        assertEquals(1, compose.onAllNodesWithText("Copy", useUnmergedTree = true).fetchSemanticsNodes().size)
     }
 }

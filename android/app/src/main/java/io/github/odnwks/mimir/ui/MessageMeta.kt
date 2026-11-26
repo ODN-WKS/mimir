@@ -37,9 +37,12 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
+import androidx.compose.ui.unit.sp
 import io.github.odnwks.mimir.data.MessageReceipt
 import io.github.odnwks.mimir.data.TaskMessage
 import io.github.odnwks.mimir.ui.theme.LocalReduceMotion
@@ -72,6 +75,11 @@ object MetaLook {
     val Dot = 7.dp
     /** One rise and fall of all three dots. */
     const val DOTS_MS = 1200
+    /**
+     * The small print's own size (P15; owner, 2026-11-25: "very tiny", "small and out of the way"): 11 sp, under
+     * the app's usual 13 sp floor, for the model, effort, time and switch line only.
+     */
+    val Tiny = TextStyle(fontSize = 11.sp, lineHeight = 1.35.em)
 }
 
 const val SWITCH_MARK = "⇄"
@@ -195,14 +203,14 @@ fun MetaLine(
                 }
                 if (time != null) append(time)
             },
-            style = Type.Small, color = Palette.TextDim.copy(alpha = 0.75f),
+            style = MetaLook.Tiny, color = Palette.TextDim.copy(alpha = 0.75f),
             modifier = Modifier.weight(1f, fill = false),
         )
         if (receipt != null) ReceiptMark(receipt)
     }
 }
 
-/** A reply's small print, for the end of its Listen, Copy, Share row: a tap on a switched one gives the full reason. */
+/** A reply's small print, beside its Listen pill: a tap on a switched one gives the full reason. */
 @Composable
 fun ReplyMeta(m: TaskMessage, onWhy: (() -> Unit)?) {
     // No extra touch height here: it would push the chat apart; the switch line under it takes the same tap.
@@ -216,7 +224,7 @@ fun ReplyMeta(m: TaskMessage, onWhy: (() -> Unit)?) {
 @Composable
 fun SwitchLine(m: TaskMessage, before: TaskMessage?, onWhy: () -> Unit) {
     Text(
-        switchLineWords(m, before), style = Type.Small, color = MetaLook.Switch,
+        switchLineWords(m, before), style = MetaLook.Tiny, color = MetaLook.Switch,
         modifier = Modifier.testTag(SWITCH_LINE_TAG).clickable(role = Role.Button, onClickLabel = "Why the model changed", onClick = onWhy),
     )
 }
