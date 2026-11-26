@@ -31,7 +31,7 @@ object Search {
             Result(o.optString("title"), o.optString("url"), o.optString("snippet"),
                 o.optJSONArray("engines")?.let { e -> (0 until e.length()).map { e.getString(it) } }.orEmpty())
         }
-    }.filter { it.url.startsWith("https://") || it.url.startsWith("http://") }
+    }.filter { (it.url.startsWith("https://") || it.url.startsWith("http://")) && Net.hostOf(it.url).isNotEmpty() }
 
     /** "Brave, Google CSE": the engines behind results from the PC, as names. */
     fun engineNames(results: List<Result>): String = results.flatMap { it.engines }.distinct().take(4)

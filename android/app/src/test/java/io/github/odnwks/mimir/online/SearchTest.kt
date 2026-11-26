@@ -176,6 +176,16 @@ class SearchTest {
         assertEquals(1, searches())
     }
 
+    @Test fun thePcsLinksWithNoSiteAreDropped() {
+        val a = org.json.JSONArray()
+            .put(org.json.JSONObject().put("title", "Broken").put("url", "http:///go/v1/x").put("snippet", "no site"))
+            .put(org.json.JSONObject().put("title", "Fine").put("url", "https://news.example.com/a").put("snippet", "kept")
+                .put("engines", org.json.JSONArray().put("brave")))
+        val r = Search.fromPc(a)
+        assertEquals(listOf("https://news.example.com/a"), r.map { it.url })
+        assertEquals(listOf("brave"), r.single().engines)
+    }
+
     @Test fun aWhisperNeverSearchesThroughThePc() {
         var asked = 0
         Search.viaPc = { asked++; emptyList() }
