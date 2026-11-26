@@ -181,6 +181,19 @@ class TaskReplyAttachTest {
         st.close()
     }
 
+    /** P12, found on the S8: a task started at High showed "Default Effort" on its chip (the PC doesn't send a task's effort back). */
+    @Test fun aNewTasksEffortShowsOnItsChipWhileWaitingAndOnceThePcHasIt() {
+        val link = FakeLink(all); val st = station(link); link.ready()
+        assertTrue(until { st.state.value.task("t1") != null && st.canSetReplyOptions() })
+        assertTrue("ready", until { link.callsOf("\"Projects\"").isNotEmpty() })
+        val id = st.startTask("Tidy the beds", "Garden planner", incognito = false, model = "claude-opus-5-5", effort = "high")
+        assertEquals("high", st.state.value.task(id)?.effort)
+        assertTrue(until { link.callsOf("{\"NewTask\"").size == 1 })
+        link.events.add("""{"seq":5,"event":{"Task":{"header":{"id":"$id","title":"Tidy","project":"/p/garden","status":"Working","busy":true,"created_unix":2}}}}""")
+        assertTrue("the PC's task keeps the effort: " + st.state.value.task(id), until { st.state.value.task(id)?.let { !it.waitingToStart && it.effort == "high" } == true })
+        st.close()
+    }
+
     @Test fun theNewTaskScreenKeepsEffortInItsOptionsAndAnOldPcHidesIt() {
         assertTrue(io.github.odnwks.mimir.nav.ComposeTo().auto)
         assertFalse(io.github.odnwks.mimir.nav.ComposeTo(effort = "max").auto)

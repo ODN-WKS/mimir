@@ -1362,6 +1362,8 @@ class LinkStation(
                             attachments.drop(w.id)
                             data = data.copy(newTasks = data.newTasks.filterNot { it.id == w.id })
                             started[w.id] = (ok as? String).orEmpty()
+                            // The effort it started with shows on its chip (the PC doesn't send a task's effort back).
+                            w.effort?.let { e -> chosenEfforts[w.id] = e; (ok as? String)?.takeIf { it.isNotEmpty() }?.let { chosenEfforts[it] = e } }
                             (ok as? String)?.takeIf { it.isNotEmpty() }?.let { gotItAt[it] = System.currentTimeMillis() }
                         } else {
                             // The PC said no: the task stays, with its words, to try again or remove.
@@ -1802,7 +1804,7 @@ class LinkStation(
         question = null, permission = null, change = null,
         status = when { w.failed.isNotEmpty() -> "Didn't start"; connected -> "Working"; else -> WAITING_WORDS },
         busy = connected && w.failed.isEmpty(), running = false,
-        plan = w.plan, mode = if (w.plan) "Plan" else "Ask", waitingToStart = true,
+        plan = w.plan, mode = if (w.plan) "Plan" else "Ask", waitingToStart = true, effort = w.effort.orEmpty(),
         canCancel = !delivery.active(w.id), failedWhy = w.failed,
         sign = LiveSign(sending = connected && w.failed.isEmpty(), linkUp = connected),
     )
