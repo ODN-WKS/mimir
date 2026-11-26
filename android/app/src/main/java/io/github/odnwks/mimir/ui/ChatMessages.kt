@@ -73,9 +73,13 @@ object ChatLook {
     /** An answer's bubble: the owner's mirrored, its small corner bottom left. */
     val replyShape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp, bottomEnd = 20.dp, bottomStart = 6.dp)
     val ReplyMaxWidth = 358.dp
-    /** The small Listen pill under a reply (P15, mock-up 6 option A): 26 dp high; its touch area is still 48 dp. */
-    val PillHeight = 26.dp
-    val pillShape = RoundedCornerShape(12.dp)
+    /**
+     * The small Listen pill under a reply (P15, mock-up 6 option A; P18, owner 2026-11-25, mock-up 11): about 18 dp
+     * high with 11 sp words, the size of the model, effort and time beside it; its touch area is still 48 dp.
+     */
+    val PillHeight = 18.dp
+    val pillShape = RoundedCornerShape(9.dp)
+    val PillText = TextStyle(fontSize = 11.sp, lineHeight = 14.sp)
     val MessageText = TextStyle(fontSize = 15.5.sp, lineHeight = 23.25.sp)
 }
 
@@ -286,7 +290,7 @@ fun QuietButton(text: String, description: String = text, icon: androidx.compose
 const val LISTEN_PILL_TAG = "listen-pill"
 
 /**
- * The small "Listen" pill with a play mark ("Stop" while it reads): 26 dp high in the row, with the full
+ * The small "Listen" pill with a play mark ("Stop" while it reads): 18 dp high in the row, with the full
  * 48 dp to touch around it. The first read may wait for the voice to load, and says so.
  */
 @Composable
@@ -300,11 +304,11 @@ fun ListenButton(id: String, plain: String, pc: (() -> Unit)? = null) {
             Modifier.testTag(LISTEN_PILL_TAG).heightIn(min = ChatLook.PillHeight).clip(ChatLook.pillShape)
                 .clickable(role = Role.Button) { tapRead(voice, id, plain, pc) }
                 .semantics { contentDescription = if (on) "Stop reading" else "Read aloud" }
-                .border(1.dp, ChatLook.ButtonBorder, ChatLook.pillShape).padding(horizontal = 10.dp),
-            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp),
+                .border(1.dp, ChatLook.ButtonBorder, ChatLook.pillShape).padding(horizontal = 8.dp),
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            androidx.compose.material3.Icon(if (on) Glyphs.Stop else Glyphs.Play, null, tint = Palette.TextSoft, modifier = Modifier.size(11.dp))
-            Text(if (on) STOP_LISTENING else LISTEN, style = TextStyle(fontSize = 13.sp, lineHeight = 17.sp), color = Palette.TextSoft)
+            androidx.compose.material3.Icon(if (on) Glyphs.Stop else Glyphs.Play, null, tint = Palette.TextSoft, modifier = Modifier.size(8.dp))
+            Text(if (on) STOP_LISTENING else LISTEN, style = ChatLook.PillText, color = Palette.TextSoft)
         }
         if (on && getting == id) Text(
             "Getting ${voice.voiceName ?: "the voice"} ready…", style = Type.Small, color = Palette.TextDim,

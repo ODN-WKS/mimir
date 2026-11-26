@@ -18,6 +18,7 @@ import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.github.takahirom.roborazzi.captureRoboImage
 import io.github.odnwks.mimir.data.ChatEntry
 import io.github.odnwks.mimir.data.ExampleData
 import io.github.odnwks.mimir.data.FakeStation
@@ -34,6 +35,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
 
 /**
  * P15 (owner, 2026-11-25, mock-up 6 option A): no Copy or Share under any message (they stay in the hold menu);
@@ -121,14 +123,18 @@ class P15ListenPillTest {
         for (word in listOf(COPY, SHARE)) assertTrue("$word in the hold menu", compose.onAllNodesWithText(word).fetchSemanticsNodes().isNotEmpty())
     }
 
-    /** One Listen pill per finished reply: [n] of them, each "Listen" once, about 26 dp high with a 48 dp touch area. */
+    /**
+     * One Listen pill per finished reply: [n] of them, each "Listen" once, about 18 dp high (P18; at most 20 dp,
+     * growing only with a larger text size) with a 48 dp touch area.
+     */
     private fun assertPills(n: Int) {
         val p = pills()
         assertEquals("one Listen pill per finished reply", n, p.size)
         assertEquals("Listen shows once per finished reply", n, compose.onAllNodesWithText(LISTEN).fetchSemanticsNodes().size)
+        val most = 20f * maxOf(1f, compose.density.fontScale)
         for (pill in p) {
             val h = dp(pill.boundsInRoot.height)
-            assertTrue("the pill is about 26 dp high (was $h dp)", h in 22f..30f)
+            assertTrue("the pill is about 18 dp high, at most $most dp (was $h dp)", h in 17f..most)
             val touch = dp(pill.touchBoundsInRoot.height)
             assertTrue("the pill has a 48 dp touch area (was $touch dp)", touch >= 47.5f)
         }
@@ -217,6 +223,34 @@ class P15ListenPillTest {
         val bubbles = compose.onAllNodesWithTag(REPLY_BUBBLE_TAG, useUnmergedTree = true).fetchSemanticsNodes().map { it.boundsInRoot }.sortedBy { it.top }
         val gap = dp(pills()[0].boundsInRoot.top - bubbles[0].bottom)
         assertTrue("the pill sits close under the bubble (was $gap dp)", gap <= 8f)
+    }
+
+    // ---- P18 (owner, 2026-11-25, mock-up 11): the pill and the circle in line with the small print ----
+
+    /** Real drawing for this one, so the picture in P18_SHOT (when set) shows the screen. */
+    @GraphicsMode(GraphicsMode.Mode.NATIVE)
+    @Test fun thePillAndTheCircleAreTheSizeOfTheSmallPrintAndLinedUp() {
+        showTask(task(writing = false))
+        val metas = metaTexts()
+        for (pill in pills()) {
+            val b = pill.boundsInRoot
+            assertTrue("the pill is drawn at most 20 dp high (was ${dp(b.height)} dp)", dp(b.height) <= 20f)
+            assertTrue("the pill still has a 48 dp touch area (was ${dp(pill.touchBoundsInRoot.height)} dp)", dp(pill.touchBoundsInRoot.height) >= 47.5f)
+            val words = compose.onAllNodesWithTag(LISTEN_PILL_TAG, useUnmergedTree = true).fetchSemanticsNodes()
+                .first { it.boundsInRoot == b }.children.mapNotNull { c ->
+                    val get = c.config.getOrNull(SemanticsActions.GetTextLayoutResult) ?: return@mapNotNull null
+                    val r = mutableListOf<TextLayoutResult>(); get.action?.invoke(r); r.firstOrNull()
+                }.single()
+            assertEquals("the pill's words are 11 sp, like the small print", 11f, words.layoutInput.style.fontSize.value, 0.01f)
+            val beside = metas.first { it.first.top < b.bottom && it.first.bottom > b.top && it.first.left >= b.right }.first
+            assertEquals("the pill and the small print share one centre line", b.center.y, beside.center.y, compose.density.density)
+        }
+        val mark = compose.onAllNodesWithTag(receiptTag(MessageReceipt.Read), useUnmergedTree = true).fetchSemanticsNodes().single()
+        assertEquals("the receipt circle is 11 dp", 11f, dp(mark.boundsInRoot.width), 0.5f)
+        assertEquals("the receipt circle is 11 dp", 11f, dp(mark.boundsInRoot.height), 0.5f)
+        val line = metas.first { it.first.top < mark.boundsInRoot.bottom && it.first.bottom > mark.boundsInRoot.top && it.first.right <= mark.boundsInRoot.left }.first
+        assertEquals("the circle and its small print share one centre line", line.center.y, mark.boundsInRoot.center.y, compose.density.density)
+        System.getenv("P18_SHOT")?.let { compose.onRoot().captureRoboImage("$it/p18_task_390.png") }
     }
 
     @Config(qualifiers = "w320dp-h700dp-xhdpi", fontScale = 1.3f)
