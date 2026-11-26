@@ -551,7 +551,22 @@ data class TaskMessage(
     val note: Boolean = false,
     /** The PC refused this waiting reply (or its pictures can't be read back): why; it stays to try again or remove. */
     val failedWhy: String = "",
+    /** When it was made (unix ms); null for entries from before the PC kept times (no time shown, never a wrong one). */
+    val atMs: Long? = null,
+    /** The owner's message: Sent (still on this phone, or the PC has it), Delivered or Read; null when not known. */
+    val receipt: MessageReceipt? = null,
+    /** A reply: the model that answered it ("claude-opus-5-5"); the owner's message: the model it was sent to. */
+    val model: String? = null,
+    /** The effort with [model] ("high"); null with a model is the PC's default effort. */
+    val effort: String? = null,
+    /** A reply whose model or effort differs from the reply before: why in a few words ("you picked it")... */
+    val switched: String? = null,
+    /** ...and in a full sentence, for a tap. */
+    val switchedWhy: String? = null,
 )
+
+/** What became of the owner's message: Sent (an empty circle), Delivered (a circle with a check), Read (a filled circle). */
+enum class MessageReceipt { Sent, Delivered, Read }
 
 data class Question(
     val itemId: String,

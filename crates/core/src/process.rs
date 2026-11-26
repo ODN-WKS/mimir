@@ -72,6 +72,9 @@ impl Launch {
         }
         // Text arrives as Claude writes it.
         a.push("--include-partial-messages".into());
+        // Each message from the input comes back as Claude Code takes it in:
+        // the owner's message reads Read (2.1.329's --help has it).
+        a.push("--replay-user-messages".into());
         // "Don't ask" can be switched on while Claude works (it stays off
         // unless the owner picks it).
         a.push("--allow-dangerously-skip-permissions".into());
@@ -555,6 +558,37 @@ impl Session {
     /// into the current turn.
     pub fn send(&mut self, text: &str) -> std::io::Result<()> {
         self.send_line(&crate::events::user_message(text))
+    }
+
+    /// The run's host is still starting: a line sent now waits and reaches
+    /// the run once it is up (or the run is reported lost).
+    pub fn connecting(&self) -> bool {
+        matches!(
+            &self.proc_,
+            Proc::Hosted {
+                connecting: Some(_),
+                ..
+            }
+        )
+    }
+
+    /// Its input takes lines now: not closed, not ended, not still starting.
+    pub fn input_open(&self) -> bool {
+        match &self.proc_ {
+            Proc::Local { stdin, .. } => stdin.is_some(),
+            Proc::Hosted {
+                link,
+                exit,
+                connecting,
+                closed,
+                ..
+            } => {
+                connecting.is_none()
+                    && !closed
+                    && link.is_some()
+                    && exit.lock().map(|e| e.is_none()).unwrap_or(false)
+            }
+        }
     }
 
     /// Sends one prepared stream-json input line.

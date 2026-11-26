@@ -10,7 +10,11 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 fn lines(path: &std::path::Path) -> Vec<String> {
-    std::fs::read_to_string(path).unwrap_or_default().lines().map(str::to_string).collect()
+    std::fs::read_to_string(path)
+        .unwrap_or_default()
+        .lines()
+        .map(str::to_string)
+        .collect()
 }
 
 fn until(r: &mut Runner, what: &str, done: impl Fn(&Runner) -> bool) {
@@ -31,7 +35,11 @@ fn a_message_sent_while_background_work_runs_reaches_the_same_run() {
     let streams = dir.join("streams");
     std::fs::create_dir_all(&streams).unwrap();
     let tests = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/streams");
-    std::fs::copy(tests.join("background-message.jsonl"), streams.join("run-1.jsonl")).unwrap();
+    std::fs::copy(
+        tests.join("background-message.jsonl"),
+        streams.join("run-1.jsonl"),
+    )
+    .unwrap();
     std::fs::copy(tests.join("resume.jsonl"), streams.join("resume.jsonl")).unwrap();
     let args = dir.join("args.log");
     let input = dir.join("input.log");
@@ -51,7 +59,9 @@ fn a_message_sent_while_background_work_runs_reaches_the_same_run() {
     )
     .unwrap();
     let id = r.new_task(&dir.join("proj"), "Start the long check in the background.");
-    until(&mut r, "the first turn's answer", |_| lines(&input).len() == 1);
+    until(&mut r, "the first turn's answer", |_| {
+        lines(&input).len() == 1
+    });
     // Well past the quiet that closes an idle run's input.
     let wait = Instant::now() + Duration::from_secs(5);
     while Instant::now() < wait {
@@ -60,7 +70,16 @@ fn a_message_sent_while_background_work_runs_reaches_the_same_run() {
     }
     r.send_with(&id, "A message while the check runs.", &[]);
     until(&mut r, "the message is read", |_| lines(&input).len() >= 2);
-    assert!(lines(&input)[1].contains("A message while the check runs."), "{:?}", lines(&input));
-    assert_eq!(lines(&args).len(), 1, "a second Claude Code was started instead: {:?}", lines(&args));
+    assert!(
+        lines(&input)[1].contains("A message while the check runs."),
+        "{:?}",
+        lines(&input)
+    );
+    assert_eq!(
+        lines(&args).len(),
+        1,
+        "a second Claude Code was started instead: {:?}",
+        lines(&args)
+    );
     let _ = std::fs::remove_dir_all(&dir);
 }

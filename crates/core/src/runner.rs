@@ -52,6 +52,10 @@ pub struct Live {
     bg_seen: u8,
     /// The note was said for this turn.
     bg_noted: bool,
+    /// The owner's messages (by the time each was sent) queued for a host
+    /// still starting: Delivered once that same run is up and took them.
+    /// Emptied whenever the run is taken away or replaced.
+    held_delivery: Vec<i64>,
     /// The turn's start time was set for this working stretch (a time from
     /// before a restart or a takeover is never shown).
     pub(crate) turn_clocked: bool,
@@ -66,6 +70,13 @@ pub struct Live {
 }
 
 impl Live {
+    /// Takes the run away. What waited for its host to come up never
+    /// reached Claude Code, so it stays Sent.
+    fn take_run(&mut self) -> Option<Session> {
+        self.held_delivery.clear();
+        self.session.take()
+    }
+
     /// Tests only: a task with nothing running.
     #[cfg(test)]
     pub fn for_test(task: Task) -> Live {
@@ -85,6 +96,7 @@ impl Live {
             bg_tasks: Default::default(),
             answered_at: None,
             bg_noted: false,
+            held_delivery: Vec::new(),
         }
     }
 
@@ -170,8 +182,9 @@ pub struct Runner {
     /// When the figures last changed (unix seconds), for "updated N min ago".
     pub usage_at: Option<i64>,
     /// Messages for a run that just ended: they go once it is collected
-    /// (task id, the input line, since when), never by waiting.
-    resend: Vec<(String, String, Instant)>,
+    /// (task id, the input line, since when, where the owner's message
+    /// it carries sits in the task), never by waiting.
+    resend: Vec<(String, String, Instant, Option<usize>)>,
     /// Tasks told to stop or pause: when their Claude Code is ended if it
     /// has not left by itself (it may ignore the interrupt).
     kill_after: Vec<(String, Instant)>,
@@ -257,6 +270,7 @@ impl Runner {
                             bg_tasks: Default::default(),
                             answered_at: None,
                             bg_noted: said_busy,
+                            held_delivery: Vec::new(),
                         });
                         continue;
                     }
@@ -295,6 +309,7 @@ impl Runner {
                 bg_tasks: Default::default(),
                 answered_at: None,
                 bg_noted: false,
+                held_delivery: Vec::new(),
             });
         }
         let weekly = tasks.iter().rev().find_map(|l| l.task.weekly.clone());
@@ -511,6 +526,7 @@ impl Runner {
             bg_tasks: Default::default(),
             answered_at: None,
             bg_noted: false,
+            held_delivery: Vec::new(),
         });
     }
 
@@ -679,6 +695,9 @@ impl Runner {
                     t.add_note(&note);
                 }
                 t.auto_choice = Some(pick.to_string());
+                if switching {
+                    t.switch_why = Some(crate::task::WHY_AUTO.to_string());
+                }
             }
         }
         // New work: "put back" no longer applies (it would wipe it).
@@ -696,9 +715,14 @@ impl Runner {
             let at = self.tasks[i].task.entries.len();
             self.tasks[i].task.checkpoints.push((at, snap));
         }
-        if show {
-            self.tasks[i].task.add_you(&shown);
-        } else {
+        let entry = show.then(|| {
+            let (model, effort) = self.sent_to(i);
+            let t = &mut self.tasks[i].task;
+            t.add_you(&shown);
+            t.set_sent_to(model, effort);
+            t.entries.len() - 1
+        });
+        if !show {
             self.tasks[i].task.status = Status::Working;
             self.tasks[i].task.failed = false;
         }
@@ -731,6 +755,7 @@ impl Runner {
             && s.send_line(&line).is_ok()
         {
             self.tasks[i].sent += 1;
+            self.delivered(i, entry);
             self.save_dirty();
             return;
         }
@@ -741,13 +766,14 @@ impl Runner {
         // Behind any message already waiting for this task (they keep their
         // order); else into the run that is there now (a fresh one may have
         // started meanwhile); else a new run.
-        if self.resend.iter().any(|(t, _, _)| t == id) {
+        if self.resend.iter().any(|(t, _, _, _)| t == id) {
             crate::devlog::log(
                 "task",
                 "resend",
                 vec![("task", id.to_string().into()), ("why", "behind".into())],
             );
-            self.resend.push((id.to_string(), line, Instant::now()));
+            self.resend
+                .push((id.to_string(), line, Instant::now(), entry));
             self.save_dirty();
             return;
         }
@@ -758,13 +784,47 @@ impl Runner {
                 .is_some_and(|s| s.send_line(&line).is_ok());
             if ok {
                 self.tasks[i].sent += 1;
+                self.delivered(i, entry);
             } else {
-                self.resend.push((id.to_string(), line, Instant::now()));
+                self.resend
+                    .push((id.to_string(), line, Instant::now(), entry));
             }
             self.save_dirty();
             return;
         }
-        self.start_and_send(i, &line);
+        self.start_and_send(i, &line, entry);
+    }
+
+    /// The model and effort a message to task `i` goes to: the running
+    /// Claude Code's (as it reported), else what its next start uses.
+    fn sent_to(&self, i: usize) -> (Option<String>, Option<String>) {
+        let t = &self.tasks[i].task;
+        if self.tasks[i].session.is_some() {
+            return (
+                t.last_model.clone().or_else(|| launch_model(t)),
+                t.run_effort.clone(),
+            );
+        }
+        (
+            launch_model(t).or_else(|| t.last_model.clone()),
+            t.effort.clone(),
+        )
+    }
+
+    /// The owner's message at `entry` was written to Claude Code's input
+    /// (or waits for its host to come up, which then takes it).
+    fn delivered(&mut self, i: usize, entry: Option<usize>) {
+        let Some(at) = entry else { return };
+        let l = &mut self.tasks[i];
+        if l.session.as_ref().is_some_and(|s| s.connecting()) {
+            // Kept by when it was sent: its place may move before then.
+            if let Some(sent) = l.task.meta(at).at {
+                l.held_delivery.push(sent);
+            }
+            return;
+        }
+        l.task.mark_delivered(at);
+        l.dirty = true;
     }
 
     /// Mímir's own Claude is on the task, or ended just now: whatever a
@@ -810,13 +870,15 @@ impl Runner {
             id.to_string(),
             line,
             Instant::now().checked_sub(age).unwrap_or_else(Instant::now),
+            None,
         ));
     }
 
-    /// Starts Claude Code again for task `i` and gives it `line`.
-    fn start_and_send(&mut self, i: usize, line: &str) {
+    /// Starts Claude Code again for task `i` and gives it `line` (which
+    /// carries the owner's message at `entry`, if any).
+    fn start_and_send(&mut self, i: usize, line: &str, entry: Option<usize>) {
         // Not running (or input closed): start Claude Code again.
-        self.tasks[i].session = None;
+        drop(self.tasks[i].take_run());
         let folder = self.tasks[i].task.project.clone();
         if !Path::new(&folder).is_dir() && self.tasks[i].task.origin.is_some() {
             self.fail(
@@ -869,6 +931,7 @@ impl Runner {
                     l.finished = 0;
                     l.bg_tasks.clear();
                     l.answered_at = None;
+                    self.delivered(i, entry);
                 } else {
                     self.fail(i, "Project work would not take the message.");
                 }
@@ -887,10 +950,10 @@ impl Runner {
         }
         let mut keep = vec![];
         let mut blocked: std::collections::HashSet<String> = Default::default();
-        for (id, line, since) in std::mem::take(&mut self.resend) {
+        for (id, line, since, entry) in std::mem::take(&mut self.resend) {
             let Some(i) = self.index(&id) else { continue };
             if blocked.contains(&id) {
-                keep.push((id, line, since));
+                keep.push((id, line, since, entry));
                 continue;
             }
             // The run that is there now takes it if it can (it may be a
@@ -903,20 +966,27 @@ impl Runner {
             if taken {
                 self.tasks[i].sent += 1;
                 self.tasks[i].dirty = true;
+                self.delivered(i, entry);
             } else if self.tasks[i].session.is_none()
                 || since.elapsed() >= std::time::Duration::from_secs(2)
             {
                 // Only a run that has ended (or never answers) is replaced.
-                self.start_and_send(i, &line);
+                self.start_and_send(i, &line, entry);
             } else {
                 blocked.insert(id.clone());
-                keep.push((id, line, since));
+                keep.push((id, line, since, entry));
             }
         }
         self.resend = keep;
     }
 
     fn start(&mut self, i: usize) -> std::io::Result<Session> {
+        {
+            // What this run answers with; a reason for a switch is for it.
+            let t = &mut self.tasks[i].task;
+            t.run_effort = t.effort.clone();
+            t.switch_armed = t.switch_why.is_some();
+        }
         let id = self.tasks[i].task.id.clone();
         let settings = self.hook_settings_for(&id);
         let t = &self.tasks[i].task;
@@ -958,14 +1028,7 @@ impl Runner {
             settings: Some(settings),
             group: Some(crate::groups::task_group(&t.id)),
             env,
-            model: match crate::auto::Style::of(t.model.as_deref()) {
-                _ if free.is_some() => free.map(str::to_string),
-                Some(_) => t
-                    .auto_choice
-                    .clone()
-                    .or_else(|| Some(crate::auto::LADDER[1].to_string())),
-                _ => t.model.clone(),
-            },
+            model: launch_model(t),
             effort: t.effort.clone(),
             permission_mode: Some(t.mode.cli().to_string()),
             wrap,
@@ -1033,10 +1096,13 @@ impl Runner {
         // The reply it was writing comes first, then the note.
         if !l.task.live.trim().is_empty() {
             let text = std::mem::take(&mut l.task.live);
-            l.task.entries.push(crate::task::Entry::Claude(text));
+            l.task.add_claude(text);
         }
         l.task.add_note(note);
         l.dirty = true;
+        // A message still waiting for the run's host to come up never
+        // reaches Claude Code now: it stays Sent.
+        l.held_delivery.clear();
         let had_background = std::mem::take(&mut l.background);
         if let Some(s) = &mut l.session {
             if had_background {
@@ -1053,7 +1119,7 @@ impl Runner {
             crate::host::kill_run(&key);
         }
         // A message that waited for a run to end must not start one now.
-        self.resend.retain(|(t, _, _)| t != id);
+        self.resend.retain(|(t, _, _, _)| t != id);
         self.save_dirty();
     }
 
@@ -1096,7 +1162,12 @@ impl Runner {
     /// Model and effort apply from Claude Code's next start: an idle one is
     /// ended now so the next message starts it with them.
     pub fn set_model(&mut self, id: &str, model: Option<String>) {
-        self.edit(id, |t| t.model = model);
+        self.edit(id, |t| {
+            if t.model != model {
+                t.switch_why = Some(crate::task::WHY_PICKED.to_string());
+            }
+            t.model = model
+        });
         self.drop_local_only_files(id);
         if let Some(i) = self.index(id) {
             self.restart_when_idle(i);
@@ -1104,7 +1175,12 @@ impl Runner {
     }
 
     pub fn set_effort(&mut self, id: &str, effort: Option<String>) {
-        self.edit(id, |t| t.effort = effort);
+        self.edit(id, |t| {
+            if t.effort != effort {
+                t.switch_why = Some(crate::task::WHY_PICKED.to_string());
+            }
+            t.effort = effort
+        });
         if let Some(i) = self.index(id) {
             self.restart_when_idle(i);
         }
@@ -1113,7 +1189,7 @@ impl Runner {
     fn restart_when_idle(&mut self, i: usize) {
         let l = &mut self.tasks[i];
         if !l.busy()
-            && let Some(mut s) = l.session.take()
+            && let Some(mut s) = l.take_run()
         {
             s.kill();
         }
@@ -1286,6 +1362,8 @@ impl Runner {
             .map_err(|e| format!("The conversation could not be read back: {e}"))?;
         let t = &mut self.tasks[i].task;
         t.entries = fresh.entries;
+        // A transcript's entries carry no small print of Mímir's.
+        t.entry_meta.clear();
         // to_task ends with its own "opened from an earlier session" note.
         if matches!(t.entries.last(), Some(crate::task::Entry::Note(_))) {
             t.entries.pop();
@@ -1324,6 +1402,7 @@ impl Runner {
             t.from_phone = Some(url.to_string());
             if matches!(t.entries.last(), Some(crate::task::Entry::Note(_))) {
                 t.entries.pop();
+                t.trim_meta();
             }
         });
     }
@@ -1359,6 +1438,7 @@ impl Runner {
         if from == 0 {
             t.entries_dropped = 0;
             t.entries.clear();
+            t.entry_meta.clear();
             t.checkpoints.clear();
         }
         let at = crate::sessions::follow(t, &path, from)
@@ -1462,7 +1542,7 @@ impl Runner {
     /// Ends Claude Code for this task here (another session takes over).
     pub fn end_session(&mut self, id: &str) {
         if let Some(i) = self.index(id)
-            && let Some(mut s) = self.tasks[i].session.take()
+            && let Some(mut s) = self.tasks[i].take_run()
         {
             s.kill();
         }
@@ -1471,8 +1551,9 @@ impl Runner {
     /// Moves a task to another model, starting afresh from a short brief of
     /// the work so far (a free model's room is too small for the whole
     /// conversation, and another model's history can't be resumed).
-    pub fn hand_to(&mut self, id: &str, model: Option<String>) {
+    pub fn hand_to(&mut self, id: &str, model: Option<String>, why: &str) {
         self.edit(id, |t| {
+            t.switch_why = Some(why.to_string());
             let did_work = t.entries.iter().any(|e| {
                 matches!(
                     e,
@@ -1489,7 +1570,7 @@ impl Runner {
         });
         self.drop_local_only_files(id);
         if let Some(i) = self.index(id)
-            && let Some(mut s) = self.tasks[i].session.take()
+            && let Some(mut s) = self.tasks[i].take_run()
         {
             s.kill();
         }
@@ -1608,6 +1689,7 @@ impl Runner {
             bg_tasks: Default::default(),
             answered_at: None,
             bg_noted: false,
+            held_delivery: Vec::new(),
         });
         self.save_dirty();
         Ok(id)
@@ -1927,6 +2009,7 @@ impl Runner {
             bg_tasks: Default::default(),
             answered_at: None,
             bg_noted: false,
+            held_delivery: Vec::new(),
         });
         self.send_with(&id, text, &[]);
         Ok(id)
@@ -2025,6 +2108,19 @@ impl Runner {
             // A host that was still starting is taken in (or the run moves
             // here); never waits.
             s.settle();
+            // The host came up: what waited for it was written to its input
+            // (a line it could not take ends the run as lost instead).
+            if !l.held_delivery.is_empty() && !s.connecting() {
+                let held = std::mem::take(&mut l.held_delivery);
+                if s.input_open() {
+                    for sent in held {
+                        if let Some(at) = l.task.sent_message(sent) {
+                            l.task.mark_delivered(at);
+                        }
+                    }
+                    l.dirty = true;
+                }
+            }
             // A run that moved here from a host that never started has no
             // host to follow.
             if s.host_key().is_none() && l.task.host.is_some() {
@@ -2227,7 +2323,7 @@ impl Runner {
                     && !matches!(l.task.status, Status::Stopped | Status::Paused);
                 let died_busy = (l.background || l.bg_seen > 0 || said_busy || killed_outside)
                     && !matches!(l.task.status, Status::Stopped | Status::Paused);
-                l.session = None;
+                drop(l.take_run());
                 self.own_ended
                     .insert(l.task.id.clone(), crate::needs::now());
                 l.background = false;
@@ -2295,7 +2391,7 @@ impl Runner {
                 && s.detach()
             {
                 l.dirty = true;
-                drop(l.session.take());
+                drop(l.take_run());
                 continue;
             }
             while let Some(p) = l.asks.pop_front() {
@@ -2315,8 +2411,7 @@ impl Runner {
             std::thread::sleep(std::time::Duration::from_millis(50));
         }
         for l in &mut self.tasks {
-            if l.session.take().is_some()
-                && matches!(l.task.status, Status::Working | Status::NeedsYou)
+            if l.take_run().is_some() && matches!(l.task.status, Status::Working | Status::NeedsYou)
             {
                 l.task.status = Status::Paused;
                 l.task.add_note(CLOSED_WHILE_WORKING);
@@ -2369,6 +2464,21 @@ fn leading_path(line: &str) -> Option<(String, &str)> {
 }
 
 /// A short title from the first message.
+/// The model a Claude Code start for `t` is given (None: Claude Code's
+/// default): a free model's own name, Auto's pick, or the task's model.
+fn launch_model(t: &Task) -> Option<String> {
+    if let Some(free) = t.model.as_deref().and_then(crate::models::ollama_name) {
+        return Some(free.to_string());
+    }
+    match crate::auto::Style::of(t.model.as_deref()) {
+        Some(_) => t
+            .auto_choice
+            .clone()
+            .or_else(|| Some(crate::auto::LADDER[1].to_string())),
+        None => t.model.clone(),
+    }
+}
+
 pub fn title_from(text: &str) -> String {
     // The first sentence of the first line, without polite filler.
     let first = text.trim().lines().next().unwrap_or("").trim();

@@ -3,7 +3,9 @@
 //!
 //! Recording lines (JSON, one per line):
 //!   {"t": 1.2, "line": "..."}   print this output line
-//!   {"t": 0.0, "in": "..."}     wait for one input line from the window
+//!   {"t": 0.0, "in": "..."}     wait for one input line from the window;
+//!                               with --replay-user-messages, echo it back
+//!                               as Claude Code does when it takes it in
 //!   {"t": 5.1, "signal": "INT"} wait for SIGINT (Stop / Pause)
 //!   {"t": 9.0, "exit": 0}       exit with this code (null = by signal)
 //!   {"t": 3.0, "spawn": ["sleep", "3"]}
@@ -45,6 +47,9 @@
 //!                       variables it was given and whether fd 3 was open
 //!   FAKE_CLAUDE_HOOKS   file to append each hook answer to
 //!   FAKE_CLAUDE_INPUT   file to append each message from the window to
+//!   FAKE_CLAUDE_HOLD_ECHO  a file: with --replay-user-messages, each echo
+//!                       waits until it exists (a message Delivered, not
+//!                       yet taken in)
 //!   FAKE_CLAUDE_TRUST   (Phone too) first ask "Do you trust this folder?"
 //!                       and wait for Down then Enter; the answer is logged
 //!                       to FAKE_CLAUDE_INPUT as "trust: yes"
@@ -183,6 +188,7 @@ fn main() {
     // A resumed conversation keeps the id it was resumed with.
     let swap = resume_as.and_then(|new| recorded_session(&entries).map(|old| (old, new)));
 
+    let replay = args.iter().any(|a| a == "--replay-user-messages");
     let stdin = std::io::stdin();
     let mut input = stdin.lock().lines();
     let mut out = std::io::stdout().lock();
@@ -241,6 +247,17 @@ fn main() {
                             .open(log)
                             .expect("input log");
                         writeln!(f, "{got}").unwrap();
+                    }
+                    if replay && let Some(echo) = echo_of(&got) {
+                        if let Some(f) = std::env::var_os("FAKE_CLAUDE_HOLD_ECHO") {
+                            let until = Instant::now() + Duration::from_secs(60);
+                            while !Path::new(&f).exists() && Instant::now() < until {
+                                std::thread::sleep(Duration::from_millis(5));
+                            }
+                        }
+                        if writeln!(out, "{echo}").and_then(|_| out.flush()).is_err() {
+                            std::process::exit(1);
+                        }
                     }
                 }
                 // Window closed our input: behave like Claude Code, exit.
@@ -554,6 +571,27 @@ fn ask_trust() {
             .expect("input log");
         writeln!(f, "trust: yes").expect("input log line");
     }
+}
+
+/// The line Claude Code prints for a user message it took in from its input
+/// (`--replay-user-messages`); None for other input lines (control
+/// requests).
+fn echo_of(got: &str) -> Option<String> {
+    let v: Value = serde_json::from_str(got).ok()?;
+    if v.get("type").and_then(Value::as_str) != Some("user") {
+        return None;
+    }
+    Some(
+        serde_json::json!({
+            "type": "user",
+            "message": v.get("message").cloned().unwrap_or(Value::Null),
+            "session_id": "",
+            "parent_tool_use_id": null,
+            "uuid": "00000000-0000-4000-8000-000000000001",
+            "isReplay": true,
+        })
+        .to_string(),
+    )
 }
 
 /// With FAKE_CLAUDE_EXIT_ONCE: the first run stops on its own.

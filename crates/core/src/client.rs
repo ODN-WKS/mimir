@@ -600,10 +600,12 @@ impl Station {
                 task,
                 from,
                 entries,
+                meta,
             } => {
                 if let Some(v) = self.view(&task) {
                     v.task.entries.truncate(from);
                     v.task.entries.extend(entries);
+                    v.task.set_metas_from(from, meta);
                     v.news = Instant::now();
                 }
             }
