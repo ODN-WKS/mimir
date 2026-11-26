@@ -1398,19 +1398,22 @@ class Engine(
         }
         val words = need.words
         _state.update { it.copy(looking = "Searching: $words…") }
+        fun answer(results: List<io.github.odnwks.mimir.online.Search.Result>, all: List<io.github.odnwks.mimir.online.Search.Result>, label: String) = when {
+            all.isEmpty() -> "\n\n[The app searched the web for \"$words\" and found nothing. Say so.]" to emptyList()
+            else -> (if (readPages) evidence(words, all, label, "") else null)
+                ?: results.ifEmpty { all }.let { shown ->
+                    Prompt.fetched(io.github.odnwks.mimir.online.Search.describe(words, shown), label, clock()) to
+                        shown.distinctBy { it.site }.take(3).map { io.github.odnwks.mimir.online.Source(it.site, it.url, words) }
+                }
+        }
+        /** When the web search fails, what the open databases found still answers (review 2026-11-26). */
+        fun lanesOnly() = withLanes(emptyList()).takeIf { it.isNotEmpty() }?.let { answer(emptyList(), it, "open databases") }
         return try {
             val results = io.github.odnwks.mimir.online.Search.search(words, mode)
-            val all = withLanes(results)
-            when {
-                all.isEmpty() -> "\n\n[The app searched the web for \"$words\" and found nothing. Say so.]" to emptyList()
-                else -> (if (readPages) evidence(words, all, "DuckDuckGo", "") else null)
-                    ?: results.ifEmpty { all }.let { shown ->
-                        Prompt.fetched(io.github.odnwks.mimir.online.Search.describe(words, shown), "DuckDuckGo", clock()) to
-                            shown.distinctBy { it.site }.take(3).map { io.github.odnwks.mimir.online.Source(it.site, it.url, words) }
-                    }
-            }
+            answer(results, withLanes(results), "DuckDuckGo")
         } catch (e: io.github.odnwks.mimir.online.Search.Blocked) {
             if (!_state.value.whisper) Log.w(TAG, "search blocked: ${e.message}")
+            lanesOnly()?.let { return it }
             // PHE-12: show the real reason, not always "DuckDuckGo blocked".
             val reason = when {
                 e.message?.contains("robot check", ignoreCase = true) == true -> "the search site asked for a robot check"
@@ -1424,6 +1427,7 @@ class Engine(
         } catch (e: io.github.odnwks.mimir.online.Net.Failed) {
             // PHE-12: show the real failure reason (no signal, timeout, etc.).
             if (!_state.value.whisper) Log.w(TAG, "search failed: ${e.message}")
+            lanesOnly()?.let { return it }
             failed("search DuckDuckGo for \"$words\"", e)
         } catch (e: io.github.odnwks.mimir.online.Net.Refused) {
             noLookup

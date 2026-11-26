@@ -6,5 +6,6 @@
 /android/app/src/main/jniLibs
 hs_err_pid*.log
 
-# Working notes
+# Working notes (private, never published)
 progress.log
+/docs/notes/

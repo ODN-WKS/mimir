@@ -7,31 +7,22 @@ package io.github.odnwks.mimir.online
 object PageText {
     data class Page(val title: String, val text: String)
 
-    private val DROP = Regex(
-        "<(script|style|noscript|svg|nav|header|footer|aside|iframe|template|button|select)\\b[^>]*>.*?</\\1\\s*>|<!--.*?-->",
-        setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE),
-    )
+    private val DROP_NAMES = setOf("script", "style", "noscript", "svg", "nav", "header", "footer", "aside", "iframe", "template", "button", "select")
     private val BLOCK = Regex("</?(p|div|br|li|h[1-6]|tr|section|article|blockquote|pre|table|ul|ol|dd|dt)\\b[^>]*>", RegexOption.IGNORE_CASE)
     private val TAG = Regex("<[^>]+>")
-    private val FORM = Regex("<form\\b[^>]*>(.*?)</form\\s*>", setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE))
     private val PARA = Regex("<p\\b", RegexOption.IGNORE_CASE)
-    private val TITLE = Regex("<title[^>]*>(.*?)</title>", setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE))
 
     /** A page is read to about this long (the phone reads its prompt slowly: about 50 words a second). */
     const val PAGE_CHARS = 2_500
 
     /** [html] as plain words, cut to about [maxChars]. */
     fun of(html: String, maxChars: Int = PAGE_CHARS): Page {
-        val title = TITLE.find(html)?.groupValues?.get(1)?.let { decode(it.replace(TAG, "")).trim() }.orEmpty()
+        val title = titleIn(html)?.let { decode(swap(it, TAG, "")).trim() }.orEmpty()
         // The main part when the page marks one; otherwise the body.
-        val main = Regex("<(main|article)\\b[^>]*>(.*?)</\\1>", setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE)).find(html)?.groupValues?.get(2)
-            ?: html.substringAfter("<body", html)
+        val main = marked(html) ?: html.substringAfter("<body", html)
         // A small form (a search box, a sign-up) goes; one wrapping the page's text stays.
-        val kept = main.replace(DROP, " ").replace(FORM) { f ->
-            val inside = f.groupValues[1]
-            if (PARA.containsMatchIn(inside) || untagged(inside).count { !it.isWhitespace() } >= FORM_TEXT) " $inside " else " "
-        }
-        val text = decode(kept.replace(BLOCK, "\n").replace(TAG, " "))
+        val kept = forms(without(main, DROP_NAMES))
+        val text = decode(swap(swap(kept, BLOCK, "\n"), TAG, " "))
             .lines().map { it.replace(Regex("[ \\t\\u00a0]+"), " ").trim() }
             .filter { it.length > 1 }
             .joinToString("\n")
@@ -41,10 +32,7 @@ object PageText {
     // ---- P21 stage 1: the main text, its date, and passages ----
 
     /** Parts never read, whose insides may hold a stray "<" (dropped before the tags are walked). */
-    private val RAW = Regex(
-        "<(script|style|noscript|template|svg|textarea)\\b[^>]*>.*?</\\1\\s*>|<!--.*?-->|<!\\[CDATA\\[.*?]]>",
-        setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE),
-    )
+    private val RAW_NAMES = setOf("script", "style", "noscript", "template", "svg", "textarea")
     private val NOT_TEXT = setOf(
         "head", "title", "script", "style", "noscript", "template", "svg", "nav", "header", "footer", "aside",
         "form", "iframe", "button", "select", "textarea", "dialog", "menu",
@@ -79,6 +67,127 @@ object PageText {
      * Every tag in [html], in order. Quoted attribute values are skipped whole, so a ">" inside one
      * (`data-a="x>"`) does not end the tag. One pass, no regex backtracking.
      */
+    /**
+     * [html] with each small form (a search box, a sign-up) taken out and a form wrapping the page's text kept.
+     * One pass: once no "</form" is left, the rest stays as it is (review 2026-11-26: the old regex rescanned
+     * to the end of the page for every unclosed "<form").
+     */
+    private fun forms(html: String): String {
+        val out = StringBuilder(html.length)
+        var i = 0
+        while (true) {
+            var start = html.indexOf("<form", i, ignoreCase = true)
+            while (start >= 0 && start + 5 < html.length && (html[start + 5].isLetterOrDigit() || html[start + 5] == '_')) {
+                start = html.indexOf("<form", start + 5, ignoreCase = true)
+            }
+            if (start < 0) break
+            val open = html.indexOf('>', start)
+            val close = if (open < 0) -1 else html.indexOf("</form", open, ignoreCase = true)
+            val closeEnd = if (close < 0) -1 else html.indexOf('>', close)
+            if (closeEnd < 0) break
+            val inside = html.substring(open + 1, close)
+            out.append(html, i, start)
+            out.append(if (PARA.containsMatchIn(inside) || untagged(inside).count { !it.isWhitespace() } >= FORM_TEXT) " $inside " else " ")
+            i = closeEnd + 1
+        }
+        return out.append(html, i, html.length).toString()
+    }
+
+    // ---- One-pass readers (review 2026-11-26). The patterns these replace searched to the end of the page again
+    // from every part that never closes, so a page built of "<nav>" or "<p " alone took seconds to read. ----
+
+    /**
+     * [html] with each part named in [names] (opening tag to its closing tag) and each comment replaced by a
+     * space, and each CDATA block too when [cdata]. A kind of part with no closing left is not looked for again.
+     */
+    private fun without(html: String, names: Set<String>, cdata: Boolean = false): String {
+        val n = html.length
+        val out = StringBuilder(n)
+        val unclosed = HashSet<String>()
+        var kept = 0
+        var from = 0
+        while (true) {
+            val lt = html.indexOf('<', from)
+            if (lt < 0) break
+            var end = -1
+            if (html.startsWith("<!--", lt)) {
+                if ("<!--" !in unclosed) { val e = html.indexOf("-->", lt + 4); if (e < 0) unclosed += "<!--" else end = e + 3 }
+            } else if (cdata && html.startsWith("<![CDATA[", lt, ignoreCase = true)) {
+                if ("<![" !in unclosed) { val e = html.indexOf("]]>", lt + 9); if (e < 0) unclosed += "<![" else end = e + 3 }
+            } else {
+                var k = lt + 1
+                while (k < n && k - lt <= 9 && (html[k].isAsciiLetter() || html[k] in '0'..'9' || html[k] == '_')) k++
+                val name = html.substring(lt + 1, k).lowercase()
+                if (name in names && name !in unclosed) {
+                    val gt = html.indexOf('>', k)
+                    if (gt < 0) break // no ">" is left: no tag and no comment can close after this
+                    end = closing(html, name, gt + 1)
+                    if (end < 0) unclosed += name
+                }
+            }
+            if (end < 0) { from = lt + 1; continue }
+            out.append(html, kept, lt).append(' ')
+            kept = end
+            from = end
+        }
+        return out.append(html, kept, n).toString()
+    }
+
+    /** Where the closing tag of [name] ends, looking from [from]; -1 when there is none. */
+    private fun closing(html: String, name: String, from: Int): Int {
+        var p = from
+        while (true) {
+            val c = html.indexOf("</$name", p, ignoreCase = true)
+            if (c < 0) return -1
+            var e = c + 2 + name.length
+            while (e < html.length && html[e] in " \t\n\u000B\u000C\r") e++
+            if (e < html.length && html[e] == '>') return e + 1
+            p = c + 1
+        }
+    }
+
+    /** The insides of the first `<main>` or `<article>` that closes, or null. */
+    private fun marked(html: String): String? {
+        val unclosed = HashSet<String>()
+        var from = 0
+        while (unclosed.size < 2) {
+            val lt = html.indexOf('<', from)
+            if (lt < 0) return null
+            from = lt + 1
+            val name = when {
+                html.startsWith("main", lt + 1, ignoreCase = true) -> "main"
+                html.startsWith("article", lt + 1, ignoreCase = true) -> "article"
+                else -> continue
+            }
+            val k = lt + 1 + name.length
+            if (name in unclosed || (k < html.length && (html[k].isLetterOrDigit() || html[k] == '_'))) continue
+            val gt = html.indexOf('>', k)
+            if (gt < 0) return null
+            val c = html.indexOf("</$name>", gt + 1, ignoreCase = true)
+            if (c < 0) unclosed += name else return html.substring(gt + 1, c)
+        }
+        return null
+    }
+
+    /** The insides of the page's `<title>`, or null. */
+    private fun titleIn(html: String): String? {
+        val lt = html.indexOf("<title", ignoreCase = true)
+        if (lt < 0) return null
+        val gt = html.indexOf('>', lt + 6)
+        if (gt < 0) return null
+        val c = html.indexOf("</title>", gt + 1, ignoreCase = true)
+        return if (c < 0) null else html.substring(gt + 1, c)
+    }
+
+    /**
+     * [s] with each match of [tag] (a pattern for one whole tag, ending in ">") replaced by [with]. No tag can
+     * match after the last ">", so that tail is left alone rather than searched from each of its "<".
+     */
+    private fun swap(s: String, tag: Regex, with: String): String {
+        val cut = s.lastIndexOf('>') + 1
+        return if (cut == s.length) s.replace(tag, with) else s.substring(0, cut).replace(tag, with) + s.substring(cut)
+    }
+
     private fun tags(html: String): List<Tag> {
         val out = ArrayList<Tag>()
         val n = html.length
@@ -114,6 +223,9 @@ object PageText {
                     i = if (end + 1 < n) html.indexOf('<', end + 1) else -1
                     continue
                 }
+                // No ">" up to the end of the page: no later tag can close either, so stop here rather than
+                // rescan the rest from each "<" (review 2026-11-26: "<a " repeated was quadratic).
+                break
             }
             i = html.indexOf('<', i + 1)
         }
@@ -216,7 +328,7 @@ object PageText {
 
     /** The part of the page its words come from: the longest `<article>`, else `<main>`, else the body; furniture and hidden parts gone. */
     private fun region(html: String): String {
-        val clean = withoutFurniture(html.replace(RAW, " "))
+        val clean = withoutFurniture(without(html, RAW_NAMES, cdata = true))
         return insides(clean, "article").maxByOrNull { untagged(it).trim().length }
             ?: insides(clean, "main").firstOrNull()
             ?: clean.substringAfter("<body", clean).let { if (it === clean) it else it.substringAfter('>') }
@@ -264,10 +376,13 @@ object PageText {
 
     private val ISO_DAY = Regex("(\\d{4})-(\\d{2})-(\\d{2})")
     private val LD_DATE = Regex("\"datePublished\"\\s*:\\s*\"([^\"]+)\"")
-    private val META = Regex("<meta\\b[^>]*>", RegexOption.IGNORE_CASE)
     private val META_PUBLISHED = Regex("(property|name)\\s*=\\s*[\"']article:published_time[\"']", RegexOption.IGNORE_CASE)
     private val META_CONTENT = Regex("content\\s*=\\s*[\"']([^\"']+)[\"']", RegexOption.IGNORE_CASE)
-    private val TIME = Regex("<time\\b[^>]*\\bdatetime\\s*=\\s*[\"']([^\"']+)[\"']", RegexOption.IGNORE_CASE)
+    private val DATETIME = Regex("\\bdatetime\\s*=\\s*[\"']([^\"']+)[\"']", RegexOption.IGNORE_CASE)
+
+    /** The datetime of the first `<time datetime>` in [html]. Tag by tag, so a page of "<time " alone stays fast. */
+    private fun timeIn(html: String): String? =
+        tags(html).firstNotNullOfOrNull { t -> if (!t.close && t.name == "time") DATETIME.find(t.attrs)?.groupValues?.get(1) else null }
 
     /**
      * When the page says it was published, as "2026-11-02": JSON-LD datePublished, then
@@ -275,11 +390,12 @@ object PageText {
      * sidebar's), then the first one on the page; a date that can't exist (2026-02-31) is skipped; null if none.
      */
     fun date(html: String): String? {
+        val whole by lazy { without(html, RAW_NAMES, cdata = true) }
         val found = sequenceOf(
             { LD_DATE.find(html)?.groupValues?.get(1) },
-            { META.findAll(html).firstOrNull { META_PUBLISHED.containsMatchIn(it.value) }?.let { META_CONTENT.find(it.value)?.groupValues?.get(1) } },
-            { TIME.find(region(html))?.groupValues?.get(1) },
-            { TIME.find(html)?.groupValues?.get(1) },
+            { tags(whole).firstOrNull { !it.close && it.name == "meta" && META_PUBLISHED.containsMatchIn(it.attrs) }?.let { META_CONTENT.find(it.attrs)?.groupValues?.get(1) } },
+            { timeIn(region(html)) },
+            { timeIn(whole) },
         ).mapNotNull { it()?.let(::day) }
         return found.firstOrNull()
     }

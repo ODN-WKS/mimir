@@ -135,8 +135,9 @@ object Router {
             // A sum: "how much is 2 plus 2", "how much is 15% of 80".
             "|^how much (?:is|are)\\s+[-\\d.,\\s]*\\d\\s*(?:plus|minus|times|divided|multiplied|over|squared|cubed|to the power|percent|%|x(?=\\s*\\d)|[-+*/×÷^])" +
             // A unit conversion: "how much is a kilometre in miles", "how much are 3 dozen eggs in grams".
-            // Money is not a unit: "how much is 100 dollars in pounds" changes by the day, so it still searches.
-            "|^how much (?:is|are)\\s+(?!.*(?:\\b(?:dollars?|euros?|pesos?|yen|yuan|rupees?|francs?|krona|krone|kronor|rubles?|roubles?|won|bucks|cents?|pence|bitcoins?|btc|usd|eur|gbp|cad|aud|jpy|sterling|currency)\\b|[$£€¥₹]))" +
+            // Money is not a unit: "how much is 100 dollars in pounds" changes by the day, so it still searches;
+            // so do prices ("how much is a kilo of gold in pounds", review 2026-11-26).
+            "|^how much (?:is|are)\\s+(?!.*(?:\\b(?:dollars?|euros?|pesos?|yen|yuan|rupees?|francs?|krona|krone|kronor|rubles?|roubles?|won|bucks|cents?|pence|bitcoins?|btc|usd|eur|gbp|cad|aud|jpy|sterling|currency|gold|silver|platinum|palladium|copper|oil|crude|gas|gasoline|petrol|diesel|price|prices|cost|costs|worth|stock|stocks|shares?)\\b|[$£€¥₹]))" +
             ".{1,60}?\\s+in\\s+(?:$UNITS)\\s*[?.!]*\\s*$",
         RegexOption.IGNORE_CASE,
     )

@@ -53,11 +53,15 @@ object Lanes {
     )
 
     private val NOT_CODE = Regex("(?i)\\b(margin of|human|trial and|standard|medical|spelling|typing|clerical) errors?\\b")
-    private val LANGUAGE = "python|java|kotlin|javascript|js|typescript|ts|rust|go|golang|c|c\\+\\+|c#|swift|ruby|php|bash|shell|sql|haskell|scala|perl|lua|dart|r|matlab|powershell|elixir|julia"
+    private val LANGUAGE = "python|java|kotlin|javascript|typescript|rust|golang|c\\+\\+|c#|swift|ruby|php|bash|sql|haskell|scala|perl|lua|dart|matlab|powershell|elixir|julia"
     private val CODE = listOf(
         Regex("(?i)\\b(errors?|exceptions?|stack ?traces?|traceback|segfault|segmentation fault|compil(e|er|es|ed|ing|ation)|functions?|syntax|null ?pointer|nullpointerexception|undefined reference|regex|stack overflow|stackoverflow)\\b"),
         Regex("(?i)\\bhow (do|can|to|would|should)\\b.{0,80}\\b(in|with|using)\\s+($LANGUAGE)(?=$|[^\\w+#])"),
     )
+
+    /** Short names that are also everyday words ("in go", "in r") count only beside a programming word (review 2026-11-26). */
+    private val SHORT_LANGUAGE = Regex("(?i)\\bhow (do|can|to|would|should)\\b.{0,80}\\b(in|with|using)\\s+(go|c|r|js|ts|shell)(?=$|[^\\w+#])")
+    private val PROGRAMMING = Regex("(?i)\\b(code|coding|program(s|ming)?|script|variables?|arrays?|strings?|loops?|lists?|files?|librar(y|ies)|packages?|modules?|structs?|pointers?|parse|json|csv|dataframe|vectors?|install|import|print|compile[rd]?|goroutines?|channels?)\\b")
 
     private val PEOPLE = listOf(
         Regex("(?i)\\bwhat (are|do|did|is) (people|folks|users|others|developers|programmers|the internet|everyone|reddit)\\b.{0,20}\\b(say|saying|think|thinking|said|feel|feeling)\\b"),
@@ -79,7 +83,8 @@ object Lanes {
         val text = "$question\n$words"
         val lanes = LinkedHashSet<Lane>()
         if (SCIENCE.any { it.containsMatchIn(text.replace(NOT_SCIENCE, " ")) }) lanes += Lane.Science
-        if (CODE.any { it.containsMatchIn(text.replace(NOT_CODE, " ")) }) lanes += Lane.Code
+        val code = text.replace(NOT_CODE, " ")
+        if (CODE.any { it.containsMatchIn(code) } || (SHORT_LANGUAGE.containsMatchIn(code) && PROGRAMMING.containsMatchIn(code))) lanes += Lane.Code
         if (PEOPLE.any { it.containsMatchIn(text) }) lanes += Lane.PeopleSay
         if (BOOKS.any { it.containsMatchIn(text.replace(NOT_BOOKS, " ")) }) lanes += Lane.Books
         return lanes

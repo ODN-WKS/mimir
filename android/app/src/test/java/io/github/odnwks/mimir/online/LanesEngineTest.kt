@@ -190,6 +190,21 @@ class LanesEngineTest {
         assertTrue(laneAsks().toString(), laneAsks().isEmpty())
     }
 
+    /** Review 2026-11-26: a blocked or failed web search still answers from what the databases found. */
+    @Test fun whenTheWebSearchFailsTheDatabasesStillAnswer() {
+        Search.viaPc = null
+        val withPubMed = Net.transport
+        Net.transport = { r -> if ("duckduckgo" in r.url.host) { asked += r.url; throw java.io.IOException("no signal") } else withPubMed(r) }
+        val runner = PromptRunner()
+        val e = engine(runner)
+        e.send(question)
+        e.waitDone()
+        assertTrue(asked.toString(), asked.any { "duckduckgo" in it.host })
+        val block = fetched(runner.prompts.last())
+        assertTrue(block, Regex("\\[\\d] pubmed\\.ncbi\\.nlm\\.nih\\.gov").containsMatchIn(block))
+        assertTrue(e.state.value.chat.turns.last().sources.any { it.site == "pubmed.ncbi.nlm.nih.gov" })
+    }
+
     @Test fun aDatabaseThatHangsNeverHoldsTheAnswerPastTheLookupsBudget() {
         val fast = Net.transport
         Net.transport = { r -> if (r.url.host == "eutils.ncbi.nlm.nih.gov") { asked += r.url; hang.await(); throw java.io.IOException("never") } else fast(r) }
