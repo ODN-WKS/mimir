@@ -6,10 +6,10 @@ import kotlin.math.ln
 data class Passage(val text: String, val heading: String, val index: Int)
 
 /** A candidate for the evidence: [text] is the page's main text, or null when the page wasn't read (its snippet is used). */
-data class PageRead(val result: Search.Result, val text: String?, val date: String? = null)
+data class PageRead(val result: Search.Result, val text: String?, val date: String? = null, val archived: Boolean = false)
 
 /** A passage chosen as evidence, numbered [n] by site. */
-data class Chosen(val n: Int, val site: String, val url: String, val title: String, val date: String?, val quote: String)
+data class Chosen(val n: Int, val site: String, val url: String, val title: String, val date: String?, val quote: String, val archived: Boolean = false)
 
 /**
  * Picks the passages the model reads (P21 stage 1), by what the pages say: BM25 over every
@@ -119,7 +119,7 @@ object Rank {
         val numberOf = LinkedHashMap<String, Int>()
         return picked.map { d ->
             val n = numberOf.getOrPut(d.site) { numberOf.size + 1 }
-            Chosen(n, d.site, d.page.result.url, d.page.result.title, d.page.date, d.text)
+            Chosen(n, d.site, d.page.result.url, d.page.result.title, d.page.date, d.text, d.page.archived)
         }.sortedBy { it.n }
     }
 

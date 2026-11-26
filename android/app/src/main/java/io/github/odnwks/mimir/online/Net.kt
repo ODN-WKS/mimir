@@ -68,11 +68,11 @@ object Net {
             val req = Request(url, mapOf("User-Agent" to AGENT, "Accept-Language" to "en", "Accept" to accept.joinToString()), if (tor) timeoutMs * 3 else timeoutMs, maxBytes, cut)
             val (r, route, asked) = if (tor) Triple(torTransport(req), LookupLog.Route.Tor, listOf(LookupLog.Route.Tor)) else fetch(req, mode, end)
             if (r.status in 300..399 && r.location != null) {
-                if (++hops > 2) throw Failed("the site sent the app round in circles")
+                if (++hops > 2) throw Failed("the site sent the app round in circles", r.status)
                 url = URL(url, r.location)
                 continue
             }
-            if (r.status !in 200..299) throw Failed(if (r.status >= 500) "the site is having trouble just now" else "the site wouldn't show that page")
+            if (r.status !in 200..299) throw Failed(if (r.status >= 500) "the site is having trouble just now" else "the site wouldn't show that page", r.status)
             val type = r.type.substringBefore(';').trim().lowercase()
             if (type !in accept) throw Refused("not a page that can be read ($type)")
             val text = String(r.body, Charsets.UTF_8)
@@ -96,8 +96,11 @@ object Net {
     /** The message of a timeout inside the app (never shown: [plain] words it). */
     private const val SLOW = "slow"
 
-    /** A lookup that couldn't be done, with the cause in plain words ("this phone has no signal"). */
-    class Failed(why: String) : java.io.IOException(why)
+    /**
+     * A lookup that couldn't be done, with the cause in plain words ("this phone has no signal").
+     * [status] is what the site answered with, or null when no answer came from it.
+     */
+    class Failed(why: String, val status: Int? = null) : java.io.IOException(why)
 
     /** The PC can't be asked right now (not connected, or it didn't answer). */
     class PcAway(why: String = "your PC is away") : java.io.IOException(why)

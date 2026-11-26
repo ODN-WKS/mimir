@@ -4,6 +4,8 @@ package io.github.odnwks.mimir.online
  * Reads the top pages a search found, all at once, inside the lookup's time limit (P21 stage 1).
  * Normal chats only, and never with Android's Data Saver on. A page that is slow, refused or
  * broken never costs the answer: it comes back without text, and its search snippet is used.
+ * A page that is gone, or whose site doesn't answer, gets one try at the Wayback Machine's copy
+ * (stage 3); a page that blocks the app never does, as that would get round the block.
  */
 object Reader {
     /** How much of one page is read (a longer one is cut there, not refused). */
@@ -17,6 +19,18 @@ object Reader {
 
     /** Reading stops this long before the lookup's time limit, so the answer still has time. */
     const val SPARE_MS = 700L
+
+    /**
+     * How long the page's own site may take, a second try included: a silent site is given up on
+     * early enough that its archived copy can still be read.
+     */
+    const val SITE_MS = 4_500L
+
+    /** Where the Wayback Machine's copy of a page is (the page's address goes after it). */
+    private const val ARCHIVE = "https://web.archive.org/web/2026/"
+
+    /** The only answers from a site that mean the page is gone (a refusal is not one). */
+    private val GONE = setOf(404, 410)
 
     private val ACCEPT = setOf("text/html", "text/plain")
 
@@ -47,10 +61,19 @@ object Reader {
         return reads
     }
 
-    /** One page as text, or null when it couldn't be read. */
-    private fun one(r: Search.Result, mode: ChatMode): PageRead? {
-        val site = r.site
-        val got = Net.get(r.url, mode, words = site, site = site, accept = ACCEPT, maxBytes = PAGE_BYTES, cut = true, timeoutMs = PAGE_MS)
+    /** One page as text, from its site or else the archive, or null when it couldn't be read. */
+    private fun one(r: Search.Result, mode: ChatMode): PageRead? = try {
+        Net.within(SITE_MS) { page(r, r.url, r.site, mode) }
+    } catch (e: Net.Failed) {
+        if ((e.status != null && e.status !in GONE) || !mayAskArchive(mode)) throw e
+        page(r, ARCHIVE + r.url, "web.archive.org", mode)?.copy(archived = true)
+    }
+
+    private fun mayAskArchive(mode: ChatMode) = mode == ChatMode.Normal && !Online.dataSaver() && Online.settings.value.search
+
+    /** [r]'s page as read at [address] on [site], or null when it holds no text. */
+    private fun page(r: Search.Result, address: String, site: String, mode: ChatMode): PageRead? {
+        val got = Net.get(address, mode, words = r.site, site = site, accept = ACCEPT, maxBytes = PAGE_BYTES, cut = true, timeoutMs = PAGE_MS)
         val raw = got.text.take(HTML_CHARS)
         if (got.type == "text/plain") return raw.trim().takeIf { it.isNotEmpty() }?.let { PageRead(r, it) }
         val text = PageText.main(raw).trim()

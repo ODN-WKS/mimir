@@ -57,7 +57,8 @@ object Evidence {
 
     /**
      * The block inside Prompt.fetched: the search line, then each source's header
-     * (`[n] site · Title · date`) with its quoted passages, then [INSTRUCTION] once at the end.
+     * (`[n] site · Title · date`, then "(archived copy)" when any of it came from the archive)
+     * with its quoted passages, then [INSTRUCTION] once at the end.
      */
     fun block(words: String, chosen: List<Chosen>, pagesRead: Int): String = buildString {
         append("Search: \"").append(clean(words)).append("\" · ")
@@ -69,6 +70,7 @@ object Evidence {
             append("\n[").append(n).append("] ").append(clean(first.site))
             clean(first.title).takeIf { it.isNotEmpty() }?.let { append(" · ").append(it) }
             first.date?.let { clean(it) }?.takeIf { it.isNotEmpty() }?.let { append(" · ").append(it) }
+            if (group.any { it.archived }) append(" (archived copy)")
             for (q in quotes) append("\n\"").append(q).append('"')
         }
         append('\n').append(INSTRUCTION)
