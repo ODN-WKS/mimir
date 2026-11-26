@@ -133,6 +133,7 @@ private fun Sheet.title(state: StationState) = when (this) {
     Sheet.WhereTo -> "Where should this go?"
     is Sheet.NewTaskModel -> "Model for this task"
     is Sheet.ProjectOptions -> project
+    is Sheet.ProjectChecks -> project
     Sheet.ChatModel -> "Model for this chat"
     is Sheet.RenameTask -> "Rename this task"
     is Sheet.TaskModel -> "Model for this task"
@@ -297,6 +298,15 @@ private fun SheetContent(sheet: Sheet, state: StationState, station: Station, na
         is Sheet.ProjectOptions -> Menu(sheet.title(state)) {
             // Voice typing for the new-task box (the box keeps only +, the chip and Send).
             MenuRow(Glyphs.Mic, "Talk (voice typing)") { nav.taskAsk = io.github.odnwks.mimir.nav.TALK_PROJECT; nav.closeSheet() }
+            // The full list of checks lives here; the page keeps one slim line (P14).
+            state.project(sheet.project)?.takeIf { it.state != io.github.odnwks.mimir.data.CheckState.None }?.let { p ->
+                MenuRow(Glyphs.Check, "Checks (${p.total})") { nav.openSheet(Sheet.ProjectChecks(p.name)) }
+            }
+        }
+        is Sheet.ProjectChecks -> Menu(sheet.title(state)) {
+            state.project(sheet.project)?.let { p ->
+                ProjectChecksList(p, state, station, Modifier.padding(start = 12.dp, end = 12.dp, bottom = 4.dp), asked = { nav.closeSheet() })
+            }
         }
         Sheet.IncognitoOptions -> Menu(sheet.title(state)) {
             PrivacyLine("Whisper mode: the internet is cut off for this task, nothing leaves your PC, and it's read aloud by this phone's voice only.")

@@ -137,8 +137,10 @@ sealed interface Sheet {
     data class NewTaskModel(val project: String? = null) : Sheet
     /** The Mímir chat's model and effort (its own models, not a task's): what it lists is in [Navigator.chatChoices]. */
     data object ChatModel : Sheet
-    /** A project page's three dots: voice typing for its box. */
+    /** A project page's three dots: voice typing for its box, and its checks. */
     data class ProjectOptions(val project: String) : Sheet
+    /** A project's full list of checks (from its three dots or its slim checks line). */
+    data class ProjectChecks(val project: String) : Sheet
 }
 
 /**

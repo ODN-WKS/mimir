@@ -1,6 +1,14 @@
 package io.github.odnwks.mimir.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import io.github.odnwks.mimir.data.Project
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -52,35 +60,9 @@ fun ProjectScreen(name: String, state: StationState, station: Station, nav: Navi
             Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 16.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            // Checks only where the project has them (Stage 1, section 5).
-            if (p.state != CheckState.None) Panel(spacing = 10.dp) {
-                val title = when (p.state) {
-                    CheckState.Fail -> "${p.total - p.passing} of ${p.total} checks failing"
-                    CheckState.Pass -> "All ${p.total} checks passing"
-                    CheckState.None -> "No checks yet"
-                }
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Icon(
-                        when (p.state) { CheckState.Fail -> Glyphs.Warning; CheckState.Pass -> Glyphs.Check; CheckState.None -> Glyphs.Minus },
-                        null, tint = p.state.color(), modifier = Modifier.size(20.dp),
-                    )
-                    SectionTitle(title, color = p.state.color())
-                }
-                if (p.checks.isNotEmpty()) Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    p.checks.forEach { c ->
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Icon(if (c.ok) Glyphs.Check else Glyphs.Warning, if (c.ok) "Passing" else "Failing",
-                                tint = if (c.ok) Palette.Green else Palette.Red, modifier = Modifier.padding(top = 1.dp).size(18.dp))
-                            Text(c.name, style = Type.Label.copy(lineHeight = Type.Label.fontSize * 1.35f), color = if (c.ok) Palette.Text else Palette.RedSoft)
-                        }
-                    }
-                }
-                if (p.failingSince.isNotEmpty()) Text(p.failingSince, style = Type.Small, color = Palette.TextDim)
-                val failing = state.needsYou.firstOrNull { it.kind == io.github.odnwks.mimir.data.NeedsKind.CheckFailing && it.project == p.name }
-                if (p.state == CheckState.Fail && failing != null) {
-                    BigButton("Ask to fix it", Look.Primary, { station.answer(failing.id, io.github.odnwks.mimir.data.Answer.AskClaudeToFix) }, height = 48.dp, fontSize = 15)
-                }
-            }
+            // Checks only where the project has them (Stage 1, section 5): one slim line (P14, owner
+            // 2026-11-25); the full list opens from it and from the three dots ("Checks (7)").
+            if (p.state != CheckState.None) ChecksLine(p) { nav.openSheet(Sheet.ProjectChecks(p.name)) }
             SectionTitle("Tasks", Modifier.padding(start = 4.dp, end = 4.dp, top = 4.dp))
             val shownTasks = p.tasks.filter { it.taskId !in nav.hiddenTasks && (it.taskId == null || state.archived.none { a -> a.id == it.taskId }) }
             if (shownTasks.isEmpty()) Text("No tasks yet. Type below to start one.", style = Type.Label, color = Palette.TextDim, modifier = Modifier.padding(horizontal = 4.dp))
@@ -160,5 +142,71 @@ fun ProjectScreen(name: String, state: StationState, station: Station, nav: Navi
             onOptions = { nav.openSheet(Sheet.NewTaskModel(p.name)) },
             optionsNote = UPDATE_PC_FOR_OPTIONS.takeIf { !canOptions && state.paired },
         )
+    }
+}
+
+/** The test tag of the project page's slim checks line. */
+const val PROJECT_CHECKS_TAG = "project-checks"
+
+/** How a project's checks stand, in words ("All 7 checks passing", "2 of 7 checks failing"). */
+private fun checksTitle(p: Project) = when (p.state) {
+    CheckState.Fail -> "${p.total - p.passing} of ${p.total} checks failing"
+    CheckState.Pass -> "All ${p.total} checks passing"
+    CheckState.None -> "No checks yet"
+}
+
+private fun CheckState.glyph() = when (this) { CheckState.Fail -> Glyphs.Warning; CheckState.Pass -> Glyphs.Check; CheckState.None -> Glyphs.Minus }
+
+/**
+ * The project page's checks: one slim line in the state's colour. When some fail, their names
+ * show under it (at most 2 lines), so trouble is never hidden. A tap opens the full list.
+ */
+@Composable
+private fun ChecksLine(p: Project, onOpen: () -> Unit) {
+    val failing = p.checks.filter { !it.ok }.map { it.name }
+    Column(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Palette.Card)
+            .clickable(role = Role.Button, onClickLabel = "Show the checks", onClick = onOpen)
+            .testTag(PROJECT_CHECKS_TAG)
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Icon(p.state.glyph(), null, tint = p.state.color(), modifier = Modifier.size(18.dp))
+            Text(checksTitle(p), style = Type.Label, fontWeight = FontWeight.SemiBold, color = p.state.color(), modifier = Modifier.weight(1f))
+            Icon(Glyphs.Next, null, tint = Palette.TextDim, modifier = Modifier.size(16.dp))
+        }
+        if (failing.isNotEmpty()) Text(
+            failing.joinToString(", "), style = Type.Small, color = Palette.RedSoft,
+            maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(start = 26.dp),
+        )
+    }
+}
+
+/**
+ * A project's full list of checks, as the page's card showed it before P14: how they stand, each
+ * check, since when they fail and "Ask to fix it". [asked] runs after asking.
+ */
+@Composable
+internal fun ProjectChecksList(p: Project, state: StationState, station: Station, modifier: Modifier = Modifier, asked: () -> Unit = {}) {
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Icon(p.state.glyph(), null, tint = p.state.color(), modifier = Modifier.size(20.dp))
+            SectionTitle(checksTitle(p), color = p.state.color())
+        }
+        if (p.checks.isNotEmpty()) Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            p.checks.forEach { c ->
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Icon(if (c.ok) Glyphs.Check else Glyphs.Warning, if (c.ok) "Passing" else "Failing",
+                        tint = if (c.ok) Palette.Green else Palette.Red, modifier = Modifier.padding(top = 1.dp).size(18.dp))
+                    Text(c.name, style = Type.Label.copy(lineHeight = Type.Label.fontSize * 1.35f), color = if (c.ok) Palette.Text else Palette.RedSoft)
+                }
+            }
+        }
+        if (p.failingSince.isNotEmpty()) Text(p.failingSince, style = Type.Small, color = Palette.TextDim)
+        val failing = state.needsYou.firstOrNull { it.kind == io.github.odnwks.mimir.data.NeedsKind.CheckFailing && it.project == p.name }
+        if (p.state == CheckState.Fail && failing != null) {
+            BigButton("Ask to fix it", Look.Primary, { station.answer(failing.id, io.github.odnwks.mimir.data.Answer.AskClaudeToFix); asked() }, height = 48.dp, fontSize = 15)
+        }
     }
 }
