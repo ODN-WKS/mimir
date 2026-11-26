@@ -156,6 +156,7 @@ fun ProjectScreen(name: String, state: StationState, station: Station, nav: Navi
             modifier = Modifier.padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 10.dp),
             attach = attach.takeIf { station.canAttachToTasks() }, needsWords = true,
             optionsChip = optionsWords(modelName, choice.effort, withEffort = canOptions),
+            optionsShort = optionsShorter(modelName, choice.effort, withEffort = canOptions),
             onOptions = { nav.openSheet(Sheet.NewTaskModel(p.name)) },
             optionsNote = UPDATE_PC_FOR_OPTIONS.takeIf { !canOptions && state.paired },
         )

@@ -324,6 +324,7 @@ LazyColumn(
             onSend = { if (sendFromChat(draft, state, station, nav, engine, attach.pictures.toList(), attach.files.toList())) { draft = ""; attach.clear() } },
             modifier = Modifier.imePadding().padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 10.dp),
             optionsChip = if (state.paired) optionsWords(modelName, to.effort, withEffort = canOptions) else null,
+            optionsShort = optionsShorter(modelName, to.effort, withEffort = canOptions),
             onOptions = { nav.openSheet(io.github.odnwks.mimir.nav.Sheet.NewTaskModel()) },
             whisper = to.whisper,
         )

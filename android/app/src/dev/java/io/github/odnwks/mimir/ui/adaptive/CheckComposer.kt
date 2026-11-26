@@ -75,7 +75,7 @@ private fun CheckComposer(paired: Boolean, whisper: Boolean) {
                 chip = {
                     val words = (if (paired && !whisper) "Your PC's model" else model.chipWord) + " · " + effort.words
                     val shorter = (if (paired && !whisper) "PC model" else io.github.odnwks.mimir.ui.chipShort(model.chipWord)) + " · " + effort.words
-                    OptionsChip(words, "Model and effort: $words. Change", shorter = shorter) {}
+                    OptionsChip(words, "Model and effort: $words. Change", shorter = listOf(shorter, effort.words)) {}
                 },
             )
         }

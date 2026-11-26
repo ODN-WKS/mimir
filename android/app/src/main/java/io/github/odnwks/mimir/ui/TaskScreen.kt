@@ -422,6 +422,7 @@ fun TaskScreen(taskId: String, state: StationState, station: Station, nav: Navig
                         attach = attach.takeIf { canAttach },
                         // An old PC takes a model but no effort: the chip names the model only, the note says why.
                         optionsChip = optionsWords(task.model, task.effort, withEffort = canOptions),
+                        optionsShort = optionsShorter(task.model, task.effort, withEffort = canOptions),
                         onOptions = { nav.openSheet(Sheet.TaskModel(task.id)) },
                         optionsNote = UPDATE_PC_FOR_OPTIONS.takeIf { !canOptions && state.paired },
                         hint = if (state.pcAway) "Reply (${state.waitsUntil})" else "Reply to Mímir",

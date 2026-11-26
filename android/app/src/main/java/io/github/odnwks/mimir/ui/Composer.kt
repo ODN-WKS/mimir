@@ -78,6 +78,8 @@ fun Composer(
     /** The "Model · Effort" chip (null: not shown) and what it opens. */
     optionsChip: String? = null,
     onOptions: () -> Unit = {},
+    /** Shorter words for the chip when there is too little room ([optionsShorter]). */
+    optionsShort: List<String> = emptyList(),
     /** Said under the row when this PC can't take the choice yet. */
     optionsNote: String? = null,
     /** A new task needs words (they name it); a reply can go with only a picture. */
@@ -124,7 +126,7 @@ fun Composer(
         }
         ReplyRow(
             plus = { attach?.Button(attachSight) },
-            chip = { if (optionsChip != null) OptionsChip(optionsChip, "Model and effort for this task: $optionsChip. Change", onClick = onOptions) },
+            chip = { if (optionsChip != null) OptionsChip(optionsChip, "Model and effort for this task: $optionsChip. Change", optionsShort, onClick = onOptions) },
             send = {
                 SendButton(sendable) {
                     haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
@@ -160,16 +162,18 @@ fun SendButton(ready: Boolean, fill: androidx.compose.ui.graphics.Color = Palett
 
 /**
  * The "Opus 5.5 · Default Effort ⌄" chip in the centre of the reply box's row: a tap opens the model
- * and effort sheet. With too little room for [words] (large text), [shorter] is shown whole instead.
+ * and effort sheet. With too little room for [words] (large text, a narrow phone), the first of
+ * [shorter] that fits is shown whole instead (the last one if none does).
  */
 @Composable
-fun OptionsChip(words: String, description: String, shorter: String? = null, onClick: () -> Unit) {
+fun OptionsChip(words: String, description: String, shorter: List<String> = emptyList(), onClick: () -> Unit) {
     androidx.compose.foundation.layout.BoxWithConstraints {
         val style = Type.Small.copy(fontWeight = FontWeight.Bold)
         val measurer = androidx.compose.ui.text.rememberTextMeasurer()
         // The chip's edges and arrow: 10 + 6 dp of padding, 4 dp of gap, 16 dp of arrow.
         val room = constraints.maxWidth - with(androidx.compose.ui.platform.LocalDensity.current) { 36.dp.roundToPx() }
-        val shown = if (shorter != null && measurer.measure(words, style, maxLines = 1).size.width > room) shorter else words
+        val tries = listOf(words) + shorter
+        val shown = tries.firstOrNull { measurer.measure(it, style, maxLines = 1).size.width <= room } ?: tries.last()
         OptionsChipBody(shown, description, onClick)
     }
 }

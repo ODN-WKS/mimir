@@ -502,7 +502,8 @@ fun PhoneChat(
         }
         val efforts = Effort.entries.map { e -> io.github.odnwks.mimir.nav.SheetChoice(e.words, effortAbout(e, model), e == s.effort) { if (e != s.effort) engine.setEffort(e) } }
         val chosenWords = listOfNotNull(modelWord, s.effort.words).joinToString(" · ")
-        val shortWords = listOfNotNull(modelWord?.let { if (it == "Your PC's model") "PC model" else chipShort(it) }, s.effort.words).joinToString(" · ")
+        // Shorter whole words for less room; at the least, the effort alone (the top bar names who answers).
+        val shortWords = listOf(listOfNotNull(modelWord?.let { if (it == "Your PC's model") "PC model" else chipShort(it) }, s.effort.words).joinToString(" · "), s.effort.words)
         androidx.compose.runtime.SideEffect { nav.chatChoices = io.github.odnwks.mimir.nav.ModelEffortChoices(choices.models, choices.notes, choices.more, efforts) }
         androidx.compose.runtime.DisposableEffect(Unit) { onDispose { nav.chatChoices = null } }
         NoKeyboardLearning(s.whisper || pcWhisper) {
@@ -511,7 +512,7 @@ fun PhoneChat(
             hasFiles = files.isNotEmpty() || pictures.isNotEmpty(),
             above = { attach.Chips() },
             attach = { attach.Button(sight, onModels = { nav.open(Screen.Models) }) },
-            // At large text with the mic beside Send there is less room: shorter whole words, never cut off.
+            // At large text or on a narrow phone, with the mic beside Send, there is less room: shorter whole words, never cut off.
             chip = { OptionsChip(chosenWords, "Model and effort: $chosenWords. Change", shorter = shortWords) { nav.openSheet(io.github.odnwks.mimir.nav.Sheet.ChatModel) } },
             // No three dots to hold voice typing (an empty chat, a Whisper): the mic stays in the box.
             mic = s.whisper || pcWhisper || s.chat.turns.isEmpty(),

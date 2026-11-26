@@ -78,6 +78,13 @@ class P12Shots {
     @Test fun aTask() = task("1.0")
     @Test fun theMimirChat() = mimirChat("1.0")
 
+    // The S8: 320 dp wide.
+    @Config(qualifiers = "w320dp-h658dp-xhdpi") @Test fun theMimirChatAt320() = mimirChat("320dp")
+    @Config(qualifiers = "w320dp-h658dp-xhdpi") @Test fun projectPageAt320() = project("320dp")
+    @Config(qualifiers = "w320dp-h658dp-xhdpi", fontScale = 1.3f) @Test fun theMimirChatAt320And13() = mimirChat("320dp_1.3")
+    @Config(qualifiers = "w320dp-h658dp-xhdpi", fontScale = 1.3f) @Test fun projectPageAt320And13() = project("320dp_1.3")
+    @Config(qualifiers = "w320dp-h658dp-xhdpi", fontScale = 1.3f) @Test fun aTaskAt320And13() = task("320dp_1.3")
+
     @Config(fontScale = 1.3f) @Test fun projectPageAt13() = project("1.3")
     @Config(fontScale = 1.3f) @Test fun aTaskAt13() = task("1.3")
     @Config(fontScale = 1.3f) @Test fun theMimirChatAt13() = mimirChat("1.3")
