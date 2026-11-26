@@ -70,6 +70,9 @@ object ChatLook {
     val ButtonBorder = Color(0xFF2B2F37)
     val LookedUpFill = Color(0xFF1A1D23)
     val ownShape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp, bottomEnd = 6.dp, bottomStart = 20.dp)
+    /** An answer's bubble: the owner's mirrored, its small corner bottom left. */
+    val replyShape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp, bottomEnd = 20.dp, bottomStart = 6.dp)
+    val ReplyMaxWidth = 358.dp
     val MessageText = TextStyle(fontSize = 15.5.sp, lineHeight = 23.25.sp)
 }
 
@@ -182,9 +185,10 @@ fun EditBox(value: String, onChange: (String) -> Unit, bubble: Color, onCancel: 
 }
 
 /**
- * An answer: plain text over the whole lane (no bubble, no name), then, once it is written, the
- * "Looked up" tag when the internet was used and the quiet buttons Listen, Copy and Try again.
- * [dim]: still being written (no buttons). [pc]: Listen plays the PC's voice instead.
+ * An answer: its words in a grey bubble on the left, the mirror of the owner's blue one (P13), then,
+ * once it is written, the "Looked up" tag when the internet was used and the quiet buttons Listen,
+ * Copy and Share (Try again and the rest stay in the long-press menu).
+ * [dim]: still being written (in its bubble, no buttons). [pc]: Listen plays the PC's voice instead.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -200,8 +204,8 @@ fun Answer(
     pc: (() -> Unit)? = null,
     /** Who answered and why, when it was not the usual model: one dim line (null: none). */
     note: String? = null,
-    /** Show Share under the answer too (tasks do; chats keep it in the hold menu). */
-    share: Boolean = false,
+    /** No longer used: Share now shows under every finished answer (P13). Kept until the task screen stops passing it. */
+    @Suppress("UNUSED_PARAMETER") share: Boolean = false,
     /** False while the answer is still being written: no Listen or Copy under half an answer (R20). */
     buttons: Boolean = true,
     /** Who wrote it, one dim line under the answer (null: not shown). */
@@ -212,7 +216,11 @@ fun Answer(
         MessageMenuHost(plain = plain, id = id, lookUp = lookUp.takeIf { !dim }, pc = pc, enabled = !dim && buttons, onTryAgain = onTryAgain) { onHold ->
             ChatText {
                 Column(
-                    Modifier.fillMaxWidth().then(if (dim) Modifier else Modifier.holdMenu(onHold)).semantics { liveRegion = LiveRegionMode.Polite },
+                    Modifier.widthIn(max = ChatLook.ReplyMaxWidth).clip(ChatLook.replyShape).background(Palette.Card)
+                        .border(1.dp, Palette.Line, ChatLook.replyShape)
+                        .then(if (dim) Modifier else Modifier.holdMenu(onHold)).semantics { liveRegion = LiveRegionMode.Polite }
+                        .testTag(REPLY_BUBBLE_TAG)
+                        .padding(horizontal = 14.dp, vertical = 11.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp), content = content,
                 )
             }
@@ -221,26 +229,19 @@ fun Answer(
             if (!author.isNullOrBlank()) Text(author, style = Type.Small, color = Palette.TextDim, modifier = Modifier.testTag("answer-author"))
             if (sources.isNotEmpty()) SourcesLine(sources, openSources)
             if (!note.isNullOrBlank()) Text(note, style = Type.Small, color = Palette.TextDim, modifier = Modifier.testTag("switch-note"))
-            // The row of Listen, Copy, Share and Try again lives behind a long press (the answer's hold menu).
-            // While the voice reads this answer, a Stop reading control stays one tap away.
-            val voice = rememberReadAloud()
-            if (readingNow(voice, id)) ListenButton(id, plain, pc)
-            if (onTryAgain != null) HoldHint()
+            // Listen, Copy and Share in a row under the bubble (the owner's approved look); the long-press
+            // menu keeps them too, with Select text, Try again and Look it up.
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), itemVerticalAlignment = Alignment.CenterVertically) {
+                ListenButton(id, plain, pc)
+                CopyButton(plain)
+                ShareButton(plain)
+            }
         }
     }
 }
 
-private const val HOLD_HINT_KEY = "hold_answer_hint_done"
-
-/** One dim line under the newest answer, until the first long press on an answer. */
-@Composable
-private fun HoldHint() {
-    val ctx = LocalContext.current
-    val prefs = remember { ctx.getSharedPreferences(PHONE_CHAT_PREFS, 0) }
-    if (!prefs.getBoolean(HOLD_HINT_KEY, false)) {
-        Text("Hold an answer for Listen, Copy and Share", style = Type.Small, color = Palette.TextDim, modifier = Modifier.testTag("hold-hint"))
-    }
-}
+/** The test tag on an answer's grey bubble. */
+const val REPLY_BUBBLE_TAG = "reply-bubble"
 
 /** A quiet outlined text button: #2b2f37 border, 13sp words, an optional small mark before them, and a full 48 dp to touch. */
 @Composable
@@ -324,7 +325,6 @@ fun MessageMenuHost(
     val on = readingNow(voice, id)
     val clip = LocalClipboardManager.current
     val ctx = LocalContext.current
-    val prefs = remember { ctx.getSharedPreferences(PHONE_CHAT_PREFS, 0) }
     val listen = { tapRead(voice, id, plain, pc) }
     // TalkBack gets the same actions as custom actions on the message.
     val actions = if (!enabled) emptyList() else buildList {
@@ -334,7 +334,7 @@ fun MessageMenuHost(
         if (onTryAgain != null) add(CustomAccessibilityAction(TRY_AGAIN) { onTryAgain(); true })
     }
     Box(Modifier.semantics { customActions = actions }) {
-        content { if (enabled) { menu = true; prefs.edit().putBoolean(HOLD_HINT_KEY, true).apply() } }
+        content { if (enabled) menu = true }
         if (enabled) DropdownMenu(menu, { menu = false }, containerColor = Palette.Card) {
             if (onEdit != null) DropdownMenuItem({ Text(EDIT) }, { menu = false; onEdit() })
             DropdownMenuItem({ Text(COPY) }, { menu = false; clip.setText(AnnotatedString(plain)) })

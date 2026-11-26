@@ -80,14 +80,15 @@ class R7ChatTest {
 
     // ---- 1. The messages ----
 
-    @Test fun anAnswerIsPlainTextWithListenCopyAndTryAgainAndNoBubbleOrName() {
+    @Test fun anAnswerIsInItsBubbleWithListenCopyAndShareAndNoName() {
         startOpen()
         compose.onNodeWithText(answer).assertIsDisplayed()
-        // The row of buttons is gone; the long press holds them (and the hint says so).
-        compose.onNodeWithText(LISTEN).assertDoesNotExist()
-        compose.onNodeWithText(COPY).assertDoesNotExist()
+        // P13 (owner-approved look): Listen, Copy and Share under the answer; Try again stays in the long press.
+        compose.onNodeWithText(LISTEN).assertIsDisplayed()
+        compose.onNodeWithText(COPY).assertIsDisplayed()
+        compose.onNodeWithText(SHARE).assertIsDisplayed()
         compose.onNodeWithText(TRY_AGAIN).assertDoesNotExist()
-        compose.onNodeWithText("Hold an answer for Listen, Copy and Share").assertIsDisplayed()
+        compose.onNodeWithText("Hold an answer for Listen, Copy and Share").assertDoesNotExist()
         // No "You" above the owner's bubble, no "Mímir" above the answer, no "Your PC"/phone mark under it.
         compose.onNodeWithText("You").assertDoesNotExist()
         compose.onNodeWithText(AI_NAME).assertDoesNotExist()
@@ -143,7 +144,7 @@ class R7ChatTest {
     @Test fun aLongPressOnTheOwnersMessageHasTheSameMenu() {
         startOpen()
         compose.onNodeWithText(question).performSemanticsAction(SemanticsActions.OnLongClick); compose.waitForIdle()
-        compose.onNodeWithText(SHARE).assertIsDisplayed()
+        compose.onAllNodesWithText(SHARE).onLast().assertIsDisplayed()
         compose.onAllNodesWithText(COPY).onLast().performClick(); compose.waitForIdle()
         assertEquals(question, clipboard())
     }
