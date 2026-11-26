@@ -79,7 +79,9 @@ fn nothing_moves(
         "{notice}: the task never showed as working\n{}",
         screen_text(&h)
     );
-    let row = &prompt[..12];
+    // P17: the task's row is named by its start time.
+    let name = shown_time_name(&h).unwrap_or_default();
+    let row = name.as_str();
     let before = anchors(&h, row);
     assert!(
         before.first_row.is_some() && before.composer.is_some(),

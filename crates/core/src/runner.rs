@@ -500,11 +500,12 @@ impl Runner {
         model: Option<String>,
         effort: Option<String>,
     ) {
-        let title = title_from(text);
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_secs() as i64)
             .unwrap_or(0);
+        let started = ClockTime::at(now);
+        let title = first_title(project, text, started, started.year);
         let mut task = Task::new(id.to_string(), title, project.display().to_string(), now);
         task.mode = mode;
         task.model = model;
@@ -2180,9 +2181,11 @@ impl Runner {
                                 }
                             }
                             l.task.apply(e, now);
-                            // Claude Code's own short title for the session.
+                            // Claude Code's own short title for the session: chats
+                            // only, as a project task keeps its time name (P17).
                             if matches!(e, Event::Finished(_))
                                 && !l.task.title_by_owner
+                                && l.task.is_chat()
                                 && let Some(sid) = &l.task.session_id
                             {
                                 let path = crate::sessions::claude_home()
@@ -2476,6 +2479,72 @@ fn launch_model(t: &Task) -> Option<String> {
             .clone()
             .or_else(|| Some(crate::auto::LADDER[1].to_string())),
         None => t.model.clone(),
+    }
+}
+
+/// A moment on the PC's clock, in its parts (month 1 to 12, hour 0 to 23).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ClockTime {
+    pub year: i32,
+    pub month: u32,
+    pub day: u32,
+    pub hour: u32,
+    pub minute: u32,
+}
+
+impl ClockTime {
+    /// `unix` (seconds since 1970) on the PC's own clock, in its time zone.
+    pub fn at(unix: i64) -> ClockTime {
+        let t = unix as libc::time_t;
+        // SAFETY: localtime_r only writes the `tm` it is given.
+        let mut tm: libc::tm = unsafe { std::mem::zeroed() };
+        if unsafe { libc::localtime_r(&t, &mut tm) }.is_null() {
+            return ClockTime {
+                year: 1970,
+                month: 1,
+                day: 1,
+                hour: 0,
+                minute: 0,
+            };
+        }
+        ClockTime {
+            year: tm.tm_year + 1900,
+            month: (tm.tm_mon + 1) as u32,
+            day: tm.tm_mday as u32,
+            hour: tm.tm_hour as u32,
+            minute: tm.tm_min as u32,
+        }
+    }
+}
+
+/// A project task's name: when it started, 12-hour style ("Nov 25, 5:50 PM"),
+/// with the year only when it is not `this_year` ("Dec 30, 2025, 5:41 PM").
+pub fn time_title(at: ClockTime, this_year: i32) -> String {
+    const MONTHS: [&str; 12] = [
+        "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+    ];
+    let month = MONTHS[(at.month.clamp(1, 12) - 1) as usize];
+    let year = if at.year == this_year {
+        String::new()
+    } else {
+        format!(", {}", at.year)
+    };
+    let hour = match at.hour % 12 {
+        0 => 12,
+        h => h,
+    };
+    let half = if at.hour < 12 { "AM" } else { "PM" };
+    format!("{month} {}{year}, {hour}:{:02} {half}", at.day, at.minute)
+}
+
+/// A new task's first name (P17, owner 2026-11-25): a task in a project is
+/// named by its start time, so the list reads as a diary; a chat outside a
+/// project keeps the first words of its first message.
+pub fn first_title(project: &Path, text: &str, at: ClockTime, this_year: i32) -> String {
+    if crate::task::in_chats_folder(&project.display().to_string()) {
+        title_from(text)
+    } else {
+        time_title(at, this_year)
     }
 }
 

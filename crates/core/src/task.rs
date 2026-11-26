@@ -1079,9 +1079,7 @@ impl Task {
     /// A general chat (it runs in the Chats folder): a conversation, so
     /// nobody is ever waiting on the owner. Only a task can need them.
     pub fn is_chat(&self) -> bool {
-        let chats = crate::paths::chats_dir();
-        let p = std::path::Path::new(&self.project);
-        p == chats || self.project.ends_with("mimir/chats")
+        in_chats_folder(&self.project)
     }
 
     /// Whether this reply (the last entry) asks the owner something,
@@ -1209,6 +1207,11 @@ pub const LIVE_SECS: i64 = 5 * 60;
 /// After this long with no new writes and no Claude running (seconds), a
 /// task leaves "Active now" and sits only in its project folder.
 pub const ACTIVE_SECS: i64 = 2 * 60 * 60;
+
+/// Whether `project` is the Chats folder, where general chats run (not a project).
+pub fn in_chats_folder(project: &str) -> bool {
+    std::path::Path::new(project) == crate::paths::chats_dir() || project.ends_with("mimir/chats")
+}
 
 /// Text Claude Code or the system put there, not words for a title:
 /// anything starting with `<`, or carrying a tag like `<foo>` / `</foo>`.

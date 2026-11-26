@@ -93,7 +93,12 @@ fn new_task_approve_and_finish() {
     let env = Env::new("approve");
     let mut r = env.runner("plan_approve.jsonl");
     let id = r.new_task(&env.proj(), "Make a plan\nwith details");
-    assert_eq!(r.tasks[0].task.title, "Make a plan");
+    // P17: a project task is named by its start time on the PC's clock.
+    let started = mimir_core::runner::ClockTime::at(r.tasks[0].task.created_unix);
+    assert_eq!(
+        r.tasks[0].task.title,
+        mimir_core::runner::time_title(started, started.year)
+    );
     until(&mut r, "a question", |r| status(r) == Status::NeedsYou);
     assert!(r.tasks[0].asks[0].request.words().contains("echo hi"));
     r.answer(&id, Answer::Allow);
