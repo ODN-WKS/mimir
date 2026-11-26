@@ -23,6 +23,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Text
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -168,6 +170,70 @@ fun ForgetDeletedChatsWhenLeaving(engine: io.github.odnwks.mimir.standalone.Engi
         val watch = androidx.lifecycle.LifecycleEventObserver { _, e -> if (e == androidx.lifecycle.Lifecycle.Event.ON_STOP) engine.forgetDeleted() }
         owner.lifecycle.addObserver(watch)
         onDispose { owner.lifecycle.removeObserver(watch); engine.forgetDeleted() }
+    }
+}
+
+/** What the chat's menu asks of the open chat: Find (handed over like "Talk (voice typing)"). */
+const val FIND_CHAT = "find-chat"
+const val FIND_IN_CHAT = "Find in this chat"
+
+/** Find in a chat, as in a task: the box, its close, and how many messages have the words. */
+@Composable
+fun FindBar(find: String, onFind: (String) -> Unit, hits: Int, onClose: () -> Unit) {
+    val words = find.trim()
+    Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            MessageBox(find, onFind, FIND_IN_CHAT, FIND_IN_CHAT, Modifier.weight(1f), autoFocus = true)
+            IconTarget(Glyphs.Close, "Close find", onClose)
+        }
+        if (words.isNotEmpty()) Text(
+            when (hits) { 0 -> "No message has \"$words\""; 1 -> "1 message has \"$words\""; else -> "$hits messages have \"$words\"" },
+            style = Type.Small, color = Palette.TextDim,
+        )
+    }
+}
+
+/** Whether a chat's newest lines are waiting under what is being read, and the way to them. */
+class NewLines(val unseen: Boolean, val toNewest: () -> Unit)
+
+/**
+ * A chat's list (upside down: item 0 is the newest) follows the newest line only while the person is at
+ * the bottom, as in a task; reading above it, new lines wait behind "New lines ↓". [items] changes when
+ * a line comes or goes, [writing] as the answer grows; one more of the person's [own] messages always
+ * goes to the newest. (The keyboard needs nothing: an upside-down list at its newest stays there.)
+ */
+@Composable
+fun rememberNewLines(list: LazyListState, chat: String, items: Any, writing: Int, own: Int): NewLines {
+    val reduce = LocalReduceMotion.current
+    var atBottom by remember(chat) { mutableStateOf(true) }
+    var unseen by remember(chat) { mutableStateOf(false) }
+    val ownBefore = remember(chat) { intArrayOf(own) }
+    val near = with(LocalDensity.current) { 48.dp.roundToPx() }
+    val scope = rememberCoroutineScope()
+    // Always asked, even at item 0: a line just added may not be laid out yet.
+    val toNewest: suspend () -> Unit = {
+        if (reduce) list.scrollToItem(0) else list.animateScrollToItem(0)
+        atBottom = true; unseen = false
+    }
+    LaunchedEffect(list, chat) {
+        snapshotFlow { list.isScrollInProgress }.collect { moving ->
+            if (!moving) { atBottom = list.firstVisibleItemIndex == 0 && list.firstVisibleItemScrollOffset <= near; if (atBottom) unseen = false }
+        }
+    }
+    LaunchedEffect(chat, items) {
+        val sent = own > ownBefore[0]
+        ownBefore[0] = own
+        if (followsBottom(atBottom, sent, keyboard = false)) toNewest() else unseen = true
+    }
+    LaunchedEffect(chat, writing) { if (writing > 0 && !atBottom) unseen = true }
+    return NewLines(unseen) { scope.launch { toNewest() } }
+}
+
+/** "New lines ↓", under the conversation while the newest are out of sight. */
+@Composable
+fun NewLinesButton(lines: NewLines) {
+    if (lines.unseen) Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+        QuietButton("New lines ↓", "Go to the newest lines", onClick = lines.toNewest)
     }
 }
 

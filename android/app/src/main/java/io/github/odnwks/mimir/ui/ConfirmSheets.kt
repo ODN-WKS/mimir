@@ -209,6 +209,8 @@ private fun SheetContent(sheet: Sheet, state: StationState, station: Station, na
             // The box keeps only +, the chip and Send: where it goes and voice typing are here.
             sheet.where?.let { w -> ChatMenuRow("To: $w", "Where your next message goes") { nav.openSheet(Sheet.WhereTo) } }
             sheet.talk?.let { t -> ChatMenuRow("Talk (voice typing)", "Speak, and the words go into the box") { nav.taskAsk = t; nav.closeSheet() } }
+            // A chat kept on this phone, with messages in it (the sheet counts what it sent only for those).
+            if (sheet.sentToPc >= 0 && !sheet.whisper && (sheet.canRename || !sheet.canWhisper)) ChatMenuRow(FIND_IN_CHAT) { nav.taskAsk = FIND_CHAT; nav.closeSheet() }
             if (sheet.canRename) ChatMenuRow(CHAT_RENAME) { ask(io.github.odnwks.mimir.nav.ChatAsk.Rename) }
             ChatMenuRow(CHAT_COPY) { ask(io.github.odnwks.mimir.nav.ChatAsk.CopyChat) }
             ChatMenuRow(CHAT_RULES, CHAT_RULES_ABOUT) { ask(io.github.odnwks.mimir.nav.ChatAsk.Rules) }

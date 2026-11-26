@@ -1902,6 +1902,7 @@ class Engine(
             it.copy(chat = it.chat.copy(turns = it.chat.turns + Turn(
                 false, reply, sources = sources, id = asked?.id?.let { a -> "$a.a" }.orEmpty(), at = now(), ran = "phone",
                 modelWords = "${model.name.substringBefore(',').trim()} · This phone",
+                effort = _state.value.effort.wire,
                 // Answered here after the PC was asked: this one replaces the PC's (2.2).
                 version = if (asked != null && asked.id in askedPc) 2 else 1,
             ).let(::floored)), partial = "", reading = false)
@@ -2119,6 +2120,7 @@ class Engine(
                 it.copy(chat = it.chat.copy(turns = it.chat.turns + Turn(
                     false, reply, sources = sources, id = "${asked.id}.a", at = now(), ran = "phone",
                     modelWords = "${io.github.odnwks.mimir.online.OnlineModels.serviceOf(setup).name} · $shown",
+                    effort = s.effort.wire,
                 ).let(::floored)), partial = "", reading = false)
             } else _state.update { it.copy(partial = "", reading = false) }
         } catch (e: io.github.odnwks.mimir.online.Sorry) {
@@ -2220,6 +2222,7 @@ class Engine(
             false, Thought.split(t.text).second.trim(),
             sources = t.sources.map { io.github.odnwks.mimir.online.Source(it.site, it.url, it.words, it.results, it.via) },
             id = t.id.ifEmpty { answerId }, at = t.at.takeIf { it > 0 } ?: now(), ran = t.ran ?: "pc", modelWords = t.modelWords, version = t.version, seq = t.seq, switchNote = t.switchNote,
+            effort = request.effort,
         )
         try {
             while (true) {
@@ -2228,7 +2231,7 @@ class Engine(
                     stopped = true
                     link.stopTalk(chatId, asked.id)
                     val kept = out.toString().trim()
-                    if (kept.isNotEmpty()) finish(Turn(false, kept, sources = sources, id = answerId, at = now(), ran = "pc"))
+                    if (kept.isNotEmpty()) finish(Turn(false, kept, sources = sources, id = answerId, at = now(), ran = "pc", effort = request.effort))
                     return true
                 }
                 // Once the link is back, the PC is asked how its answer stands every 2 s until it's done.

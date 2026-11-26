@@ -190,8 +190,18 @@ fun MetaLine(
     receipt: MessageReceipt? = null,
     switched: Boolean = false,
     nowMs: Long = System.currentTimeMillis(),
+) = SmallPrint(modelEffortWords(model, effort), atMs, modifier, receipt, switched, nowMs)
+
+/** [MetaLine] with the model and effort already in words. */
+@Composable
+private fun SmallPrint(
+    who: String?,
+    atMs: Long?,
+    modifier: Modifier = Modifier,
+    receipt: MessageReceipt? = null,
+    switched: Boolean = false,
+    nowMs: Long = System.currentTimeMillis(),
 ) {
-    val who = modelEffortWords(model, effort)
     val time = atMs?.let { messageTime(it, nowMs) }
     if (who == null && time == null && receipt == null) return
     Row(modifier.testTag(META_TAG), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
@@ -209,6 +219,28 @@ fun MetaLine(
         if (receipt != null) ReceiptMark(receipt)
     }
 }
+
+/**
+ * A chat answer's model and effort in words ("Qwen 3.6 · Balanced"); null when neither is known.
+ * The chat keeps "Model · This phone" or "Model · <PC name>": the place is said by the author line.
+ */
+fun chatWho(answer: io.github.odnwks.mimir.standalone.Turn, pcName: String): String? {
+    val words = answer.modelWords?.trim().orEmpty()
+    val model = when {
+        words.isEmpty() || words == pcName -> null
+        answer.ran == "paid" -> claudeModelWord(words) ?: words.substringBefore(" · ")
+        answer.ran == "pc" -> words.substringBeforeLast(" · ")
+        // This phone's model, or an online service the person set up ("Service · model": both stay).
+        else -> words.removeSuffix(" · This phone")
+    }
+    val effort = io.github.odnwks.mimir.standalone.Effort.entries.firstOrNull { it.wire == answer.effort }?.words
+    return listOfNotNull(model, effort).joinToString(" · ").ifEmpty { null }
+}
+
+/** The small print of a chat message: the time it was made, with the model and effort of [answer] (itself, or the one a message got). */
+@Composable
+fun ChatMeta(atMs: Long, answer: io.github.odnwks.mimir.standalone.Turn?, pcName: String) =
+    SmallPrint(answer?.let { chatWho(it, pcName) }, atMs.takeIf { it > 0 })
 
 /** A reply's small print, beside its Listen pill: a tap on a switched one gives the full reason. */
 @Composable

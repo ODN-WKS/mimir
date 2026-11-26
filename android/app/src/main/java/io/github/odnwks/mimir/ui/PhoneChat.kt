@@ -50,7 +50,6 @@ import io.github.odnwks.mimir.standalone.Catalog
 import io.github.odnwks.mimir.standalone.Effort
 import io.github.odnwks.mimir.standalone.Engine
 import io.github.odnwks.mimir.standalone.ModelStatus
-import io.github.odnwks.mimir.ui.theme.LocalReduceMotion
 import io.github.odnwks.mimir.ui.theme.Motion
 import io.github.odnwks.mimir.ui.theme.Palette
 import io.github.odnwks.mimir.ui.theme.Type
@@ -230,6 +229,14 @@ fun PhoneChat(
     var renaming by rememberSaveable(s.chat.id) { mutableStateOf(false) }
     var rulesOpen by rememberSaveable(s.chat.id) { mutableStateOf(false) }
     var sentOpen by rememberSaveable(s.chat.id) { mutableStateOf(false) }
+    // Find in this chat: only the messages with the words show while it's open.
+    var finding by rememberSaveable(s.chat.id) { mutableStateOf(false) }
+    var find by rememberSaveable(s.chat.id) { mutableStateOf("") }
+    val sought = find.trim().takeIf { finding && it.isNotEmpty() }
+    val found = { text: String -> sought == null || text.contains(sought, ignoreCase = true) }
+    LaunchedEffect(nav.taskAsk) {
+        if (nav.taskAsk == FIND_CHAT && nav.current == Screen.Chat) { nav.taskAsk = null; finding = true }
+    }
     Box(Modifier.fillMaxSize()) {
     Column(Modifier.fillMaxSize().background(ground).swipeForChats(LocalOpenMenu.current)) {
         // Paired with the PC answering: the privacy words say the PC, never "stays on this phone".
@@ -292,6 +299,8 @@ fun PhoneChat(
             onMore = if (!s.whisper && s.chat.turns.isNotEmpty()) ({ nav.openSheet(chatOptions(s, pcPrivate, if (onlineOn) io.github.odnwks.mimir.online.OnlineModels.answering()?.let { io.github.odnwks.mimir.online.OnlineModels.serviceOf(it).company } else null).copy(talk = io.github.odnwks.mimir.nav.TALK_MIMIR)) }) else null,
         )
         now.why?.let { why -> Text(why, style = Type.Small, color = Palette.TextDim, textAlign = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 2.dp).testTag("who-why").semantics { liveRegion = androidx.compose.ui.semantics.LiveRegionMode.Polite }) }
+        ChatLiveLine(s)
+        if (finding) FindBar(find, { find = it }, if (sought == null) 0 else s.chat.turns.count { found(it.text) } + s.chat.queued.count { found(it.text) }) { finding = false; find = "" }
         WhisperHygiene(s.whisper || pcWhisper)
         WhisperEndedNote(s.whisperEnded, engine::dismissWhisperEnded)
         EndWhisperQuestion(endAsk, onCancel = { endAsk = false; endThen = null }) { endAsk = false; engine.endWhisper(); endThen?.invoke(); endThen = null }
@@ -305,10 +314,14 @@ fun PhoneChat(
         LaunchedEffect(draft) { if (draft.isNotEmpty()) startup.skip() }
         if (showHome && !first) NeedsYouPill(needsYou, pillDismissedFor, { pillDismissedFor = it }, { nav.open(Screen.NeedsYou) })
         val list = rememberLazyListState()
-        val reduce = LocalReduceMotion.current
         val focus = LocalFocusManager.current
-        val count = s.chat.turns.size + s.chat.queued.size + (if (s.writing) 1 else 0) + (if (waiting || getting) 1 else 0)
-        LaunchedEffect(count) { if (count > 0) { if (reduce) list.scrollToItem(0) else list.animateScrollToItem(0) } }
+        // Every line that can come in under the messages, so a new one is followed or waits behind "New lines".
+        val lines = rememberNewLines(
+            list, s.chat.id,
+            listOf(s.chat.turns.size, s.chat.queued.size, s.writing, waiting, getting, s.askPlace, s.askSearch != null, s.lookupFailed),
+            if (s.writing) s.partial.length else 0,
+            s.chat.turns.count { it.user } + s.chat.queued.size,
+        )
         ChatTextSize {
         if (showHome) HomeEmpty(first, answerer, java.time.LocalTime.now().hour, Modifier.weight(1f), online = io.github.odnwks.mimir.online.OnlineModels.answering()?.let(io.github.odnwks.mimir.online.OnlineModels::serviceOf))
         else LazyColumn(
@@ -322,11 +335,12 @@ fun PhoneChat(
             // A message no one can answer now: said plainly, with the one thing to do.
             val stoppedHere = s.stoppedChat == s.chat.id
             // Messages waiting for the PC sit at the bottom, newest last: dim, with how they go and a way to take them back.
-            items(s.chat.queued.reversed(), key = { "queued-${it.id}" }) { q ->
+            items(s.chat.queued.reversed().filter { found(it.text) }, key = { "queued-${it.id}" }) { q ->
                 OwnMessage(
                     q.text.ifBlank { if (q.voice != null) "Voice message" else (q.files.map { it.name } + listOfNotNull(q.pictures.size.takeIf { it > 0 }?.let { n -> if (n == 1) "A picture" else "$n pictures" })).joinToString() },
                     Modifier.animateItem(fadeInSpec = motionSpec(Motion.NEW_ITEM_MS), placementSpec = motionSpec(Motion.NEW_ITEM_MS), fadeOutSpec = motionSpec(Motion.NEW_ITEM_MS)),
                     bubble = Palette.BlueBubble.copy(alpha = 0.55f), dashed = true, id = "queued-${q.id}",
+                    meta = { ChatMeta(q.at, null, pcName) },
                     under = {
                         Text(QUEUED_WORDS, style = Type.Small, color = Palette.TextDim, modifier = Modifier.semantics { liveRegion = androidx.compose.ui.semantics.LiveRegionMode.Polite })
                         IconTarget(Glyphs.Close, "Cancel this message: it won't be sent", { engine.cancelQueued(q.id) }, tint = Palette.TextDim)
@@ -338,10 +352,7 @@ fun PhoneChat(
             if (s.web) item(key = "tor") { TorLines(s, engine) }
             if (s.writing) item(key = "writing") {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Reply(
-                        writingWords(s),
-                        dim = s.loading || s.thinking || s.partial.isEmpty(), openSources = !s.whisper, buttons = false,
-                    )
+                    WritingReply(s, openSources = !s.whisper)
                     // The link dropped mid-answer: the PC finishes anyway; or this phone answers now.
                     if (s.onPc && s.pcWaiting) {
                         // With no words yet the reply line says it; with some, it sits under them. Said once.
@@ -372,11 +383,12 @@ fun PhoneChat(
             if (!s.writing && stoppedHere && s.chat.turns.lastOrNull()?.user == false) item(key = "stopped") {
                 Text(YOU_STOPPED, style = Type.Small, color = Palette.TextDim)
             }
-            items(s.chat.turns.withIndex().reversed().toList(), key = { "${s.chat.id}-${it.index}" }) { (i, turn) ->
+            items(s.chat.turns.withIndex().reversed().filter { found(it.value.text) }, key = { "${s.chat.id}-${it.index}" }) { (i, turn) ->
                 val m = Modifier.animateItem(fadeInSpec = motionSpec(Motion.NEW_ITEM_MS), placementSpec = motionSpec(Motion.NEW_ITEM_MS), fadeOutSpec = motionSpec(Motion.NEW_ITEM_MS))
                 if (turn.user) OwnMessage(
                     turn.text.ifBlank { (turn.files.map { it.name } + listOfNotNull(turn.pictures.size.takeIf { it > 0 }?.let { if (it == 1) "A picture" else "$it pictures" })).joinToString() },
                     m, bubble = if (s.whisper) WhisperTint.Bubble else Palette.BlueBubble,
+                    meta = { ChatMeta(turn.at, answerTo(s.chat.turns, i), pcName) },
                     id = turn.id.ifEmpty { "mine-${turn.text.hashCode()}" },
                     onEdit = if (!s.writing && turn.text.isNotBlank() && engine.canEdit(s.chat, i) && engine.canReplyNow()) ({ words -> engine.editMessage(turn.id, words)?.let { edited = it } }) else null,
                     under = readLinkFor(s, engine, turn, i).let { read ->
@@ -400,6 +412,7 @@ fun PhoneChat(
                         turn.text, dim = false, sources = turn.sources, note = turn.switchNote, lookUp = lookUp.takeIf { i == s.chat.turns.lastIndex }, openSources = !s.whisper,
                         author = if (s.whisper) null else answerAuthor(turn, pcName),
                         onTryAgain = if (s.writing || s.whisper || i != s.chat.turns.lastIndex || s.lookupFailed) null else before?.let { { engine.tryAgain() } },
+                        meta = { ChatMeta(turn.at, turn, pcName) },
                     )
                 }
             }
@@ -411,6 +424,7 @@ fun PhoneChat(
             }
         }
 }
+        if (!showHome) NewLinesButton(lines)
         s.note?.let { note ->
             Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(note, style = Type.Small, color = Palette.TextSoft, modifier = Modifier.weight(1f))

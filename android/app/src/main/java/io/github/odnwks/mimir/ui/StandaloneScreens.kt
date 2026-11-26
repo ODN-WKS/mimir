@@ -38,6 +38,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
@@ -77,6 +78,12 @@ fun StandaloneScreen(engine: Engine, nav: Navigator) {
     var needsMimir by androidx.compose.runtime.remember { mutableStateOf(false) }
     val ground by androidx.compose.animation.animateColorAsState(if (s.whisper) Palette.GroundWhisper else Palette.Ground, label = "ground")
     var endThen by androidx.compose.runtime.remember { mutableStateOf<(() -> Unit)?>(null) }
+    var finding by rememberSaveable(s.chat.id) { mutableStateOf(false) }
+    var find by rememberSaveable(s.chat.id) { mutableStateOf("") }
+    val words = find.trim().takeIf { finding && it.isNotEmpty() }
+    androidx.compose.runtime.LaunchedEffect(nav.taskAsk) {
+        if (nav.taskAsk == FIND_CHAT && nav.current == Screen.Standalone) { nav.taskAsk = null; finding = true }
+    }
     val clip = androidx.compose.ui.platform.LocalClipboardManager.current
     Box(Modifier.fillMaxSize()) {
     Column(Modifier.fillMaxSize().background(ground).swipeForChats(LocalOpenMenu.current)) {
@@ -147,6 +154,8 @@ fun StandaloneScreen(engine: Engine, nav: Navigator) {
                 )
             },
         )
+        ChatLiveLine(s)
+        if (finding) FindBar(find, { find = it }, s.chat.turns.count { words != null && it.text.contains(words, ignoreCase = true) }) { finding = false; find = "" }
         WhisperHygiene(s.whisper)
         WhisperEndedNote(s.whisperEnded, engine::dismissWhisperEnded)
         EndWhisperQuestion(endAsk, onCancel = { endAsk = false; endThen = null }) { endAsk = false; engine.endWhisper(); endThen?.invoke(); endThen = null }
@@ -199,6 +208,7 @@ fun StandaloneScreen(engine: Engine, nav: Navigator) {
                     lookupAgain = engine::lookupAgain,
                     answerWithoutLookup = engine::answerWithoutLookup,
                     askAgain = { engine.tryAgain() },
+                    words = words,
                 )
             }
         }
@@ -242,15 +252,16 @@ private fun Conversation(
     answerWithoutLookup: () -> Unit = {},
     /** "Try again" under an answer: its question is sent again. */
     askAgain: (io.github.odnwks.mimir.standalone.Turn) -> Unit = {},
+    /** Find: only the messages with these words show (null: all). */
+    words: String? = null,
 ) {
     val list = rememberLazyListState()
-    val reduce = LocalReduceMotion.current
     val focus = LocalFocusManager.current
-    val count = s.chat.turns.size + if (s.writing) 1 else 0
-    LaunchedEffect(count) { if (count > 0) { if (reduce) list.scrollToItem(0) else list.animateScrollToItem(0) } }
+    val lines = rememberNewLines(list, s.chat.id, s.chat.turns.size to s.writing, if (s.writing) s.partial.length else 0, s.chat.turns.count { it.user })
+    Column(modifier) {
     ChatTextSize {
 LazyColumn(
-        modifier.fillMaxWidth().pinchToZoomText(LocalAppSize.current).pointerInput(Unit) { detectTapGestures(onTap = { focus.clearFocus() }) },
+        Modifier.weight(1f).fillMaxWidth().pinchToZoomText(LocalAppSize.current).pointerInput(Unit) { detectTapGestures(onTap = { focus.clearFocus() }) },
         state = list,
         reverseLayout = true,
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 16.dp),
@@ -261,19 +272,7 @@ LazyColumn(
             Text("Keep this screen open while it writes. In the background the phone slows it right down.", style = Type.Small, color = Palette.TextDim)
         }
         if (s.web) item(key = "tor") { tor() }
-        if (s.writing) item(key = "writing") {
-            Reply(
-                when {
-                    s.looking != null -> s.looking!!
-                    s.loading -> "Getting ready…"
-                    s.thinking -> "Thinking it through…"
-                    // Before the first word it is reading, not thinking (only real thinking says so).
-                    s.partial.isEmpty() -> if (s.readingFound) "Reading it…" else "Reading your message…"
-                    else -> s.partial
-                },
-                dim = s.loading || s.thinking || s.partial.isEmpty(), buttons = false,
-            )
-        }
+        if (s.writing) item(key = "writing") { WritingReply(s) }
         // The last message has no answer (the app closed mid-reply, or it failed): ask again.
         if (s.askPlace && !s.writing) item(key = "place") { placeQuestion() }
         if (s.askSearch != null && !s.writing) item(key = "search") { searchQuestion(s.askSearch) }
@@ -293,14 +292,18 @@ LazyColumn(
         if (!s.writing) s.speed?.let { speed ->
             item(key = "speed") { Text(speed, style = Type.Small, color = Palette.TextDim) }
         }
-        items(s.chat.turns.withIndex().reversed().toList(), key = { "${s.chat.id}-${it.index}" }) { (i, turn) ->
+        items(s.chat.turns.withIndex().reversed().filter { words == null || it.value.text.contains(words, ignoreCase = true) }, key = { "${s.chat.id}-${it.index}" }) { (i, turn) ->
             val m = Modifier.animateItem(fadeInSpec = motionSpec(Motion.NEW_ITEM_MS), placementSpec = motionSpec(Motion.NEW_ITEM_MS), fadeOutSpec = motionSpec(Motion.NEW_ITEM_MS))
-            if (turn.user) OwnMessage(turn.text, m, under = readLink?.invoke(turn, i)) else Box(m) {
+            if (turn.user) OwnMessage(
+                turn.text, m, id = turn.id.ifEmpty { "mine-${turn.text.hashCode()}" }, under = readLink?.invoke(turn, i),
+                meta = { ChatMeta(turn.at, answerTo(s.chat.turns, i), "Your PC") },
+            ) else Box(m) {
                 val before = s.chat.turns.getOrNull(i - 1)?.takeIf { it.user }
                 Reply(
                     turn.text, dim = false, sources = turn.sources, note = turn.switchNote, lookUp = lookUp.takeIf { i == s.chat.turns.lastIndex }, openSources = !s.whisper,
                     author = if (s.whisper) null else answerAuthor(turn, "Your PC"),
                     onTryAgain = if (s.whisper || i != s.chat.turns.lastIndex || s.lookupFailed) null else before?.let { q -> { askAgain(q) } },
+                    meta = { ChatMeta(turn.at, turn, "Your PC") },
                 )
             }
         }
@@ -318,6 +321,48 @@ LazyColumn(
         }
     }
 }
+    NewLinesButton(lines)
+    }
+}
+
+/** The answer a chat's message got (the one right after it), whose model and effort it went to. */
+internal fun answerTo(turns: List<io.github.odnwks.mimir.standalone.Turn>, i: Int) = turns.getOrNull(i + 1)?.takeIf { !it.user && it.task == null }
+
+/**
+ * The reply being written: three dots until its words begin (as in a task), then the words. What it is
+ * doing is said by the live line at the top ([ChatLiveLine]).
+ */
+@Composable
+internal fun WritingReply(s: LocalState, openSources: Boolean = true) {
+    when {
+        s.partial.isNotEmpty() -> Reply(s.partial, dim = s.loading || s.thinking, openSources = openSources, buttons = false)
+        // The PC dropped before its first word: the one true line, where the answer will be.
+        s.onPc && s.pcWaiting -> Reply(PC_AWAY_WORDS, dim = true, openSources = openSources, buttons = false)
+        else -> ThinkingBubble()
+    }
+}
+
+/** When the answer being written was first seen, so its time counts on through a turned phone or another screen. */
+private object WritingSince {
+    private var of = ""
+    private var secs = 0L
+    fun of(message: String): Long {
+        if (of != message) { of = message; secs = System.currentTimeMillis() / 1000 }
+        return secs
+    }
+}
+
+/** The task chat's live line, for a chat: what it is doing now and how long it has been at it. */
+@Composable
+internal fun ChatLiveLine(s: LocalState) {
+    // A PC that dropped says so where the answer will be: said once.
+    if (!s.writing || (s.onPc && s.pcWaiting)) return
+    val asked = s.chat.turns.lastOrNull { it.user }
+    val doing = if (s.partial.isNotEmpty() && s.looking == null && !s.loading && !s.thinking) "Writing…" else writingWords(s)
+    val since = WritingSince.of("${s.chat.id}/${asked?.id}/${asked?.at}")
+    Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp).testTag("chat-live")) {
+        LiveSignLine(io.github.odnwks.mimir.data.LiveSign(doing = doing, turnUnix = since))
+    }
 }
 
 /** The model's words, as they are written: plain text, and under a finished answer Listen, Copy and Try again. */
@@ -336,12 +381,14 @@ internal fun Reply(
     buttons: Boolean = true,
     /** Who wrote it: "This phone · Qwen 3.5", "Your PC · …", "Claude · …" (null: not known). */
     author: String? = null,
+    /** The small print beside the Listen pill: the model, effort and time. */
+    meta: (@Composable () -> Unit)? = null,
 ) {
     // Mímir's replies are read by the phone's own voice: nothing leaves the phone.
     val id = "mimir-${text.hashCode()}"
     // Listen and Copy get the words without the Markdown marks.
     val plain = androidx.compose.runtime.remember(text) { markdownPlain(text) }
-    Answer(plain, id, dim = dim, sources = sources, openSources = openSources, lookUp = lookUp, onTryAgain = onTryAgain, note = note, buttons = buttons, author = author) {
+    Answer(plain, id, dim = dim, sources = sources, openSources = openSources, lookUp = lookUp, onTryAgain = onTryAgain, note = note, buttons = buttons, author = author, meta = meta) {
         MarkdownText(text, style = ChatLook.MessageText, color = if (dim) Palette.TextDim else Palette.Text, linksOpen = openSources)
     }
 }

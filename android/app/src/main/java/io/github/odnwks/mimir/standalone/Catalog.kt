@@ -245,6 +245,8 @@ data class Turn(
     val voice: String? = null,
     /** Under an answer a different model than the usual one wrote: one dim line saying who and why. */
     val switchNote: String? = null,
+    /** How hard an answer was worked on ("low", "medium" or "high"; null: not known). Kept on this phone only. */
+    val effort: String? = null,
 ) {
     /** As the PC keeps it: pictures and files reduced to words, as the phone's model reads them. */
     fun wire(pcSees: Boolean = false, withPictures: Boolean = false, withFiles: Boolean = false) = io.github.odnwks.mimir.link.LChatTurn(
