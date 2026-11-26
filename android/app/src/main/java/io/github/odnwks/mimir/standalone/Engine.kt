@@ -1119,38 +1119,22 @@ class Engine(
     /** "Look it up" on an answer: the next answer searches with the owner's message first. */
     private val forcedSearch = java.util.concurrent.atomic.AtomicReference<io.github.odnwks.mimir.online.Router.Need.Search?>(null)
 
-    /** The one-time warning about searching and reading the pages found, accepted: the question is searched and its top pages read. */
+    /** The one-time warning about searching DuckDuckGo, accepted: the question is searched. */
     fun acceptSearch() {
         if (_state.value.askSearch == null) return
-        io.github.odnwks.mimir.online.Online.let { o -> o.set(o.settings.value.copy(searchAccepted = true, pagesAccepted = true)) }
+        io.github.odnwks.mimir.online.Online.let { o -> o.set(o.settings.value.copy(searchAccepted = true)) }
         askedFor.set(null)
-        askedPages.set(false)
         _state.update { it.copy(askSearch = null) }
         retry()
     }
 
-    /**
-     * "Not now" to the warning: Mímir answers without searching, or from Wikipedia alone, or (when
-     * the warning came after the results, only for reading the pages) from the results alone, as
-     * before. Asked again next time.
-     */
+    /** "Not now" to the warning: Mímir answers without searching, or from Wikipedia alone (asked again next time). */
     fun declineSearch() {
         if (_state.value.askSearch == null) return
-        val pagesOnly = askedPages.getAndSet(false)
-        when {
-            askedFor.getAndSet(null) is io.github.odnwks.mimir.online.Router.Need.Encyclopedia -> wikipediaOnly.set(true)
-            pagesOnly -> noPages.set(true)
-            else -> skipLookup.set(true)
-        }
+        if (askedFor.getAndSet(null) is io.github.odnwks.mimir.online.Router.Need.Encyclopedia) wikipediaOnly.set(true) else skipLookup.set(true)
         _state.update { it.copy(askSearch = null) }
         retry()
     }
-
-    /** The warning showing came after a search's results, before its pages are read (the search words had already gone). */
-    private val askedPages = AtomicBoolean(false)
-
-    /** "Not now" to reading the pages: that answer uses the search results alone, as before. */
-    private val noPages = AtomicBoolean(false)
 
     /**
      * "Look it up" (an answer's long-press menu, normal mode): that answer is replaced by one
@@ -1361,19 +1345,8 @@ class Engine(
         val settings = io.github.odnwks.mimir.online.Online.settings.value
         if (!settings.search) return noLookup
         val mode = mode()
-        val declined = noPages.getAndSet(false)
-        /** The one-time warning shows first; the answer waits for it. */
-        fun ask(afterResults: Boolean): Pair<String?, List<io.github.odnwks.mimir.online.Source>>? {
-            if (forced) forcedSearch.set(need)
-            askedFor.set(need)
-            askedPages.set(afterResults)
-            _state.update { it.copy(askSearch = need.words, looking = null) }
-            return null
-        }
-        /** Whether these results' top pages would be read (a normal chat, Data Saver off, "Not now" not just said). */
-        fun readable(results: List<io.github.odnwks.mimir.online.Search.Result>) =
-            mode == io.github.odnwks.mimir.online.ChatMode.Normal && !declined && !io.github.odnwks.mimir.online.Online.dataSaver() &&
-                io.github.odnwks.mimir.online.Fuse.pick(results, pagesToRead).isNotEmpty()
+        // A normal chat reads the top pages found (owner, 2026-11-25: no extra warning, as little sent as possible).
+        val readPages = mode == io.github.odnwks.mimir.online.ChatMode.Normal
         // PC-first (PHW-04, PHE-14): ask the PC's SearXNG, wait up to 3 s, then fall back.
         _state.update { it.copy(looking = "Searching: ${need.words}…") }
         io.github.odnwks.mimir.online.Search.searchViaPc(need.words, mode)?.let { results ->
@@ -1381,24 +1354,24 @@ class Engine(
             // PHW-07: source label shows "SearXNG" (what Settings shows), not the underlying engine names.
             val via = "your PC's search"
             if (results.isEmpty()) return "\n\n[The app searched the web for \"${need.words}\" through the owner's PC and found nothing. Say so.]" to emptyList()
-            // Reading the pages is asked about once, on the PC's results too.
-            if (!settings.pagesAccepted && readable(results)) return ask(afterResults = true)
-            if (settings.pagesAccepted && mode == io.github.odnwks.mimir.online.ChatMode.Normal && !declined) {
-                evidence(need.words, results, "a web search", via)?.let { return it }
-            }
+            if (readPages) evidence(need.words, results, "a web search", via)?.let { return it }
             return Prompt.fetched(io.github.odnwks.mimir.online.Search.describe(need.words, results, "the owner's PC search"), "a web search", clock()) to
                 results.distinctBy { it.site }.take(3).map { io.github.odnwks.mimir.online.Source(it.site, it.url, need.words, via = via) }
         }
         _state.update { it.copy(looking = null) }
-        if (!settings.searchAccepted) return ask(afterResults = false)
+        if (!settings.searchAccepted) {
+            if (forced) forcedSearch.set(need)
+            askedFor.set(need)
+            _state.update { it.copy(askSearch = need.words, looking = null) }
+            return null
+        }
         val words = need.words
         _state.update { it.copy(looking = "Searching: $words…") }
         return try {
             val results = io.github.odnwks.mimir.online.Search.search(words, mode)
             when {
                 results.isEmpty() -> "\n\n[The app searched the web for \"$words\" and found nothing. Say so.]" to emptyList()
-                !settings.pagesAccepted && readable(results) -> ask(afterResults = true)
-                else -> (if (settings.pagesAccepted && mode == io.github.odnwks.mimir.online.ChatMode.Normal && !declined) evidence(words, results, "DuckDuckGo", "") else null)
+                else -> (if (readPages) evidence(words, results, "DuckDuckGo", "") else null)
                     ?: (Prompt.fetched(io.github.odnwks.mimir.online.Search.describe(words, results), "DuckDuckGo", clock()) to
                         results.distinctBy { it.site }.take(3).map { io.github.odnwks.mimir.online.Source(it.site, it.url, words) })
             }

@@ -76,8 +76,9 @@ class ReaderTest {
         assertNull("the refused page", reads[2].text)
         assertTrue(reads[3].text!!.contains("The kettle boils water in ninety seconds."))
         // Each page was asked as a cut read of at most 400 KB, as a page (never as data).
-        for (r in asked) {
-            assertTrue(r.cut)
+        // Only this test's four pages (a lookup thread left over from an earlier test class may still call the transport).
+        for (r in asked.filter { it.url.host in picked.map { p -> p.site } }) {
+            assertTrue(r.url.toString(), r.cut)
             assertEquals(Reader.PAGE_BYTES, r.maxBytes)
             assertEquals(400_000, r.maxBytes)
             assertTrue(r.timeoutMs <= Reader.PAGE_MS)

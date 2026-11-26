@@ -11,9 +11,9 @@ import java.net.URLEncoder
  */
 object Search {
     const val SITE = "duckduckgo.com"
-    /** The owner accepted this once (the one-time warning): searching, and reading the top pages found. */
-    const val WARNING = "$AI_NAME_FOR_WEB searches the web and reads the top pages it finds for you. Your search words go to your PC's search " +
-        "or to DuckDuckGo, and each page it reads sees a visit from this phone. A site may sometimes block it. Use it anyway?"
+    /** The owner accepted this once (the one-time warning). */
+    const val WARNING = "$AI_NAME_FOR_WEB searches the web and reads an online encyclopedia for you. Only the few words needed are sent, " +
+        "and a site may sometimes block it. Use it anyway?"
 
     /** How many results the phone asks the PC's search for (an older PC gives at most 10). */
     const val PC_MAX = 20

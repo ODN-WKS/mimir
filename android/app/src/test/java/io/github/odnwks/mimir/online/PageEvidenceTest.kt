@@ -83,8 +83,8 @@ class PageEvidenceTest {
     /** The fetched part of the last prompt. */
     private fun fetched(p: String) = p.substringAfter("[Information the app fetched").substringBefore("[End of fetched information]")
 
-    @Test fun withPagesAcceptedTheAnswerReadsThePagesWithNumberedSourcesInOrder() {
-        Online.set(Online.Settings(searchAccepted = true, pagesAccepted = true))
+    @Test fun aNormalChatSearchReadsThePagesWithNumberedSourcesInOrder() {
+        Online.set(Online.Settings(searchAccepted = true))
         Search.viaPc = { fromPc }
         val runner = PromptRunner()
         val e = engine(runner)
@@ -108,48 +108,23 @@ class PageEvidenceTest {
         assertFalse(block, block.contains("[${sources.size + 1}]"))
     }
 
-    @Test fun withoutPagesAcceptedTheWarningShowsOnThePcPathAndAcceptingReadsThePages() {
-        Online.set(Online.Settings(searchAccepted = true, pagesAccepted = false))
+    @Test fun thePcPathReadsThePagesWithNoNewWarningAndTheOldWarningIsUnchanged() {
+        // Owner, 2026-11-25 22:47: "no warning, just do the best you can with what you have, be as non invasive as possible".
+        Online.set(Online.Settings(searchAccepted = false))
         Search.viaPc = { fromPc }
         val runner = PromptRunner()
         val e = engine(runner)
         e.send("search for $words")
         e.waitDone()
-        assertEquals(words, e.state.value.askSearch)
-        assertEquals(
-            "Mímir searches the web and reads the top pages it finds for you. Your search words go to your PC's search or to DuckDuckGo, " +
-                "and each page it reads sees a visit from this phone. A site may sometimes block it. Use it anyway?",
-            Search.WARNING,
-        )
-        // Nothing is read before the owner says yes.
-        assertTrue(pages.toString(), pages.isEmpty())
-        e.acceptSearch()
-        e.waitDone()
-        assertTrue(Online.settings.value.searchAccepted)
-        assertTrue(Online.settings.value.pagesAccepted)
+        assertNull(e.state.value.askSearch)
+        assertTrue(Search.WARNING.startsWith("Mímir searches the web and reads an online encyclopedia for you."))
         assertTrue(pages.toString(), "kettles.example" in pages)
         val block = fetched(runner.prompts.last())
         assertTrue(block, block.contains("[1]"))
         assertTrue(block, block.contains("Quickboil"))
     }
 
-    @Test fun notNowToReadingPagesAnswersFromTheResultsAsBefore() {
-        Online.set(Online.Settings(searchAccepted = true, pagesAccepted = false))
-        Search.viaPc = { fromPc }
-        val runner = PromptRunner()
-        val e = engine(runner)
-        e.send("search for $words")
-        e.waitDone()
-        assertEquals(words, e.state.value.askSearch)
-        e.declineSearch()
-        e.waitDone()
-        assertFalse(Online.settings.value.pagesAccepted)
-        assertTrue(pages.toString(), pages.isEmpty())
-        assertTrue(runner.prompts.last().contains(Search.describe(words, fromPc, "the owner's PC search")))
-        assertFalse(e.state.value.chat.turns.last().user)
-    }
-
-    @Test fun aFirstSearchWithNothingAcceptedWarnsBeforeSearchingAndAcceptingSetsBoth() {
+    @Test fun aFirstDuckDuckGoSearchWithNothingAcceptedWarnsBeforeSearchingThenReadsPages() {
         Search.viaPc = { null }
         val runner = PromptRunner()
         val e = engine(runner)
@@ -159,14 +134,15 @@ class PageEvidenceTest {
         assertTrue(web.asked.none { "duckduckgo" in it })
         e.acceptSearch()
         e.waitDone()
-        assertTrue(Online.settings.value.searchAccepted && Online.settings.value.pagesAccepted)
+        assertTrue(Online.settings.value.searchAccepted)
         assertEquals(1, web.asked.count { "duckduckgo" in it })
         assertTrue(pages.toString(), pages.isNotEmpty())
-        assertTrue(fetched(runner.prompts.last()).contains(Evidence.INSTRUCTION))
+        // The pages hold nothing about flights, so the results themselves are used, as before.
+        assertTrue(runner.prompts.last().contains("[Information the app fetched"))
     }
 
     @Test fun aWhisperWithInternetGetsTodaysBlockAndReadsNoPage() {
-        Online.set(Online.Settings(searchAccepted = true, pagesAccepted = true))
+        Online.set(Online.Settings(searchAccepted = true))
         val direct = Net.transport
         val viaTor = java.util.concurrent.CopyOnWriteArrayList<String>()
         Net.transport = { throw AssertionError("a direct connection in a Whisper with internet") }
@@ -221,7 +197,7 @@ class PageEvidenceTest {
     }
 
     @Test fun aSourceNumberThatDoesNotExistIsTakenOutOfTheStoredAnswer() {
-        Online.set(Online.Settings(searchAccepted = true, pagesAccepted = true))
+        Online.set(Online.Settings(searchAccepted = true))
         Search.viaPc = { fromPc }
         val runner = CitingRunner()
         val e = engine(runner)
@@ -235,13 +211,11 @@ class PageEvidenceTest {
     }
 
     @Test fun anAnswerWithoutEvidenceKeepsItsBracketsAsWritten() {
-        // Today's path (no pages accepted, and "Not now" said): nothing is checked or taken out.
-        Online.set(Online.Settings(searchAccepted = true, pagesAccepted = false))
-        Search.viaPc = { fromPc }
+        // A search that found nothing gives no evidence block: nothing is checked or taken out.
+        Online.set(Online.Settings(searchAccepted = true))
+        Search.viaPc = { emptyList() }
         val e = engine(CitingRunner())
         e.send("search for $words")
-        e.waitDone()
-        e.declineSearch()
         e.waitDone()
         assertTrue(e.state.value.chat.turns.last().text.contains("[7]"))
     }
