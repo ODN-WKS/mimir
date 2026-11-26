@@ -80,13 +80,13 @@ class R7ChatTest {
 
     // ---- 1. The messages ----
 
-    @Test fun anAnswerIsInItsBubbleWithListenCopyAndShareAndNoName() {
+    @Test fun anAnswerIsInItsBubbleWithListenUnderItAndNoName() {
         startOpen()
         compose.onNodeWithText(answer).assertIsDisplayed()
-        // P13 (owner-approved look): Listen, Copy and Share under the answer; Try again stays in the long press.
+        // P15 (the owner's pick): only Listen under the answer; Copy, Share and Try again stay in the long press.
         compose.onNodeWithText(LISTEN).assertIsDisplayed()
-        compose.onNodeWithText(COPY).assertIsDisplayed()
-        compose.onNodeWithText(SHARE).assertIsDisplayed()
+        compose.onNodeWithText(COPY).assertDoesNotExist()
+        compose.onNodeWithText(SHARE).assertDoesNotExist()
         compose.onNodeWithText(TRY_AGAIN).assertDoesNotExist()
         compose.onNodeWithText("Hold an answer for Listen, Copy and Share").assertDoesNotExist()
         // No "You" above the owner's bubble, no "Mímir" above the answer, no "Your PC"/phone mark under it.

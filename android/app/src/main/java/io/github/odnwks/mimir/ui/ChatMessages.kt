@@ -73,10 +73,13 @@ object ChatLook {
     /** An answer's bubble: the owner's mirrored, its small corner bottom left. */
     val replyShape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp, bottomEnd = 20.dp, bottomStart = 6.dp)
     val ReplyMaxWidth = 358.dp
+    /** The small Listen pill under a reply (P15, mock-up 6 option A): 26 dp high; its touch area is still 48 dp. */
+    val PillHeight = 26.dp
+    val pillShape = RoundedCornerShape(12.dp)
     val MessageText = TextStyle(fontSize = 15.5.sp, lineHeight = 23.25.sp)
 }
 
-/** The words on the quiet buttons under an answer, and in the long-press menu. */
+/** The words on the Listen pill under an answer, and in the long-press menu. */
 const val LISTEN = "Listen"
 const val STOP_LISTENING = "Stop"
 const val COPY = "Copy"
@@ -192,9 +195,9 @@ fun EditBox(value: String, onChange: (String) -> Unit, bubble: Color, onCancel: 
 
 /**
  * An answer: its words in a grey bubble on the left, the mirror of the owner's blue one (P13), then,
- * once it is written, the "Looked up" tag when the internet was used and the quiet buttons Listen,
- * Copy and Share (Try again and the rest stay in the long-press menu).
- * [dim]: still being written (in its bubble, no buttons). [pc]: Listen plays the PC's voice instead.
+ * once it is written, the "Looked up" tag when the internet was used and one short row: a small Listen
+ * pill, then the small print (P15). Copy, Share, Try again and the rest are in the long-press menu.
+ * [dim]: still being written (in its bubble, no pill). [pc]: Listen plays the PC's voice instead.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -210,17 +213,17 @@ fun Answer(
     pc: (() -> Unit)? = null,
     /** Who answered and why, when it was not the usual model: one dim line (null: none). */
     note: String? = null,
-    /** False while the answer is still being written: no Listen or Copy under half an answer (R20). */
+    /** False while the answer is still being written: no Listen under half an answer (R20). */
     buttons: Boolean = true,
     /** Who wrote it, one dim line under the answer (null: not shown). */
     author: String? = null,
-    /** The small print at the end of the Listen, Copy, Share row (P11): the model, effort and time. */
+    /** The small print beside the Listen pill (P11, P15): the model, effort and time. */
     meta: (@Composable () -> Unit)? = null,
     /** A line under that row: why the model changed (P11), when it did. */
     metaUnder: (@Composable () -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(5.dp)) {
         MessageMenuHost(plain = plain, id = id, lookUp = lookUp.takeIf { !dim }, pc = pc, enabled = !dim && buttons, onTryAgain = onTryAgain) { onHold ->
             ChatText {
                 Column(
@@ -234,17 +237,21 @@ fun Answer(
             }
         }
         if (!dim && buttons) {
-            if (!author.isNullOrBlank()) Text(author, style = Type.Small, color = Palette.TextDim, modifier = Modifier.testTag("answer-author"))
-            if (sources.isNotEmpty()) SourcesLine(sources, openSources)
-            if (!note.isNullOrBlank()) Text(note, style = Type.Small, color = Palette.TextDim, modifier = Modifier.testTag("switch-note"))
-            // Listen, Copy and Share in a row under the bubble (the owner's approved look); the long-press
-            // menu keeps them too, with Select text, Try again and Look it up.
-            // The switch line sits snug under the row: the buttons' 48 dp touch room already spaces it.
-            Column {
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), itemVerticalAlignment = Alignment.CenterVertically) {
+            // Who wrote it, the sources and a switch note keep their 8 dp from the bubble and from each other.
+            if (!author.isNullOrBlank() || sources.isNotEmpty() || !note.isNullOrBlank()) Column(Modifier.padding(top = 3.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (!author.isNullOrBlank()) Text(author, style = Type.Small, color = Palette.TextDim, modifier = Modifier.testTag("answer-author"))
+                if (sources.isNotEmpty()) SourcesLine(sources, openSources)
+                if (!note.isNullOrBlank()) Text(note, style = Type.Small, color = Palette.TextDim, modifier = Modifier.testTag("switch-note"))
+            }
+            // One short row, snug under the bubble (P15, the owner's pick): the Listen pill, then the model,
+            // effort and time. With a narrow screen or large text the small print goes under the pill, whole.
+            // Copy and Share are in the long-press menu only, with Select text, Try again and Look it up.
+            Column(Modifier.padding(start = 2.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(3.dp),
+                    itemVerticalAlignment = Alignment.CenterVertically,
+                ) {
                     ListenButton(id, plain, pc)
-                    CopyButton(plain)
-                    ShareButton(plain)
                     meta?.invoke()
                 }
                 metaUnder?.invoke()
@@ -275,29 +282,35 @@ fun QuietButton(text: String, description: String = text, icon: androidx.compose
     }
 }
 
-/** "Listen" with a small play mark (and "Stop" while it reads); the first read may wait for the voice to load, and says so. */
+/** The test tag on the Listen pill under a finished answer. */
+const val LISTEN_PILL_TAG = "listen-pill"
+
+/**
+ * The small "Listen" pill with a play mark ("Stop" while it reads): 26 dp high in the row, with the full
+ * 48 dp to touch around it. The first read may wait for the voice to load, and says so.
+ */
 @Composable
 fun ListenButton(id: String, plain: String, pc: (() -> Unit)? = null) {
     val voice = rememberReadAloud()
     val getting by voice.gettingReady.collectAsStateWithLifecycle()
     val on = readingNow(voice, id)
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        QuietButton(
-            if (on) STOP_LISTENING else LISTEN, if (on) "Stop reading" else "Read aloud",
-            if (on) Glyphs.Stop else Glyphs.Play,
-            { tapRead(voice, id, plain, pc) },
-        )
+        Row(
+            // No 48 dp of layout here (that made the row tall): a small clickable still gets its 48 dp touch area.
+            Modifier.testTag(LISTEN_PILL_TAG).heightIn(min = ChatLook.PillHeight).clip(ChatLook.pillShape)
+                .clickable(role = Role.Button) { tapRead(voice, id, plain, pc) }
+                .semantics { contentDescription = if (on) "Stop reading" else "Read aloud" }
+                .border(1.dp, ChatLook.ButtonBorder, ChatLook.pillShape).padding(horizontal = 10.dp),
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp),
+        ) {
+            androidx.compose.material3.Icon(if (on) Glyphs.Stop else Glyphs.Play, null, tint = Palette.TextSoft, modifier = Modifier.size(11.dp))
+            Text(if (on) STOP_LISTENING else LISTEN, style = TextStyle(fontSize = 13.sp, lineHeight = 17.sp), color = Palette.TextSoft)
+        }
         if (on && getting == id) Text(
             "Getting ${voice.voiceName ?: "the voice"} ready…", style = Type.Small, color = Palette.TextDim,
             modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
         )
     }
-}
-
-@Composable
-fun CopyButton(plain: String) {
-    val clip = LocalClipboardManager.current
-    QuietButton(COPY, "Copy this answer") { clip.setText(AnnotatedString(plain)) }
 }
 
 /** Opens the phone's share sheet with the words as plain text. */
@@ -308,12 +321,6 @@ fun sharePlain(ctx: android.content.Context, plain: String) {
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
         )
     }
-}
-
-@Composable
-fun ShareButton(plain: String) {
-    val ctx = LocalContext.current
-    QuietButton(SHARE, "Share this answer") { sharePlain(ctx, plain) }
 }
 
 /** What a message's long press holds: Copy, Select text, Share, Listen (and Look it up on the newest answer). */
