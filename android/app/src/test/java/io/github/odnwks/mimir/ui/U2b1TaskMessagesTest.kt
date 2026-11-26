@@ -72,7 +72,8 @@ class U2b1TaskMessagesTest {
     @Test fun aReplyHasCopyListenAndShare() {
         val voice = FakeReadAloud()
         open(task(), voice, pcOnline = false)
-        compose.onNodeWithContentDescription("Copy this answer").assertDoesNotExist()
+        // P13: Copy is on screen under the reply, and the long-press menu holds it too.
+        compose.onNodeWithContentDescription("Copy this answer").assertIsDisplayed()
         compose.onAllNodesWithText("the title is bigger now", substring = true).onLast().performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnLongClick)
         compose.waitForIdle()
         for (i in listOf("Copy", "Share", "Listen")) compose.onAllNodesWithText(i).onLast().assertIsDisplayed()
