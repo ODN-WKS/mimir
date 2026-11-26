@@ -431,7 +431,7 @@ mod tests {
 
     #[test]
     fn p10_the_picture_count_line_is_dropped_too() {
-        let p = "/home/deck/.local/share/mimir/task-files/1795472443-2-2/6-picture-1.jpg";
+        let p = "/home/user/.local/share/mimir/task-files/1795472443-2-2/6-picture-1.jpg";
         let (t, n) = split_attached(&format!("hello\n\nAttached: {p}\n[1 picture attached]"));
         assert_eq!(
             (t.as_str(), n),

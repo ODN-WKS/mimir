@@ -4,7 +4,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class P10PicturePathTest {
-    private val p = "/home/deck/.local/share/mimir/task-files/1795472443-2-2/6-picture-1.jpg"
+    private val p = "/home/user/.local/share/mimir/task-files/1795472443-2-2/6-picture-1.jpg"
 
     @Test fun onePictureLineIsDropped() {
         val (words, names) = AttachedNames.split("hello\n\nAttached: $p\n[1 picture attached]")
