@@ -445,10 +445,7 @@ const RISKY_SUBCOMMANDS: &[(&str, &str)] = &[
 fn suggestion_too_broad(rule: &str) -> bool {
     let words: Vec<&str> = rule.split_whitespace().collect();
     // Pattern: `tool *` with no subcommand between tool and `*`.
-    if words.len() == 2 && words[1] == "*" && SUBCOMMAND_TOOLS.contains(&words[0]) {
-        return true;
-    }
-    false
+    words.len() == 2 && words[1] == "*" && SUBCOMMAND_TOOLS.contains(&words[0])
 }
 
 /// A rule broad enough to be useful and never broader than safe: anything
