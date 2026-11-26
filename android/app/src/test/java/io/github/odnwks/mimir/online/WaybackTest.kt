@@ -44,11 +44,14 @@ class WaybackTest {
 
     private val copy = "The archived kettle boils water in ninety seconds."
 
+    /** How long the archive takes to answer. */
+    private var archiveMs = 0L
+
     /** The page's own site answers with [site]; the archive holds a copy. */
     private fun fake(site: (Net.Request) -> Net.Reply) {
         Net.transport = { r ->
             asked += r
-            if (r.url.host == "web.archive.org") html(copy) else site(r)
+            if (r.url.host == "web.archive.org") { Thread.sleep(archiveMs); html(copy) } else site(r)
         }
     }
 
@@ -100,6 +103,8 @@ class WaybackTest {
 
     @Test fun aSiteThatStaysSilentIsStillReadFromTheArchiveInTime() {
         fake { r -> Thread.sleep(r.timeoutMs.toLong()); throw java.net.SocketTimeoutException("connect timed out") }
+        // About what the real archive takes.
+        archiveMs = 1_200
         val t0 = System.currentTimeMillis()
         readFromTheArchive("silent.example")
         val took = System.currentTimeMillis() - t0
