@@ -502,8 +502,10 @@ fun PhoneChat(
         }
         val efforts = Effort.entries.map { e -> io.github.odnwks.mimir.nav.SheetChoice(e.words, effortAbout(e, model), e == s.effort) { if (e != s.effort) engine.setEffort(e) } }
         val chosenWords = listOfNotNull(modelWord, s.effort.words).joinToString(" · ")
-        // Shorter whole words for less room; at the least, the effort alone (the top bar names who answers).
-        val shortWords = listOf(listOfNotNull(modelWord?.let { if (it == "Your PC's model") "PC model" else chipShort(it) }, s.effort.words).joinToString(" · "), s.effort.words)
+        // Shorter whole words for less room, then the model alone: the chip always shows which model answers
+        // (the owner watches it switch); the effort goes before the model if something must.
+        val shortModel = modelWord?.let { if (it == "Your PC's model") "PC model" else chipShort(it) }
+        val shortWords = listOfNotNull(listOfNotNull(shortModel, s.effort.words).joinToString(" · ").takeIf { shortModel != null }, shortModel ?: s.effort.words)
         androidx.compose.runtime.SideEffect { nav.chatChoices = io.github.odnwks.mimir.nav.ModelEffortChoices(choices.models, choices.notes, choices.more, efforts) }
         androidx.compose.runtime.DisposableEffect(Unit) { onDispose { nav.chatChoices = null } }
         NoKeyboardLearning(s.whisper || pcWhisper) {

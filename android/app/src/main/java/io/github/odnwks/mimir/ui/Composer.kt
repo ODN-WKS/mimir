@@ -162,24 +162,35 @@ fun SendButton(ready: Boolean, fill: androidx.compose.ui.graphics.Color = Palett
 
 /**
  * The "Opus 5.5 · Default Effort ⌄" chip in the centre of the reply box's row: a tap opens the model
- * and effort sheet. With too little room for [words] (large text, a narrow phone), the first of
- * [shorter] that fits is shown whole instead (the last one if none does).
+ * and effort sheet. [shorter] lists shorter whole words, the last being the model alone. With too little
+ * room (large text, a narrow phone like the S8 at 320 dp) the chip keeps the model in sight and never cuts
+ * a word, on one line: the first of [words] and [shorter] (but the last) that fits, then the same as a
+ * compact chip (no arrow, a little smaller), then the model alone (the effort goes before the model).
  */
 @Composable
 fun OptionsChip(words: String, description: String, shorter: List<String> = emptyList(), onClick: () -> Unit) {
     androidx.compose.foundation.layout.BoxWithConstraints {
-        val style = Type.Small.copy(fontWeight = FontWeight.Bold)
         val measurer = androidx.compose.ui.text.rememberTextMeasurer()
-        // The chip's edges and arrow: 10 + 6 dp of padding, 4 dp of gap, 16 dp of arrow.
-        val room = constraints.maxWidth - with(androidx.compose.ui.platform.LocalDensity.current) { 36.dp.roundToPx() }
-        val tries = listOf(words) + shorter
-        val shown = tries.firstOrNull { measurer.measure(it, style, maxLines = 1).size.width <= room } ?: tries.last()
-        OptionsChipBody(shown, description, onClick)
+        val density = androidx.compose.ui.platform.LocalDensity.current
+        val forms = listOf(words) + shorter
+        val both = if (shorter.isEmpty()) forms else forms.dropLast(1)
+        // The chip's edges and arrow: 10 + 6 dp of padding, 4 dp of gap, 16 dp of arrow; compact: 8 + 8 dp of padding.
+        fun fits(t: String, compact: Boolean): Boolean {
+            val room = constraints.maxWidth - with(density) { (if (compact) 16.dp else 36.dp).roundToPx() }
+            return measurer.measure(t, chipStyle(compact), maxLines = 1).size.width <= room
+        }
+        val shown = both.firstOrNull { fits(it, false) }?.let { it to false }
+            ?: both.firstOrNull { fits(it, true) }?.let { it to true }
+            ?: forms.last().let { it to !fits(it, false) }
+        OptionsChipBody(shown.first, description, shown.second, onClick)
     }
 }
 
+/** The chip's words: bold small type, 12 sp when compact. */
+private fun chipStyle(compact: Boolean) = Type.Small.copy(fontWeight = FontWeight.Bold).let { if (compact) it.copy(fontSize = 12.sp) else it }
+
 @Composable
-private fun OptionsChipBody(words: String, description: String, onClick: () -> Unit) {
+private fun OptionsChipBody(words: String, description: String, compact: Boolean, onClick: () -> Unit) {
     Row(
         Modifier.heightIn(min = 40.dp).clip(RoundedCornerShape(12.dp)).clickable(role = Role.Button, onClick = onClick)
             .semantics(mergeDescendants = true) { contentDescription = description },
@@ -187,11 +198,11 @@ private fun OptionsChipBody(words: String, description: String, onClick: () -> U
     ) {
         Row(
             Modifier.clip(RoundedCornerShape(12.dp)).border(1.dp, Palette.LineStrong, RoundedCornerShape(12.dp))
-                .padding(start = 10.dp, end = 6.dp, top = 4.dp, bottom = 4.dp),
+                .padding(start = if (compact) 8.dp else 10.dp, end = if (compact) 8.dp else 6.dp, top = 4.dp, bottom = 4.dp),
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            Text(words, style = Type.Small.copy(fontWeight = FontWeight.Bold), color = Palette.Text, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
-            Icon(Glyphs.Down, null, tint = Palette.TextDim, modifier = Modifier.size(16.dp))
+            Text(words, style = chipStyle(compact), color = Palette.Text, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+            if (!compact) Icon(Glyphs.Down, null, tint = Palette.TextDim, modifier = Modifier.size(16.dp))
         }
     }
 }
