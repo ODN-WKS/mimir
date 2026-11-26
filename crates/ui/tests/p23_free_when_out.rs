@@ -608,6 +608,140 @@ fn p23_without_a_model_the_window_switch_is_off_and_says_why() {
     close(h);
 }
 
+/// The PC's model program is asleep: its unit is there, nothing answers,
+/// and asking systemd to start it runs `starter` (a shell line) instead.
+/// `installed` puts one downloaded model's files on disk. The port it would
+/// answer on.
+fn asleep(home: &TestHome, installed: bool, starter: &str) -> u16 {
+    let unit = home.root.join(".config/systemd/user/mimir-ollama.service");
+    std::fs::create_dir_all(unit.parent().unwrap()).unwrap();
+    std::fs::write(&unit, "[Service]\nExecStart=/bin/true\n").unwrap();
+    let port = TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap()
+        .port();
+    set_env("MIMIR_OLLAMA", format!("http://127.0.0.1:{port}"));
+    let models = home.root.join("ollama-models");
+    set_env("OLLAMA_MODELS", &models);
+    if installed {
+        let (name, tag) = FREE.split_once(':').unwrap();
+        let dir = models
+            .join("manifests/registry.ollama.ai/library")
+            .join(name);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join(tag), "{}").unwrap();
+    }
+    let script = home.root.join("starter.sh");
+    std::fs::write(&script, format!("#!/bin/sh\n{starter}\n")).unwrap();
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    set_env("MIMIR_OLLAMA_START", &script);
+    port
+}
+
+/// Asleep but installed: the phone still gets the model, so its switch shows
+/// the PC's setting and can be changed.
+#[test]
+fn p23_asleep_the_phone_still_gets_the_installed_model() {
+    let Some(home) = home(serde_json::json!({"project_engine": "claude"})) else {
+        return;
+    };
+    asleep(&home, true, "true");
+    let mut st = home.service();
+    let (p, mut seen) = paired(&mut st, None);
+    let v = seen.call(&p, Call::Models).unwrap();
+    let id = format!("ollama:{FREE}");
+    assert_eq!(v["free"][0]["id"], id.as_str(), "{v}");
+    assert_eq!(v["free"].as_array().unwrap().len(), 1, "{v}");
+    assert_eq!(v["free_model"], id.as_str(), "{v}");
+    assert_eq!(v["switch_to_free"], true, "{v}");
+    seen.call(&p, set_switch(false)).unwrap();
+    assert!(!seen.switch(&p));
+    assert_eq!(saved(&home)["free_when_out"], false);
+}
+
+/// Asleep and nothing ever installed: no model is claimed.
+#[test]
+fn p23_asleep_with_nothing_installed_there_is_no_model() {
+    let Some(home) = home(serde_json::json!({"project_engine": "claude"})) else {
+        return;
+    };
+    asleep(&home, false, "true");
+    let mut st = home.service();
+    let (p, mut seen) = paired(&mut st, None);
+    let v = seen.call(&p, Call::Models).unwrap();
+    assert!(v["free"].as_array().unwrap().is_empty(), "{v}");
+    assert!(v["free_model"].is_null(), "{v}");
+}
+
+/// Asking which models there are wakes the program; once it answers, the
+/// phone is told to look again.
+#[test]
+fn p23_the_phone_is_told_once_the_woken_program_answers() {
+    let Some(home) = home(serde_json::json!({"project_engine": "claude"})) else {
+        return;
+    };
+    let started = home.root.join("ollama-started");
+    let port = asleep(&home, false, &format!("echo x >> '{}'", started.display()));
+    let flag = started.clone();
+    std::thread::spawn(move || {
+        while !flag.exists() {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        // A slow start, as a real one is.
+        std::thread::sleep(Duration::from_secs(1));
+        let l = TcpListener::bind(("127.0.0.1", port)).unwrap();
+        for mut s in l.incoming().flatten() {
+            let mut buf = [0u8; 2048];
+            let _ = s.read(&mut buf);
+            let body = format!("{{\"models\":[{{\"name\":\"{FREE}\"}}]}}");
+            let _ = write!(
+                s,
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            );
+        }
+    });
+    let mut st = home.service();
+    let (p, mut seen) = paired(&mut st, None);
+    let before = seen.models_changed;
+    let v = seen.call(&p, Call::Models).unwrap();
+    assert!(v["free"].as_array().unwrap().is_empty(), "{v}");
+    assert!(
+        seen.until(&p, |s| s.models_changed > before),
+        "the phone wasn't told when the program came up"
+    );
+    let v = seen.call(&p, Call::Models).unwrap();
+    assert!(!v["free"].as_array().unwrap().is_empty(), "{v}");
+}
+
+/// Asleep but installed: the PC window's switch is on and changeable.
+#[test]
+fn p23_asleep_the_window_switch_stays_on_and_changeable() {
+    let Some(home) = home(serde_json::json!({"project_engine": "claude"})) else {
+        return;
+    };
+    asleep(&home, true, "true");
+    home.play("run-1.jsonl", "near-limit.jsonl");
+    let mut h = home.open();
+    open_who_answers(&mut h);
+    assert!(
+        wait_for(&mut h, |h| window_switch(h) == (true, true, true)),
+        "{:?}\n{}",
+        window_switch(&h),
+        screen_text(&h)
+    );
+    // Still so after the window has looked and found the program off.
+    assert!(wait_for(&mut h, |_| mimir_core::models::program_off()));
+    h.run_steps(3);
+    assert_eq!(window_switch(&h), (true, true, true), "{}", screen_text(&h));
+    assert!(!shows(&h, station_ui::labels::FREE_WHEN_OUT_NO_MODEL));
+    close(h);
+}
+
 /// The phone's Status says the same words as the PC window.
 #[test]
 fn p23_the_phone_and_the_pc_use_the_same_words() {

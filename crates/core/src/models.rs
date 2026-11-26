@@ -217,6 +217,50 @@ pub fn installed() -> Result<Vec<String>, String> {
         .unwrap_or_default())
 }
 
+/// What the PC has, given what [installed] just found: the model program's
+/// own list, or, while it doesn't answer, the models whose files are on
+/// disk (so a sleeping program never reads as "nothing installed"). Only
+/// where Mímir has a program it can start.
+pub fn installed_or_on_disk(found: &Result<Vec<String>, String>) -> Vec<String> {
+    match found {
+        Ok(n) => n.clone(),
+        Err(_) if unit_path().is_file() => on_disk(),
+        Err(_) => vec![],
+    }
+}
+
+/// The downloaded models by their files (`manifests/<from>/<who>/<model>/<tag>`,
+/// there once a download is complete), newest first as the program lists them.
+fn on_disk() -> Vec<String> {
+    fn inside(dir: &std::path::Path) -> Vec<(String, std::fs::DirEntry)> {
+        std::fs::read_dir(dir)
+            .into_iter()
+            .flatten()
+            .flatten()
+            .filter_map(|e| Some((e.file_name().into_string().ok()?, e)))
+            .filter(|(n, _)| !n.starts_with('.'))
+            .collect()
+    }
+    let mut found = vec![];
+    for (from, f) in inside(&crate::engine::models_dir().join("manifests")) {
+        for (who, w) in inside(&f.path()) {
+            for (model, m) in inside(&w.path()) {
+                for (tag, t) in inside(&m.path()) {
+                    let name = match (from.as_str(), who.as_str()) {
+                        ("registry.ollama.ai", "library") => format!("{model}:{tag}"),
+                        ("registry.ollama.ai", _) => format!("{who}/{model}:{tag}"),
+                        _ => format!("{from}/{who}/{model}:{tag}"),
+                    };
+                    let at = t.metadata().and_then(|d| d.modified()).ok();
+                    found.push((at, name));
+                }
+            }
+        }
+    }
+    found.sort_by(|a, b| b.cmp(a));
+    found.into_iter().map(|(_, name)| name).collect()
+}
+
 /// A model in the Model Store's first page: the free models tested on this
 /// PC (2026-11-18 benchmark: a coding job with two bugs to fix).
 #[derive(Debug, Clone, PartialEq)]
@@ -694,15 +738,18 @@ pub fn start_program() {
     forget_cached();
 }
 
-/// Keeps what a look found: a program that doesn't answer leaves the list as
-/// it was (never an empty list that reads "nothing installed").
+/// Keeps what a look found: a program that doesn't answer leaves the models
+/// its files show, else the list as it was (never an empty list that reads
+/// "nothing installed").
 fn keep_look(found: Result<Vec<String>, String>) {
     let off = found.is_err();
     OFF.store(off, std::sync::atomic::Ordering::SeqCst);
+    let names = installed_or_on_disk(&found);
     if let Ok(mut g) = CACHE.lock() {
-        let list = match found {
-            Ok(n) => catalogue(&n),
-            Err(_) => g.take().map(|(_, l)| l).unwrap_or_default(),
+        let list = if off && names.is_empty() {
+            g.take().map(|(_, l)| l).unwrap_or_default()
+        } else {
+            catalogue(&names)
         };
         *g = Some((Instant::now(), list));
     }
@@ -713,7 +760,8 @@ pub fn cached() -> Vec<FreeModel> {
     let (fresh, list) = match CACHE.lock() {
         Ok(g) => match g.as_ref() {
             Some((t, l)) => (t.elapsed() < Duration::from_secs(30), l.clone()),
-            None => (false, vec![]),
+            // Before the first look: what the files show.
+            None => (false, catalogue(&installed_or_on_disk(&Err(String::new())))),
         },
         Err(_) => (true, vec![]),
     };

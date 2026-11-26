@@ -118,6 +118,8 @@ pub enum Inbound {
     Waking {
         task: String,
     },
+    /// The model program a look at the list woke now answers.
+    ModelAnswers,
 }
 
 /// The running service: send it `Inbound`s.
@@ -426,6 +428,8 @@ struct Service {
     /// The ModelManager: wakes the PC's model for calls that need it, one
     /// at a time, with a bounded queue (PCS-01).
     wake_worker: Option<mimir_hub::workers::Pool<(u64, CallMsg, Option<String>)>>,
+    /// A thread is waiting for the woken model program to answer.
+    watching_model: Arc<std::sync::atomic::AtomicBool>,
     /// Calls waiting for it: (client, call id, task).
     wake_pending: Vec<(u64, u64, Option<String>)>,
     /// Waiting calls a Stop or Pause for their task cancelled.
@@ -596,6 +600,7 @@ impl Service {
             last_full: Instant::now(),
             replay_ok: HashSet::new(),
             wake_worker: None,
+            watching_model: Default::default(),
             wake_pending: vec![],
             wake_cancelled: HashSet::new(),
             model_waker: None,
@@ -927,6 +932,9 @@ impl Service {
             } => self.send_to(client, Event::Reply { call_id, result }),
             Inbound::Talk(o) => self.talk_out(o),
             Inbound::Waking { task } => self.runner.note(&task, crate::talk::WAKING),
+            Inbound::ModelAnswers => {
+                self.broadcast_chat(crate::people::OWNER, Event::ModelsChanged)
+            }
             Inbound::Woken { client, msg } => {
                 self.wake_pending
                     .retain(|(c, id, _)| (*c, *id) != (client, msg.call_id));
@@ -2167,10 +2175,8 @@ impl Service {
                     )
                 };
                 let names = crate::models::installed();
-                let free = names
-                    .as_ref()
-                    .map(|n| crate::models::catalogue(n))
-                    .unwrap_or_default();
+                // Asleep is not "no model": its files say what is there.
+                let free = crate::models::catalogue(&crate::models::installed_or_on_disk(&names));
                 let why = match &names {
                     Ok(_) => String::new(),
                     Err(e) if crate::models::unit_path().is_file() => {
@@ -2180,6 +2186,7 @@ impl Service {
                         // when the last start failed. A chat that asks for the PC's model
                         // waits for the start itself (see `defer_for_model`).
                         crate::models::wake_for_list();
+                        self.tell_when_model_answers();
                         if crate::models::failed_start() {
                             crate::models::MODEL_DOWN.to_string()
                         } else {
@@ -2193,7 +2200,7 @@ impl Service {
                 let owner = who == crate::people::OWNER;
                 Ok(json!({
                     "free": if owner { json!(free) } else { json!([]) },
-                    "free_model": if owner { json!(self.free_choice().map(|f| f.id)) } else { Value::Null },
+                    "free_model": if owner { json!(self.chosen_free(&free).map(|f| f.id)) } else { Value::Null },
                     // "When online use runs out, use your PC's model" (the
                     // field older phones already read).
                     "switch_to_free": owner && self.settings.free_when_out_on(),
@@ -5200,12 +5207,47 @@ impl Service {
         let list = crate::models::installed()
             .map(|n| crate::models::catalogue(&n))
             .unwrap_or_default();
+        self.chosen_free(&list)
+    }
+
+    /// The owner's chosen model when `list` has it, else the usual one.
+    fn chosen_free(&self, list: &[crate::models::FreeModel]) -> Option<crate::models::FreeModel> {
         if let Some(m) = &self.settings.free_model
             && let Some(f) = list.iter().find(|f| &f.id == m)
         {
             return Some(f.clone());
         }
-        crate::models::default_free(&list).cloned()
+        crate::models::default_free(list).cloned()
+    }
+
+    /// A phone's look found the model program asleep: once it answers, the
+    /// owner's screens are told to look again. One watch at a time, for as
+    /// long as a start may take.
+    fn tell_when_model_answers(&mut self) {
+        use std::sync::atomic::Ordering::SeqCst;
+        if self.watching_model.swap(true, SeqCst) {
+            return;
+        }
+        let watching = self.watching_model.clone();
+        let tx = self.self_tx.clone();
+        let spawned = std::thread::Builder::new()
+            .name("model-watch".into())
+            .spawn(move || {
+                let until = Instant::now() + Duration::from_secs(30);
+                while Instant::now() < until {
+                    std::thread::sleep(Duration::from_millis(500));
+                    if crate::models::installed().is_ok() {
+                        // Free again before the phone looks.
+                        watching.store(false, SeqCst);
+                        let _ = tx.send(Inbound::ModelAnswers);
+                        return;
+                    }
+                }
+                watching.store(false, SeqCst);
+            });
+        if spawned.is_err() {
+            self.watching_model.store(false, SeqCst);
+        }
     }
 
     /// When Claude's limit is likely back: the window that ran out (five-hour
@@ -6659,6 +6701,7 @@ fn inbound_kind(m: &Inbound) -> &'static str {
         Inbound::Talk(_) => "Talk",
         Inbound::Woken { .. } => "Woken",
         Inbound::Waking { .. } => "Waking",
+        Inbound::ModelAnswers => "ModelAnswers",
     }
 }
 

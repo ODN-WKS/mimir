@@ -12,6 +12,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import io.github.odnwks.mimir.data.FakeStation
+import io.github.odnwks.mimir.data.Mapping
 import io.github.odnwks.mimir.data.StationState
 import io.github.odnwks.mimir.link.Wire
 import io.github.odnwks.mimir.nav.Navigator
@@ -99,6 +100,17 @@ class P23FreeWhenOutTest {
             "When online use passes 99% this week, or runs out, your PC's model takes over", substring = true,
         ).assertExists()
         compose.onNodeWithText("85%", substring = true).assertDoesNotExist()
+    }
+
+    @Test fun withThePcsModelProgramAsleepTheSwitchStaysOnAndEnabled() {
+        // The reply of a PC whose model program is asleep: it still lists the installed model, and says so.
+        val reply = Wire.modelList(JSONObject(
+            """{"free":[{"id":"ollama:garden:7b","name":"garden:7b","note":""}],"free_model":"ollama:garden:7b",""" +
+                """"switch_to_free":true,"ollama":"Your PC's model runner isn't answering yet."}""",
+        ))
+        start { it.copy(models = Mapping.models(reply, it.models.selected)) }
+        switch().performScrollTo().assertIsEnabled().assertIsOn()
+        compose.onNodeWithText(FreeWhenOut.NO_MODEL).assertDoesNotExist()
     }
 
     @Test fun thePcsSettingIsWhatThePhoneShows() {
