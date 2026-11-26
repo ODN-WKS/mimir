@@ -171,7 +171,7 @@ fn the_rename_box_takes_focus_once_and_ends_on_blur() {
     // one-line box on the screen).
     let rename_box = |h: &egui_kittest::Harness<'static, station_ui::App>| {
         h.query_all_by_role(Role::TextInput)
-            .any(|n| n.value().is_some_and(|v| names.iter().any(|t| v == *t)))
+            .any(|n| n.value().is_some_and(|v| names.contains(&v)))
     };
     assert!(
         wait_for(&mut h, |h| rename_box(h)),
