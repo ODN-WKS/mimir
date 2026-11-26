@@ -106,6 +106,7 @@ impl Seen {
                     task,
                     from,
                     entries,
+                    ..
                 } => {
                     let v = self.claude.entry(task).or_default();
                     let _ = from;

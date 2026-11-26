@@ -347,7 +347,9 @@ object Wire {
             "Removed" -> Ev.Removed((v as JSONObject).getString("task"))
             "Entries" -> (v as JSONObject).let { o2 ->
                 val list = o2.getJSONArray("entries")
-                Ev.Entries(o2.getString("task"), o2.getInt("from"), (0 until list.length()).map { entry(list.get(it)) })
+                val meta = o2.optJSONArray("meta")
+                Ev.Entries(o2.getString("task"), o2.getInt("from"), (0 until list.length()).map { entry(list.get(it)) },
+                    meta?.let { m -> (0 until m.length()).map { meta(m.optJSONObject(it)) } }.orEmpty())
             }
             "Live" -> (v as JSONObject).let { Ev.Live(it.getString("task"), it.getString("text")) }
             "Problem" -> Ev.Problem((v as JSONObject).getString("text"))
@@ -498,6 +500,20 @@ object Wire {
         )
     }
 
+    /** One entry's small print (P11); an empty one for a missing or odd value. */
+    private fun meta(o: JSONObject?): LMeta {
+        if (o == null) return LMeta()
+        fun str(k: String) = if (o.isNull(k)) null else o.optString(k).ifEmpty { null }
+        return LMeta(
+            atMs = if (o.isNull("at")) null else o.optLong("at"),
+            receipt = str("receipt")?.let { r -> LReceipt.entries.firstOrNull { it.name == r } },
+            model = str("model"),
+            effort = str("effort"),
+            switched = str("switched"),
+            switchedWhy = str("switched_why"),
+        )
+    }
+
     private fun entry(v: Any): LEntry {
         if (v !is JSONObject) return LEntry.Note(v.toString())
         val name = v.keys().next()
@@ -521,7 +537,8 @@ sealed interface Ev {
     data object Ready : Ev
     data class TaskHeader(val task: LinkTask) : Ev
     data class Removed(val task: String) : Ev
-    data class Entries(val task: String, val from: Int, val entries: List<LEntry>) : Ev
+    /** [meta]: the small print of the same entries, one each; empty from an older PC or when none has any. */
+    data class Entries(val task: String, val from: Int, val entries: List<LEntry>, val meta: List<LMeta> = emptyList()) : Ev
     data class Live(val task: String, val text: String) : Ev
     data class Problem(val text: String) : Ev
     data class Reply(val callId: Long, val ok: Any?, val err: String?) : Ev
@@ -841,6 +858,24 @@ data class Ask(val tool: String, val input: JSONObject) {
         input.optString("file_path").ifEmpty { input.optString("notebook_path").ifEmpty { input.optString("url") } }
     }
 }
+
+/** What became of the owner's message on the PC (P11): it has it, wrote it to Claude Code's input, or Claude Code took it in. */
+enum class LReceipt { Sent, Delivered, Read }
+
+/**
+ * The small print the PC sends with one entry (P11). Every field is null from an older PC and for entries made
+ * before the PC kept them. [atMs]: when it was made (unix ms). [receipt]: the owner's messages only. [model] and
+ * [effort]: what answered a reply, or what a message was sent to ([effort] null with a model: the PC's default).
+ * [switched] and [switchedWhy]: a reply whose model or effort differs from the one before, why (short and in full).
+ */
+data class LMeta(
+    val atMs: Long? = null,
+    val receipt: LReceipt? = null,
+    val model: String? = null,
+    val effort: String? = null,
+    val switched: String? = null,
+    val switchedWhy: String? = null,
+)
 
 sealed interface LEntry {
     data class You(val text: String) : LEntry

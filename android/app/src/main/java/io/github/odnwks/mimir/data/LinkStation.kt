@@ -7,6 +7,7 @@ import io.github.odnwks.mimir.link.Filed
 import io.github.odnwks.mimir.link.ItemAnswer
 import io.github.odnwks.mimir.link.LEntry
 import io.github.odnwks.mimir.link.LItem
+import io.github.odnwks.mimir.link.LMeta
 import io.github.odnwks.mimir.link.LStatus
 import io.github.odnwks.mimir.link.LinkTask
 import io.github.odnwks.mimir.link.Native
@@ -136,6 +137,8 @@ class LinkStation(
     private var pairWords: List<String> = emptyList()
     private val tasks = LinkedHashMap<String, LinkTask>()
     private val entries = HashMap<String, MutableList<LEntry>>()
+    /** Each task's small print (P11), by entry position; shorter when the last entries have none. */
+    private val metas = HashMap<String, List<LMeta>>()
     private val live = HashMap<String, String>()
     /** PHW-06: when each task last got a Live (streaming) event, to detect "answering" state. */
     private val liveAt = HashMap<String, Long>()
@@ -438,7 +441,7 @@ class LinkStation(
                     }
                 }
                 is Ev.Removed -> {
-                    tasks.remove(ev.task); entries.remove(ev.task); forgetTiming(ev.task)
+                    tasks.remove(ev.task); entries.remove(ev.task); metas.remove(ev.task); forgetTiming(ev.task)
                     io.github.odnwks.mimir.alerts.OutsideTasks.removed(ev.task)
                     io.github.odnwks.mimir.alerts.FinishedGate.removed(ev.task)
                 }
@@ -446,6 +449,7 @@ class LinkStation(
                     newsAt[ev.task] = System.currentTimeMillis()
                     while (l.size > ev.from) l.removeAt(l.size - 1)
                     l.addAll(ev.entries)
+                    metas[ev.task] = mergeMeta(metas[ev.task].orEmpty(), ev.from, ev.meta, l.size)
                     live.remove(ev.task)
                 }
                 // Only a PC that lists the feature is believed; each id is shown once by the notifier.
@@ -1811,8 +1815,10 @@ class LinkStation(
         val es = entries[t.id].orEmpty()
         // PHD-29(c): disable Play while the task is live-streaming; enable once the message is complete.
         val streaming = live[t.id]?.isNotBlank() == true
-        val messages = es.mapIndexedNotNull { i, e -> taskMessageOf(t.id, i, e, streaming && i == es.lastIndex) } + listOfNotNull(live[t.id]?.takeIf { it.isNotBlank() }?.let { TaskMessage("${t.id}-live", true, it) }) +
-            data.replies.filter { it.second == t.id }.map { (id, _, text) -> TaskMessage(id, false, text.ifBlank { attachments.words(id) }, waiting = true, failedWhy = failedReplies[id].orEmpty()) } +
+        val ms = metas[t.id].orEmpty()
+        val messages = es.mapIndexedNotNull { i, e -> taskMessageOf(t.id, i, e, streaming && i == es.lastIndex, ms.getOrNull(i) ?: LMeta()) } + listOfNotNull(live[t.id]?.takeIf { it.isNotBlank() }?.let { TaskMessage("${t.id}-live", true, it) }) +
+            // Still on this phone: Sent until the PC's copy of the task has it.
+            data.replies.filter { it.second == t.id }.map { (id, _, text) -> TaskMessage(id, false, text.ifBlank { attachments.words(id) }, waiting = true, failedWhy = failedReplies[id].orEmpty(), receipt = MessageReceipt.Sent) } +
             data.recordings.filter { it.second == t.id }.map { (id, _, secs) -> TaskMessage(id, false, recordingWords(secs), waiting = true) }
         val ask = t.asks.firstOrNull()
         val change = ask?.let { change(it) }
@@ -2028,14 +2034,26 @@ const val SIGNED_OUT = "Claude isn't signed in on your PC. Open Mímir on your P
 /** The first message of a task carried on from a summary (the PC hands it to Claude). */
 internal const val CARRY_ON_TEXT = "Carry on with this task from the summary."
 
-/** One chat entry as a task message; null for steps, and for the "ran out of room" note (its own panel says it). */
-internal fun taskMessageOf(taskId: String, i: Int, e: LEntry, streamingLast: Boolean): TaskMessage? = when (e) {
+/** One chat entry as a task message, with its small print [m]; null for steps, and for the "ran out of room" note (its own panel says it). */
+internal fun taskMessageOf(taskId: String, i: Int, e: LEntry, streamingLast: Boolean, m: LMeta = LMeta()): TaskMessage? = when (e) {
     // N6: the hand-over line to Claude is a dim note, never the person's own words.
-    is LEntry.You -> if (e.text.trim() == CARRY_ON_TEXT) TaskMessage("$taskId-$i", false, e.text, note = true) else TaskMessage("$taskId-$i", false, e.text)
-    is LEntry.Claude -> TaskMessage("$taskId-$i", true, signedOutWords(e.text) ?: e.text, if (streamingLast) "" else "Play the reply")
+    is LEntry.You -> if (e.text.trim() == CARRY_ON_TEXT) TaskMessage("$taskId-$i", false, e.text, note = true, atMs = m.atMs)
+        else TaskMessage("$taskId-$i", false, e.text, atMs = m.atMs, receipt = m.receipt?.let { MessageReceipt.valueOf(it.name) }, model = m.model, effort = m.effort)
+    is LEntry.Claude -> TaskMessage("$taskId-$i", true, signedOutWords(e.text) ?: e.text, if (streamingLast) "" else "Play the reply",
+        atMs = m.atMs, model = m.model, effort = m.effort, switched = m.switched, switchedWhy = m.switchedWhy)
     is LEntry.Note -> if (e.text.isBlank() || isOutOfRoomNote(e.text)) null
-        else TaskMessage("$taskId-$i", false, e.text, note = true)
+        else TaskMessage("$taskId-$i", false, e.text, note = true, atMs = m.atMs)
     else -> null
+}
+
+/**
+ * A task's small print after an Entries event: kept up to [from], then [meta] (one per new entry; an older PC sends
+ * none, so the new entries have none), never longer than the [size] entries the task now has.
+ */
+internal fun mergeMeta(old: List<LMeta>, from: Int, meta: List<LMeta>, size: Int): List<LMeta> {
+    val kept = old.take(from)
+    if (meta.isEmpty()) return kept
+    return (kept + List(from - kept.size) { LMeta() } + meta).take(size)
 }
 
 /** A task's name from its first words: cut at a whole word, never in the middle of one. */

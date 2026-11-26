@@ -133,6 +133,7 @@ impl Seen {
                     task,
                     from,
                     entries,
+                    ..
                 } => {
                     if from == 0
                         && let Some(mimir_core::proto::Entry::You(t)) = entries.first()

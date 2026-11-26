@@ -1097,6 +1097,8 @@ pub fn keep_tail(t: &mut Task) {
     if t.entries.len() > FOLLOW_TAIL + FOLLOW_STEP {
         let cut = t.entries.len() - FOLLOW_TAIL;
         t.entries.drain(..cut);
+        let m = cut.min(t.entry_meta.len());
+        t.entry_meta.drain(..m);
         t.entries_dropped += cut;
     }
 }
@@ -1113,6 +1115,7 @@ pub fn follow(t: &mut Task, path: &Path, from: u64) -> std::io::Result<u64> {
     f.seek(std::io::SeekFrom::Start(from))?;
     let mut reader = std::io::BufReader::new(f);
     let (mut at, mut line) = (from, String::new());
+    let first_new = t.entries.len();
     loop {
         line.clear();
         match reader.read_line(&mut line)? {
@@ -1123,6 +1126,10 @@ pub fn follow(t: &mut Task, path: &Path, from: u64) -> std::io::Result<u64> {
                 add_line(t, &without_images(line.trim_end()));
             }
         }
+    }
+    // Read from a transcript, not seen made: no time rather than a wrong one.
+    for m in t.entry_meta.iter_mut().skip(first_new) {
+        *m = Default::default();
     }
     // "Send a message to carry on" belongs under the last line, never between
     // lines that came after it.
@@ -1441,6 +1448,8 @@ pub fn to_task(s: &PastSession, project: &Path, task_id: String) -> std::io::Res
     for line in text.lines() {
         add_line(&mut t, &without_images(line));
     }
+    // Read from a transcript, not seen made: no time rather than a wrong one.
+    t.entry_meta.clear();
     if let Some(real) = t.real_title() {
         t.title = real;
     }

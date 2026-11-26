@@ -6,7 +6,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 pub use mimir_proto::{
-    Entry, Mode, Place, PlanItem, Status, Step, StepDetail, WeeklyUse, nice_time, not_yet,
+    Entry, EntryMeta, Mode, Place, PlanItem, Receipt, Status, Step, StepDetail, WeeklyUse,
+    nice_time, not_yet,
 };
 
 const MAX_OUTPUT: usize = 16_000;
@@ -21,6 +22,34 @@ fn shorten(s: &str) -> String {
         cut -= 1;
     }
     format!("{}\n… ({} more characters)", &s[..cut], s.len() - cut)
+}
+
+/// The clock entries are stamped with: unix milliseconds.
+pub fn unix_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
+}
+
+/// Why a reply came from another model or effort than the one before, in the
+/// few words under it. Mímir's own reasons; anything else is
+/// [`WHY_NOT_REPORTED`].
+pub const WHY_PICKED: &str = "you picked it";
+pub const WHY_AUTO: &str = "Auto picked it";
+pub const WHY_LIMIT: &str = "usage limit";
+pub const WHY_NOT_REPORTED: &str = "reason not reported";
+
+/// The full sentence behind a short reason (shown on a tap).
+pub fn switch_sentence(short: &str) -> &'static str {
+    match short {
+        WHY_PICKED => "You picked this model or effort level for the task.",
+        WHY_AUTO => "The task's model is Auto, and Auto picked this model for the message.",
+        WHY_LIMIT => "Claude's usage limit ran out, so the task carried on on a model on your PC.",
+        _ => {
+            "Claude Code did not say why the model or effort changed, and Mímir did not change it."
+        }
+    }
 }
 
 fn is_zero(n: &usize) -> bool {
@@ -80,6 +109,27 @@ pub struct Task {
     pub session_id: Option<String>,
     pub status: Status,
     pub entries: Vec<Entry>,
+    /// The small print of `entries`, by position from the front (shorter
+    /// when the last ones have none): times, receipts, model and effort.
+    /// Older task files have none, so their entries show no time.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub entry_meta: Vec<EntryMeta>,
+    /// The model Claude Code last said it runs for this task (its start and
+    /// each reply carry it), e.g. "claude-opus-5-5".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_model: Option<String>,
+    /// The effort level the latest Claude Code run was started with (None:
+    /// the PC's default).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_effort: Option<String>,
+    /// Mímir's own reason the next reply may come from another model or
+    /// effort (the owner picked one, the usage limit), until a reply shows it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub switch_why: Option<String>,
+    /// A run started after `switch_why` was set: its replies are the ones
+    /// the reason is for. Not saved.
+    #[serde(skip)]
+    pub switch_armed: bool,
     pub plan: Vec<PlanItem>,
     pub files_changed: Vec<String>,
     pub created_unix: i64,
@@ -354,6 +404,11 @@ impl Task {
             session_id: None,
             status: Status::Working,
             entries: vec![],
+            entry_meta: vec![],
+            last_model: None,
+            run_effort: None,
+            switch_why: None,
+            switch_armed: false,
             plan: vec![],
             files_changed: vec![],
             created_unix: now_unix,
@@ -485,6 +540,11 @@ impl Task {
 
     pub fn add_you(&mut self, text: &str) {
         self.entries.push(Entry::You(text.to_string()));
+        self.stamp(EntryMeta {
+            at: Some(unix_ms()),
+            receipt: Some(Receipt::Sent),
+            ..Default::default()
+        });
         if self.status != Status::Working || self.turn_unix.is_none() {
             self.turn_unix = Some(crate::needs::now());
         }
@@ -509,6 +569,9 @@ impl Task {
             return false;
         };
         self.entries.remove(at);
+        if at < self.entry_meta.len() {
+            self.entry_meta.remove(at);
+        }
         for (i, _) in &mut self.checkpoints {
             if *i > at {
                 *i -= 1;
@@ -562,6 +625,157 @@ impl Task {
 
     pub fn add_note(&mut self, text: &str) {
         self.entries.push(Entry::Note(text.to_string()));
+        self.stamp(EntryMeta {
+            at: Some(unix_ms()),
+            ..Default::default()
+        });
+    }
+
+    /// Adds Claude's words: when, the model Claude Code said answers, the
+    /// effort its run started with, and why that differs from the reply
+    /// before when it does.
+    pub fn add_claude(&mut self, text: String) {
+        let model = self.last_model.clone();
+        let effort = self.run_effort.clone();
+        let before = self.entries.iter().enumerate().rev().find_map(|(i, e)| {
+            let m = self.entry_meta.get(i)?;
+            (matches!(e, Entry::Claude(_)) && m.model.is_some())
+                .then(|| (m.model.clone(), m.effort.clone()))
+        });
+        let mut meta = EntryMeta {
+            at: Some(unix_ms()),
+            model: model.clone(),
+            effort: effort.clone(),
+            ..Default::default()
+        };
+        match before {
+            Some(b) if model.is_some() && b != (model, effort) => {
+                let short = self
+                    .switch_why
+                    .take()
+                    .unwrap_or_else(|| WHY_NOT_REPORTED.to_string());
+                meta.switched_why = Some(switch_sentence(&short).to_string());
+                meta.switched = Some(short);
+                self.switch_armed = false;
+            }
+            // The reason was for a run that answers just as before.
+            _ if self.switch_armed => {
+                self.switch_why = None;
+                self.switch_armed = false;
+            }
+            _ => {}
+        }
+        self.entries.push(Entry::Claude(text));
+        self.stamp(meta);
+    }
+
+    /// Sets the small print of the entry just added.
+    fn stamp(&mut self, meta: EntryMeta) {
+        let Some(i) = self.entries.len().checked_sub(1) else {
+            return;
+        };
+        if self.entry_meta.len() <= i {
+            self.entry_meta.resize(i + 1, EntryMeta::default());
+        }
+        self.entry_meta[i] = meta;
+    }
+
+    /// The small print of entry `i` (none when it has none).
+    pub fn meta(&self, i: usize) -> EntryMeta {
+        self.entry_meta.get(i).cloned().unwrap_or_default()
+    }
+
+    /// The small print of every entry, one each.
+    pub fn metas(&self) -> Vec<EntryMeta> {
+        let mut m = self.entry_meta.clone();
+        m.resize(self.entries.len(), EntryMeta::default());
+        m
+    }
+
+    /// A client's copy: the small print from entry `from` on, as the service
+    /// sent it.
+    pub fn set_metas_from(&mut self, from: usize, meta: Vec<EntryMeta>) {
+        self.entry_meta.truncate(from);
+        if !meta.is_empty() {
+            self.entry_meta.resize(from, EntryMeta::default());
+            self.entry_meta.extend(meta);
+        }
+        self.entry_meta.truncate(self.entries.len());
+    }
+
+    /// Entries were taken away or replaced from outside: small print past
+    /// the end goes with them.
+    pub fn trim_meta(&mut self) {
+        self.entry_meta.truncate(self.entries.len());
+    }
+
+    /// The owner's message just added was sent to this model and effort.
+    pub fn set_sent_to(&mut self, model: Option<String>, effort: Option<String>) {
+        if let Some(i) = self.entries.len().checked_sub(1)
+            && matches!(self.entries[i], Entry::You(_))
+            && let Some(m) = self.entry_meta.get_mut(i)
+        {
+            m.model = model;
+            m.effort = effort;
+        }
+    }
+
+    /// The owner's message at `hint` (where it was added) was written to
+    /// Claude Code's live input. If entries moved since, the oldest message
+    /// still waiting is the one (they go in order).
+    pub fn mark_delivered(&mut self, hint: usize) {
+        let waiting = |t: &Task, i: usize| {
+            matches!(t.entries.get(i), Some(Entry::You(_)))
+                && t.entry_meta.get(i).and_then(|m| m.receipt) == Some(Receipt::Sent)
+        };
+        let at = if waiting(self, hint) {
+            Some(hint)
+        } else {
+            (0..self.entries.len()).find(|i| waiting(self, *i))
+        };
+        if let Some(i) = at {
+            self.entry_meta[i].receipt = Some(Receipt::Delivered);
+        }
+    }
+
+    /// Claude Code echoed a message it took in (`--replay-user-messages`):
+    /// the owner's message it carries is Read, and so is any sent before it
+    /// that is still not marked (they are taken in order).
+    fn echoed(&mut self, text: &str) {
+        let open: Vec<usize> = (0..self.entries.len())
+            .filter(|i| {
+                matches!(self.entries[*i], Entry::You(_))
+                    && matches!(
+                        self.entry_meta.get(*i).and_then(|m| m.receipt),
+                        Some(Receipt::Sent | Receipt::Delivered)
+                    )
+            })
+            .collect();
+        let said = |i: usize| match &self.entries[i] {
+            Entry::You(t) => t
+                .rsplit_once("\n[")
+                .filter(|(_, tail)| tail.ends_with(" attached]"))
+                .map_or(t.as_str(), |(head, _)| head)
+                .trim()
+                .to_string(),
+            _ => String::new(),
+        };
+        // A slash command comes back as its output, not as the words sent.
+        let command = text.trim_start().starts_with("<local-command-");
+        let hit = open.iter().copied().find(|i| {
+            let s = said(*i);
+            !s.is_empty()
+                && if command {
+                    s.starts_with('/')
+                } else {
+                    text.contains(&s)
+                }
+        });
+        if let Some(hit) = hit {
+            for i in open.into_iter().take_while(|i| *i <= hit) {
+                self.entry_meta[i].receipt = Some(Receipt::Read);
+            }
+        }
     }
 
     /// Applies one event. `now_ms` is a clock in milliseconds used to time
@@ -572,12 +786,17 @@ impl Task {
                 if !init.session_id.is_empty() {
                     self.session_id = Some(init.session_id.clone());
                 }
+                if !init.model.is_empty() {
+                    self.last_model = Some(init.model.clone());
+                }
             }
             Event::Text(t) => {
                 self.live.clear();
                 let t = sign_in_words(t).map_or_else(|| t.clone(), str::to_string);
-                self.entries.push(Entry::Claude(t));
+                self.add_claude(t);
             }
+            Event::Model(m) => self.last_model = Some(m.clone()),
+            Event::Echo(t) => self.echoed(t),
             Event::TextDelta(t) => self.live.push_str(t),
             Event::ContextUsed(n) => self.context_used = *n,
             Event::Compacted { before, after } => {

@@ -192,6 +192,28 @@ fn write_the_examples() {
                 Entry::Claude("Done: 0.2 s now.".into()),
                 Entry::Note("You stopped this task.".into()),
             ],
+            meta: vec![
+                EntryMeta {
+                    at: Some(1_794_000_000_000),
+                    receipt: Some(Receipt::Read),
+                    model: Some("claude-opus-5-5".into()),
+                    effort: None,
+                    ..Default::default()
+                },
+                EntryMeta::default(),
+                EntryMeta {
+                    at: Some(1_794_000_060_000),
+                    model: Some("claude-sonnet-5-5".into()),
+                    effort: Some("high".into()),
+                    switched: Some("you picked it".into()),
+                    switched_why: Some("You picked this model or effort level for the task.".into()),
+                    ..Default::default()
+                },
+                EntryMeta {
+                    at: Some(1_794_000_120_000),
+                    ..Default::default()
+                },
+            ],
         },
         Event::Live {
             task: "1794-1-1".into(),

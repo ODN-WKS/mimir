@@ -38,6 +38,12 @@ pub enum Event {
     Init(Init),
     /// Text Claude wrote to the owner.
     Text(String),
+    /// The model Claude Code says wrote the message whose events follow
+    /// (e.g. "claude-opus-5-5").
+    Model(String),
+    /// Claude Code took in a message from its input and echoed it back
+    /// (`--replay-user-messages`): its text.
+    Echo(String),
     /// A piece of text while Claude is still writing it
     /// (`--include-partial-messages`).
     TextDelta(String),
@@ -173,6 +179,13 @@ pub fn parse_line(line: &str) -> Vec<Event> {
                 .cloned()
                 .unwrap_or_default();
             let mut out = vec![];
+            // "<synthetic>": Claude Code's own words (an error), no model's.
+            match v.pointer("/message/model").and_then(Value::as_str) {
+                Some(m) if !m.is_empty() && !m.starts_with('<') => {
+                    out.push(Event::Model(m.to_string()))
+                }
+                _ => {}
+            }
             if let Some(u) = v.pointer("/message/usage") {
                 let n = |k: &str| u.get(k).and_then(Value::as_u64).unwrap_or(0);
                 let used = n("input_tokens")
@@ -199,6 +212,16 @@ pub fn parse_line(line: &str) -> Vec<Event> {
                 }
             }
             out
+        }
+        // A message from the input, echoed as Claude Code takes it in.
+        "user"
+            if !from_helper
+                && v.get("isReplay").and_then(Value::as_bool) == Some(true)
+                && v.get("isSynthetic").and_then(Value::as_bool) != Some(true) =>
+        {
+            vec![Event::Echo(content_text(
+                v.pointer("/message/content").unwrap_or(&Value::Null),
+            ))]
         }
         "user" if !from_helper => {
             let detail = v.get("tool_use_result").cloned().unwrap_or(Value::Null);

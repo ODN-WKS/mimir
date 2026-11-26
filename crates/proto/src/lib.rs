@@ -215,6 +215,53 @@ pub enum Entry {
     Note(String),
 }
 
+/// What became of one of the owner's messages to Claude Code.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Receipt {
+    /// The PC has it and has not yet written it to Claude Code's input.
+    Sent,
+    /// The PC wrote it to Claude Code's live input.
+    Delivered,
+    /// Claude Code took it in (it echoed it back).
+    Read,
+}
+
+/// The small print under one conversation entry: when it was made, and for
+/// the owner's messages and Claude's replies the model and effort. Every field
+/// is optional: entries from before these were kept have none (they show no
+/// time rather than a wrong one).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct EntryMeta {
+    /// When the entry was made (unix milliseconds).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub at: Option<i64>,
+    /// The owner's messages only.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub receipt: Option<Receipt>,
+    /// A reply: the model Claude Code said answered it (e.g.
+    /// "claude-opus-5-5"). The owner's message: the model it was sent to.
+    /// None: not known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    /// The effort level with `model` (e.g. "high"); None with a model is the
+    /// PC's default effort.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub effort: Option<String>,
+    /// A reply whose model or effort differs from the reply before: why, in
+    /// a few words ("you picked it", "usage limit", "reason not reported").
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub switched: Option<String>,
+    /// The same reason in a full sentence, for a tap on it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub switched_why: Option<String>,
+}
+
+impl EntryMeta {
+    pub fn is_empty(&self) -> bool {
+        *self == EntryMeta::default()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PlanItem {
     pub id: String,
@@ -1861,6 +1908,11 @@ pub enum Event {
         task: String,
         from: usize,
         entries: Vec<Entry>,
+        /// The small print of the same entries, one each (times, receipts,
+        /// model and effort); empty when none has any (and from an older
+        /// PC). Older phones ignore it.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        meta: Vec<EntryMeta>,
     },
     /// Text Claude is writing right now.
     Live {

@@ -13,7 +13,7 @@ use crate::queue::{SUMMARY_PROMPT, Waiting, waiting_now, wants_summary, with_fil
 use crate::runner::{self, Notice, Runner, Wake};
 use crate::settings::{self, Settings};
 use crate::sockets::SessionMsg;
-use crate::task::{Status, Task, WeeklyUse};
+use crate::task::{EntryMeta, Status, Task, WeeklyUse};
 use mimir_proto::{
     Call, CallMsg, Choice, Entry, Event, EventMsg, Filed, GitInfo, ItemAnswer, NeedsKind,
     NeedsYouItem, PROTO, Placed, QueuedMessage, StatusFacts, StatusPage, TaskHeader, TidyKind,
@@ -322,7 +322,18 @@ const FINISHED_KEPT: usize = 20;
 struct Sent {
     header: Option<TaskHeader>,
     entries: Vec<Entry>,
+    /// The small print sent with `entries`, one each.
+    meta: Vec<EntryMeta>,
     live: String,
+}
+
+/// The small print as the link carries it: nothing when no entry has any.
+fn wire_meta(meta: Vec<EntryMeta>) -> Vec<EntryMeta> {
+    if meta.iter().all(EntryMeta::is_empty) {
+        vec![]
+    } else {
+        meta
+    }
 }
 
 impl Drop for Service {
@@ -1069,6 +1080,7 @@ impl Service {
                 task: l.task.id.clone(),
                 from: 0,
                 entries: l.task.entries.clone(),
+                meta: wire_meta(l.task.metas()),
             });
             if !l.task.live.is_empty() {
                 events.push(Event::Live {
@@ -2225,7 +2237,8 @@ impl Service {
                     return Err("This task is already online.".into());
                 };
                 if r.on_free {
-                    self.runner.hand_to(&task, r.claude_model.clone());
+                    self.runner
+                        .hand_to(&task, r.claude_model.clone(), crate::task::WHY_PICKED);
                     self.runner.note(
                         &task,
                         "Back online. Your next message carries on from a short brief of \
@@ -5170,7 +5183,8 @@ impl Service {
         let f = self
             .free_choice()
             .ok_or("No model is on this PC: add one in Settings › Models.")?;
-        self.runner.hand_to(id, Some(f.id.clone()));
+        self.runner
+            .hand_to(id, Some(f.id.clone()), crate::task::WHY_LIMIT);
         self.runner.set_ran_out(
             id,
             Some(mimir_proto::RanOut {
@@ -5533,20 +5547,30 @@ impl Service {
                 });
             }
             let now = &l.task.entries;
+            // A receipt that moves (Delivered, then Read) sends its entry again.
+            let now_meta = l.task.metas();
             let same = sent
                 .entries
                 .iter()
                 .zip(now.iter())
-                .position(|(a, b)| a != b)
+                .zip(
+                    sent.meta
+                        .iter()
+                        .chain(std::iter::repeat(&EntryMeta::default())),
+                )
+                .zip(now_meta.iter())
+                .position(|(((a, b), am), bm)| a != b || am != bm)
                 .unwrap_or(sent.entries.len().min(now.len()));
             if same < now.len() || sent.entries.len() != now.len() {
                 events.push(Event::Entries {
                     task: id.clone(),
                     from: same,
                     entries: now[same..].to_vec(),
+                    meta: wire_meta(now_meta[same..].to_vec()),
                 });
                 sent.entries.truncate(same);
                 sent.entries.extend_from_slice(&now[same..]);
+                sent.meta = now_meta;
             }
             if sent.live != l.task.live {
                 sent.live = l.task.live.clone();
@@ -5738,6 +5762,7 @@ fn sent_of(t: &Task, h: TaskHeader) -> Sent {
     Sent {
         header: Some(h),
         entries: t.entries.clone(),
+        meta: t.metas(),
         live: t.live.clone(),
     }
 }
