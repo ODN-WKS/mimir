@@ -282,10 +282,12 @@ private fun SheetContent(sheet: Sheet, state: StationState, station: Station, na
             val set = { c: TaskChoice ->
                 if (project == null) nav.composeTo = nav.composeTo.copy(model = c.model, effort = c.effort) else nav.newTaskChoice = c.copy(project = project)
             }
+            // In Chat, the usual model is no choice at all: picking it empties the model, so an everyday message stays one.
+            val pick = { id: String -> if (project == null && id == state.models.selected) "" else id }
             ModelEffortMenu(
                 sheet.title(state), state, station.canSetReplyOptions(),
                 isModel = { m -> m.id == choice.model.ifEmpty { state.models.selected } },
-                onModel = { set(choice.copy(model = it)) },
+                onModel = { set(choice.copy(model = pick(it))) },
                 effortNow = TaskEffort.of(choice.effort.ifEmpty { null }),
                 onEffort = { set(choice.copy(effort = it.orEmpty())) },
                 effortHeading = "Effort",

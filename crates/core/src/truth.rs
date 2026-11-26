@@ -210,7 +210,8 @@ pub fn seen_rest(t: &Truth) -> u64 {
 }
 
 /// The meters at a step a person can't tell apart: 5% for the processor and
-/// graphics, 1 GB for memory.
+/// graphics, 1 GB for memory, 2 °C for the temperatures (so sensor jitter
+/// does not flood the phones).
 pub fn meters_seen(t: &Truth) -> u64 {
     let mut h = std::collections::hash_map::DefaultHasher::new();
     t.stats
@@ -221,6 +222,8 @@ pub fn meters_seen(t: &Truth) -> u64 {
                 s.gpu.map(|g| (g / 5.0).round() as i64),
                 (s.mem_used as f64 / 1e9).round() as i64,
                 s.mem_total,
+                s.cpu_temp_c.map(|c| c.div_euclid(2)),
+                s.gpu_temp_c.map(|c| c.div_euclid(2)),
             )
         })
         .hash(&mut h);
@@ -559,5 +562,38 @@ mod tests {
         assert!(push_due(false, true, None));
         assert!(push_due(true, false, Some(Duration::from_secs(0))));
         assert!(!push_due(false, false, None));
+    }
+
+    #[test]
+    fn fixrv_a_temperature_change_alone_is_news_in_two_degree_steps() {
+        let stats = |cpu_t: Option<i32>, gpu_t: Option<i32>| TruthStats {
+            cpu: 20.0,
+            mem_used: 8_000_000_000,
+            mem_total: 32_000_000_000,
+            gpu: Some(10.0),
+            threads: None,
+            cpu_temp_c: cpu_t,
+            gpu_temp_c: gpu_t,
+        };
+        let mut i = input(vec![], vec![]);
+        i.stats = Some(stats(Some(60), Some(50)));
+        let a = build(i);
+        let mut b = a.clone();
+        b.stats = Some(stats(Some(61), Some(51)));
+        assert_eq!(meters_seen(&a), meters_seen(&b), "1 °C jitter is not news");
+        b.stats = Some(stats(Some(70), Some(50)));
+        assert_ne!(
+            meters_seen(&a),
+            meters_seen(&b),
+            "a hotter processor is news"
+        );
+        b.stats = Some(stats(Some(60), Some(58)));
+        assert_ne!(
+            meters_seen(&a),
+            meters_seen(&b),
+            "a hotter graphics chip is news"
+        );
+        b.stats = Some(stats(None, Some(50)));
+        assert_ne!(meters_seen(&a), meters_seen(&b), "a lost sensor is news");
     }
 }

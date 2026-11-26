@@ -57,7 +57,7 @@ import io.github.odnwks.mimir.ui.theme.Type
  * line that grows to six, and under them one row ([ReplyRow]): + on the left, the "Model · Effort"
  * chip in the centre, a small round Send on the right. There is no mic in the box: voice typing is
  * in the screen's three-dots menu, and while it listens a mic shows beside the words as the way to
- * finish. Send is dimmed while the box is empty.
+ * finish ([mic]: a screen without its three dots keeps the mic there). Send is dimmed while the box is empty.
  */
 @Composable
 fun Composer(
@@ -84,6 +84,8 @@ fun Composer(
     optionsNote: String? = null,
     /** A new task needs words (they name it); a reply can go with only a picture. */
     needsWords: Boolean = false,
+    /** The mic beside the words even when not listening: for a screen whose three dots are hidden (a Whisper in Chat). */
+    mic: Boolean = false,
 ) {
     val shape = RoundedCornerShape(24.dp)
     val sendable = value.isNotBlank() || (attach?.any == true && !needsWords)
@@ -103,8 +105,9 @@ fun Composer(
         attach?.Note()
         if (attach?.any == true) Box(Modifier.padding(start = 4.dp, end = 4.dp, top = 6.dp, bottom = 6.dp)) { attach.Chips() }
         Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            // Voice typing started from the three dots: the mic shows only while it listens, to finish.
-            if (voice.state == Speaking.Listening) Box(Modifier.padding(bottom = 4.dp)) { MicButton(voice, micLabel, filled = false, surface = Palette.Card) }
+            // Voice typing started from the three dots: the mic shows only while it listens, to finish
+            // (or always, with [mic], where the three dots are hidden).
+            if (mic || voice.state == Speaking.Listening) Box(Modifier.padding(bottom = 4.dp)) { MicButton(voice, micLabel, filled = false, surface = Palette.Card) }
             BasicTextField(
                 value = value,
                 onValueChange = onValue,

@@ -327,6 +327,8 @@ LazyColumn(
             optionsShort = optionsShorter(modelName, to.effort, withEffort = canOptions),
             onOptions = { nav.openSheet(io.github.odnwks.mimir.nav.Sheet.NewTaskModel()) },
             whisper = to.whisper,
+            // A Whisper hides the three dots (where Talk lives): the mic stays in the box, as in the Mímir chat.
+            mic = to.whisper,
         )
     }
     WhoAnswersSheet(
