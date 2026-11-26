@@ -186,7 +186,7 @@ object Router {
     private val ABOUT_THE_PC = Regex("^what(?:'s|\u2019s| is)\\s+(?:running|going on)(?:\\s+(?:on\\s+)?(?:my|your|the)\\s+pc)?\\s*[?!.]*$", RegexOption.IGNORE_CASE)
 
     /** What [text] needs looked up first, or null for none. */
-    fun need(text: String): Need? {
+    fun need(text: String, timely: Boolean = true): Need? {
         val t = text.trim()
         if (t.isEmpty() || t.length > 300) return null
         if (ABOUT_THE_PC.matches(t)) return null
@@ -213,7 +213,7 @@ object Router {
         // Still never about a private person or thing ("my", "his"...): that stays unsearched, as for news.
         if (SHOPPING.containsMatchIn(t) && ASKING.containsMatchIn(t) && !aboutPerson(t)) return words(t)?.let { Need.Search(it) }
         // Anything current ("who is the prime minister of Canada", "Lakers schedule"): the web, not memory.
-        timely(t)?.let { return it }
+        if (timely) timely(t)?.let { return it }
         val e = ENCYCLOPEDIA.find(t) ?: return null
         val subject = e.groupValues[1].trim()
         if (NOT_ENCYCLOPEDIA.containsMatchIn(subject) || subject.split(Regex("\\s+")).size > 8) return null

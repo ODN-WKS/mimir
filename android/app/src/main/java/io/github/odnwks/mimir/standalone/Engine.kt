@@ -1224,7 +1224,7 @@ class Engine(
         if (skipLookup.getAndSet(false)) return noLookup
         if (!io.github.odnwks.mimir.online.Online.allowed(mode())) return noLookup
         val last = turns.lastOrNull()?.takeIf { it.user } ?: return noLookup
-        if (mode() == io.github.odnwks.mimir.online.ChatMode.WhisperWeb && (tapped != null || forced != null || io.github.odnwks.mimir.online.Router.need(last.text) != null)) {
+        if (mode() == io.github.odnwks.mimir.online.ChatMode.WhisperWeb && (tapped != null || forced != null || io.github.odnwks.mimir.online.Router.need(last.text, timely = mode() == io.github.odnwks.mimir.online.ChatMode.Normal) != null)) {
             torWait()?.let { return it }
         }
         // A normal chat's lookup, all its steps together, takes about 12 s at most (Tor is slower).
@@ -1232,7 +1232,7 @@ class Engine(
         val previous = turns.dropLast(1).lastOrNull { it.user }?.text
         return io.github.odnwks.mimir.online.Net.within(budget) {
             if (tapped != null) page(tapped)
-            else when (val need = forced ?: asked ?: io.github.odnwks.mimir.online.Router.need(last.text) ?: (if (mode() == io.github.odnwks.mimir.online.ChatMode.Normal) io.github.odnwks.mimir.online.Router.followUp(last.text, previous) else null)) {
+            else when (val need = forced ?: asked ?: io.github.odnwks.mimir.online.Router.need(last.text, timely = mode() == io.github.odnwks.mimir.online.ChatMode.Normal) ?: (if (mode() == io.github.odnwks.mimir.online.ChatMode.Normal) io.github.odnwks.mimir.online.Router.followUp(last.text, previous) else null)) {
                 is io.github.odnwks.mimir.online.Router.Need.Weather -> weather(need)
                 is io.github.odnwks.mimir.online.Router.Need.Search -> search(need, forced != null)
                 is io.github.odnwks.mimir.online.Router.Need.Encyclopedia -> encyclopedia(need)
@@ -1592,7 +1592,8 @@ class Engine(
         }
         val earlier = synchronized(fetchedFor) { HashMap(fetchedFor) }
         fun prompt(think: Boolean, fetched: String?) = Prompt.build(
-            model.format, turns, think, brief = effort == Effort.Quick, sees = sees, online = online, fetched = fetched, earlier = earlier,
+            model.format, turns, think, brief = effort == Effort.Quick, sees = sees, online = online,
+            fetched = fetched, earlier = earlier,
             chatRules = _state.value.chat.rules, ask = ask,
         )
         fun pictures() = if (sees) Prompt.pictures(turns).map { it.jpeg } else emptyList()
@@ -1790,8 +1791,13 @@ class Engine(
                 }
                 break
             }
-            val answer = Thought.split(out.toString(), model.format, thinks).second
+            var answer = Thought.split(out.toString(), model.format, thinks).second
             if (honour && words == null) (asked(answer, 0) as? Ask.Line)?.let { words = it.words }
+            // A pass that may not ask never keeps a SEARCH: line (review 2026-11-25).
+            if (!honour && ask != null && asked(answer, 0) is Ask.Line) {
+                val rest = answer.trimStart().substringAfter('\n', "").trim()
+                if (rest.isNotEmpty()) answer = rest
+            }
             return answer to words
         }
 
@@ -1808,11 +1814,11 @@ class Engine(
         }
 
         // Think first: a short decision with thinking off comes first, so a question that needs a lookup isn't thought about first.
-        val decided = if (honour && think) decide() else null
+        val decided = (if (honour && think) decide() else null)?.let { modelNeed(it) }
         var answer: String
         var thinks = think
         if (decided != null) {
-            if (!lookFor(modelNeed(decided))) return
+            if (!lookFor(decided)) return
             thinks = false
             answer = (pass(block, false, limitFor(block), false) ?: return).first
         } else {

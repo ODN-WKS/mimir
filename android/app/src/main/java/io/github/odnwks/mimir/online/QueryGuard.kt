@@ -35,7 +35,10 @@ object QueryGuard {
 
     private fun tokens(text: String) = WORD.findAll(text.lowercase()).map { it.value }.toList()
 
-    private fun digitRuns(text: String) = DIGIT_RUN.findAll(text).map { m -> m.value.filter { it.isDigit() } }.toList()
+    /** A year on its own ("2024 2025 season") is not part of a long number. */
+    private val YEAR = Regex("\\b(?:19|20)\\d\\d\\b")
+
+    private fun digitRuns(text: String) = DIGIT_RUN.findAll(text.replace(YEAR, " ; ")).map { m -> m.value.filter { it.isDigit() } }.toList()
 
     /** 7 or more digits in a row (ignoring spaces and dashes) that no typed message holds. */
     private fun longNumberNotTyped(words: String, typed: List<String>): Boolean {
