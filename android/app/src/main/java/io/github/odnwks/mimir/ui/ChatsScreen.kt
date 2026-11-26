@@ -303,7 +303,7 @@ fun ChatsScreen(state: StationState, station: Station, engine: Engine?, nav: Nav
     fun goTo(screen: Screen) {
         val below = nav.stack.dropLast(1).lastOrNull()?.screen
         when {
-            below == screen -> nav.back()
+            below == screen -> nav.closeScreen()
             screen == Screen.Chat -> nav.selectTab(Tab.Chat)
             else -> nav.replace(screen)
         }

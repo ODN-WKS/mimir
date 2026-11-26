@@ -163,7 +163,7 @@ fun PhonePcScreen(state: StationState, station: Station, nav: Navigator, setting
     if (state.pcSessions != null && !settings) return PcSessionsScreen(state, station, nav)
     val standIn = LocalStandIn.current
     Column(Modifier.fillMaxSize().background(Palette.Ground)) {
-        BackHeader(if (settings) "PC settings" else "Your PC", nav::back, backLabel = if (settings) "Back" else "Back to Settings")
+        BackHeader(if (settings) "PC settings" else "Your PC", nav::back)
         Column(
             Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 20.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
@@ -246,7 +246,7 @@ private fun LineButton(text: String, onClick: () -> Unit) {
 fun GeneralScreen(state: StationState, nav: Navigator) {
     val tap = LocalTapTracker.current
     Column(Modifier.fillMaxSize().background(Palette.Ground)) {
-        BackHeader("Look and size", nav::back, backLabel = "Back to Settings")
+        BackHeader("Look and size", nav::back)
         Column(
             Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),

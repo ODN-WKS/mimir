@@ -189,8 +189,8 @@ data class TapPoint(val x: Float, val y: Float)
 data class Entry(val screen: Screen, val key: Int)
 
 /**
- * The back stack. Each section of the bottom bar starts its own stack; Back walks the stack, then
- * returns to Chat, then leaves the app. A sheet sits above the stack and Back closes it first.
+ * The back stack. Each section of the side menu starts its own stack. Back (the system's or a screen's
+ * arrow) goes straight home to Chat, then leaves the app. A sheet sits above the stack and Back closes it first.
  */
 class Navigator(start: Screen = Screen.Chat) {
     private var nextKey = 0
@@ -328,11 +328,29 @@ class Navigator(start: Screen = Screen.Chat) {
     /**
      * System Back or a screen's back arrow. Returns false when the app should close.
      *
-     * The rule (0.09, item 5): Back goes to where you came from, one step. A page that lists things
-     * (a project page, Needs you, All tasks, Settings, Your PC, Updates, Recent activity, Chats) goes straight to the
-     * home chat, so from a task two Backs always reach home, however many pages came before.
+     * The rule (owner, 2026-11-26): one Back from any screen goes home to Chat; nothing walks back
+     * through the screens seen before. An open sheet closes first, and on a tablet the right pane
+     * closes first; the next Back goes home. On Chat with nothing open, Back leaves the app.
      */
     fun back(): Boolean {
+        if (sheet != null) { sheet = null; return true }
+        if (detail.isNotEmpty()) { detailForward = false; detail = emptyList(); return true }
+        if (stack.size > 1 || current != Screen.Chat) {
+            val home = stack.first().takeIf { it.screen == Screen.Chat }
+            lastMove = if (stack.size > 1) Move.Back else Move.ToTab(toRight = false)
+            stack = listOf(home ?: Entry(Screen.Chat, nextKey++))
+            return true
+        }
+        return false
+    }
+
+    /**
+     * A screen closing itself once its job is done (an edit allowed, a task deleted, a page read):
+     * one step back to the screen it came from, never past a sheet. Not what the Back key does.
+     * A page that lists things (a project page, Needs you, All tasks, Settings, Your PC, Updates,
+     * Recent activity, Chats) closes to the home chat.
+     */
+    fun closeScreen(): Boolean {
         if (sheet != null) { sheet = null; return true }
         if (detail.isNotEmpty()) { detailForward = false; detail = detail.dropLast(1); return true }
         if (stack.size > 1) {
@@ -350,7 +368,7 @@ class Navigator(start: Screen = Screen.Chat) {
     }
 }
 
-/** The pages that list things: Back from one of them reaches the home chat (see [Navigator.back]). */
+/** The pages that list things: closing one of them reaches the home chat (see [Navigator.closeScreen]). */
 fun Screen.backsToHome(): Boolean = when (this) {
     is Screen.Project, Screen.NeedsYou, is Screen.AllTasks, Screen.Settings, Screen.Status, Screen.Updates, Screen.Recent, Screen.Chats -> true
     else -> false

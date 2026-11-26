@@ -416,11 +416,11 @@ fun TaskScreen(taskId: String, state: StationState, station: Station, nav: Navig
                         Text("This task didn't start: ${task.failedWhy} Your words are kept.", style = Type.Label, color = Palette.AmberNote)
                         Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                             LinkText("Try again", { station.retryWaitingTask(task.id) }, bold = true)
-                            LinkText("Remove", { station.cancelWaitingTask(task.id); nav.back() }, bold = true)
+                            LinkText("Remove", { station.cancelWaitingTask(task.id); nav.closeScreen() }, bold = true)
                         }
                     } else Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(if (state.pcAway) "Waiting for your PC ·" else "Starting…", style = Type.Label, color = Palette.TextDim)
-                        if (task.canCancel) LinkText("Cancel this task", { station.cancelWaitingTask(task.id); nav.back() }, bold = true)
+                        if (task.canCancel) LinkText("Cancel this task", { station.cancelWaitingTask(task.id); nav.closeScreen() }, bold = true)
                     }
                 }
             } else androidx.compose.animation.AnimatedContent(

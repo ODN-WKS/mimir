@@ -19,8 +19,7 @@ class TwoPanesTest {
         nav.open(Screen.Task("b"))
         nav.open(Screen.Change("b"))
         assertEquals(listOf(Screen.Task("b"), Screen.Change("b")), nav.detail.map { it.screen })
-        assertTrue(nav.back())
-        assertEquals(listOf(Screen.Task("b")), nav.detail.map { it.screen })
+        // P24: Back closes the whole right pane at once, not one page of it.
         assertTrue(nav.back())
         assertTrue(nav.detail.isEmpty())
         assertEquals(Screen.Status, nav.current)

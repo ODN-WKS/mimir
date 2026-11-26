@@ -39,7 +39,7 @@ fun GroundRulesScreen(nav: Navigator) {
     val r by GroundRules.rules.collectAsStateWithLifecycle()
     Column(Modifier.fillMaxSize().background(Palette.Ground)) {
         // Back always lands on Models, where the rules live, however they were reached (search, Privacy check, a chat).
-        BackHeader("Rules for every chat", { backToModels(nav) }, backLabel = "Back")
+        BackHeader("Rules for every chat", nav::back)
         Column(
             Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 20.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -60,11 +60,4 @@ fun GroundRulesScreen(nav: Navigator) {
             if (r.text != GroundRules.DEFAULT) SmallButton("Reset to default", GroundRules::reset)
         }
     }
-}
-
-/** From Ground rules: back to Models, whether it opened from Models or from somewhere else. */
-fun backToModels(nav: Navigator) {
-    val from = nav.stack.dropLast(1).lastOrNull()?.screen ?: nav.detail.dropLast(1).lastOrNull()?.screen
-    nav.back()
-    if (from != io.github.odnwks.mimir.nav.Screen.Models) nav.open(io.github.odnwks.mimir.nav.Screen.Models)
 }

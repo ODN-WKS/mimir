@@ -307,7 +307,7 @@ fun PairErrorScreen(state: StationState, nav: Navigator) {
     val why = (state.pairing as? PairProgress.Failed)?.why
     val others = otherProblems(why)
     Column(Modifier.fillMaxSize().background(Palette.Ground)) {
-        BackHeader("Couldn't pair", { nav.replace(Screen.Pair) })
+        BackHeader("Couldn't pair", nav::back)
         Column(
             Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 16.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),

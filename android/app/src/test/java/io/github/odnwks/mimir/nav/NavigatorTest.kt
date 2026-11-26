@@ -15,7 +15,8 @@ class NavigatorTest {
         assertFalse(nav.back())
     }
 
-    @Test fun openPushesAndBackPops() {
+    // P24 (owner, 2026-11-26): one Back from any screen goes home, no longer one step down the stack.
+    @Test fun openPushesAndBackGoesHome() {
         val nav = Navigator()
         nav.open(Screen.NeedsYou)
         nav.open(Screen.Task("t"))
@@ -23,7 +24,7 @@ class NavigatorTest {
         assertEquals(listOf(Screen.Chat, Screen.NeedsYou, Screen.Task("t"), Screen.Change("t")), nav.stack.map { it.screen })
         assertEquals(Move.Forward, nav.lastMove)
         assertTrue(nav.back())
-        assertEquals(Screen.Task("t"), nav.current)
+        assertEquals(listOf(Screen.Chat), nav.stack.map { it.screen })
         assertEquals(Move.Back, nav.lastMove)
     }
 

@@ -68,7 +68,7 @@ fun BrowseScreen(url: String, nav: Navigator, engine: io.github.odnwks.mimir.sta
         val canRead = local != null && local.ready && !local.whisper && !local.writing && here.startsWith("https://") &&
             Net.hostOf(here) != io.github.odnwks.mimir.online.Search.SITE
         if (canRead) BigButton(
-            READ_THIS_PAGE, Look.Primary, { engine?.readPage(here); nav.back() },
+            READ_THIS_PAGE, Look.Primary, { engine?.readPage(here); nav.closeScreen() },
             Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp), height = 52.dp,
         )
     }

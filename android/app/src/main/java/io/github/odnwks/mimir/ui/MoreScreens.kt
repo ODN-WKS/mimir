@@ -50,9 +50,9 @@ const val RELEASES_PAGE = "https://github.com/ODN-WKS/mimir/releases/latest"
 
 /** An inner Settings page: a back header and a scrolling column. */
 @Composable
-private fun Page(title: String, nav: Navigator, subtitle: String? = null, backLabel: String = "Back to Settings", content: @Composable ColumnScope.() -> Unit) {
+private fun Page(title: String, nav: Navigator, subtitle: String? = null, content: @Composable ColumnScope.() -> Unit) {
     Column(Modifier.fillMaxSize().background(Palette.Ground)) {
-        BackHeader(title, nav::back, backLabel = backLabel, subtitle = subtitle)
+        BackHeader(title, nav::back, subtitle = subtitle)
         Column(
             Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 20.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -277,7 +277,7 @@ fun updateResultWords(r: UpdateResult): String = when (r) {
 /** Settings › Help and about › App updates: this app's version, and Check for a new version (it always answers). */
 @Composable
 fun AboutScreen(state: StationState, nav: Navigator) {
-    Page("App updates", nav, backLabel = "Back") {
+    Page("App updates", nav) {
         Panel(spacing = 4.dp) {
             Text("$AI_NAME ${state.appVersion}", style = Type.Section, color = Palette.Text)
             Text(
@@ -340,7 +340,7 @@ const val FONT_CREDIT = "Font: Cinzel (SIL Open Font License 1.1)"
 @Composable
 fun HelpAnswerScreen(id: String, state: StationState, nav: Navigator) {
     val topic = HELP_TOPICS.firstOrNull { it.id == id }
-    Page(topic?.question ?: "Help", nav, backLabel = "Back") {
+    Page(topic?.question ?: "Help", nav) {
         Panel { Text(helpAnswer(id, state.paired), style = Type.Body, color = Palette.TextSoft) }
     }
 }

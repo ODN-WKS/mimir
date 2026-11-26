@@ -114,7 +114,7 @@ fun PrivacyCheckScreen(state: StationState, nav: Navigator) {
     val all by io.github.odnwks.mimir.online.LookupLog.entries.collectAsStateWithLifecycle()
     LaunchedEffect(Unit) { while (true) { NetUse.sample(); delay(LOOK_MS) } }
     Column(Modifier.fillMaxSize().background(Palette.Ground)) {
-        BackHeader("Privacy", nav::back, backLabel = "Back to Settings")
+        BackHeader("Privacy", nav::back)
         Column(
             Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 20.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),

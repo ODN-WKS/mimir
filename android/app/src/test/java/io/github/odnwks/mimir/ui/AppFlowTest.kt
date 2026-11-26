@@ -80,9 +80,9 @@ class AppFlowTest {
         compose.mainClock.advanceTimeBy(5000)
         compose.waitForIdle()
         compose.onNodeWithText("You allowed this edit", useUnmergedTree = true).assertDoesNotExist()
-        // No Back button on a task's top now: the phone's own back goes back to Needs you.
+        // No Back button on a task's top now: the phone's own back goes home (P24, owner 2026-11-26), not to Needs you.
         nav.back(); compose.waitForIdle()
-        heading("Needs you").assertIsDisplayed()
+        assertEquals(listOf(Screen.Chat), nav.stack.map { it.screen })
     }
 
     @Test fun theSideMenuSwitchesSections() {

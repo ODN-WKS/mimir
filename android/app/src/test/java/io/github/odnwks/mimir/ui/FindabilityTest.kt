@@ -230,7 +230,11 @@ class FindabilityTest {
         HELP_TOPICS.forEach { compose.onNodeWithText(it.question).assertExists() }
         tap("What if I lose this phone?")
         compose.onNodeWithText("You remove it at your PC: $AI_NAME \u203a Settings \u203a Phones.").assertIsDisplayed()
+        // P24: Back goes home, so Help and about is opened again for the next question.
         nav.back(); compose.waitForIdle()
+        assertEquals(Screen.Chat, nav.current)
+        settings()
+        tap("Help and about")
         tap("What is a Whisper?")
         compose.onNodeWithText(whisperExplained(true), substring = true).assertIsDisplayed()
         // No "Lost a phone?" card anywhere, and nothing here removes a phone.
@@ -440,10 +444,10 @@ class FindabilityTest {
                 compose.waitForIdle()
                 assertEquals(Screen.GroundRules, nav.current)
             }
-            // Opened from search, Back still goes to Models (its button says so).
+            // P24 (owner, 2026-11-26): its Back arrow goes home, like every other screen's, no longer to Models.
             compose.onNodeWithContentDescription("Back").performClick()
             compose.waitForIdle()
-            assertEquals(Screen.Models, nav.current)
+            assertEquals(Screen.Chat, nav.current)
             // Also a row in Models, on by default with the default text, Reset after a change.
             nav.resetTo(Screen.Chat); nav.open(Screen.Settings); nav.open(Screen.Models); compose.waitForIdle()
             compose.onNodeWithText("Rules for every chat").performScrollTo().performClick()

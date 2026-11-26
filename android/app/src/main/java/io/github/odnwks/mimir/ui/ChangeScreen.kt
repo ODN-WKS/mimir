@@ -34,7 +34,7 @@ fun ChangeScreen(taskId: String, state: StationState, station: Station, nav: Nav
     val permission = task.permission
     Column(Modifier.fillMaxSize().background(Palette.Ground)) {
         BackHeader(
-            "The change", nav::back, backLabel = "Back to the task",
+            "The change", nav::back,
             subtitle = "${change.file} · ${change.lines.count { it.kind != DiffKind.Context }} lines · ${task.project}",
         )
         Column(
@@ -73,8 +73,8 @@ fun ChangeScreen(taskId: String, state: StationState, station: Station, nav: Nav
             }
         }
         if (permission != null) PinnedBar {
-            BigButton("Allow this edit", Look.Primary, { station.answer(permission.itemId, Answer.Allow); nav.back() })
-            BigButton("Don't allow", Look.Outline, { station.answer(permission.itemId, Answer.DontAllow); nav.back() })
+            BigButton("Allow this edit", Look.Primary, { station.answer(permission.itemId, Answer.Allow); nav.closeScreen() })
+            BigButton("Don't allow", Look.Outline, { station.answer(permission.itemId, Answer.DontAllow); nav.closeScreen() })
         }
     }
 }

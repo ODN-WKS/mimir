@@ -45,7 +45,7 @@ fun ProjectScreen(name: String, state: StationState, station: Station, nav: Navi
     val tap = LocalTapTracker.current
     val running = p.tasksRunning
     Column(Modifier.fillMaxSize().background(Palette.Ground)) {
-        BackHeader(p.name, nav::back, backLabel = "Back to status",
+        BackHeader(p.name, nav::back,
             // Voice typing for the box below (the box keeps only +, the chip and Send).
             action = { IconTarget(Glyphs.More, "Options for ${p.name}", { nav.openSheet(Sheet.ProjectOptions(p.name)) }) },
             // The folder's full path means nothing on a phone: only a short description shows.

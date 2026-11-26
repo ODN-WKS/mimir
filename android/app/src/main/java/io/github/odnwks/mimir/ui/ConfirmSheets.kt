@@ -189,7 +189,7 @@ private fun SheetContent(sheet: Sheet, state: StationState, station: Station, na
                 MenuRow(Glyphs.Shield, "Always allowed in this task…") { nav.openSheet(Sheet.AlwaysAllowed(id)) }
             }
             MenuRow(Glyphs.Folder, "Archive") {
-                station.archiveTask(id); nav.closeSheet(); nav.back()
+                station.archiveTask(id); nav.closeSheet(); nav.closeScreen()
                 undo(Undoable("Archived ${task?.title ?: "the task"}", undo = { station.unarchiveTask(id) }))
             }
             MenuRow(Glyphs.Clock, "Refresh") { station.refresh(); nav.closeSheet(); standIn("Asked your PC for the newest") }
@@ -336,7 +336,7 @@ private fun SheetContent(sheet: Sheet, state: StationState, station: Station, na
                     nav.hiddenTasks.add(id)
                     PendingDeletes.add(ctx, id)
                     nav.closeSheet()
-                    if (onTask) nav.back()
+                    if (onTask) nav.closeScreen()
                     undo(Undoable(
                         "Deleted ${task?.title ?: "the task"}",
                         later = { sendDelete(station, nav, ctx, id, standIn) },

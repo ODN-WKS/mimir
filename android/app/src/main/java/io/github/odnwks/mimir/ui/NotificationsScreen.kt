@@ -60,7 +60,7 @@ fun NotificationsScreen(state: StationState, station: Station, nav: Navigator) {
     val fix = state.needsYou.firstOrNull { it.kind == NeedsKind.CheckFix && it.choices.isNotEmpty() }
     val newest = state.updates.firstOrNull { it.heard == io.github.odnwks.mimir.data.Heard.New }
     Column(Modifier.fillMaxSize().background(Palette.NotificationGround)) {
-        BackHeader("Notifications", nav::back, backLabel = "Back to Settings")
+        BackHeader("Notifications", nav::back)
         Column(
             Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(start = 12.dp, end = 12.dp, bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
