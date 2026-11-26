@@ -108,7 +108,7 @@ class P11bTimesTest {
             val mark = compose.onNodeWithTag(receiptTag(r), useUnmergedTree = true).fetchSemanticsNode()
             assertEquals(receiptWords(r), mark.config[SemanticsProperties.ContentDescription].single())
             val sizeDp = mark.boundsInRoot.width / compose.density.density
-            assertEquals("about 8 dp radius", 16f, sizeDp, 0.5f)
+            assertEquals("11 dp across, in line with the small print (P18)", 11f, sizeDp, 0.5f)
             // Right-aligned at the lane's right edge, under the blue bubble.
             assertTrue("the $r circle sits at the right", mark.boundsInRoot.right > rootWidth() * 0.85f)
         }

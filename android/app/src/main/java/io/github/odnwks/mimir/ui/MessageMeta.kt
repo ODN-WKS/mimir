@@ -67,8 +67,8 @@ object MetaLook {
     val ReadFill = Color(0xFF8FB4FF)
     /** A switched model: amber, with ⇄ before it. */
     val Switch = Color(0xFFF2C46D)
-    /** About 8 dp across the radius (owner, 17:45): a little bigger than the time's letters, so the check reads clearly. */
-    val Mark = 16.dp
+    /** In line with the small print beside it (P18, owner 2026-11-25, mock-up 11): 11 dp across, a thicker check so it still reads. */
+    val Mark = 11.dp
     /** The grey "thinking" bubble (mock-up 4). */
     val ThinkingWidth = 54.dp
     val ThinkingHeight = 28.dp
@@ -161,7 +161,7 @@ fun notReadYetWords(r: MessageReceipt, busyWithStep: Boolean): String = when {
 @Composable
 fun ReceiptMark(r: MessageReceipt, modifier: Modifier = Modifier) {
     Canvas(modifier.size(MetaLook.Mark).testTag(receiptTag(r)).semantics { contentDescription = receiptWords(r) }) {
-        val stroke = 1.5.dp.toPx()
+        val stroke = 1.2.dp.toPx()
         val radius = size.minDimension / 2 - stroke / 2
         if (r == MessageReceipt.Read) drawCircle(MetaLook.ReadFill, radius + stroke / 2)
         else drawCircle(MetaLook.Ring, radius, style = Stroke(stroke))
@@ -172,7 +172,7 @@ fun ReceiptMark(r: MessageReceipt, modifier: Modifier = Modifier) {
                 lineTo(w * 0.44f, w * 0.67f)
                 lineTo(w * 0.72f, w * 0.36f)
             }
-            drawPath(path, MetaLook.Check, style = Stroke(1.6.dp.toPx(), cap = StrokeCap.Round, join = androidx.compose.ui.graphics.StrokeJoin.Round))
+            drawPath(path, MetaLook.Check, style = Stroke(1.5.dp.toPx(), cap = StrokeCap.Round, join = androidx.compose.ui.graphics.StrokeJoin.Round))
         }
     }
 }
