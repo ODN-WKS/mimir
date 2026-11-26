@@ -67,7 +67,7 @@ class MimirChipsTest {
         compose.runOnIdle { assertEquals(Screen.Models, nav.current) }
     }
 
-    /** The box is one tidy row under the words (P12): +, the chip and Send never wrap, at 100% and 150%; no mic. */
+    /** The box is one tidy row under the words (P12): +, the chip, the mic (an empty chat) and Send never wrap, at 100% and 150%. */
     private fun oneRow(scale: Float, paired: Boolean = false) {
         androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>()
             .getSharedPreferences(io.github.odnwks.mimir.ui.theme.AppSize.PREFS, 0).edit()
@@ -77,14 +77,14 @@ class MimirChipsTest {
             compose.waitForIdle()
             val send = compose.onNodeWithContentDescription("Send").fetchSemanticsNode().boundsInRoot
             var left = -1f
-            for (d in listOf("Attach", "Model and effort: ")) {
+            // An empty chat has no three dots: its mic stays, beside Send.
+            for (d in listOf("Attach", "Model and effort: ", "Talk instead of typing")) {
                 val b = compose.onNodeWithContentDescription(d, substring = true).assertIsDisplayed().fetchSemanticsNode().boundsInRoot
                 assertEquals("$d is on Send's row at ${scale}x", send.center.y, b.center.y, 2f)
                 org.junit.Assert.assertTrue("$d is left of Send at ${scale}x", b.right <= send.left + 1f)
                 org.junit.Assert.assertTrue("$d is right of the one before at ${scale}x", b.left >= left)
                 left = b.right
             }
-            org.junit.Assert.assertTrue("no mic in the box", compose.onAllNodesWithContentDescription("Talk instead of typing").fetchSemanticsNodes().isEmpty())
             compose.onRoot().captureRoboImage("${System.getProperty("roborazzi.outputDir")}/mimir_composer_${scale}${if (paired) "_paired" else ""}.png")
         } finally {
             androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>()
@@ -153,7 +153,7 @@ class MimirChipsTest {
         compose.onNodeWithContentDescription("Send").performClick()
         compose.runOnIdle { assertEquals(1, sent) }
         compose.onNodeWithContentDescription("Remove notes.txt").performClick()
-        compose.onNodeWithContentDescription("Send").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Talk instead of typing").assertIsDisplayed()
     }
 
     private fun bothChipsShowWords(effort: Effort, paired: Boolean = false) {

@@ -121,8 +121,9 @@ class AppFlowTest {
     @Test fun startAnIncognitoTaskAndEndIt() {
         station.endIncognito()
         start()
-        // To: › More options › Whisper mode, then the message starts it.
-        compose.onNodeWithContentDescription("To: Auto. Choose where this goes").performClick()
+        // ⋯ › To: › More options › Whisper mode, then the message starts it (P12: "To:" is in the three dots).
+        compose.onNodeWithContentDescription(CHAT_MENU).performClick()
+        compose.onNodeWithText("To: Auto").performClick()
         compose.onNodeWithText("More options").performClick()
         compose.onNodeWithText("Whisper mode").performClick()
         compose.onNodeWithText("Done").performClick()
@@ -692,14 +693,16 @@ class AppFlowTest {
         assertEquals(before.tasks.size, station.state.value.tasks.size)
     }
 
-    @Test fun aTaskInAChosenProjectStartsInThreeTapsAndTheUsualModelStays() {
+    // P12: "To:" moved from the box into the three dots (no room for it beside the model chip at text size 1.3): one tap more.
+    @Test fun aTaskInAChosenProjectStartsInFourTapsAndTheUsualModelStays() {
         start()
         val usual = station.state.value.models.selected
         compose.onNodeWithContentDescription("Message Mímir").performTextInput("Make the call screen bigger")
-        compose.onNodeWithContentDescription("To: Auto. Choose where this goes").performClick()   // 1
-        compose.onNodeWithText("Budget-App").performClick()                                    // 2
+        compose.onNodeWithContentDescription(CHAT_MENU).performClick()                            // 1
+        compose.onNodeWithText("To: Auto").performClick()                                         // 2
+        compose.onNodeWithText("Budget-App").performClick()                                    // 3
         compose.onNodeWithText("Done").performClick()
-        compose.onNodeWithContentDescription("Send").performClick()                               // 3
+        compose.onNodeWithContentDescription("Send").performClick()                               // 4
         compose.waitForIdle()
         val t = station.state.value.tasks.last()
         assertEquals("Budget-App", t.project)

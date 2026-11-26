@@ -206,19 +206,17 @@ class MimirTalkTest {
         assertEquals("Fix the bug and test it", withHeard("Fix the bug ", "and test it"))
     }
 
-    @Test fun mimirsVoiceTypingIsInTheThreeDotsAndWordsBringSend() {
+    @Test fun mimirsEmptyBoxOffersTheMicAndWordsBringSend() {
         val unpaired = FakeStation(io.github.odnwks.mimir.data.LinkStation.empty("test").copy(paired = false))
         compose.setContent {
             androidx.compose.runtime.CompositionLocalProvider(LocalPhoneEngine provides testEngine(tmp.newFolder(), ready = true)) {
                 MimirTheme { AppRoot(unpaired, io.github.odnwks.mimir.nav.Navigator()) }
             }
         }
-        // P12: the box has no mic; voice typing is in the chat's three dots, even on an empty chat.
-        assertTrue("no mic in the box", compose.onAllNodesWithContentDescription("Talk instead of typing").fetchSemanticsNodes().isEmpty())
-        compose.onNodeWithContentDescription(CHAT_MENU).performClick(); compose.waitForIdle()
-        compose.onNodeWithText("Talk (voice typing)").assertIsDisplayed()
-        compose.onNodeWithContentDescription("Close").performClick(); compose.waitForIdle()
+        compose.onNodeWithContentDescription("Talk instead of typing").assertIsDisplayed()
         compose.onNodeWithContentDescription("Message $AI_NAME").performTextInput("Hello")
         compose.onNodeWithContentDescription("Send").assertIsEnabled()
+        // The mic keeps its own spot: it never turns into Send, or Send into it.
+        compose.onNodeWithContentDescription("Talk instead of typing").assertIsDisplayed()
     }
 }

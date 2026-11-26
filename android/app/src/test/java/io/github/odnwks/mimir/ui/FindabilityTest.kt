@@ -176,9 +176,10 @@ class FindabilityTest {
         compose.onNodeWithContentDescription("Read-aloud speed").performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.SetProgress) { it(1.15f) }
         compose.waitForIdle()
         assertEquals(1.15f, station.state.value.player.speed, 0.001f)
-        // The microphone says what it is: Talk, voice typing.
+        // Voice typing says what it is: Talk, voice typing (P12: in the chat's three dots, not in the box).
         nav.back(); nav.back(); compose.waitForIdle()
-        compose.onNode(hasContentDescription("voice typing", substring = true)).assertExists()
+        compose.onNodeWithContentDescription(CHAT_MENU).performClick(); compose.waitForIdle()
+        compose.onNodeWithText("Talk (voice typing)").assertExists()
     }
 
     @Test fun aboutChecksForANewVersionAndUpdatesSaysWhenOneIsOut() {

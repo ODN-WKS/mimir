@@ -74,7 +74,8 @@ private fun CheckComposer(paired: Boolean, whisper: Boolean) {
                 attach = { AttachButton(Sight.Cannot, filesFull = false, picturesFull = false, onFile = {}, onPhotos = {}, onCamera = {}, onModels = {}) },
                 chip = {
                     val words = (if (paired && !whisper) "Your PC's model" else model.chipWord) + " · " + effort.words
-                    OptionsChip(words, "Model and effort: $words. Change") {}
+                    val shorter = (if (paired && !whisper) "PC model" else io.github.odnwks.mimir.ui.chipShort(model.chipWord)) + " · " + effort.words
+                    OptionsChip(words, "Model and effort: $words. Change", shorter = shorter) {}
                 },
             )
         }

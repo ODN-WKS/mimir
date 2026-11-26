@@ -41,8 +41,8 @@ import io.github.odnwks.mimir.ui.theme.Type
  * Mímir's message box: the one reply box (owner, 2026-11-25, the task screen's box). The words on
  * top (one line that grows to six), and under them one row ([ReplyRow]): + on the left, the model
  * and effort chip in the centre, Send (dimmed until there are words) or Stop on the right. Voice
- * typing is in the chat's three dots; a Whisper has no three dots, so its box keeps the mic beside
- * Send (and while listening the mic shows there anyway, as the way to finish).
+ * typing is in the chat's three dots; where there are none (an empty chat, a Whisper) the box keeps
+ * the mic beside Send, and while listening it shows there anyway, as the way to finish.
  */
 @Composable
 fun MimirComposer(
@@ -71,6 +71,8 @@ fun MimirComposer(
     attach: @Composable () -> Unit = {},
     /** The model and effort chip in the centre of the row. */
     chip: @Composable () -> Unit = {},
+    /** The mic beside Send: only where the screen has no three dots to hold voice typing (an empty chat, a Whisper). */
+    mic: Boolean = true,
 ) {
     val ready = (value.isNotBlank() || hasFiles) && !waiting
     val shape = RoundedCornerShape(22.dp)
@@ -128,7 +130,7 @@ fun MimirComposer(
             send = {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     // What the mic hears goes into the box; in a Whisper it stays on this phone.
-                    if (whisper || voice.state == Speaking.Listening) MicButton(voice, "Talk instead of typing", filled = false, surface = androidx.compose.ui.graphics.Color.Transparent, size = SEND_SIZE, outline = false, onDenied = { micDenied = true })
+                    if (mic || voice.state == Speaking.Listening) MicButton(voice, "Talk instead of typing", filled = false, surface = androidx.compose.ui.graphics.Color.Transparent, size = SEND_SIZE, outline = false, onDenied = { micDenied = true })
                     if (writing) StopControl(onStop, shape = StopShape.Round, size = SEND_SIZE, fill = Palette.RedBorder, description = "Stop the reply")
                     else SendButton(ready, fill = if (whisper) WhisperTint.Send else Palette.Blue, onSend = onSend)
                 }

@@ -53,10 +53,12 @@ class P10ComposerTest {
         assertTrue("$what is ${dp(b.width)} x ${dp(b.height)} dp", dp(b.width) >= 47.9f && dp(b.height) >= 47.9f)
     }
 
-    @Test fun theEmptyChatBoxIsAtMost68DpHigh() {
+    // P12: the standard box (the task's) has two rows, the words and then +, the chip and Send, so the
+    // one-row limit of 68 dp became the two rows' 48 dp each plus the edges.
+    @Test fun theEmptyChatBoxIsAtMost100DpHigh() {
         showChat()
         val h = dp(compose.onNodeWithTag(COMPOSER_TAG).fetchSemanticsNode().boundsInRoot.height)
-        assertTrue("composer is $h dp high", h <= 68f)
+        assertTrue("composer is $h dp high", h <= 100f)
     }
 
     @Test fun theChatBoxsMicAndAttachAreTouchedAt48DpOrMore() {

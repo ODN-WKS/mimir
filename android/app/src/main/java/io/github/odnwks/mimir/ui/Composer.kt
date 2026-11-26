@@ -124,7 +124,7 @@ fun Composer(
         }
         ReplyRow(
             plus = { attach?.Button(attachSight) },
-            chip = { if (optionsChip != null) OptionsChip(optionsChip, "Model and effort for this task: $optionsChip. Change", onOptions) },
+            chip = { if (optionsChip != null) OptionsChip(optionsChip, "Model and effort for this task: $optionsChip. Change", onClick = onOptions) },
             send = {
                 SendButton(sendable) {
                     haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
@@ -143,7 +143,8 @@ fun Composer(
 @Composable
 fun ReplyRow(plus: @Composable () -> Unit, chip: @Composable () -> Unit, send: @Composable () -> Unit) {
     Row(Modifier.fillMaxWidth().heightIn(min = 40.dp).testTag(REPLY_ROW_TAG), verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.size(40.dp), contentAlignment = Alignment.Center) { plus() }
+        // 48 dp: the + is touched at 48 dp or more.
+        Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) { plus() }
         Box(Modifier.weight(1f), contentAlignment = Alignment.Center) { chip() }
         Box(Modifier.widthIn(min = 40.dp).padding(end = 4.dp), contentAlignment = Alignment.CenterEnd) { send() }
     }
@@ -157,9 +158,24 @@ fun SendButton(ready: Boolean, fill: androidx.compose.ui.graphics.Color = Palett
     }
 }
 
-/** The "Opus 5.5 · Default Effort ⌄" chip in the centre of the reply box's row: a tap opens the model and effort sheet. */
+/**
+ * The "Opus 5.5 · Default Effort ⌄" chip in the centre of the reply box's row: a tap opens the model
+ * and effort sheet. With too little room for [words] (large text), [shorter] is shown whole instead.
+ */
 @Composable
-fun OptionsChip(words: String, description: String, onClick: () -> Unit) {
+fun OptionsChip(words: String, description: String, shorter: String? = null, onClick: () -> Unit) {
+    androidx.compose.foundation.layout.BoxWithConstraints {
+        val style = Type.Small.copy(fontWeight = FontWeight.Bold)
+        val measurer = androidx.compose.ui.text.rememberTextMeasurer()
+        // The chip's edges and arrow: 10 + 6 dp of padding, 4 dp of gap, 16 dp of arrow.
+        val room = constraints.maxWidth - with(androidx.compose.ui.platform.LocalDensity.current) { 36.dp.roundToPx() }
+        val shown = if (shorter != null && measurer.measure(words, style, maxLines = 1).size.width > room) shorter else words
+        OptionsChipBody(shown, description, onClick)
+    }
+}
+
+@Composable
+private fun OptionsChipBody(words: String, description: String, onClick: () -> Unit) {
     Row(
         Modifier.heightIn(min = 40.dp).clip(RoundedCornerShape(12.dp)).clickable(role = Role.Button, onClick = onClick)
             .semantics(mergeDescendants = true) { contentDescription = description },

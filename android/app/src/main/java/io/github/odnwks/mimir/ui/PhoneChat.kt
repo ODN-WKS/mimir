@@ -288,8 +288,8 @@ fun PhoneChat(
             onAnswererHold = if (s.whisper) ({ draft = ""; files.clear(); pictures.clear(); emergencyExit(ctx, engine, readAloud) }) else null,
             // A tap: who should answer (in a Whisper, one tap ends it, as its own End).
             onPick = if (s.whisper) ({ if (!s.writing) engine.endWhisper(told = true) }) else ({ whoOpen = true }),
-            // Always there outside a Whisper: voice typing for the box is in it.
-            onMore = if (!s.whisper) ({ nav.openSheet(chatOptions(s, pcPrivate, if (onlineOn) io.github.odnwks.mimir.online.OnlineModels.answering()?.let { io.github.odnwks.mimir.online.OnlineModels.serviceOf(it).company } else null).copy(talk = io.github.odnwks.mimir.nav.TALK_MIMIR)) }) else null,
+            // Only while a chat with messages is open (R7); voice typing for the box is in it then.
+            onMore = if (!s.whisper && s.chat.turns.isNotEmpty()) ({ nav.openSheet(chatOptions(s, pcPrivate, if (onlineOn) io.github.odnwks.mimir.online.OnlineModels.answering()?.let { io.github.odnwks.mimir.online.OnlineModels.serviceOf(it).company } else null).copy(talk = io.github.odnwks.mimir.nav.TALK_MIMIR)) }) else null,
         )
         now.why?.let { why -> Text(why, style = Type.Small, color = Palette.TextDim, textAlign = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 2.dp).testTag("who-why").semantics { liveRegion = androidx.compose.ui.semantics.LiveRegionMode.Polite }) }
         WhisperHygiene(s.whisper || pcWhisper)
@@ -462,7 +462,7 @@ fun PhoneChat(
         if (paired && claudeOffered && !s.whisper && !pcWhisper) link?.state?.collectAsStateWithLifecycle()?.value?.usage?.let { u ->
             Text(usageLeftWords(u), style = Type.Small, color = Palette.TextDim, modifier = Modifier.padding(horizontal = 20.dp, vertical = 2.dp).testTag("usage-left"))
         }
-        // The three dots' "Talk (voice typing)", done here (a Whisper keeps its mic in the box: it has no three dots).
+        // The three dots' "Talk (voice typing)", done here (with no three dots the mic stays in the box).
         val startVoice = rememberStartVoice(voice)
         LaunchedEffect(nav.taskAsk) {
             if (nav.taskAsk == io.github.odnwks.mimir.nav.TALK_MIMIR) { nav.taskAsk = null; startVoice() }
@@ -502,6 +502,7 @@ fun PhoneChat(
         }
         val efforts = Effort.entries.map { e -> io.github.odnwks.mimir.nav.SheetChoice(e.words, effortAbout(e, model), e == s.effort) { if (e != s.effort) engine.setEffort(e) } }
         val chosenWords = listOfNotNull(modelWord, s.effort.words).joinToString(" · ")
+        val shortWords = listOfNotNull(modelWord?.let { if (it == "Your PC's model") "PC model" else chipShort(it) }, s.effort.words).joinToString(" · ")
         androidx.compose.runtime.SideEffect { nav.chatChoices = io.github.odnwks.mimir.nav.ModelEffortChoices(choices.models, choices.notes, choices.more, efforts) }
         androidx.compose.runtime.DisposableEffect(Unit) { onDispose { nav.chatChoices = null } }
         NoKeyboardLearning(s.whisper || pcWhisper) {
@@ -510,7 +511,10 @@ fun PhoneChat(
             hasFiles = files.isNotEmpty() || pictures.isNotEmpty(),
             above = { attach.Chips() },
             attach = { attach.Button(sight, onModels = { nav.open(Screen.Models) }) },
-            chip = { OptionsChip(chosenWords, "Model and effort: $chosenWords. Change", { nav.openSheet(io.github.odnwks.mimir.nav.Sheet.ChatModel) }) },
+            // At large text with the mic beside Send there is less room: shorter whole words, never cut off.
+            chip = { OptionsChip(chosenWords, "Model and effort: $chosenWords. Change", shorter = shortWords) { nav.openSheet(io.github.odnwks.mimir.nav.Sheet.ChatModel) } },
+            // No three dots to hold voice typing (an empty chat, a Whisper): the mic stays in the box.
+            mic = s.whisper || pcWhisper || s.chat.turns.isEmpty(),
         )
         }
         if (showHome && first && !paired && !connectHidden) ConnectHint({ nav.open(Screen.Pair) }, { connectHidden = true; prefs.edit().putBoolean(CONNECT_HIDDEN, true).apply() })
