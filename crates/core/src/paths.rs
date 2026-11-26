@@ -128,11 +128,24 @@ pub fn all_projects<'a>(
     let mut all = settings.projects.clone();
     for t in tasks.into_iter().filter(|t| !t.archived) {
         let home = t.home_project().to_string();
-        if !all.iter().any(|p| same(p, &home)) {
+        if !all.iter().any(|p| same(p, &home)) && !helper_copy(&home) {
             all.push(home);
         }
     }
     all
+}
+
+/// A folder that is not a project of its own (owner-found 2026-11-25:
+/// helper copies filled the phone's project list): gone, or a git worktree
+/// (its .git a file). A task there
+/// keeps working; the folder is just not listed as a project. A project the
+/// owner saved is always listed.
+pub fn helper_copy(p: &str) -> bool {
+    let path = Path::new(p);
+    if path == chats_dir() {
+        return false;
+    }
+    !path.is_dir() || path.join(".git").is_file()
 }
 
 /// The one project list the service shows phones (Status, To:) and routes
@@ -434,6 +447,39 @@ pub fn make_project_folder(projects: &[String], name: &str) -> Result<(PathBuf, 
 #[cfg(test)]
 mod new_project_tests {
     use super::*;
+
+    #[test]
+    fn helper_copies_are_not_listed_as_projects() {
+        // Owner-found 2026-11-25: helper worktrees (gone or still there) showed as projects on the phone.
+        let root = std::env::temp_dir().join(format!("hc-{}", std::process::id()));
+        let real = root.join("Garden");
+        std::fs::create_dir_all(real.join(".git")).unwrap();
+        let copy = root.join("wt-p12");
+        std::fs::create_dir_all(&copy).unwrap();
+        std::fs::write(copy.join(".git"), "gitdir: elsewhere").unwrap();
+        let gone = root.join("wt-p13");
+        let plain = root.join("Notes");
+        std::fs::create_dir_all(&plain).unwrap();
+        let s = |p: &Path| p.display().to_string();
+        assert!(!helper_copy(&s(&real)) && !helper_copy(&s(&plain)));
+        assert!(helper_copy(&s(&copy)) && helper_copy(&s(&gone)));
+        let tasks: Vec<crate::task::Task> = [&real, &copy, &gone, &plain]
+            .iter()
+            .enumerate()
+            .map(|(i, p)| crate::task::Task::new(format!("t{i}"), "x".into(), s(p), 0))
+            .collect();
+        assert_eq!(
+            all_projects(&Settings::default(), &tasks),
+            vec![s(&real), s(&plain)]
+        );
+        // A copy the owner saved on purpose stays.
+        let saved = Settings {
+            projects: vec![s(&copy)],
+            ..Settings::default()
+        };
+        assert!(all_projects(&saved, &tasks).contains(&s(&copy)));
+        let _ = std::fs::remove_dir_all(&root);
+    }
 
     #[test]
     fn only_plain_names_are_taken() {
