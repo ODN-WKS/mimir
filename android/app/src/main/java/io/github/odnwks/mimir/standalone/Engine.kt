@@ -1341,8 +1341,9 @@ class Engine(
         }
     }
 
-    /** How many of a search's results are read as pages. */
+    /** How many of a search's results are read as pages ([pagesWithLane] when an open database's result is among them). */
     private val pagesToRead = 4
+    private val pagesWithLane = 5
 
     private fun search(need: io.github.odnwks.mimir.online.Router.Need.Search, forced: Boolean): Pair<String?, List<io.github.odnwks.mimir.online.Source>>? {
         val settings = io.github.odnwks.mimir.online.Online.settings.value
@@ -1350,16 +1351,43 @@ class Engine(
         val mode = mode()
         // A normal chat reads the top pages found (owner, 2026-11-25: no extra warning, as little sent as possible).
         val readPages = mode == io.github.odnwks.mimir.online.ChatMode.Normal
+        // P21 stage 3: open databases for the question (papers, Stack Exchange, Hacker News, Open Library) are asked
+        // beside the web search, in the same time, with the same words; never in a Whisper or with Data Saver.
+        val lanes = if (readPages && !io.github.odnwks.mimir.online.Online.dataSaver()) {
+            io.github.odnwks.mimir.online.Lanes.lanesFor(_state.value.chat.turns.lastOrNull { it.user }?.text ?: need.words, need.words)
+        } else emptySet()
+        fun startLanes() = if (lanes.isEmpty()) null else io.github.odnwks.mimir.online.Net.async { io.github.odnwks.mimir.online.Lanes.search(lanes, need.words, mode) }
+        // Before the one-time warning is accepted, nothing goes out from this phone until the PC has answered (as for its pages).
+        var laneJob = if (settings.searchAccepted) startLanes() else null
+        /** [web] with what the databases found, taking turns; they are waited for no longer than the lookup's time allows. */
+        fun withLanes(web: List<io.github.odnwks.mimir.online.Search.Result>): List<io.github.odnwks.mimir.online.Search.Result> {
+            val job = laneJob ?: return web
+            val left = io.github.odnwks.mimir.online.Net.endOfBudget() - System.currentTimeMillis()
+            val found = try {
+                if (left > 0) job.get(left, java.util.concurrent.TimeUnit.MILLISECONDS) else null
+            } catch (e: InterruptedException) {
+                // Stopped: nothing more is waited for.
+                Thread.currentThread().interrupt()
+                null
+            } catch (e: Exception) {
+                null
+            }
+            if (found == null) job.cancel(true)
+            return io.github.odnwks.mimir.online.Lanes.join(web, found.orEmpty())
+        }
         // PC-first (PHW-04, PHE-14): ask the PC's SearXNG, wait up to 3 s, then fall back.
         _state.update { it.copy(looking = "Searching: ${need.words}…") }
         io.github.odnwks.mimir.online.Search.searchViaPc(need.words, mode)?.let { results ->
+            if (laneJob == null) laneJob = startLanes()
+            val all = withLanes(results)
             _state.update { it.copy(looking = null) }
             // PHW-07: source label shows "SearXNG" (what Settings shows), not the underlying engine names.
             val via = "your PC's search"
-            if (results.isEmpty()) return "\n\n[The app searched the web for \"${need.words}\" through the owner's PC and found nothing. Say so.]" to emptyList()
-            if (readPages) evidence(need.words, results, "a web search", via)?.let { return it }
-            return Prompt.fetched(io.github.odnwks.mimir.online.Search.describe(need.words, results, "the owner's PC search"), "a web search", clock()) to
-                results.distinctBy { it.site }.take(3).map { io.github.odnwks.mimir.online.Source(it.site, it.url, need.words, via = via) }
+            if (all.isEmpty()) return "\n\n[The app searched the web for \"${need.words}\" through the owner's PC and found nothing. Say so.]" to emptyList()
+            if (readPages) evidence(need.words, all, "a web search", via)?.let { return it }
+            val shown = results.ifEmpty { all }
+            return Prompt.fetched(io.github.odnwks.mimir.online.Search.describe(need.words, shown, "the owner's PC search"), "a web search", clock()) to
+                shown.distinctBy { it.site }.take(3).map { io.github.odnwks.mimir.online.Source(it.site, it.url, need.words, via = if (io.github.odnwks.mimir.online.Lanes.found(it)) "" else via) }
         }
         _state.update { it.copy(looking = null) }
         if (!settings.searchAccepted) {
@@ -1372,11 +1400,14 @@ class Engine(
         _state.update { it.copy(looking = "Searching: $words…") }
         return try {
             val results = io.github.odnwks.mimir.online.Search.search(words, mode)
+            val all = withLanes(results)
             when {
-                results.isEmpty() -> "\n\n[The app searched the web for \"$words\" and found nothing. Say so.]" to emptyList()
-                else -> (if (readPages) evidence(words, results, "DuckDuckGo", "") else null)
-                    ?: (Prompt.fetched(io.github.odnwks.mimir.online.Search.describe(words, results), "DuckDuckGo", clock()) to
-                        results.distinctBy { it.site }.take(3).map { io.github.odnwks.mimir.online.Source(it.site, it.url, words) })
+                all.isEmpty() -> "\n\n[The app searched the web for \"$words\" and found nothing. Say so.]" to emptyList()
+                else -> (if (readPages) evidence(words, all, "DuckDuckGo", "") else null)
+                    ?: results.ifEmpty { all }.let { shown ->
+                        Prompt.fetched(io.github.odnwks.mimir.online.Search.describe(words, shown), "DuckDuckGo", clock()) to
+                            shown.distinctBy { it.site }.take(3).map { io.github.odnwks.mimir.online.Source(it.site, it.url, words) }
+                    }
             }
         } catch (e: io.github.odnwks.mimir.online.Search.Blocked) {
             if (!_state.value.whisper) Log.w(TAG, "search blocked: ${e.message}")
@@ -1409,12 +1440,17 @@ class Engine(
     private fun evidence(
         words: String, results: List<io.github.odnwks.mimir.online.Search.Result>, from: String, via: String,
     ): Pair<String?, List<io.github.odnwks.mimir.online.Source>>? {
-        val picked = io.github.odnwks.mimir.online.Fuse.pick(results, pagesToRead)
-        if (picked.isNotEmpty() && !io.github.odnwks.mimir.online.Online.dataSaver()) {
-            _state.update { it.copy(looking = if (picked.size == 1) "Reading 1 page…" else "Reading ${picked.size} pages…") }
+        // Four pages; five when an open database's result is among them (so the web keeps its share).
+        val picked = io.github.odnwks.mimir.online.Fuse.pick(results, pagesWithLane)
+            .let { p -> if (p.any { r -> r.engines.any { it in io.github.odnwks.mimir.online.Lanes.ENGINES } }) p else p.take(pagesToRead) }
+        // A database's result whose page is built by script is taken from its snippet (its abstract), not read.
+        val toRead = picked.filterNot(io.github.odnwks.mimir.online.Lanes::snippetOnly)
+        if (toRead.isNotEmpty() && !io.github.odnwks.mimir.online.Online.dataSaver()) {
+            _state.update { it.copy(looking = if (toRead.size == 1) "Reading 1 page…" else "Reading ${toRead.size} pages…") }
         }
         try {
-            val reads = io.github.odnwks.mimir.online.Reader.read(picked, mode())
+            val read = io.github.odnwks.mimir.online.Reader.read(toRead, mode()).associateBy { it.result }
+            val reads = picked.map { read[it] ?: io.github.odnwks.mimir.online.PageRead(it, null) }
             val question = _state.value.chat.turns.lastOrNull { it.user }?.text ?: words
             val ranked = io.github.odnwks.mimir.online.Rank.choose(question, words, reads)
                 .filter { io.github.odnwks.mimir.online.Evidence.clean(it.quote).isNotEmpty() }
@@ -1422,7 +1458,9 @@ class Engine(
             val chosen = ranked.map { it.copy(n = renumber.getValue(it.n)) }
             if (chosen.isEmpty()) return null
             val block = io.github.odnwks.mimir.online.Evidence.block(words, chosen, reads.count { it.text != null })
-            val sources = chosen.distinctBy { it.n }.sortedBy { it.n }.map { io.github.odnwks.mimir.online.Source(it.site, it.url, words, via = via) }
+            // A database's result was found from this phone, not through the PC.
+            val fromLane = picked.filter(io.github.odnwks.mimir.online.Lanes::found).map { it.url }.toSet()
+            val sources = chosen.distinctBy { it.n }.sortedBy { it.n }.map { io.github.odnwks.mimir.online.Source(it.site, it.url, words, via = if (it.url in fromLane) "" else via) }
             return Prompt.fetched(block, from, clock()) to sources
         } finally {
             _state.update { it.copy(looking = null) }
@@ -1749,7 +1787,8 @@ class Engine(
                     // The model asked for a lookup: the rest of its reply isn't needed.
                     a is Ask.Line && a.done -> false
                     // Nothing may run forever: the whole reply has a time limit.
-                    t > REPLY_MAX_MS -> { tooLong = true; false }
+                    // Each pass has its own limit, from its own start (review 2026-11-25: a slow first pass must not cut the last).
+                    t - g0 > REPLY_MAX_MS -> { tooLong = true; false }
                     // Thinking that runs too long is closed, and the answer is written from it.
                     thinks && !forced && answer.isEmpty() && t - g0 > THINK_MAX_MS -> { forced = true; false }
                     else -> true
@@ -2586,7 +2625,7 @@ class Engine(
          * without starting its answer (checks shorten it).
          */
         @Volatile var THINK_MAX_MS = 45_000L
-        /** No reply runs longer than this, in front or behind (checks shorten it). */
+        /** No pass of a reply runs longer than this, counted from that pass's own start, in front or behind (checks shorten it). */
         @Volatile var REPLY_MAX_MS = 150_000L
         /** The longest a lookup is waited for before Mímir answers without it (its own budget is 6 s). */
         @Volatile var LOOKUP_WAIT_MS = io.github.odnwks.mimir.online.Net.BUDGET_MS + 1_500L
