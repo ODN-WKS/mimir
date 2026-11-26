@@ -44,12 +44,16 @@ object AttachedNames {
     private const val TAIL = "Attached: /"
     private const val LOCAL_ONLY = "local-only-"
 
-    fun split(text: String): Pair<String, List<String>> {
+    private val PICTURE_LINE = Regex("""\n\[\d+ pictures? attached]\s*$""")
+
+    fun split(full: String): Pair<String, List<String>> {
+        // The PC adds "[N picture(s) attached]" after the path line; the chips say it already.
+        val text = full.replace(PICTURE_LINE, "")
         val at = text.lastIndexOf(TAIL)
-        if (at < 0) return text to emptyList()
-        if (at != 0 && !text.substring(0, at).endsWith("\n\n")) return text to emptyList()
+        if (at < 0) return full to emptyList()
+        if (at != 0 && !text.substring(0, at).endsWith("\n\n")) return full to emptyList()
         val tail = text.substring(at + "Attached: ".length)
-        if (tail.contains('\n')) return text to emptyList()
+        if (tail.contains('\n')) return full to emptyList()
         val names = tail.split(", /").map { p ->
             val file = p.trimStart('/').substringAfterLast('/')
             val digits = file.substringBefore('-', "")

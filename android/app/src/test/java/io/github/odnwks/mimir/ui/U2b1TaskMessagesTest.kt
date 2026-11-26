@@ -9,6 +9,8 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onLast
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
@@ -63,23 +65,25 @@ class U2b1TaskMessagesTest {
 
     @Test fun listenUsesThePcVoiceWhileThePcIsThere() {
         val station = open(task())
-        compose.onNodeWithContentDescription("Read aloud").performClick()
+        compose.holdAnswerAndPick("the title is bigger now", "Listen")
         assertEquals(listOf("t1-1"), station.played)
     }
 
     @Test fun aReplyHasCopyListenAndShare() {
         val voice = FakeReadAloud()
         open(task(), voice, pcOnline = false)
-        compose.onNodeWithContentDescription("Copy this answer").assertIsDisplayed()
-        compose.onNodeWithContentDescription("Share this answer").assertIsDisplayed()
-        compose.onNodeWithContentDescription("Read aloud").assertIsDisplayed().performClick()
+        compose.onNodeWithContentDescription("Copy this answer").assertDoesNotExist()
+        compose.onAllNodesWithText("the title is bigger now", substring = true).onLast().performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnLongClick)
+        compose.waitForIdle()
+        for (i in listOf("Copy", "Share", "Listen")) compose.onAllNodesWithText(i).onLast().assertIsDisplayed()
+        compose.onAllNodesWithText("Listen").onLast().performClick()
         // The markdown marks are gone from what is read.
         assertEquals(listOf("Done: the title is bigger now."), voice.read)
     }
 
     @Test fun tryAgainSendsTheLastMessageAgain() {
         val station = open(task())
-        compose.onNodeWithContentDescription("Ask again: try this answer again").performClick()
+        compose.holdAnswerAndPick("the title is bigger now", "Try again")
         assertEquals(listOf("Make the title bigger"), station.replied)
     }
 
@@ -144,9 +148,10 @@ class U2b1TaskMessagesTest {
 
     @Test fun tryAgainCanBeTappedOnlyOnce() {
         val station = open(task())
-        compose.onNodeWithContentDescription("Ask again: try this answer again").performClick()
+        compose.holdAnswerAndPick("the title is bigger now", "Try again")
+        compose.onAllNodesWithText("the title is bigger now", substring = true).onLast().performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnLongClick)
         compose.waitForIdle()
-        compose.onAllNodesWithContentDescription("Ask again: try this answer again").assertCountEquals(0)
+        compose.onAllNodesWithText("Try again").assertCountEquals(0)
         assertEquals(1, station.replied.size)
     }
 }

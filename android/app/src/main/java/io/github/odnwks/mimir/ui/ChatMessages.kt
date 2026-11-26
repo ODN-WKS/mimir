@@ -48,6 +48,8 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
@@ -207,7 +209,7 @@ fun Answer(
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        MessageMenuHost(plain = plain, id = id, lookUp = lookUp.takeIf { !dim }, pc = pc, enabled = !dim) { onHold ->
+        MessageMenuHost(plain = plain, id = id, lookUp = lookUp.takeIf { !dim }, pc = pc, enabled = !dim && buttons, onTryAgain = onTryAgain) { onHold ->
             ChatText {
                 Column(
                     Modifier.fillMaxWidth().then(if (dim) Modifier else Modifier.holdMenu(onHold)).semantics { liveRegion = LiveRegionMode.Polite },
@@ -219,13 +221,24 @@ fun Answer(
             if (!author.isNullOrBlank()) Text(author, style = Type.Small, color = Palette.TextDim, modifier = Modifier.testTag("answer-author"))
             if (sources.isNotEmpty()) SourcesLine(sources, openSources)
             if (!note.isNullOrBlank()) Text(note, style = Type.Small, color = Palette.TextDim, modifier = Modifier.testTag("switch-note"))
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), itemVerticalAlignment = Alignment.CenterVertically) {
-                ListenButton(id, plain, pc)
-                CopyButton(plain)
-                if (share) ShareButton(plain)
-                if (onTryAgain != null) QuietButton(TRY_AGAIN, "Ask again: try this answer again", onClick = onTryAgain)
-            }
+            // The row of Listen, Copy, Share and Try again lives behind a long press (the answer's hold menu).
+            // While the voice reads this answer, a Stop reading control stays one tap away.
+            val voice = rememberReadAloud()
+            if (readingNow(voice, id)) ListenButton(id, plain, pc)
+            if (onTryAgain != null) HoldHint()
         }
+    }
+}
+
+private const val HOLD_HINT_KEY = "hold_answer_hint_done"
+
+/** One dim line under the newest answer, until the first long press on an answer. */
+@Composable
+private fun HoldHint() {
+    val ctx = LocalContext.current
+    val prefs = remember { ctx.getSharedPreferences(PHONE_CHAT_PREFS, 0) }
+    if (!prefs.getBoolean(HOLD_HINT_KEY, false)) {
+        Text("Hold an answer for Listen, Copy and Share", style = Type.Small, color = Palette.TextDim, modifier = Modifier.testTag("hold-hint"))
     }
 }
 
@@ -291,7 +304,7 @@ fun ShareButton(plain: String) {
 
 /** What a message's long press holds: Copy, Select text, Share, Listen (and Look it up on the newest answer). */
 @OptIn(ExperimentalFoundationApi::class)
-fun Modifier.holdMenu(open: () -> Unit, label: String = "More: edit, copy, select, share or listen"): Modifier =
+fun Modifier.holdMenu(open: () -> Unit, label: String = "More: copy, select, share, listen or try again"): Modifier =
     combinedClickable(onClickLabel = null, onLongClickLabel = label, onLongClick = open, onClick = {})
 
 /**
@@ -302,6 +315,7 @@ fun Modifier.holdMenu(open: () -> Unit, label: String = "More: edit, copy, selec
 fun MessageMenuHost(
     plain: String, id: String, lookUp: (() -> Unit)?, pc: (() -> Unit)? = null, enabled: Boolean = true,
     onEdit: (() -> Unit)? = null,
+    onTryAgain: (() -> Unit)? = null,
     content: @Composable (onHold: () -> Unit) -> Unit,
 ) {
     var menu by remember { mutableStateOf(false) }
@@ -310,8 +324,17 @@ fun MessageMenuHost(
     val on = readingNow(voice, id)
     val clip = LocalClipboardManager.current
     val ctx = LocalContext.current
-    Box {
-        content { if (enabled) menu = true }
+    val prefs = remember { ctx.getSharedPreferences(PHONE_CHAT_PREFS, 0) }
+    val listen = { tapRead(voice, id, plain, pc) }
+    // TalkBack gets the same actions as custom actions on the message.
+    val actions = if (!enabled) emptyList() else buildList {
+        add(CustomAccessibilityAction(COPY) { clip.setText(AnnotatedString(plain)); true })
+        add(CustomAccessibilityAction(SHARE) { sharePlain(ctx, plain); true })
+        add(CustomAccessibilityAction(if (on) "Stop reading" else LISTEN_ITEM) { listen(); true })
+        if (onTryAgain != null) add(CustomAccessibilityAction(TRY_AGAIN) { onTryAgain(); true })
+    }
+    Box(Modifier.semantics { customActions = actions }) {
+        content { if (enabled) { menu = true; prefs.edit().putBoolean(HOLD_HINT_KEY, true).apply() } }
         if (enabled) DropdownMenu(menu, { menu = false }, containerColor = Palette.Card) {
             if (onEdit != null) DropdownMenuItem({ Text(EDIT) }, { menu = false; onEdit() })
             DropdownMenuItem({ Text(COPY) }, { menu = false; clip.setText(AnnotatedString(plain)) })
@@ -324,6 +347,7 @@ fun MessageMenuHost(
                 menu = false
                 tapRead(voice, id, plain, pc)
             })
+            if (onTryAgain != null) DropdownMenuItem({ Text(TRY_AGAIN) }, { menu = false; onTryAgain() })
             if (lookUp != null) DropdownMenuItem({ Text(LOOK_IT_UP) }, { menu = false; lookUp() })
         }
         if (selecting) AlertDialog(

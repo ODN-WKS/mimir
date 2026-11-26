@@ -3,6 +3,8 @@ package io.github.odnwks.mimir.ui
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onLast
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.onNodeWithText
 import io.github.odnwks.mimir.data.ExampleData
 import io.github.odnwks.mimir.data.FakeStation
@@ -47,6 +49,8 @@ class H4PhoneFixesTest {
     // N1: the same answer offers Try again on a task of its own, and not while it runs in a terminal
     @Test fun n1_aTaskOfItsOwnOffersTryAgain() {
         show(station(quiet))
+        compose.onAllNodesWithText("All sorted.", substring = true).onLast().performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnLongClick)
+        compose.waitForIdle()
         assertEquals(1, count("Try again"))
     }
 
@@ -54,6 +58,8 @@ class H4PhoneFixesTest {
         val live = PcSession("s-1", "Plan", "Garden planner", false, false, id, PcSessionState.Working, 1_800_000_000L)
         show(station({ quiet(it).copy(liveElsewhere = true) }, listOf(live)))
         compose.onNodeWithText("Still running in a terminal. Stop it to carry on here.").assertIsDisplayed()
+        compose.onAllNodesWithText("All sorted.", substring = true).onLast().performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnLongClick)
+        compose.waitForIdle()
         assertEquals(0, count("Try again"))
     }
 

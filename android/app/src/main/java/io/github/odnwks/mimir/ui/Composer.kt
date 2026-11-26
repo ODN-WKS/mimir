@@ -38,6 +38,7 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -105,7 +106,7 @@ fun Composer(
     val keyCtx = androidx.compose.ui.platform.LocalContext.current
     LaunchedEffect(Unit) { kotlinx.coroutines.delay(300); if (keyboardAutoOn(keyCtx)) runCatching { focus.requestFocus() } }
     Column(
-        modifier.fillMaxWidth().clip(shape).background(surface).border(1.dp, Palette.Outline, shape)
+        modifier.fillMaxWidth().testTag(COMPOSER_TAG).clip(shape).background(surface).border(1.dp, Palette.Outline, shape)
             .padding(start = 6.dp, end = 6.dp, top = if (!optionsBelow && (chip != null || optionsChip != null || optionsNote != null)) 6.dp else 0.dp, bottom = if (optionsBelow) 2.dp else 0.dp),
     ) {
         attach?.Note()

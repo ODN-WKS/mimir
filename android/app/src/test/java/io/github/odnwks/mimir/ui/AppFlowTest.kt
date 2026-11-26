@@ -69,7 +69,9 @@ class AppFlowTest {
         heading("Needs you").assertIsDisplayed()
         compose.onNodeWithText("Edit remote.rs (2 lines) so Allow reaches Mímir faster. Mímir is paused until you answer.").assertIsDisplayed()
         compose.onAllNodesWithText("Say something else…")[0].performClick()
-        heading("Make Allow respond faster").assertIsDisplayed()
+        // The task opens (its top keeps no name since the owner's 2026-11-25 layout).
+        compose.waitForIdle()
+        assertEquals(Screen.Task("t-allow"), nav.current)
         compose.onNodeWithText("Allow this edit").performClick()
         compose.waitForIdle()
         assertEquals(3, station.state.value.needsYou.size)
@@ -78,7 +80,8 @@ class AppFlowTest {
         compose.mainClock.advanceTimeBy(5000)
         compose.waitForIdle()
         compose.onNodeWithText("You allowed this edit", useUnmergedTree = true).assertDoesNotExist()
-        compose.onNodeWithContentDescription("Back").performClick()
+        // No Back button on a task's top now: the phone's own back goes back to Needs you.
+        nav.back(); compose.waitForIdle()
         heading("Needs you").assertIsDisplayed()
     }
 
@@ -376,8 +379,7 @@ class AppFlowTest {
 
     @Test fun mimirsReplyIsReadAloudByThePhonesVoiceAndASecondTapStops() {
         firstRun(testEngine(tmp.newFolder(), ready = true, turns = listOf(io.github.odnwks.mimir.standalone.Turn(true, "Give me three easy dinner ideas"), io.github.odnwks.mimir.standalone.Turn(false, "Pasta with tomatoes."))))
-        compose.onNodeWithContentDescription("Read aloud").performClick()
-        compose.waitForIdle()
+        compose.holdAnswerAndPick("Pasta with tomatoes.", LISTEN_ITEM)
         assertEquals(listOf("Pasta with tomatoes."), voice.read)
         compose.onNodeWithContentDescription("Stop reading").performClick()
         compose.waitForIdle()
@@ -447,7 +449,7 @@ class AppFlowTest {
         }
         nav.open(Screen.Task(io.github.odnwks.mimir.data.ExampleData.TASK_ALLOW))
         compose.waitForIdle()
-        compose.onAllNodesWithContentDescription("Read aloud")[0].performScrollTo().performClick()
+        compose.holdAnswerAndPick("The fix cuts Allow", "Listen")
         compose.waitForIdle()
         assertEquals(1, voice.read.size)
     }
@@ -456,7 +458,7 @@ class AppFlowTest {
         start()
         nav.open(Screen.Task(io.github.odnwks.mimir.data.ExampleData.TASK_ALLOW))
         compose.waitForIdle()
-        compose.onAllNodesWithContentDescription("Read aloud")[0].performScrollTo().performClick()
+        compose.holdAnswerAndPick("The fix cuts Allow", "Listen")
         compose.waitForIdle()
         assertTrue(voice.read.isEmpty())
         assertTrue(station.played.isNotEmpty())

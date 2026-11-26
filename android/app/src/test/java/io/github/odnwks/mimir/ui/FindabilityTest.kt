@@ -266,7 +266,10 @@ class FindabilityTest {
         assertEquals(Screen.AllTasks(), nav.current)
         // Find in a task.
         nav.open(Screen.Task(ExampleData.TASK_ALLOW)); compose.waitForIdle()
-        compose.onNodeWithContentDescription("Find in this task").performClick()
+        // Find is in the task's ⋯ menu (owner, 2026-11-25).
+        compose.onNodeWithContentDescription("Task options").performClick()
+        compose.waitForIdle()
+        compose.onNodeWithText("Find in this task").performClick()
         compose.waitForIdle()
         compose.onNodeWithContentDescription("Find in this task").performTextInput("zzzz-nothing")
         compose.waitForIdle()
@@ -329,8 +332,8 @@ class FindabilityTest {
         compose.onNodeWithContentDescription("Task options").performClick()
         compose.waitForIdle()
         tap("Plan first, change nothing yet")
-        // The project and Plan first are a tap away on the state, so the conversation stays clean.
-        compose.onAllNodes(androidx.compose.ui.test.SemanticsMatcher("shows the details") { it.config.getOrElseNullable(androidx.compose.ui.semantics.SemanticsActions.OnClick) { null }?.label == "Show the project and age" })[0].performClick()
+        // The task name, project and Plan first are a tap away on the state, so the conversation stays clean.
+        compose.onAllNodes(androidx.compose.ui.test.SemanticsMatcher("shows the details") { it.config.getOrElseNullable(androidx.compose.ui.semantics.SemanticsActions.OnClick) { null }?.label == "Show the task name and project" })[0].performClick()
         compose.waitForIdle()
         compose.onNodeWithText("Plan first", substring = true).assertExists()
         compose.onNodeWithContentDescription("Task options").performClick()
@@ -404,11 +407,11 @@ class FindabilityTest {
         assertEquals(0.8f, unpaired.state.value.player.speed, 0.001f)
     }
 
-    @Test fun aPcTasksNameOpensItsOptions() {
+    // The top keeps no task name (owner, 2026-11-25): the ⋯ at the top right opens the task's options.
+    @Test fun aPcTasksOptionsAreTheThreeDotsAtTheTop() {
         start()
         nav.open(Screen.Task(ExampleData.TASK_ALLOW)); compose.waitForIdle()
-        val title = station.state.value.task(ExampleData.TASK_ALLOW)!!.title
-        heading(title).performClick()
+        compose.onNodeWithContentDescription("Task options").performClick()
         compose.waitForIdle()
         for (row in listOf("Rename…", "Stop this task…")) {
             compose.onNodeWithText(row).assertIsDisplayed()

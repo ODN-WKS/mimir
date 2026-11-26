@@ -354,20 +354,39 @@ pub fn named(text: &str, paths: &[PathBuf]) -> String {
     format!("{text}\n\nAttached: {}", list.join(", "))
 }
 
+/// Drops the closing "[N picture(s) attached]" line the runner adds after the
+/// path line (the file chips already say it).
+fn strip_picture_line(text: &str) -> &str {
+    if let Some((head, last)) = text.rsplit_once('\n') {
+        let l = last.trim();
+        if let Some(n) = l.strip_prefix('[').and_then(|r| {
+            r.strip_suffix(" pictures attached]")
+                .or_else(|| r.strip_suffix(" picture attached]"))
+        }) && !n.is_empty()
+            && n.bytes().all(|b| b.is_ascii_digit())
+        {
+            return head;
+        }
+    }
+    text
+}
+
 /// The message as the person wrote it, and the names of what they attached:
 /// the "Attached: /path/a, /path/b" tail that [`named`] adds for Claude Code
 /// is never shown, only each file's own name (without its number and its
 /// local-only marker).
 pub fn split_attached(text: &str) -> (String, Vec<String>) {
+    let full = text;
+    let text = strip_picture_line(text);
     let Some(at) = text.rfind("Attached: /") else {
-        return (text.to_string(), vec![]);
+        return (full.to_string(), vec![]);
     };
     if at != 0 && !text[..at].ends_with("\n\n") {
-        return (text.to_string(), vec![]);
+        return (full.to_string(), vec![]);
     }
     let tail = &text[at + "Attached: ".len()..];
     if tail.contains('\n') {
-        return (text.to_string(), vec![]);
+        return (full.to_string(), vec![]);
     }
     let names = tail
         .split(", /")
@@ -408,6 +427,34 @@ mod tests {
         // Only attachments.
         let (text, names) = split_attached("Attached: /a/b/1-x.jpg");
         assert_eq!((text.as_str(), names.len()), ("", 1));
+    }
+
+    #[test]
+    fn p10_the_picture_count_line_is_dropped_too() {
+        let p = "/home/deck/.local/share/mimir/task-files/1795472443-2-2/6-picture-1.jpg";
+        let (t, n) = split_attached(&format!("hello\n\nAttached: {p}\n[1 picture attached]"));
+        assert_eq!(
+            (t.as_str(), n),
+            ("hello", vec!["picture-1.jpg".to_string()])
+        );
+        let three = "Attached: /a/1-picture-1.jpg, /a/2-picture-2.jpg, /a/3-picture-3.jpg";
+        let (t, n) = split_attached(&format!("hi\n\n{three}\n[3 pictures attached]"));
+        assert_eq!((t.as_str(), n.len()), ("hi", 3));
+        let (t, n) = split_attached(
+            "hi\n\nAttached: /a/1-plan.pdf, /a/2-picture-1.jpg\n[1 picture attached]",
+        );
+        assert_eq!(
+            (t.as_str(), n),
+            (
+                "hi",
+                vec!["plan.pdf".to_string(), "picture-1.jpg".to_string()]
+            )
+        );
+        // Only pictures, no files: the words stay, the count line goes.
+        assert_eq!(
+            split_attached("look\n[2 pictures attached]").0,
+            "look\n[2 pictures attached]"
+        );
     }
 
     fn tmp(name: &str) -> PathBuf {
