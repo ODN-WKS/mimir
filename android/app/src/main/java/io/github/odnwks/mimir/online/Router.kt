@@ -107,11 +107,12 @@ object Router {
             "|\\bthe current\\s+(?!(?:in|of|through|flow)\\b)\\p{L}" +
             "|\\b(?:latest|newest)\\b|\\btoday\\b|\\bthis year\\b|\\brelease date\\b|\\bstandings\\b|\\bin stock\\b" +
             "|^(?:is|are|does|do|was|has|have)\\s+.{1,60}?\\sstill\\b" +
-            "|\\bwhen\\s+(?:is|was|will|did|does)\\s+.{1,60}?\\s(?:be\\s+)?released\\b|\\b(?:has|have)\\s+.{1,60}?\\sbeen\\s+released\\b" +
+            "|\\bwhen\\s+(?:is|was|will|did|does)\\s+(?!(?:it|this|that|they|he|she)\\b).{1,60}?\\s(?:be\\s+)?released\\b|\\b(?:has|have)\\s+.{1,60}?\\sbeen\\s+released\\b" +
             "|\\bwhat(?:'s|\\s+is|\\s+was)\\s+the\\s+score\\b|\\bfinal\\s+score\\b|\\b(?:game|match)\\s+score\\b|\\bscores?\\s+(?:today|tonight|yesterday|last night)\\b" +
             "|(?<!\\b(?:a|an|my|your|our)\\s)\\bschedules?\\b(?!\\s+(?:a|an|my|the|it|this|that|me|us)\\b)" +
             "|\\bopen\\s+(?:now|right now|today|tonight)\\b" +
-            "|\\b(?:what|which|newest|latest|current)\\s+version\\b" +
+            // "what version is it?" about one of the owner's projects is project work, not a web search.
+            "|\\b(?:newest|latest|current)\\s+version\\b|\\bwhat\\s+version\\s+of\\s+.{1,40}?\\s+is\\s+(?:out|current|latest|available)\\b" +
             "|\\bwho(?:'s|\\s+is)\\s+(?:the\\s+)?(?:current\\s+)?(?:president|prime minister|ceo|mayor|governor|king|queen|pope|chancellor)\\b" +
             "|^how much (?:is|are)\\s|^how much (?:does|do)\\s+.{1,60}?\\s(?:cost|charge|pay|earn|make|sell for|go for)\\b",
         RegexOption.IGNORE_CASE,
