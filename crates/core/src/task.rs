@@ -615,7 +615,10 @@ impl Task {
                 })
             }
             Event::Finished(f) => self.finished(f, now_ms),
-            Event::Unknown(_) | Event::FiveHourUse { .. } => {}
+            Event::Unknown(_)
+            | Event::FiveHourUse { .. }
+            | Event::BackgroundStarted(_)
+            | Event::BackgroundEnded(_) => {}
         }
     }
 

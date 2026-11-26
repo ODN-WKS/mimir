@@ -145,6 +145,9 @@ enum Proc {
         fallback: Option<Box<(Launch, Wake)>>,
         /// Stops the host's reader when the run moved here.
         cancel: std::sync::Arc<std::sync::atomic::AtomicBool>,
+        /// Its input was closed: the host drops any line sent after, so
+        /// sending says so instead of seeming to work (owner, 2026-11-25).
+        closed: bool,
     },
 }
 
@@ -388,6 +391,7 @@ impl Session {
                 queued: vec![],
                 fallback: None,
                 cancel,
+                closed: false,
             },
             detached: false,
             output: rx,
@@ -576,6 +580,10 @@ impl Session {
                 queued.push(line.to_string());
                 Ok(())
             }
+            Proc::Hosted { closed: true, .. } => Err(std::io::Error::new(
+                std::io::ErrorKind::BrokenPipe,
+                "input already closed",
+            )),
             Proc::Hosted { link, exit, .. } => match link {
                 Some(l) if exit.lock().map(|e| e.is_none()).unwrap_or(false) => l.send_line(line),
                 _ => Err(std::io::Error::new(
@@ -632,7 +640,8 @@ impl Session {
     pub fn close_input(&mut self) {
         match &mut self.proc_ {
             Proc::Local { stdin, .. } => *stdin = None,
-            Proc::Hosted { link, .. } => {
+            Proc::Hosted { link, closed, .. } => {
+                *closed = true;
                 if let Some(l) = link {
                     let _ = l.close_input();
                 }

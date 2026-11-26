@@ -76,6 +76,11 @@ pub enum Event {
         tool_name: String,
     },
     Finished(Finished),
+    /// Claude Code started work that goes on after its turn (a background
+    /// command or helper), by its own id; it stays up until that ends.
+    BackgroundStarted(String),
+    /// That background work ended (Claude Code is told, and may answer on).
+    BackgroundEnded(String),
     /// Anything we do not use. Kept so it can be logged.
     Unknown(String),
 }
@@ -153,6 +158,8 @@ pub fn parse_line(line: &str) -> Vec<Event> {
                     after: n("post_tokens"),
                 }]
             }
+            Some("task_started") => vec![Event::BackgroundStarted(s(&v, "task_id"))],
+            Some("task_notification") => vec![Event::BackgroundEnded(s(&v, "task_id"))],
             Some("permission_denied") => vec![Event::Denied {
                 tool_use_id: s(&v, "tool_use_id"),
                 tool_name: s(&v, "tool_name"),

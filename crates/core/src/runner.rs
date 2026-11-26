@@ -55,6 +55,14 @@ pub struct Live {
     /// The turn's start time was set for this working stretch (a time from
     /// before a restart or a takeover is never shown).
     pub(crate) turn_clocked: bool,
+    /// Background work Claude Code started and has not said is over (its
+    /// task ids). Its input stays open meanwhile, so a message sent while it
+    /// runs is read, never dropped (owner, 2026-11-25).
+    bg_tasks: std::collections::HashSet<String>,
+    /// Since when every message is answered and nothing new came out: input
+    /// closes only after a short quiet, so a message that arrives as a turn
+    /// ends is still read.
+    answered_at: Option<Instant>,
 }
 
 impl Live {
@@ -74,6 +82,8 @@ impl Live {
             freeze: false,
             bg_seen: 0,
             turn_clocked: false,
+            bg_tasks: Default::default(),
+            answered_at: None,
             bg_noted: false,
         }
     }
@@ -184,6 +194,8 @@ pub struct Runner {
 /// How often an idle task's Claude Code is looked at for work it left
 /// running (a read of a few `/proc` files).
 const BACKGROUND_LOOK: std::time::Duration = std::time::Duration::from_millis(200);
+/// How long a run must be answered and quiet before its input closes.
+const CLOSE_AFTER_QUIET: std::time::Duration = std::time::Duration::from_secs(3);
 
 /// Said once in the task when its turn ended with work still going.
 /// What the task says when the owner stops it.
@@ -242,6 +254,8 @@ impl Runner {
                             freeze: false,
                             bg_seen: 0,
                             turn_clocked: false,
+                            bg_tasks: Default::default(),
+                            answered_at: None,
                             bg_noted: said_busy,
                         });
                         continue;
@@ -278,6 +292,8 @@ impl Runner {
                 freeze: false,
                 bg_seen: 0,
                 turn_clocked: false,
+                bg_tasks: Default::default(),
+                answered_at: None,
                 bg_noted: false,
             });
         }
@@ -492,6 +508,8 @@ impl Runner {
             freeze: false,
             bg_seen: 0,
             turn_clocked: false,
+            bg_tasks: Default::default(),
+            answered_at: None,
             bg_noted: false,
         });
     }
@@ -849,6 +867,8 @@ impl Runner {
                     l.session = Some(s);
                     l.sent = 1;
                     l.finished = 0;
+                    l.bg_tasks.clear();
+                    l.answered_at = None;
                 } else {
                     self.fail(i, "Project work would not take the message.");
                 }
@@ -1585,6 +1605,8 @@ impl Runner {
             freeze: false,
             bg_seen: 0,
             turn_clocked: false,
+            bg_tasks: Default::default(),
+            answered_at: None,
             bg_noted: false,
         });
         self.save_dirty();
@@ -1902,6 +1924,8 @@ impl Runner {
             freeze: false,
             bg_seen: 0,
             turn_clocked: false,
+            bg_tasks: Default::default(),
+            answered_at: None,
             bg_noted: false,
         });
         self.send_with(&id, text, &[]);
@@ -2032,6 +2056,14 @@ impl Runner {
                             {
                                 l.freeze = true;
                             }
+                            // Anything new from Claude Code: not quiet yet.
+                            l.answered_at = None;
+                            if let Event::BackgroundStarted(id) = e {
+                                l.bg_tasks.insert(id.clone());
+                            }
+                            if let Event::BackgroundEnded(id) = e {
+                                l.bg_tasks.remove(id);
+                            }
                             if let Event::Init(init) = e {
                                 l.baseline = s.descendants();
                                 l.freeze = false;
@@ -2094,10 +2126,17 @@ impl Runner {
                     }
                 }
             }
-            // Every message answered: let Claude Code exit. The next
-            // message resumes the session.
-            if l.finished >= l.sent && l.sent > 0 {
-                s.close_input();
+            // Every message answered, nothing it started still running, and
+            // a short quiet: let Claude Code exit; the next message resumes
+            // the session. While background work runs the input stays open,
+            // so a message sent meanwhile is read (closing it early dropped
+            // the owner's messages, 2026-11-25).
+            if l.finished >= l.sent && l.sent > 0 && l.bg_tasks.is_empty() {
+                if l.answered_at.get_or_insert_with(Instant::now).elapsed() >= CLOSE_AFTER_QUIET {
+                    s.close_input();
+                }
+            } else {
+                l.answered_at = None;
             }
             // The turn ended but Claude Code stays up for what it started
             // in the background: the task is still working, and says so.
