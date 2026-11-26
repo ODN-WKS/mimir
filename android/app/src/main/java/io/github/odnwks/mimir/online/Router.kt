@@ -97,6 +97,61 @@ object Router {
 
     private fun aboutPerson(t: String) = SELF_OR_OTHER.containsMatchIn(SHOULD_I_BUY.replace(t, ""))
 
+    /**
+     * Anything current, worded loosely (P21 stage 2, plan section 5): the web has it, the model's
+     * memory may be out of date. Each cue is narrow, so general knowledge still just gets answered.
+     */
+    private val TIMELY = Regex(
+        // "the current president", "currently": as a word about now, not "an electric current".
+        "(?<!\\b(?:an|a|electric|ocean|alternating|direct|rip|air|the)\\s)\\bcurrent(?:ly)?\\b(?!\\s*[?.!]*$)" +
+            "|\\bthe current\\s+(?!(?:in|of|through|flow)\\b)\\p{L}" +
+            "|\\b(?:latest|newest)\\b|\\btoday\\b|\\bthis year\\b|\\brelease date\\b|\\bstandings\\b|\\bin stock\\b" +
+            "|^(?:is|are|does|do|was|has|have)\\s+.{1,60}?\\sstill\\b" +
+            "|\\bwhen\\s+(?:is|was|will|did|does)\\s+.{1,60}?\\s(?:be\\s+)?released\\b|\\b(?:has|have)\\s+.{1,60}?\\sbeen\\s+released\\b" +
+            "|\\bwhat(?:'s|\\s+is|\\s+was)\\s+the\\s+score\\b|\\bfinal\\s+score\\b|\\b(?:game|match)\\s+score\\b|\\bscores?\\s+(?:today|tonight|yesterday|last night)\\b" +
+            "|(?<!\\b(?:a|an|my|your|our)\\s)\\bschedules?\\b(?!\\s+(?:a|an|my|the|it|this|that|me|us)\\b)" +
+            "|\\bopen\\s+(?:now|right now|today|tonight)\\b" +
+            "|\\b(?:what|which|newest|latest|current)\\s+version\\b" +
+            "|\\bwho(?:'s|\\s+is)\\s+(?:the\\s+)?(?:current\\s+)?(?:president|prime minister|ceo|mayor|governor|king|queen|pope|chancellor)\\b" +
+            "|^how much (?:is|are)\\s|^how much (?:does|do)\\s+.{1,60}?\\s(?:cost|charge|pay|earn|make|sell for|go for)\\b",
+        RegexOption.IGNORE_CASE,
+    )
+
+    /** "What day is it today": the app gives the model the date; no lookup. */
+    private val NOT_TIMELY = Regex(
+        "\\bwhat(?:'s|\\s+is)?\\s+(?:the\\s+)?(?:day|date)\\b|\\btoday'?s date\\b|\\bwhat day\\b|\\bcurrent (?:time|date|day)\\b" +
+            // A sum: "how much is 2 plus 2", "how much is 15% of 80".
+            "|^how much (?:is|are)\\s+[-\\d.,\\s]*\\d\\s*(?:plus|minus|times|divided|multiplied|over|squared|cubed|to the power|percent|%|x(?=\\s*\\d)|[-+*/×÷^])",
+        RegexOption.IGNORE_CASE,
+    )
+
+    /** Asking about a fact (not a task): a question word first, a question mark, or a few loose words. */
+    private val FACT_QUESTION = Regex(
+        "^(?:what|what's|whats|which|who|who's|whos|when|where|how|is|are|was|were|did|does|do|has|have|will)\\b|\\?\\s*$",
+        RegexOption.IGNORE_CASE,
+    )
+
+    /** A task for Mímir, not a question about the world. */
+    private val TASK = Regex(
+        "\\b(?:write|draft|compose|draw|create|translate|summari[sz]e|rewrite|poem|story|joke|essay)\\b",
+        RegexOption.IGNORE_CASE,
+    )
+
+    /** "Can you tell me …", "do you know …": the asking words around the question, not part of it. */
+    private val ASK_PREFIX = Regex(
+        "^(?:please\\s+)?(?:(?:can|could|would) you\\s+(?:please\\s+)?(?:tell me|find(?: out)?|check|let me know)\\s+|do you know\\s+|tell me\\s+)",
+        RegexOption.IGNORE_CASE,
+    )
+
+    /** A time-bound question, as search words, or null. Never with personal pronouns (PHE-05). */
+    private fun timely(text: String): Need.Search? {
+        val t = ASK_PREFIX.replace(text.trim(), "")
+        if (!TIMELY.containsMatchIn(t) || NOT_TIMELY.containsMatchIn(t) || TASK.containsMatchIn(t)) return null
+        if (!FACT_QUESTION.containsMatchIn(t) && t.split(Regex("\\s+")).size > 6) return null
+        if (PERSONAL_PRONOUNS.containsMatchIn(t)) return null
+        return words(t)?.let { Need.Search(it) }
+    }
+
     private val WEATHER = Regex(
         "\\b(weather|forecast)\\b" +
             "|\\b(temperature|humidity)\\s+(outside|today|tonight|tomorrow|right now|now)\\b" +
@@ -157,6 +212,8 @@ object Router {
         // Product, rating, price, review, buy and recommend questions: the web search first.
         // Still never about a private person or thing ("my", "his"...): that stays unsearched, as for news.
         if (SHOPPING.containsMatchIn(t) && ASKING.containsMatchIn(t) && !aboutPerson(t)) return words(t)?.let { Need.Search(it) }
+        // Anything current ("who is the prime minister of Canada", "Lakers schedule"): the web, not memory.
+        timely(t)?.let { return it }
         val e = ENCYCLOPEDIA.find(t) ?: return null
         val subject = e.groupValues[1].trim()
         if (NOT_ENCYCLOPEDIA.containsMatchIn(subject) || subject.split(Regex("\\s+")).size > 8) return null
@@ -180,7 +237,7 @@ object Router {
         // "what's the weather", "what is the weather forecast", etc.
         if (Regex("\\bwhat('s| is) (the )?(weather|forecast)\\b", RegexOption.IGNORE_CASE).containsMatchIn(t)) return true
         // "weather for/in X" or "forecast for/in X" when weather/forecast leads the sentence (PHE-06 safe).
-        if (Regex("^(?:(?:what(?:'s| is)|how(?:'s| is)?)\\s+(?:the\\s+)?)?(weather|forecast)\\s+(in|for|at|near|around)\\b", RegexOption.IGNORE_CASE).containsMatchIn(t)) return true
+        if (Regex("^(?:(?:what(?:'s| is)|how(?:'s| is)?)\\s+(?:the\\s+)?)?(weather|forecast)(?:\\s+(?:for\\s+)?(?:today|tonight|tomorrow|this weekend|the weekend))?\\s+(in|for|at|near|around)\\b", RegexOption.IGNORE_CASE).containsMatchIn(t)) return true
         // "<place> weather/forecast [tomorrow]" (group 1) or "weather <ProperNoun>" (group 2 uppercase) → lookup.
         BARE_PLACE.find(t)?.let { m ->
             val g1 = m.groupValues.getOrNull(1) ?: ""
@@ -211,7 +268,7 @@ object Router {
         if (BARE_SEARCH.matches(t)) return lookUp(previous)
         val place = WHAT_ABOUT.find(t)?.groupValues?.drop(1)?.firstOrNull { it.isNotBlank() }?.trim() ?: return null
         if (place.split(Regex("\\s+")).size > 5) return null
-        return if (need(previous) is Need.Weather) Need.Weather(place) else null
+        return if (need(previous) is Need.Weather) Need.Weather(Weather.placeName(place)) else null
     }
 
     /** "Look it up" on an answer: the owner's own message, as search words. */
@@ -245,11 +302,15 @@ object Router {
         "week", "weekend", "morning", "evening", "afternoon", "update", "report", "please", "check", "give", "me", "tell", "get",
     )
 
-    /** A place named in the message ("weather in Oslo tomorrow" → "Oslo"), or null. */
+    /**
+     * A place named in the message ("weather in Oslo tomorrow" → "Oslo", "weather for tomorrow in
+     * Paris" → "Paris"), a postcode ("weather 90210"), or null.
+     */
     fun placeIn(text: String): String? = (
-        PLACE.findAll(text).map { it.groupValues[1].trim().trimEnd('.') }
+        PLACE.findAll(text).map { Weather.placeName(it.groupValues[1].trim().trimEnd('.')) }
             .firstOrNull { it.isNotEmpty() && !NOT_PLACE.matches(it) && !it.lowercase().startsWith("the next") }
             ?: BARE_PLACE.find(text.trim())?.groupValues?.drop(1)?.firstOrNull { it.isNotBlank() }?.trim()?.trimEnd('.')
                 ?.takeIf { p -> p.split(Regex("\\s+")).none { it.lowercase() in NOT_PLACE_WORD } }
         )?.split(' ')?.joinToString(" ") { w -> w.replaceFirstChar { it.uppercase() } }
+        ?: Weather.postcodeIn(text)
 }

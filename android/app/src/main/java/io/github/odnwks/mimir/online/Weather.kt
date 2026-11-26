@@ -42,21 +42,77 @@ object Weather {
 
     private fun cell(lat: Double, lon: Double) = "%.2f,%.2f".format(Locale.ROOT, lat, lon)
 
-    /** Finds [name] ("Leeds", "Oslo, Norway", "Springfield IL", "Fresno California"), or null when there's no such place. */
+    /**
+     * Finds [name] ("Leeds", "Oslo, Norway", "Springfield IL", "Fresno California", "tomorrow in
+     * Paris", a postcode), or null when there's no such place.
+     */
     fun find(name: String, mode: ChatMode): Place? {
         Net.requireAllowed(mode)
-        val (q, region) = split(name)
+        justFound.remove()
+        val clean = placeName(name)
+        // Postcodes: only OpenStreetMap's place search knows them (Open-Meteo's doesn't), so only it is asked.
+        if (isPostcode(clean)) {
+            val code = clean.uppercase()
+            val key = "place|postcode|" + code.lowercase()
+            if (mode == ChatMode.Normal) Net.recall(key)?.let { return placeOf(JSONObject(it.text)).also { p -> justFound.set(p) } }
+            val place = nominatimPlace(code, mode)
+            if (place != null && mode == ChatMode.Normal) remember(key, place)
+            return place?.also { justFound.set(it) }
+        }
+        val (q, region) = split(clean)
         val key = "place|" + q.lowercase() + (region?.let { "|" + it.lowercase() } ?: "")
         if (mode == ChatMode.Normal) Net.recall(key)?.let { return placeOf(JSONObject(it.text)) }
         // OpenStreetMap's place search is asked beside Open-Meteo's, from this phone only (a normal chat).
         val ways = listOf<() -> Place?>({ openMeteoPlace(q, region, mode) }) +
             if (mode == ChatMode.Normal) listOf<() -> Place?>({ nominatimPlace(listOfNotNull(q, region?.let { r -> US_STATES[r.uppercase()]?.let { "$it, United States" } ?: r }).joinToString(", "), mode) }) else emptyList()
         val place = if (ways.size == 1) ways[0]() else Net.firstGood(ways)
-        if (place != null && mode == ChatMode.Normal) {
-            Net.remember(key, Net.Got(JSONObject().put("name", place.name).put("lat", place.lat).put("lon", place.lon).toString(), 0, "application/json"), 24 * 3_600_000L)
-        }
-        return place
+        if (place != null && mode == ChatMode.Normal) remember(key, place)
+        return place?.also { justFound.set(it) }
     }
+
+    private fun remember(key: String, place: Place) =
+        Net.remember(key, Net.Got(JSONObject().put("name", place.name).put("lat", place.lat).put("lon", place.lon).toString(), 0, "application/json"), 24 * 3_600_000L)
+
+    /** The place [find] found last on this thread: a place the owner named, not the saved one. */
+    private val justFound = ThreadLocal<Place?>()
+
+    /** A day or time beside the town ("tomorrow in Paris", "in Paris tomorrow"): never part of its name. */
+    private val WHEN_WORDS = Regex(
+        "^(?:(?:the\\s+)?(?:weather|forecast)|in|for|at|near|around|on|today|tonight|tomorrow|now|right now|later|" +
+            "(?:this|next|the|on the|for the|over the)\\s+(?:week-?end|week|morning|afternoon|evening|night)|" +
+            "(?:on\\s+)?(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday))\\b[\\s,]*" +
+            "|[\\s,]+(?:today|tonight|tomorrow|now|right now|later|please|" +
+            "(?:this|next|the|on the|for the|over the)\\s+(?:week-?end|week|morning|afternoon|evening|night)|" +
+            "(?:on\\s+)?(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday))$",
+        RegexOption.IGNORE_CASE,
+    )
+
+    /**
+     * The place alone, without the day or the asking words around it: "tomorrow in Paris",
+     * "weather tomorrow in Paris" and "in Paris tomorrow" are all "Paris". A name that would be
+     * left empty is kept as it was.
+     */
+    fun placeName(name: String): String {
+        var n = name.trim().trimEnd('?', '.', '!').trim()
+        while (true) {
+            val next = WHEN_WORDS.replace(n, "").trim()
+            if (next == n || next.isEmpty()) return n
+            n = next
+        }
+    }
+
+    /** A postcode: "90210", "90210-1234", "SW1A 1AA", "M1 1AE", "K1A 0B1". */
+    private val POSTCODE = Regex(
+        "\\d{5}(?:-\\d{4})?|[A-Z]{1,2}\\d[A-Z\\d]?\\s*\\d[A-Z]{2}|[A-Z]\\d[A-Z]\\s?\\d[A-Z]\\d",
+        RegexOption.IGNORE_CASE,
+    )
+
+    /** Whether [name] is a postcode and nothing else. */
+    fun isPostcode(name: String): Boolean = POSTCODE.matches(name.trim())
+
+    /** A postcode somewhere in [text] ("weather in sw1a 1aa tomorrow" gives "SW1A 1AA"), or null. */
+    fun postcodeIn(text: String): String? =
+        Regex("(?<![\\p{L}\\d])(?:${POSTCODE.pattern})(?![\\p{L}\\d])", RegexOption.IGNORE_CASE).find(text)?.value?.uppercase()
 
     private fun placeOf(o: JSONObject) = Place(o.getString("name"), o.getDouble("lat"), o.getDouble("lon"))
 
@@ -119,7 +175,7 @@ object Weather {
         val a = org.json.JSONArray(Net.get(url, mode, words = q, site = "openstreetmap.org").text)
         val r = a.optJSONObject(0) ?: return null
         // "Portland, Multnomah County, Oregon, United States": the town, the region before the country, the country.
-        val parts = r.optString("display_name").split(", ").map { it.trim() }.filter { it.isNotEmpty() }
+        val parts = r.optString("display_name").split(", ").map { it.trim() }.filter { it.isNotEmpty() && !isPostcode(it) }
         val label = when {
             parts.size >= 3 -> listOf(parts.first(), parts[parts.size - 2], parts.last())
             else -> parts
@@ -138,7 +194,12 @@ object Weather {
      * the model. All sources are asked at once and the first good answer wins; a normal chat keeps
      * it 15 minutes under the place.
      */
-    fun forecast(place: Place, mode: ChatMode, imperial: Boolean = imperial(), at: Long = System.currentTimeMillis(), ask: String = ""): Found {
+    fun forecast(
+        place: Place, mode: ChatMode, imperial: Boolean = imperial(), at: Long = System.currentTimeMillis(), ask: String = "",
+        /** The saved place was used because the message named none: the block says so. */
+        savedPlace: Boolean = usedSaved(place),
+    ): Found {
+        justFound.remove()
         Net.requireAllowed(mode)
         // About 1 km is plenty for a forecast, and says less about where the owner is.
         val lat = "%.2f".format(Locale.ROOT, place.lat)
@@ -158,8 +219,17 @@ object Weather {
         }
         val site = o.optString("site").ifEmpty { SITE_OPEN_METEO }
         lastSite.set(site)
-        return Found(describe(o, place.name, imperial, at, ask), listOf(Source(site, o.optString("page").ifEmpty { "https://open-meteo.com/" }, place.name)))
+        val block = describe(o, place.name, imperial, at, ask).let { b ->
+            if (!savedPlace) b else b.substringBefore('\n') + "\n" + savedPlaceSaid(place.name) + b.substringAfter('\n', "").let { if (it.isEmpty()) "" else "\n" + it }
+        }
+        return Found(block, listOf(Source(site, o.optString("page").ifEmpty { "https://open-meteo.com/" }, place.name)))
     }
+
+    /** The line that tells the owner (and the model) the saved place was used. */
+    fun savedPlaceSaid(name: String) = "No place was named, so the saved place $name was used."
+
+    /** Whether [place] is the saved place and not one [find] just found for the message. */
+    private fun usedSaved(place: Place): Boolean = place == Online.settings.value.place && justFound.get() != place
 
     /** Through Tor the sources are asked one after the other (fewer sites hear of it), the next only when one failed. */
     private fun oneAfterAnother(ways: List<() -> JSONObject>): JSONObject {

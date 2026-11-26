@@ -301,7 +301,8 @@ private fun weatherNow(named: String?, saved: io.github.odnwks.mimir.online.Plac
             "To keep a town for every weather question: Settings › Who answers › Looking things up.",
         )
     }
-    val f = io.github.odnwks.mimir.online.Weather.forecast(place, mode, ask = ask)
+    // When no town was named, the forecast's words say the saved place was used.
+    val f = io.github.odnwks.mimir.online.Weather.forecast(place, mode, ask = ask, savedPlace = named == null)
     return answerFirst(f.block.lines().filter { it.isNotBlank() }) + "From ${f.sources.joinToString(" · ") { it.site }}"
 }
 

@@ -254,4 +254,71 @@ class WeatherTest {
         assertTrue(runner.prompts.last().contains("tried to get the weather for Leeds but couldn't"))
         assertTrue(e.state.value.chat.turns.last().sources.isEmpty())
     }
+
+    @Test fun theDayWordIsNeverSentAsPartOfThePlace() {
+        web.geocode = """{"results":[{"name":"Paris","admin1":"Ile-de-France","country":"France","latitude":48.8534,"longitude":2.3488}]}"""
+        for (w in listOf("tomorrow in Paris", "weather tomorrow in Paris", "in Paris tomorrow")) {
+            Net.forget()
+            web.asked.clear()
+            assertEquals(w, "Paris, Ile-de-France, France", Weather.find(w, ChatMode.Normal)?.name)
+            val geo = web.asked.filter { "geocoding-api" in it }
+            assertTrue("$w: $geo", geo.isNotEmpty() && geo.all { it.endsWith("name=Paris") })
+        }
+    }
+
+    @Test fun aPostcodeIsAskedOfOpenStreetMapOnly() {
+        web.nominatim = """[{"lat":"51.5010","lon":"-0.1416","display_name":"Westminster, London, Greater London, England, SW1A 1AA, United Kingdom"}]"""
+        for (p in listOf("90210", "SW1A 1AA")) {
+            Net.forget()
+            web.asked.clear()
+            web.askedMore.clear()
+            assertTrue(p, Weather.find(p, ChatMode.Normal) != null)
+            assertTrue("$p: ${web.asked}", web.asked.none { "open-meteo" in it })
+            assertTrue("$p: ${web.askedMore}", web.askedMore.isNotEmpty() && web.askedMore.all { "nominatim.openstreetmap.org" in it })
+        }
+        // The postcode is not shown as if it were a region.
+        assertEquals("Westminster, England, United Kingdom", Weather.find("SW1A 1AA", ChatMode.Normal)?.name)
+        // Through the engine too: "weather in SW1A 1AA" finds it, the forecast follows.
+        Net.forget()
+        web.asked.clear()
+        web.askedMore.clear()
+        val e = engine(PromptRunner())
+        e.send("weather in SW1A 1AA")
+        e.waitDone()
+        assertFalse(e.state.value.askPlace)
+        assertTrue(web.askedMore.toString(), web.askedMore.any { "nominatim" in it && "SW1A" in it })
+        assertTrue(web.asked.toString(), web.asked.none { "geocoding-api" in it })
+        assertTrue(web.asked.toString(), web.asked.any { "api.open-meteo.com" in it && "latitude=51.50&longitude=-0.14" in it })
+    }
+
+    @Test fun theAnswerSaysWhenTheSavedPlaceWasUsed() {
+        val said = "No place was named, so the saved place Leeds was used."
+        Online.set(Online.Settings(place = Place("Leeds", 53.8, -1.55)))
+        val runner = PromptRunner()
+        val e = engine(runner)
+        e.send("weather today?")
+        e.waitDone()
+        assertTrue(runner.prompts.last(), runner.prompts.last().contains(said))
+        // A place named: no such sentence.
+        e.send("weather in Leeds tomorrow?")
+        e.waitDone()
+        // (The earlier turn stays in the chat: only this message's fetched words are checked.)
+        val latest = runner.prompts.last().substringAfterLast("<|im_start|>user")
+        assertTrue(latest, latest.contains("Weather for Leeds, England"))
+        assertFalse(latest, latest.contains("No place was named"))
+        // The paired chat's own weather path says it too, and only then.
+        assertTrue(io.github.odnwks.mimir.ui.weatherWords(null, Online.settings.value.place).contains(said))
+        assertFalse(io.github.odnwks.mimir.ui.weatherWords("Leeds", Online.settings.value.place).any { "No place was named" in it })
+    }
+
+    @Test fun aPlaceTypedWhenAskedIsNotCalledTheSavedPlace() {
+        val runner = PromptRunner()
+        val e = engine(runner)
+        e.send("What is the weather forecast for today")
+        e.waitDone()
+        e.answerPlace("Leeds")
+        e.waitDone()
+        assertTrue(runner.prompts.isNotEmpty())
+        assertFalse(runner.prompts.last(), runner.prompts.last().contains("No place was named"))
+    }
 }

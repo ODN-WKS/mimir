@@ -30,4 +30,26 @@ class WeatherPlaceTest {
         assertEquals(null, Router.followUp("what about Fresno California", "tell me a joke"))
         assertEquals(null, Router.followUp("search engines are interesting", "tell me a joke"))
     }
+
+    @Test fun aDayWordBesideTheTownIsNotPartOfThePlace() {
+        // P21 stage 2: "tomorrow in Paris" is Paris, in every wording and both weather paths.
+        for (w in listOf("tomorrow in Paris", "weather tomorrow in Paris", "in Paris tomorrow", "weather for tomorrow in Paris", "Paris tomorrow")) {
+            assertEquals(w, "Paris", Weather.placeName(w))
+        }
+        assertEquals(Router.Need.Weather("Paris"), Router.need("weather tomorrow in Paris"))
+        assertEquals(Router.Need.Weather("Paris"), Router.need("weather for tomorrow in Paris"))
+        assertEquals(Router.Need.Weather("Paris"), Router.need("weather in Paris tomorrow"))
+        assertEquals(Router.Need.Weather("Paris"), Router.followUp("what about tomorrow in Paris", "weather in Oslo"))
+        // A town's own name is left alone.
+        assertEquals("Paris, Texas", Weather.placeName("Paris, Texas"))
+        assertEquals("Salt Lake City Utah", Weather.placeName("Salt Lake City Utah"))
+    }
+
+    @Test fun aPostcodeIsAPlace() {
+        for (p in listOf("90210", "90210-1234", "SW1A 1AA", "sw1a 1aa", "M1 1AE", "K1A 0B1")) assertEquals(p, true, Weather.isPostcode(p))
+        for (p in listOf("Paris", "Springfield IL", "2", "123")) assertEquals(p, false, Weather.isPostcode(p))
+        assertEquals(Router.Need.Weather("90210"), Router.need("weather 90210"))
+        assertEquals(Router.Need.Weather("SW1A 1AA"), Router.need("weather in SW1A 1AA"))
+        assertEquals(Router.Need.Weather("SW1A 1AA"), Router.need("what's the weather in sw1a 1aa tomorrow?"))
+    }
 }
