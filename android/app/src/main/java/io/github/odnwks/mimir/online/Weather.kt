@@ -50,8 +50,9 @@ object Weather {
         Net.requireAllowed(mode)
         justFound.remove()
         val clean = placeName(name)
-        // Postcodes: only OpenStreetMap's place search knows them (Open-Meteo's doesn't), so only it is asked.
-        if (isPostcode(clean)) {
+        // Postcodes: only OpenStreetMap's place search knows them (Open-Meteo's doesn't), so only it is asked,
+        // and only from a normal chat (a Whisper asks Open-Meteo alone, as before).
+        if (isPostcode(clean) && mode == ChatMode.Normal) {
             val code = clean.uppercase()
             val key = "place|postcode|" + code.lowercase()
             if (mode == ChatMode.Normal) Net.recall(key)?.let { return placeOf(JSONObject(it.text)).also { p -> justFound.set(p) } }
