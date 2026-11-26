@@ -194,6 +194,26 @@ object Router {
         return false
     }
 
+    private val BARE_SEARCH = Regex(
+        "^(?:please\\s+)?(?:search|search\\s+(?:it|that|this|for it|for that|the web|online)|look\\s+(?:it|that|this)\\s+up(?:\\s+online)?|google\\s+(?:it|that))(?:\\s+please)?[.!? ]*$",
+        RegexOption.IGNORE_CASE,
+    )
+    private val WHAT_ABOUT = Regex("^(?:what|how)\\s+about\\s+(?:in\\s+)?(.+?)[?.! ]*$|^and\\s+(?:in\\s+)?(.+?)\\?+\\s*$", RegexOption.IGNORE_CASE)
+
+    /**
+     * A message that only makes sense with the one before it (owner-found 2026-11-25): "search"
+     * alone searches the owner's previous question; "what about Fresno California" after a weather
+     * question asks the weather there. Null when [text] is not such a follow-up.
+     */
+    fun followUp(text: String, previous: String?): Need? {
+        if (previous.isNullOrBlank()) return null
+        val t = text.trim()
+        if (BARE_SEARCH.matches(t)) return lookUp(previous)
+        val place = WHAT_ABOUT.find(t)?.groupValues?.drop(1)?.firstOrNull { it.isNotBlank() }?.trim() ?: return null
+        if (place.split(Regex("\\s+")).size > 5) return null
+        return if (need(previous) is Need.Weather) Need.Weather(place) else null
+    }
+
     /** "Look it up" on an answer: the owner's own message, as search words. */
     fun lookUp(text: String): Need.Search? {
         val t = text.trim()

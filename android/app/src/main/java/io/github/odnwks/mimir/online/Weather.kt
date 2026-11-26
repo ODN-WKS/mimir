@@ -42,14 +42,15 @@ object Weather {
 
     private fun cell(lat: Double, lon: Double) = "%.2f,%.2f".format(Locale.ROOT, lat, lon)
 
-    /** Finds [name] ("Leeds", "Oslo, Norway"), or null when there's no such place. */
+    /** Finds [name] ("Leeds", "Oslo, Norway", "Springfield IL", "Fresno California"), or null when there's no such place. */
     fun find(name: String, mode: ChatMode): Place? {
         Net.requireAllowed(mode)
-        val q = name.substringBefore(',').trim()
-        val key = "place|" + q.lowercase()
+        val (q, region) = split(name)
+        val key = "place|" + q.lowercase() + (region?.let { "|" + it.lowercase() } ?: "")
         if (mode == ChatMode.Normal) Net.recall(key)?.let { return placeOf(JSONObject(it.text)) }
         // OpenStreetMap's place search is asked beside Open-Meteo's, from this phone only (a normal chat).
-        val ways = listOf<() -> Place?>({ openMeteoPlace(q, mode) }) + if (mode == ChatMode.Normal) listOf<() -> Place?>({ nominatimPlace(q, mode) }) else emptyList()
+        val ways = listOf<() -> Place?>({ openMeteoPlace(q, region, mode) }) +
+            if (mode == ChatMode.Normal) listOf<() -> Place?>({ nominatimPlace(listOfNotNull(q, region?.let { r -> US_STATES[r.uppercase()]?.let { "$it, United States" } ?: r }).joinToString(", "), mode) }) else emptyList()
         val place = if (ways.size == 1) ways[0]() else Net.firstGood(ways)
         if (place != null && mode == ChatMode.Normal) {
             Net.remember(key, Net.Got(JSONObject().put("name", place.name).put("lat", place.lat).put("lon", place.lon).toString(), 0, "application/json"), 24 * 3_600_000L)
@@ -59,10 +60,52 @@ object Weather {
 
     private fun placeOf(o: JSONObject) = Place(o.getString("name"), o.getDouble("lat"), o.getDouble("lon"))
 
-    private fun openMeteoPlace(q: String, mode: ChatMode): Place? {
-        val url = "https://geocoding-api.open-meteo.com/v1/search?count=1&language=en&format=json&name=" + URLEncoder.encode(q, "UTF-8")
+    /** US states by their two-letter code: "Springfield IL" is Springfield, Illinois (owner-found 2026-11-25: a town and "CA" gave a same-named town in Canada). */
+    val US_STATES = mapOf(
+        "AL" to "Alabama", "AK" to "Alaska", "AZ" to "Arizona", "AR" to "Arkansas", "CA" to "California", "CO" to "Colorado",
+        "CT" to "Connecticut", "DE" to "Delaware", "FL" to "Florida", "GA" to "Georgia", "HI" to "Hawaii", "ID" to "Idaho",
+        "IL" to "Illinois", "IN" to "Indiana", "IA" to "Iowa", "KS" to "Kansas", "KY" to "Kentucky", "LA" to "Louisiana",
+        "ME" to "Maine", "MD" to "Maryland", "MA" to "Massachusetts", "MI" to "Michigan", "MN" to "Minnesota", "MS" to "Mississippi",
+        "MO" to "Missouri", "MT" to "Montana", "NE" to "Nebraska", "NV" to "Nevada", "NH" to "New Hampshire", "NJ" to "New Jersey",
+        "NM" to "New Mexico", "NY" to "New York", "NC" to "North Carolina", "ND" to "North Dakota", "OH" to "Ohio", "OK" to "Oklahoma",
+        "OR" to "Oregon", "PA" to "Pennsylvania", "RI" to "Rhode Island", "SC" to "South Carolina", "SD" to "South Dakota",
+        "TN" to "Tennessee", "TX" to "Texas", "UT" to "Utah", "VT" to "Vermont", "VA" to "Virginia", "WA" to "Washington",
+        "WV" to "West Virginia", "WI" to "Wisconsin", "WY" to "Wyoming", "DC" to "District of Columbia",
+    )
+
+    /**
+     * The town and the part that says where it is: "Paris, Texas" and "Springfield IL" (a state code
+     * typed in capitals) and "Fresno California" (a state's full name at the end). Null region: the name alone.
+     */
+    fun split(name: String): Pair<String, String?> {
+        val n = name.trim().trimEnd('?', '.', '!').trim()
+        if (',' in n) return n.substringBefore(',').trim() to n.substringAfter(',').trim().ifEmpty { null }
+        val words = n.split(Regex("\\s+"))
+        if (words.size >= 2) {
+            val last = words.last()
+            if (last.length == 2 && last == last.uppercase() && last.uppercase() in US_STATES) return words.dropLast(1).joinToString(" ") to last
+            for (state in US_STATES.values) {
+                val sw = state.split(' ')
+                if (words.size > sw.size && words.takeLast(sw.size).joinToString(" ").equals(state, ignoreCase = true)) {
+                    return words.dropLast(sw.size).joinToString(" ") to state
+                }
+            }
+        }
+        return n to null
+    }
+
+    /** Whether a place-search result is in [region] (a state's code or name, or a country's name or code). */
+    private fun inRegion(r: JSONObject, region: String): Boolean {
+        val want = (US_STATES[region.uppercase()] ?: region).lowercase()
+        return listOf(r.optString("admin1"), r.optString("country"), r.optString("country_code"), r.optString("admin2"))
+            .any { it.isNotEmpty() && it.lowercase() == want }
+    }
+
+    private fun openMeteoPlace(q: String, region: String?, mode: ChatMode): Place? {
+        val url = "https://geocoding-api.open-meteo.com/v1/search?count=${if (region != null) 10 else 1}&language=en&format=json&name=" + URLEncoder.encode(q, "UTF-8")
         val o = JSONObject(Net.get(url, mode, words = q, site = SITE_OPEN_METEO).text)
-        val r = o.optJSONArray("results")?.optJSONObject(0) ?: return null
+        val all = o.optJSONArray("results") ?: return null
+        val r = (0 until all.length()).map { all.getJSONObject(it) }.let { list -> if (region == null) list.firstOrNull() else list.firstOrNull { inRegion(it, region) } } ?: return null
         val label = listOfNotNull(r.optString("name").ifEmpty { null }, r.optString("admin1").ifEmpty { null }, r.optString("country").ifEmpty { null })
             .distinct().joinToString(", ")
         val lat = r.getDouble("latitude")

@@ -1227,9 +1227,10 @@ class Engine(
         }
         // A normal chat's lookup, all its steps together, takes about 12 s at most (Tor is slower).
         val budget = if (mode() == io.github.odnwks.mimir.online.ChatMode.WhisperWeb) Long.MAX_VALUE / 4 else io.github.odnwks.mimir.online.Net.BUDGET_MS
+        val previous = turns.dropLast(1).lastOrNull { it.user }?.text
         return io.github.odnwks.mimir.online.Net.within(budget) {
             if (tapped != null) page(tapped)
-            else when (val need = forced ?: io.github.odnwks.mimir.online.Router.need(last.text)) {
+            else when (val need = forced ?: io.github.odnwks.mimir.online.Router.need(last.text) ?: (if (mode() == io.github.odnwks.mimir.online.ChatMode.Normal) io.github.odnwks.mimir.online.Router.followUp(last.text, previous) else null)) {
                 is io.github.odnwks.mimir.online.Router.Need.Weather -> weather(need)
                 is io.github.odnwks.mimir.online.Router.Need.Search -> search(need, forced != null)
                 is io.github.odnwks.mimir.online.Router.Need.Encyclopedia -> encyclopedia(need)
