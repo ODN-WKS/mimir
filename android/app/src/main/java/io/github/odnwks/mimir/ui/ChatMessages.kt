@@ -109,6 +109,8 @@ fun OwnMessage(
     dashed: Boolean = false,
     id: String = "mine-${text.hashCode()}",
     under: (@Composable () -> Unit)? = null,
+    /** The small print right under the bubble (P11): the model and effort it went to, the time and the receipt circle. */
+    meta: (@Composable () -> Unit)? = null,
     /** Edit and send again from here (null: this message can't be edited now). Gets the new words. */
     onEdit: ((String) -> Unit)? = null,
     /** A line under the edit box (what sending it will do). */
@@ -121,6 +123,8 @@ fun OwnMessage(
     var draft by rememberSaveable(id) { mutableStateOf(text) }
     LaunchedEffect(editFailure) { if (editFailure != null) editing = true }
     Column(modifier.fillMaxWidth(), horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+      // The small print sits snug under the bubble's corner (P11, mock-up 5).
+      Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(3.dp)) {
         if (editing && onEdit != null) EditBox(
             draft, { draft = it }, bubble,
             onCancel = { editing = false; draft = text; onEditCancel() },
@@ -137,6 +141,8 @@ fun OwnMessage(
                 )
             }
         }
+        if (meta != null && !editing) Box(Modifier.padding(end = 6.dp)) { meta() }
+      }
         if (under != null) {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End), verticalArrangement = Arrangement.spacedBy(4.dp), itemVerticalAlignment = Alignment.CenterVertically) {
                 under()
@@ -204,12 +210,14 @@ fun Answer(
     pc: (() -> Unit)? = null,
     /** Who answered and why, when it was not the usual model: one dim line (null: none). */
     note: String? = null,
-    /** No longer used: Share now shows under every finished answer (P13). Kept until the task screen stops passing it. */
-    @Suppress("UNUSED_PARAMETER") share: Boolean = false,
     /** False while the answer is still being written: no Listen or Copy under half an answer (R20). */
     buttons: Boolean = true,
     /** Who wrote it, one dim line under the answer (null: not shown). */
     author: String? = null,
+    /** The small print at the end of the Listen, Copy, Share row (P11): the model, effort and time. */
+    meta: (@Composable () -> Unit)? = null,
+    /** A line under that row: why the model changed (P11), when it did. */
+    metaUnder: (@Composable () -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -231,10 +239,15 @@ fun Answer(
             if (!note.isNullOrBlank()) Text(note, style = Type.Small, color = Palette.TextDim, modifier = Modifier.testTag("switch-note"))
             // Listen, Copy and Share in a row under the bubble (the owner's approved look); the long-press
             // menu keeps them too, with Select text, Try again and Look it up.
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), itemVerticalAlignment = Alignment.CenterVertically) {
-                ListenButton(id, plain, pc)
-                CopyButton(plain)
-                ShareButton(plain)
+            // The switch line sits snug under the row: the buttons' 48 dp touch room already spaces it.
+            Column {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), itemVerticalAlignment = Alignment.CenterVertically) {
+                    ListenButton(id, plain, pc)
+                    CopyButton(plain)
+                    ShareButton(plain)
+                    meta?.invoke()
+                }
+                metaUnder?.invoke()
             }
         }
     }

@@ -42,6 +42,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.text.withStyle
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -269,8 +270,25 @@ fun TaskScreen(taskId: String, state: StationState, station: Station, nav: Navig
                 var tried by rememberSaveable(task.id) { mutableStateOf<String?>(null) }
                 val lastAnswer = task.messages.lastOrNull { it.fromClaude }
                 val lastOwn = task.messages.lastOrNull { !it.fromClaude && !it.waiting && !it.note }
+                // P11: the small print under each message, and why a reply's model changed on a tap.
+                val working = task.stateWords == "Working" || task.stateWords == "Starting"
+                val busyWithStep = task.steps.lastOrNull()?.startsWith("…") == true
+                var whyOf by remember(task.id) { mutableStateOf<io.github.odnwks.mimir.data.TaskMessage?>(null) }
+                whyOf?.let { SwitchWhyDialog(it) { whyOf = null } }
+                val ownMeta: @Composable (io.github.odnwks.mimir.data.TaskMessage) -> Unit = { m ->
+                    Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        MetaLine(m.model, m.effort, m.atMs, receipt = m.receipt)
+                        if (!m.waiting) NotReadYetLine(m.atMs, m.receipt, working, busyWithStep)
+                    }
+                }
                 messages.forEach { m ->
-                    if (m.note) Text(m.text, style = Type.Small, color = Palette.TextDim)
+                    if (m.note) Text(
+                        if (m.atMs == null) androidx.compose.ui.text.AnnotatedString(m.text) else androidx.compose.ui.text.buildAnnotatedString {
+                            append(m.text)
+                            withStyle(androidx.compose.ui.text.SpanStyle(color = Palette.TextDim.copy(alpha = 0.75f))) { append(" · " + messageTime(m.atMs)) }
+                        },
+                        style = Type.Small, color = Palette.TextDim,
+                    )
                     else if (m.fromClaude) {
                         val writing = m.playLabel.isEmpty()
                         val again = lastOwn?.takeIf { quiet && nothingWaiting && tried != m.id && !writing && m.id == lastAnswer?.id && task.messages.indexOf(it) < task.messages.indexOf(m) }
@@ -280,12 +298,14 @@ fun TaskScreen(taskId: String, state: StationState, station: Station, nav: Navig
                             // Listen: the PC's voice while the PC is there, otherwise the phone's own.
                             pc = if (state.pc.online) ({ station.playMessage(task.id, m.id) }) else null,
                             onTryAgain = again?.let { o -> { tried = m.id; station.reply(task.id, o.text) } },
-                            share = true,
+                            meta = { ReplyMeta(m) { whyOf = m } },
+                            metaUnder = if (m.switched != null) ({ SwitchLine(m, replyBefore(task.messages, m)) { whyOf = m } }) else null,
                         ) {
                             MarkdownText(m.text, style = ChatLook.MessageText, color = Palette.Text)
                         }
                     } else if (m.waiting) OwnMessage(
                         m.text, bubble = Palette.QueuedBubble, dashed = true, id = "task-${task.id}-${m.id}",
+                        meta = { ownMeta(m) },
                         under = {
                             if (m.failedWhy.isNotEmpty()) Column {
                                 StatusWords(Glyphs.Clock, "Didn't send: ${m.failedWhy} Your words are kept.", Palette.AmberNote)
@@ -302,14 +322,19 @@ fun TaskScreen(taskId: String, state: StationState, station: Station, nav: Navig
                     ) else AttachedAware(m.text) { shown, chips ->
                       if (shown.isNotBlank()) OwnMessage(
                         shown, id = "task-${task.id}-${m.id}",
+                        meta = { ownMeta(m) },
                         under = chips,
                         onEdit = if (quiet && m.id == lastOwn?.id && io.github.odnwks.mimir.link.Wire.entryIndex(task.id, m.id) != null) {
                             { words -> editFailure = null; station.editTaskMessage(task.id, m.id, words.trim()) { why -> editFailure = why } }
                         } else null,
                         editNote = EDIT_TASK_NOTE, editFailure = editFailure, onEditCancel = { editFailure = null },
-                      ) else Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.End) { chips?.invoke() }
+                      ) else Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.End) { chips?.invoke(); ownMeta(m) }
                     }
                 }
+                // Thinking: three dots on the AI's side under the owner's last message, until the answer's words begin.
+                if (working && task.permission == null && task.question == null &&
+                    task.messages.lastOrNull { !it.note }?.fromClaude == false
+                ) ThinkingBubble()
                 // Carried on in a fresh task: a way to open it, under the note that says so.
                 if (task.messages.lastOrNull()?.let { it.note && it.text == CARRIED_ON_NOTE } == true) {
                     val next = state.tasks.filter { it.project == task.project && it.title == "${task.title.trim()} (continued)" }.lastOrNull()
