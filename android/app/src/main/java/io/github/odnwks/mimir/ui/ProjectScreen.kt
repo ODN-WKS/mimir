@@ -100,7 +100,7 @@ fun ProjectScreen(name: String, state: StationState, station: Station, nav: Navi
         }
         NeedsYouBar(state.needsYou.size, { nav.open(Screen.NeedsYou) }, Modifier.padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 4.dp))
         // The composer, to this project: what's written starts a task here.
-        var draft by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf("") }
+        var draft by nav.projectDraft(p.name)
         var problem by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf("") }
         if (problem.isNotEmpty()) Text(problem, style = Type.Small, color = Palette.AmberNote, modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp))
         val voice = rememberVoiceInput(station)

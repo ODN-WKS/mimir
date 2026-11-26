@@ -3,8 +3,10 @@ package io.github.odnwks.mimir.nav
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import kotlin.reflect.KProperty
 
 /**
  * The three home screens, reached from the side menu (there is no bottom bar): Chat is home, Status is
@@ -165,6 +167,14 @@ class ModelEffortChoices(val models: List<SheetChoice>, val notes: List<String>,
 /** A project page's choice for its next task: a model and an effort ("": the usual ones). */
 data class TaskChoice(val project: String = "", val model: String = "", val effort: String = "")
 
+/** One box's unsent words, for `var draft by`: sending sets it empty, which forgets it. */
+class BoxDraft(private val drafts: MutableMap<String, String>, private val box: String) {
+    operator fun getValue(owner: Any?, property: KProperty<*>): String = drafts[box].orEmpty()
+    operator fun setValue(owner: Any?, property: KProperty<*>, value: String) {
+        if (value.isEmpty()) drafts.remove(box) else drafts[box] = value
+    }
+}
+
 /** How the last screen change happened; it picks the animation. */
 sealed interface Move {
     data object Forward : Move
@@ -214,6 +224,10 @@ class Navigator(start: Screen = Screen.Chat) {
     var taskAsk: String? by mutableStateOf(null)
     /** Tasks deleted a moment ago: hidden from the lists while Undo still shows, then gone from the PC. */
     val hiddenTasks = mutableStateListOf<String>()
+    /** Words typed and not yet sent in a task's reply box or a project's box: kept here, as Back closes those screens. */
+    private val drafts = mutableStateMapOf<String, String>()
+    fun taskDraft(taskId: String) = BoxDraft(drafts, "task-$taskId")
+    fun projectDraft(name: String) = BoxDraft(drafts, "project-$name")
     /** What the phone chat's sheet asked of the open chat (rename, delete, Whisper), for the chat to do. */
     var chatAsk: ChatRequest? by mutableStateOf(null)
 

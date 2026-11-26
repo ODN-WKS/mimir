@@ -103,7 +103,7 @@ fun TaskScreen(taskId: String, state: StationState, station: Station, nav: Navig
     } else MissingScreen("This task is gone", nav)
     val standIn = LocalStandIn.current
     var stepsOpen by rememberSaveable { mutableStateOf(false) }
-    var draft by rememberSaveable { mutableStateOf("") }
+    var draft by nav.taskDraft(taskId)
     // Why an edit was not sent (its box opens again with the words kept).
     var editFailure by rememberSaveable { mutableStateOf<String?>(null) }
     // Find in this task: only the messages with the words show while it's open.
