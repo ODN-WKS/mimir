@@ -366,7 +366,9 @@ pub const PROTO: u32 = 2;
 /// "pc_sessions" (`Event::PcSessions`, `Call::PcSessions` and
 /// `Call::OpenPcSession`: every Claude Code session on the PC, owner only) and
 /// "task_reply_options" (a phone may send `Call::SetModel` and
-/// `Call::SetEffort` for a task, just before its next `Call::Send`).
+/// `Call::SetEffort` for a task, just before its next `Call::Send`) and
+/// "fresh_start" (`Call::StartFresh { same_chat: true }`: the same chat
+/// carries on in a new Claude session from the hand-off).
 /// A client lists the
 /// ones it knows in `Hello`, and only gets the new events when it does.
 pub const FEATURES: &[&str] = &[
@@ -387,6 +389,7 @@ pub const FEATURES: &[&str] = &[
     "finished_events",
     "pc_sessions",
     "task_reply_options",
+    "fresh_start",
 ];
 
 /// Where a PC session is at.
@@ -1578,6 +1581,11 @@ pub enum Call {
     /// one; this one is kept. The reply is the new task's id.
     StartFresh {
         task: String,
+        /// "Fresh start" (feature "fresh_start"): the same chat carries on
+        /// in a new Claude session from the project's hand-off; the reply is
+        /// the same task's id.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        same_chat: bool,
     },
     /// Claude's limit ran out: carry this task on on the free model.
     ContinueOnFree {

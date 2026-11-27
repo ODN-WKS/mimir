@@ -174,6 +174,8 @@ pub struct Runner {
     pub weekly: Option<WeeklyUse>,
     /// The PC's ground rules (Settings › Models), sent with every task.
     pub ground_rules: Option<String>,
+    /// Project folder → the hand-off file its fresh starts read first.
+    pub handoff_files: std::collections::HashMap<String, String>,
     /// Ground rules a phone sent with the request being handled: the next
     /// new task keeps them as its own.
     pub next_rules: Option<String>,
@@ -227,6 +229,31 @@ const CLOSED_WHILE_WORKING: &str =
 /// Why a working task can't move yet.
 pub const MOVE_WHEN_STOPPED: &str = "Move it when it stops.";
 pub(crate) const CONTINUE_TEXT: &str = "Please continue where you left off.";
+
+/// What a fresh session reads first.
+pub const FRESH_BRIEF: &str = "Continue from the hand-off. Read the project's hand-off document \
+                               first and follow its START HERE line.";
+/// The most fresh starts without a message from the owner in between.
+pub const FRESH_ROW_MAX: u8 = 3;
+pub const FRESH_ROW_FULL: &str = "Waiting for you: 3 fresh starts in a row.";
+
+/// Who asked for a fresh start.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FreshWhy {
+    /// The owner, from the task's menu: the next message goes to the new
+    /// session.
+    Owner,
+    /// The session itself, as its last step: the new session starts working.
+    Session,
+}
+
+/// What [`Runner::fresh_start`] did.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Fresh {
+    Done,
+    /// It happens when the run that is on now has ended.
+    Queued,
+}
 
 impl Runner {
     pub fn new(cfg: Config, wake: Wake) -> std::io::Result<Self> {
@@ -347,6 +374,7 @@ impl Runner {
             listeners: std::collections::HashMap::new(),
             weekly,
             ground_rules: None,
+            handoff_files: Default::default(),
             next_rules: None,
             five_hour: None,
             usage_at: None,
@@ -660,6 +688,17 @@ impl Runner {
         self.send_inner(id, text, pictures, true);
     }
 
+    /// A message Mímir sends by itself: shown like the owner's, but it does
+    /// not count as the owner writing (see [`FRESH_ROW_MAX`]).
+    pub fn send_auto(&mut self, id: &str, text: &str) {
+        let row = self.index(id).map(|i| self.tasks[i].task.fresh_row);
+        self.send(id, text);
+        if let (Some(i), Some(row)) = (self.index(id), row) {
+            self.tasks[i].task.fresh_row = row;
+            self.save_dirty();
+        }
+    }
+
     /// `show`: the message is added to the conversation as the person's own
     /// words (not for a Continue that has to hand the request over again).
     fn send_inner(&mut self, id: &str, text: &str, pictures: &[Picture], show: bool) {
@@ -701,7 +740,9 @@ impl Runner {
             let pick = crate::auto::choose(t, text, is_chat, style);
             if t.auto_choice.as_deref() != Some(pick) {
                 let note = format!("Auto model: {} for this.", crate::auto::name(pick));
-                let switching = t.auto_choice.is_some();
+                // Waiting to start fresh: nothing is read again.
+                let waiting = t.session_id.is_none() && t.brief_pending;
+                let switching = t.auto_choice.is_some() && !waiting;
                 let hand_over = switching && crate::auto::hand_over(t, style);
                 let t = &mut self.tasks[i].task;
                 if hand_over {
@@ -743,6 +784,9 @@ impl Runner {
         if let Some(snap) = snap {
             let at = self.tasks[i].task.entries.len();
             self.tasks[i].task.checkpoints.push((at, snap));
+        }
+        if show {
+            self.tasks[i].task.fresh_row = 0;
         }
         let entry = show.then(|| {
             let (model, effort) = self.sent_to(i);
@@ -1050,6 +1094,7 @@ impl Runner {
         } else {
             vec![]
         };
+        env.push(("MIMIR_TASK_ID".into(), id.clone()));
         let launch = Launch {
             // Incognito keeps nothing, so it never outlives the service.
             host: (crate::host::enabled() && !incognito).then(|| crate::host::new_key(&t.id)),
@@ -1123,6 +1168,10 @@ impl Runner {
         }
         l.task.status = status;
         l.task.failed = false;
+        if l.task.fresh_pending == Some(true) {
+            l.task.fresh_pending = None;
+            l.task.fresh_row = l.task.fresh_row.saturating_sub(1);
+        }
         l.task.drop_note(BACKGROUND_NOTE);
         // The reply it was writing comes first, then the note.
         if !l.task.live.trim().is_empty() {
@@ -1607,6 +1656,96 @@ impl Runner {
         }
     }
 
+    /// Starts the task's next Claude Code afresh in the same chat, from the
+    /// project's hand-off, on the same model and effort. A run that is on is
+    /// never ended: the fresh start waits for it.
+    pub fn fresh_start(&mut self, id: &str, why: FreshWhy) -> Result<Fresh, String> {
+        let Some(i) = self.index(id) else {
+            return Err("That task is gone.".into());
+        };
+        let t = &mut self.tasks[i].task;
+        if t.incognito {
+            return Err("A Whisper keeps nothing, so it has no hand-off to start from.".into());
+        }
+        if t.live_elsewhere || t.from_phone.is_some() {
+            return Err("It is going on in another app: start fresh there.".into());
+        }
+        if t.fresh_pending.is_some() {
+            return Ok(Fresh::Queued);
+        }
+        // Already ready for a new session: nothing more to do.
+        if why == FreshWhy::Owner && t.session_id.is_none() && t.brief_pending {
+            return Ok(Fresh::Done);
+        }
+        if t.fresh_row >= FRESH_ROW_MAX {
+            if why == FreshWhy::Session {
+                t.add_note(FRESH_ROW_FULL);
+                self.tasks[i].dirty = true;
+                self.save_dirty();
+            }
+            return Err(FRESH_ROW_FULL.into());
+        }
+        t.fresh_row += 1;
+        t.fresh_pending = Some(why == FreshWhy::Session);
+        self.tasks[i].dirty = true;
+        self.fresh_starts();
+        self.save_dirty();
+        Ok(match self.tasks[i].task.fresh_pending {
+            Some(_) => Fresh::Queued,
+            None => Fresh::Done,
+        })
+    }
+
+    /// Carries out the fresh starts whose run has ended.
+    fn fresh_starts(&mut self) {
+        for i in 0..self.tasks.len() {
+            let l = &self.tasks[i];
+            let Some(run_on) = l.task.fresh_pending else {
+                continue;
+            };
+            if l.session.is_some()
+                || !l.asks.is_empty()
+                || matches!(l.task.status, Status::Working | Status::NeedsYou)
+                || self.resend.iter().any(|(t, _, _, _)| *t == l.task.id)
+            {
+                continue;
+            }
+            // A run that did not end well, or a plan waiting for the owner,
+            // is not carried on by itself.
+            let run_on = run_on && l.task.status == Status::Done && !l.task.plan_waiting();
+            let brief = match self.handoff_files.get(&l.task.project) {
+                Some(f) if !f.trim().is_empty() => format!(
+                    "Continue from the hand-off. Read {} first and follow its START HERE line.",
+                    f.trim()
+                ),
+                _ => FRESH_BRIEF.to_string(),
+            };
+            let now = ClockTime::at(crate::task::unix_ms() / 1000);
+            let l = &mut self.tasks[i];
+            l.dirty = true;
+            let t = &mut l.task;
+            t.fresh_pending = None;
+            // A session the person had before Mímir is never deleted by it.
+            if let Some(old) = t.session_id.take()
+                && !t.imported
+            {
+                t.past_sessions.push(old);
+            }
+            t.context_used = 0;
+            t.brief = Some(brief.clone());
+            t.brief_pending = !run_on;
+            t.add_note(&format!(
+                "Fresh start at {:02}:{:02} · continues from the hand-off",
+                now.hour, now.minute
+            ));
+            if run_on {
+                t.status = Status::Working;
+                t.failed = false;
+                self.start_and_send(i, &user_message_with(&brief, &[]), None);
+            }
+        }
+    }
+
     /// Claude's limit ran out in these tasks (each with when it resets, 0
     /// if Claude Code didn't say); each is told once.
     pub fn take_limit_hits(&mut self) -> Vec<(String, i64)> {
@@ -1740,7 +1879,8 @@ impl Runner {
         // message in the conversation.
         let again = self.index(id).and_then(|i| {
             let t = &self.tasks[i].task;
-            if t.session_id.is_some() {
+            // After a fresh start the hand-off says what to do.
+            if t.session_id.is_some() || (t.brief_pending && !t.past_sessions.is_empty()) {
                 return None;
             }
             t.entries.iter().rev().find_map(|e| match e {
@@ -2077,8 +2217,11 @@ impl Runner {
                 .then(|| t.session_id.clone())
                 .flatten()
         });
+        let past = self
+            .index(id)
+            .map(|i| self.tasks[i].task.past_sessions.clone());
         self.remove(id);
-        if let Some(s) = session {
+        for s in session.into_iter().chain(past.unwrap_or_default()) {
             crate::sessions::delete_session(&s);
         }
     }
@@ -2107,6 +2250,10 @@ impl Runner {
         self.end_stuck_runs();
         self.tick_inner();
         self.send_resends();
+        if self.tasks.iter().any(|l| l.task.fresh_pending.is_some()) {
+            self.fresh_starts();
+            self.save_dirty();
+        }
     }
 
     fn tick_inner(&mut self) {

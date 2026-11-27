@@ -687,7 +687,10 @@ fn write_the_examples() {
             free_model: None,
         },
         Call::ContinueOnClaude { task: "t".into() },
-        Call::StartFresh { task: "t".into() },
+        Call::StartFresh {
+            task: "t".into(),
+            same_chat: false,
+        },
         Call::NewIncognito {
             typed: false,
             ground_rules: None,

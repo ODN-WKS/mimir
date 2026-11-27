@@ -54,6 +54,7 @@ pub fn run() -> eframe::Result {
         // Mímir's work, as its own process (systemd starts it).
         Some("service") => std::process::exit(mimir_core::service::run_main(VERSION.trim())),
         Some("ask") => std::process::exit(mimir_core::needs::ask_command(&args[1..])),
+        Some("fresh-start") => std::process::exit(mimir_core::needs::fresh_command()),
         // The owner's own Claude sessions' permission hook (see `approve`).
         Some("approve") => std::process::exit(mimir_core::approve::command(&args[1..])),
         Some("incognito-launch") => {
@@ -73,6 +74,7 @@ pub fn run() -> eframe::Result {
                 "Mímir {}\n\nWith no command it opens the window. Commands:\n  \
                  --version, --public-key, --check-home\n  \
                  ask …        ask the owner a question (from a session)\n  \
+                 fresh-start  carry this task on in a new session from its hand-off\n  \
                  approve      Claude Code's permission hook: asks on the phone and in the window\n  \
                  weekly       tidy unused models and leftovers, look for better free models\n  \
                  engine [probe]   where chats run; probe measures the PC's models now\n  \

@@ -491,6 +491,10 @@ pub enum SessionMsg {
     },
     /// Waits for the answer to an earlier ask; the reply is the answer.
     Wait { ask_id: String },
+    /// `mimir fresh-start` (tools/relay.sh): start the asking task afresh
+    /// from its hand-off. `task` is the session's `MIMIR_TASK_ID`, used only
+    /// when its control group does not already say which task asks.
+    FreshStart { task: Option<String> },
     /// A permission request from a Claude session Mímir doesn't run
     /// (`mimir approve`). The reply is "allow", "always", "deny"
     /// or "pc" (ask on the PC as normal).
@@ -526,7 +530,7 @@ pub fn serve_session(path: &Path, handler: SessionHandler) -> std::io::Result<()
                     _ => {
                         let _ = write_msg(
                             &mut s,
-                            &"refused: the session socket only takes Ask, Wait and Permission",
+                            &"refused: the session socket only takes Ask, Wait, FreshStart and Permission",
                         );
                         return;
                     }

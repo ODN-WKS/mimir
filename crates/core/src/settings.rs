@@ -22,6 +22,10 @@ pub struct Settings {
     /// Mode, model and effort new tasks start with, per project folder.
     #[serde(default)]
     pub defaults: std::collections::HashMap<String, Defaults>,
+    /// Per project folder: the hand-off file a fresh start reads first
+    /// (none: the project's own hand-off document, wherever it keeps it).
+    #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
+    pub handoff_files: std::collections::HashMap<String, String>,
     /// Connectors (MCP servers) Claude Code last reported, with status.
     #[serde(default)]
     pub connectors: Vec<(String, String)>,

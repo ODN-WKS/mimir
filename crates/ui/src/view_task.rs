@@ -81,6 +81,15 @@ impl App {
                 {
                     actions.push(Action::Archive(id.clone(), !t.archived));
                 }
+                if !is_chat && !following && !t.incognito {
+                    if ui.button("Fresh start").clicked() {
+                        actions.push(Action::FreshStart(id.clone()));
+                    }
+                    ui.weak(
+                        "Starts a new session in this chat from the hand-off. \
+                         Saves usage on long chats.",
+                    );
+                }
                 ui.separator();
                 if !is_chat {
                     if ui.button("Open the project folder").clicked() {

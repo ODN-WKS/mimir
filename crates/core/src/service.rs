@@ -635,6 +635,7 @@ impl Service {
             s.runner.problem(&p);
         }
         s.runner.ground_rules = s.settings.ground_rules();
+        s.runner.handoff_files = s.settings.handoff_files.clone();
         // What clients start from: nothing is "sent" before a snapshot.
         for l in &s.runner.tasks {
             s.sent
@@ -1606,11 +1607,10 @@ impl Service {
                 let mut sessions = crate::sessions::list(Path::new(&project));
                 // Sessions that are already tasks here are left out.
                 sessions.retain(|s| {
-                    !self
-                        .runner
-                        .tasks
-                        .iter()
-                        .any(|l| l.task.session_id.as_deref() == Some(s.id.as_str()))
+                    !self.runner.tasks.iter().any(|l| {
+                        l.task.session_id.as_deref() == Some(s.id.as_str())
+                            || l.task.past_sessions.contains(&s.id)
+                    })
                 });
                 serde_json::to_value(sessions).map_err(|e| e.to_string())
             }
@@ -2223,7 +2223,14 @@ impl Service {
                 )?;
                 Ok(json!(id))
             }
-            Call::StartFresh { task } => {
+            Call::StartFresh {
+                task,
+                same_chat: true,
+            } => {
+                self.fresh_start(&task, crate::runner::FreshWhy::Owner)?;
+                Ok(json!(task))
+            }
+            Call::StartFresh { task, .. } => {
                 let Some(l) = self.task(&task) else {
                     return Err("That task is gone.".into());
                 };
@@ -2719,6 +2726,14 @@ impl Service {
         )
     }
 
+    /// The same chat carries on in a new Claude session from the hand-off.
+    fn fresh_start(&mut self, task: &str, why: crate::runner::FreshWhy) -> Result<(), String> {
+        self.runner.handoff_files = self.settings.handoff_files.clone();
+        let result = self.runner.fresh_start(task, why);
+        self.touched.insert(task.to_string());
+        result.map(|_| ())
+    }
+
     /// A message from a Claude session on the session socket.
     fn session_msg(&mut self, msg: SessionMsg, task: Option<String>, reply: Sender<String>) {
         match msg {
@@ -2797,6 +2812,23 @@ impl Service {
                     created: crate::needs::now(),
                     reply,
                 });
+                self.publish();
+            }
+            SessionMsg::FreshStart { task: named } => {
+                // The control group can't be faked, so it wins.
+                let found = task
+                    .or(named)
+                    .and_then(|id| self.task(&id).map(|l| (id, l.task.title.clone())));
+                let answer = match found {
+                    None => "refused: no Mímir task here to start afresh".to_string(),
+                    Some((id, title)) => {
+                        match self.fresh_start(&id, crate::runner::FreshWhy::Session) {
+                            Ok(()) => format!("Fresh start queued for {title}"),
+                            Err(why) => format!("refused: {why}"),
+                        }
+                    }
+                };
+                let _ = reply.send(answer);
                 self.publish();
             }
             SessionMsg::Wait { ask_id } => match self.asks.iter().find(|a| a.ask_id == ask_id) {
@@ -3238,6 +3270,7 @@ impl Service {
         s.project_names.remove(from);
         s.remote_projects.retain(|p| !same(p, from));
         s.defaults.remove(from);
+        s.handoff_files.remove(from);
         s.save();
         self.broadcast(Event::Settings {
             settings: settings::service_part(&self.settings),
@@ -3457,6 +3490,7 @@ impl Service {
                     s.remote_projects.retain(|p| !same(p, &r.folder));
                     s.aliases.retain(|p, _| !same(p, &r.folder));
                     s.defaults.retain(|p, _| !same(p, &r.folder));
+                    s.handoff_files.retain(|p, _| !same(p, &r.folder));
                     s.project_names.retain(|p, _| !same(p, &r.folder));
                     done += 1;
                 }
@@ -4910,7 +4944,7 @@ impl Service {
             }
         }
         for id in summaries {
-            self.runner.send(&id, SUMMARY_PROMPT);
+            self.runner.send_auto(&id, SUMMARY_PROMPT);
             self.summary_pending.insert(id.clone());
             self.touched.insert(id);
         }
@@ -5264,7 +5298,7 @@ impl Service {
                 crate::models::clock(back_at)
             ),
         );
-        self.runner.send(id, crate::order::LIMIT_CARRY_ON);
+        self.runner.send_auto(id, crate::order::LIMIT_CARRY_ON);
         Ok(f.name)
     }
 
@@ -6472,7 +6506,7 @@ fn call_task(call: &Call) -> Option<String> {
         | Call::EndIncognito { task }
         | Call::ContinueOnFree { task }
         | Call::ContinueOnClaude { task }
-        | Call::StartFresh { task }
+        | Call::StartFresh { task, .. }
         | Call::Queue { task, .. }
         | Call::Unqueue { task } => Some(task.clone()),
         _ => None,

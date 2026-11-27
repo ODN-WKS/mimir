@@ -193,6 +193,8 @@ pub enum Action {
     SetModel(String, Option<String>),
     /// "Start fresh with a summary" on a long conversation.
     StartFresh(String),
+    /// "Fresh start": the same chat, a new session from the hand-off.
+    FreshStart(String),
     /// The long-conversation line is dismissed for this task (true: it was
     /// the stronger "very long" one).
     DismissLong(String, bool),
@@ -1263,8 +1265,19 @@ impl App {
                 Action::DismissLong(id, very) => {
                     self.long_dismissed.insert(id, very);
                 }
+                Action::FreshStart(id) => {
+                    if let Err(e) = r.call_wait(mimir_core::proto::Call::StartFresh {
+                        task: id,
+                        same_chat: true,
+                    }) {
+                        r.problem(&e);
+                    }
+                }
                 Action::StartFresh(id) => {
-                    match r.call_wait(mimir_core::proto::Call::StartFresh { task: id }) {
+                    match r.call_wait(mimir_core::proto::Call::StartFresh {
+                        task: id,
+                        same_chat: false,
+                    }) {
                         Ok(v) => {
                             if let Some(new) = v.as_str() {
                                 let new = new.to_string();

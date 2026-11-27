@@ -255,6 +255,22 @@ pub struct Task {
     /// Whether this is an agentic task (not a plain chat). Used by B7 UI.
     #[serde(default)]
     pub is_agentic: bool,
+    /// A fresh start asked for while Claude was still running: it happens
+    /// when that run has ended. True: the session asked, so the new session
+    /// starts working by itself.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fresh_pending: Option<bool>,
+    /// Fresh starts since the owner last wrote.
+    #[serde(default, skip_serializing_if = "is_zero_u8")]
+    pub fresh_row: u8,
+    /// Claude Code sessions this task left behind with a fresh start:
+    /// deleting the task deletes them too.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub past_sessions: Vec<String>,
+}
+
+fn is_zero_u8(n: &u8) -> bool {
+    *n == 0
 }
 
 /// The question check's last answer: for which reply (the entry count and
@@ -451,6 +467,9 @@ impl Task {
             summary_enabled: false,
             phone_too_active: false,
             is_agentic: false,
+            fresh_pending: None,
+            fresh_row: 0,
+            past_sessions: Vec::new(),
         }
     }
 

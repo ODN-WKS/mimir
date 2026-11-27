@@ -239,6 +239,40 @@ pub fn stamp_or_now(ask_id: &str, sent: &[mimir_proto::NeedsYouItem], now: i64) 
         .unwrap_or(now)
 }
 
+/// `mimir fresh-start` (what tools/relay.sh runs, as a session's last
+/// step): the task starts afresh from its hand-off once this run ends.
+/// Prints "Fresh start queued for <task>" or the plain reason.
+pub fn fresh_command() -> i32 {
+    use crate::sockets::SessionMsg;
+    let msg = SessionMsg::FreshStart {
+        task: std::env::var("MIMIR_TASK_ID")
+            .ok()
+            .filter(|s| !s.is_empty()),
+    };
+    let reply = std::os::unix::net::UnixStream::connect(crate::sockets::session_socket())
+        .ok()
+        .and_then(|mut s| {
+            crate::sockets::write_msg(&mut s, &msg).ok()?;
+            crate::sockets::read_msg::<String>(&mut s).ok().flatten()
+        });
+    match reply {
+        Some(r) => match r.strip_prefix("refused: ") {
+            Some(why) => {
+                eprintln!("{why}");
+                1
+            }
+            None => {
+                println!("{r}");
+                0
+            }
+        },
+        None => {
+            eprintln!("Mímir isn't running, so there is no fresh start.");
+            1
+        }
+    }
+}
+
 /// `mimir ask`: asks the owner through the service.
 ///
 /// ```text

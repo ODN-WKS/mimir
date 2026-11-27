@@ -35,7 +35,10 @@ fn p6_p7_start_fresh_reads_plainly_on_both_tasks() {
     store.save(&t).unwrap();
     let mut st = home.service();
     let id = st
-        .call_wait(Call::StartFresh { task: "t1".into() })
+        .call_wait(Call::StartFresh {
+            task: "t1".into(),
+            same_chat: false,
+        })
         .expect("start fresh was refused");
     let id = id.as_str().unwrap().to_string();
     assert!(
