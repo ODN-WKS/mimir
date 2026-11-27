@@ -105,17 +105,15 @@ impl App {
     }
 
     fn new_task_form(&mut self, ui: &mut egui::Ui, projects: &[String], actions: &mut Vec<Action>) {
-        // A project's saved defaults apply when it is chosen.
+        // A project's saved defaults apply when it is chosen, else the PC's
+        // default for new work.
         if self.new_project != self.defaults_for {
             self.defaults_for = self.new_project.clone();
-            if let Some(d) = self
-                .new_project
-                .as_ref()
-                .and_then(|p| self.settings.defaults.get(p))
-            {
-                self.new_mode = d.mode;
-                self.new_model = d.model.clone();
-                self.new_effort = d.effort.clone();
+            if let Some(p) = &self.new_project {
+                if let Some(d) = self.settings.defaults.get(p) {
+                    self.new_mode = d.mode;
+                }
+                (self.new_model, self.new_effort) = self.settings.new_work(p);
             }
         }
         let chat = self.new_project.as_deref()

@@ -593,6 +593,17 @@ impl Task {
         }
     }
 
+    /// The person's words that Mímir took itself ("use opus 5.5 high").
+    pub fn add_told_mimir(&mut self, text: &str) {
+        self.entries.push(Entry::You(text.to_string()));
+        self.stamp(EntryMeta {
+            at: Some(unix_ms()),
+            receipt: Some(Receipt::Read),
+            ..Default::default()
+        });
+        self.you_ms = Some(unix_ms());
+    }
+
     /// Words sent in the person's place: shown as theirs, but they move the
     /// task nowhere in a list.
     pub fn add_own(&mut self, text: &str) {

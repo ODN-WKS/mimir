@@ -717,6 +717,8 @@ fn sec12_online_answers_need_the_owners_ok_and_the_default_is_free() {
         chats: Some("paid".into()),
         project: None,
         chat_model: None,
+        default_model: None,
+        default_effort: None,
     };
     let r = ana.call(paid());
     assert!(r.is_err(), "Ana switched to the owner's online plan: {r:?}");
@@ -1032,6 +1034,8 @@ fn sec17_another_persons_chat_never_resumes_the_owners_claude_conversation() {
         chats: Some("paid".into()),
         project: None,
         chat_model: None,
+        default_model: None,
+        default_effort: None,
     })
     .unwrap();
     mine.talk("c1", "t1", "Hello", true);

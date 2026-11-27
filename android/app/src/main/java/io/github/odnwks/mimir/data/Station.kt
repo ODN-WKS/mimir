@@ -122,6 +122,8 @@ interface Station {
      */
     fun newProject(name: String, done: (name: String?, message: String) -> Unit)
 
+    /** Changes the PC's default for new work (null: unchanged; "" Claude's own choice). */
+    fun setNewWorkDefault(model: String?, effort: String?) {}
     fun selectModel(modelId: String)
     /** A free-model task carries on in a new task on Claude ("Continue on Claude", "Use Claude instead"). */
     fun continueOnClaude(taskId: String)
@@ -790,6 +792,9 @@ data class Models(
     val power: Power? = null,
     /** What answers chats and lookups, as set on the PC: "free" or "paid" (null: the PC has no "engines"). */
     val chatsEngine: String? = null,
+    /** The PC's model and effort for new work ("" Claude's own; null: an older PC). */
+    val defaultModel: String? = null,
+    val defaultEffort: String? = null,
     /** Which Claude model chats use on the PC ("auto" or an alias; null: an older PC) and what it offers, each with a one-line meaning. */
     val chatsModel: String? = null,
     val chatModels: List<io.github.odnwks.mimir.link.LChoice> = emptyList(),
@@ -804,6 +809,10 @@ data class Models(
     /** A key is saved on the PC (null: not known, or an older PC). */
     val apiKeySaved: Boolean? = null,
 ) {
+    /** The model a new task with no pick of its own runs on: this phone's usual, and on "Auto" the PC's default. */
+    val usual: String get() = if (selected == "auto") defaultModel?.ifEmpty { null } ?: selected else selected
+    val usualName: String get() = (claude + local).firstOrNull { it.id == usual }?.name ?: selectedName
+
     val selectedName: String get() = (claude + local).firstOrNull { it.id == selected }?.name ?: selected
 }
 

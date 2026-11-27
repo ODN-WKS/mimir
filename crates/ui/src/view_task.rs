@@ -1156,9 +1156,12 @@ fn model_effort_chips(
             .width(126.0)
             .height(400.0)
             .show_ui(ui, |ui| {
-                if ui
-                    .selectable_label(model.is_none(), "Auto-pick  ·  its own choice")
-                    .clicked()
+                // A new task with nothing picked takes the PC's default, so
+                // its list has no "its own choice".
+                if id != "new"
+                    && ui
+                        .selectable_label(model.is_none(), "Auto-pick  ·  its own choice")
+                        .clicked()
                 {
                     actions.push(Action::SetModel(id.to_string(), None));
                 }
@@ -1275,6 +1278,15 @@ pub(crate) fn effort_chip(
             .height(400.0)
             .show_ui(ui, |ui| {
                 for (name, v, about) in EFFORTS {
+                    // In the new-task form the default is the PC's own.
+                    let name = if id == "new" && v.is_none() {
+                        "Medium"
+                    } else {
+                        name
+                    };
+                    if id == "new" && v == Some("medium") {
+                        continue;
+                    }
                     let v = v.map(str::to_string);
                     if ui
                         .selectable_label(v == *effort, format!("{name}  ·  {about}"))

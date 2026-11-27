@@ -310,6 +310,6 @@ object Mapping {
     fun models(pc: io.github.odnwks.mimir.link.LModels?, chosen: String, remembered: String? = ""): Models {
         val free = pc?.free.orEmpty().map { Model(it.id, it.name, it.note, free = true, refusalsRemoved = it.refusalsRemoved) }
         val fallback = pc?.free?.firstOrNull { it.id == pc.freeModel }?.name ?: free.firstOrNull { !it.refusalsRemoved }?.name ?: "a free model"
-        return Models(CLAUDE, free, chosen, pc?.switchToFree ?: false, fallback, weeklyCheck = pc?.weeklyCheck ?: true, power = Power.of(pc?.power), chatsEngine = if (pc != null) pc.chatsEngine else remembered?.ifEmpty { null }, projectEngine = pc?.projectEngine, chatsModel = pc?.chatsModel, chatModels = pc?.chatModels.orEmpty(), seesPictures = pc?.seesPictures, chatsEngineKnown = pc != null || remembered != null, apiCredits = pc?.apiCredits ?: false, apiKeySaved = pc?.apiKeySaved)
+        return Models(CLAUDE, free, chosen, pc?.switchToFree ?: false, fallback, weeklyCheck = pc?.weeklyCheck ?: true, power = Power.of(pc?.power), chatsEngine = if (pc != null) pc.chatsEngine else remembered?.ifEmpty { null }, projectEngine = pc?.projectEngine, chatsModel = pc?.chatsModel, chatModels = pc?.chatModels.orEmpty(), seesPictures = pc?.seesPictures, chatsEngineKnown = pc != null || remembered != null, apiCredits = pc?.apiCredits ?: false, apiKeySaved = pc?.apiKeySaved, defaultModel = pc?.defaultModel, defaultEffort = pc?.defaultEffort)
     }
 }

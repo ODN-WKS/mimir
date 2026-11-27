@@ -101,8 +101,9 @@ fn a_running_task_offers_stop_and_the_chat_box_uses_plain_words() {
     for bad in ["Default effort", "Model: "] {
         assert!(!shows(&h, bad), "old words {bad:?}\n{}", screen_text(&h));
     }
-    assert!(shows(&h, "Effort: Medium"), "{}", screen_text(&h));
-    assert!(shows(&h, "Auto-pick"), "{}", screen_text(&h));
+    // A new task with nothing picked runs on the PC's default for new work.
+    assert!(shows(&h, "Effort: High"), "{}", screen_text(&h));
+    assert!(shows(&h, "Auto · capable"), "{}", screen_text(&h));
     close(h);
 }
 

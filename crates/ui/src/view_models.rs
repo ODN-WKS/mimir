@@ -412,6 +412,7 @@ impl App {
                     "Online is optional. To use it, set up an Anthropic plan in the last section of this page.",
                 ));
             }
+            self.new_work_default_part(ui);
             // One switch, shown the same on the phone's Status.
             ui.add_space(4.0);
             let has_model = !mimir_core::models::cached().is_empty();
@@ -434,6 +435,54 @@ impl App {
             ui.add_space(4.0);
             self.api_credits_part(ui);
         });
+    }
+
+    /// "Default for new work": the model and effort a new task starts with
+    /// when nothing else is picked (the same setting as on the phone).
+    fn new_work_default_part(&mut self, ui: &mut egui::Ui) {
+        use mimir_core::auto::{AUTO, AUTO_CAPABLE, LADDER};
+        use mimir_core::model_words::model_name;
+        let model = self.settings.new_work_model().unwrap_or_default();
+        let effort = self.settings.new_work_effort().unwrap_or_default();
+        let effort_name = |e: &str| {
+            crate::app::EFFORTS
+                .iter()
+                .find(|(_, v, _)| v.unwrap_or("") == e)
+                .map_or(
+                    "Medium",
+                    |(n, _, _)| if e.is_empty() { "Medium" } else { n },
+                )
+        };
+        ui.add_space(4.0);
+        ui.horizontal_wrapped(|ui| {
+            ui.label("Default for new work:");
+            egui::ComboBox::from_id_salt("default-model")
+                .selected_text(model_name(&model))
+                .show_ui(ui, |ui| {
+                    for id in [AUTO_CAPABLE, AUTO].into_iter().chain(LADDER) {
+                        if ui.selectable_label(model == id, model_name(id)).clicked() {
+                            self.settings.default_model = Some(id.into());
+                            self.settings_dirty = true;
+                            self.defaults_for = None;
+                        }
+                    }
+                });
+            egui::ComboBox::from_id_salt("default-effort")
+                .selected_text(format!("Effort: {}", effort_name(&effort)))
+                .show_ui(ui, |ui| {
+                    for (name, v, _) in &crate::app::EFFORTS[1..] {
+                        let v = v.unwrap_or("");
+                        if ui.selectable_label(effort == v, *name).clicked() {
+                            self.settings.default_effort = Some(v.into());
+                            self.settings_dirty = true;
+                            self.defaults_for = None;
+                        }
+                    }
+                });
+        });
+        ui.label(small(
+            "New tasks start with these unless you pick others, or the project has its own.",
+        ));
     }
 
     /// "Use my API credits when my plan runs out": the switch, the key

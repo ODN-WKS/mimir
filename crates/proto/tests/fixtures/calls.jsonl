@@ -50,5 +50,6 @@
 {"ChatPut":{"chat_id":"c-2","name":null,"turns":[],"deleted":true}}
 {"SetEngines":{"chats":"paid","project":null}}
 {"SetEngines":{"chats":null,"project":null,"chat_model":"sonnet"}}
+{"SetEngines":{"chats":null,"project":null,"default_model":"auto-capable","default_effort":"high"}}
 {"ChatsSince":{"seq":40}}
 {"SetGroundRules":{"text":"Be brief.","at":1794000000000}}

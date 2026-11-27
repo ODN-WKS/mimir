@@ -135,6 +135,7 @@ private fun Sheet.title(state: StationState) = when (this) {
     is Sheet.ProjectOptions -> project
     is Sheet.ProjectChecks -> project
     Sheet.ChatModel -> "Model for this chat"
+    Sheet.NewWorkDefault -> "Default for new work"
     is Sheet.RenameTask -> "Rename this task"
     is Sheet.TaskModel -> "Model for this task"
     is Sheet.Yolo -> "Go ahead without asking in this task?"
@@ -296,16 +297,23 @@ private fun SheetContent(sheet: Sheet, state: StationState, station: Station, na
                 if (project == null) nav.composeTo = nav.composeTo.copy(model = c.model, effort = c.effort) else nav.newTaskChoice = c.copy(project = project)
             }
             // In Chat, the usual model is no choice at all: picking it empties the model, so an everyday message stays one.
-            val pick = { id: String -> if (project == null && id == state.models.selected) "" else id }
+            val pick = { id: String -> if (project == null && id == state.models.usual) "" else id }
             ModelEffortMenu(
                 sheet.title(state), state, station.canSetReplyOptions(),
-                isModel = { m -> m.id == choice.model.ifEmpty { state.models.selected } },
+                isModel = { m -> m.id == choice.model.ifEmpty { state.models.usual } },
                 onModel = { set(choice.copy(model = pick(it))) },
-                effortNow = TaskEffort.of(choice.effort.ifEmpty { null }),
+                effortNow = TaskEffort.of(choice.effort.ifEmpty { state.models.defaultEffort?.ifEmpty { null } }),
                 onEffort = { set(choice.copy(effort = it.orEmpty())) },
                 effortHeading = "Effort",
             )
         }
+        // The PC's model and effort for new work (Settings › Who answers).
+        Sheet.NewWorkDefault -> ModelEffortList(
+            sheet.title(state),
+            state.models.claude.map { m -> SheetChoice(plainModelName(m.name), "Online", m.id == state.models.defaultModel) { station.setNewWorkDefault(m.id, null) } },
+            effortHeading = "Effort",
+            efforts = TaskEffort.entries.filter { it != TaskEffort.Usual }.map { e -> SheetChoice(e.words, e.about, e.wire == state.models.defaultEffort) { station.setNewWorkDefault(null, e.wire) } },
+        )
         // The Mímir chat's own models and efforts, in the same sheet; a pick stays open here too.
         Sheet.ChatModel -> nav.chatChoices?.let { c ->
             ModelEffortList(sheet.title(state), c.models, c.notes, c.more, "Effort", c.efforts)

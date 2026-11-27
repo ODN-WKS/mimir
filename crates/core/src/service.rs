@@ -1460,7 +1460,13 @@ impl Service {
                     } else {
                         (project, None)
                     };
-                let mut model = model;
+                // Nothing picked: the project's saved pick, else the PC's.
+                // A message that is only a pick wins.
+                let (default_model, default_effort) = self.settings.new_work(&project);
+                let words = crate::model_words::parse(&text).filter(|p| !p.unknown);
+                let (word_model, word_effort) = words.map_or((None, None), |p| (p.model, p.effort));
+                let effort = word_effort.unwrap_or_else(|| effort.or(default_effort));
+                let mut model = word_model.unwrap_or_else(|| model.or(default_model));
                 // Free models only, or Claude's limit is out: a free model.
                 let claude_model = model.clone();
                 // Out, or past 99% this week (and which).
@@ -1566,6 +1572,10 @@ impl Service {
             } => {
                 if let Some(why) = self.task(&task).and_then(blocked_elsewhere) {
                     return Err(why);
+                }
+                // Only a pick of model and effort: Mímir does it itself.
+                if pictures.is_empty() && files.is_empty() && self.apply_model_words(&task, &text) {
+                    return ok;
                 }
                 self.runner.next_typed = typed && !text.trim().is_empty();
                 let sent = self.runner.send_attached(&task, &text, &pictures, &files);
@@ -1732,10 +1742,13 @@ impl Service {
                     .open_past(Path::new(&project), &s)
                     .map_err(|e| format!("That session could not be opened: {e}"))?;
                 // The project's saved defaults apply to a newly made task only.
-                if !held && let Some(d) = self.settings.defaults.get(&project).cloned() {
-                    self.runner.set_mode(&id, d.mode);
-                    self.runner.set_model(&id, d.model);
-                    self.runner.set_effort(&id, d.effort);
+                if !held {
+                    if let Some(d) = self.settings.defaults.get(&project) {
+                        self.runner.set_mode(&id, d.mode);
+                    }
+                    let (model, effort) = self.settings.new_work(&project);
+                    self.runner.set_model(&id, model);
+                    self.runner.set_effort(&id, effort);
                 }
                 self.touched.insert(id.clone());
                 Ok(json!(id))
@@ -2252,6 +2265,8 @@ impl Service {
                     },
                     "project_engine": if project_free { "free" } else { "claude" },
                     "chats_model": chats_model.unwrap_or("auto"),
+                    "default_model": if owner { json!(self.settings.new_work_model().unwrap_or_default()) } else { Value::Null },
+                    "default_effort": if owner { json!(self.settings.new_work_effort().unwrap_or_default()) } else { Value::Null },
                     "online_allowed": self.may_go_online(&who),
                     // Whether a picture can be answered for this person
                     // (feature "chat_pictures"): Online where they may use it,
@@ -2312,7 +2327,17 @@ impl Service {
                 chats,
                 project,
                 chat_model,
+                default_model,
+                default_effort,
             } => {
+                check_model(default_model.as_deref().filter(|m| !m.is_empty()))?;
+                check_effort(default_effort.as_deref().filter(|e| !e.is_empty()))?;
+                if let Some(m) = default_model {
+                    self.settings.default_model = Some(m);
+                }
+                if let Some(e) = default_effort {
+                    self.settings.default_effort = Some(e);
+                }
                 match chat_model.as_deref() {
                     None => {}
                     Some(m) if crate::talk::CLAUDE_CHOICES.iter().any(|c| c.0 == m) => {
@@ -2888,19 +2913,14 @@ impl Service {
 
     /// A new task in "Ask me first" with the project's model.
     fn new_task_ask(&mut self, project: &str, text: &str) -> String {
-        let d = self
-            .settings
-            .defaults
-            .get(project)
-            .cloned()
-            .unwrap_or_default();
+        let (model, effort) = self.settings.new_work(project);
         self.runner.new_task_with(
             Path::new(project),
             text,
             &[],
             crate::task::Mode::Ask,
-            d.model,
-            d.effort,
+            model,
+            effort,
         )
     }
 
@@ -4351,6 +4371,26 @@ impl Service {
             .turns
             .iter()
             .any(|t| t.id == a.turn_id && !t.files.is_empty());
+        // Only a pick of model and effort: for the task this chat is in, else
+        // one line saying where a chat's picker is.
+        let words = a.turns.iter().find(|t| t.id == a.turn_id);
+        if !has_files
+            && let Some(text) = words.map(|t| t.text.clone())
+            && crate::model_words::parse(&text).is_some()
+        {
+            let open = a.task.clone().filter(|t| {
+                !a.chat_only && self.still_open(t) && self.task(t).is_some_and(|l| !l.task.archived)
+            });
+            if let Some(t) = open
+                && let Some(project) = self.task(&t).map(|l| l.task.project.clone())
+                && self.apply_model_words(&t, &text)
+            {
+                return Filed::SameTask { project, task: t };
+            }
+            let reply = vec![crate::model_words::CHAT_PICKER.to_string()];
+            self.keep_exchange(&a, &reply[0]);
+            return Filed::Status { reply };
+        }
         if a.chat_only || has_files {
             return self.talk_answer(a);
         }
@@ -5208,14 +5248,51 @@ impl Service {
     }
 
     fn send_queued_message(&mut self, task: &str, q: &QueuedMessage) {
+        if q.files.is_empty() && self.apply_model_words(task, &q.text) {
+            return;
+        }
         let (text, pictures) = with_files(&q.text, &q.files);
         self.runner.next_typed = q.typed;
         self.runner.send_with(task, &text, &pictures);
         self.runner.next_typed = false;
     }
 
+    /// "use opus 5.5 high" in a task: the model and effort change, the words
+    /// and one line saying so stay in the conversation, and nothing goes to
+    /// the AI. False: not such a message.
+    fn apply_model_words(&mut self, task: &str, text: &str) -> bool {
+        use crate::model_words as words;
+        let Some(mut pick) = words::parse(text) else {
+            return false;
+        };
+        let Some(l) = self.task(task) else {
+            return false;
+        };
+        let (whisper, working) = (l.task.incognito, l.busy());
+        let line = if pick.unknown {
+            words::NOT_OFFERED.to_string()
+        } else if whisper && pick.model.is_some() {
+            "A Whisper runs only on your PC's model, so its model can't be changed.".to_string()
+        } else {
+            if let Some(m) = pick.model.take() {
+                self.runner.set_model(task, m.clone());
+                pick.model = Some(m);
+            }
+            if let Some(e) = pick.effort.clone() {
+                self.runner.set_effort(task, e);
+            }
+            words::done_line(&pick, working)
+        };
+        self.runner.told_mimir(task, text.trim(), &line);
+        self.touched.insert(task.to_string());
+        true
+    }
+
     /// A message to a task, marked as typed when the person typed it.
     fn send_words(&mut self, task: &str, text: &str, typed: bool) {
+        if self.apply_model_words(task, text) {
+            return;
+        }
         self.runner.next_typed = typed;
         self.runner.send(task, text);
         self.runner.next_typed = false;

@@ -855,11 +855,22 @@ fn write_the_examples() {
             chats: Some("paid".into()),
             project: None,
             chat_model: None,
+            default_model: None,
+            default_effort: None,
         },
         Call::SetEngines {
             chats: None,
             project: None,
             chat_model: Some("sonnet".into()),
+            default_model: None,
+            default_effort: None,
+        },
+        Call::SetEngines {
+            chats: None,
+            project: None,
+            chat_model: None,
+            default_model: Some("auto-capable".into()),
+            default_effort: Some("high".into()),
         },
         Call::ChatsSince { seq: 40 },
         Call::SetGroundRules {

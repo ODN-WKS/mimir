@@ -107,6 +107,13 @@ fun ModelsSection(state: StationState, station: Station, nav: Navigator, phone: 
     val claude: @Composable () -> Unit = {
         Column(mark("claude").selectableGroup(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             GroupTitle("Online", "Uses your Anthropic plan · for new tasks on your PC", group)
+            // The PC's own setting; a PC that doesn't send it has none.
+            val def = m.defaultModel
+            if (state.paired && def != null) ListRow(
+                "Default for new work",
+                listOf(io.github.odnwks.mimir.data.Mapping.modelName(def.ifEmpty { null }), TaskEffort.of(m.defaultEffort?.ifEmpty { null }).words).joinToString(" · ") + " · used when this phone is on Auto",
+                { nav.openSheet(io.github.odnwks.mimir.nav.Sheet.NewWorkDefault) },
+            )
             // With free models only, Claude is never called: the list would only mislead.
             if (power == Power.FreeOnly) GroupNote("Not used: your PC is set to its own models only, so online answers are never used.")
             // Before pairing the list is still shown; the choice is kept for when the PC is there.

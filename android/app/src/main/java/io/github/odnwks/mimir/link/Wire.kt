@@ -289,6 +289,12 @@ object Wire {
         put("chats", JSONObject.NULL); put("project", JSONObject.NULL); put("chat_model", id)
     }
 
+    /** The PC's model and effort for new work ("" Claude's own choice); null: unchanged. */
+    fun setNewWork(model: String?, effort: String?): String = obj("SetEngines") {
+        put("chats", JSONObject.NULL); put("project", JSONObject.NULL)
+        model?.let { put("default_model", it) }; effort?.let { put("default_effort", it) }
+    }
+
     fun updates(): String = JSONObject.quote("Updates")
     fun models(): String = JSONObject.quote("Models")
     fun setFreeChoice(switchToFree: Boolean?, freeModel: String?): String = obj("SetFreeChoice") {
@@ -334,6 +340,8 @@ object Wire {
             projectEngine = if (o.isNull("project_engine")) null else o.optString("project_engine").ifEmpty { null },
             chatsModel = if (o.isNull("chats_model")) null else o.optString("chats_model").ifEmpty { null },
             seesPictures = o.optBoolean("sees_pictures", false),
+            defaultModel = if (o.isNull("default_model")) null else o.optString("default_model"),
+            defaultEffort = if (o.isNull("default_effort")) null else o.optString("default_effort"),
             chatModels = o.optJSONArray("chat_models").let { a -> (0 until (a?.length() ?: 0)).map { i -> a!!.getJSONObject(i).let { LChoice(it.getString("id"), it.optString("name"), it.optString("about")) } } },
         )
     }
@@ -503,6 +511,7 @@ object Wire {
             busy = h.optBoolean("busy"),
             running = h.optBoolean("running", true),
             model = if (h.isNull("model")) null else h.optString("model"),
+            effort = if (!h.has("effort")) null else if (h.isNull("effort")) "" else h.optString("effort"),
             createdUnix = h.optLong("created_unix"),
             asks = (0 until asks.length()).map { i ->
                 val a = asks.getJSONObject(i)
@@ -626,6 +635,9 @@ data class LModels(
     val power: String? = null,
     /** What answers chats and lookups on the PC: "free" or "paid" (null: an older PC, no "engines"). */
     val chatsEngine: String? = null,
+    /** The PC's model and effort for new work ("" Claude's own; null: an older PC, or not the owner). */
+    val defaultModel: String? = null,
+    val defaultEffort: String? = null,
     /** Which Claude model chats use ("auto" or an alias; null: an older PC) and the choices it offers. */
     val chatsModel: String? = null,
     val chatModels: List<LChoice> = emptyList(),
@@ -851,6 +863,8 @@ data class LinkTask(
     val elsewhereIn: String = "",
     /** With status Stopped: it stopped unexpectedly (its Claude Code died), not by the owner's Stop. */
     val failed: Boolean = false,
+    /** The task's effort as the PC keeps it ("" the default; null: the PC doesn't say). */
+    val effort: String? = null,
     /** A Claude Code process of the task runs on the PC: something there can be stopped (true when an older PC doesn't say). */
     val running: Boolean = true,
     /** When the person last sent a message in it (ms since 1970); 0 from an older PC or with none. */

@@ -577,6 +577,8 @@ class LinkStation(
     override fun setTaskEffort(taskId: String, effort: String?) {
         if (!canSetReplyOptions()) return
         if (effort == null) chosenEfforts.remove(taskId) else chosenEfforts[taskId] = effort
+        // Shown at once; the PC's next word on the task then replaces it.
+        synchronized(lock) { tasks[taskId]?.let { t -> if (t.effort != null) tasks[taskId] = t.copy(effort = effort.orEmpty()) } }
         taskCall(Wire.setEffort(taskId, effort))
         publish()
     }
@@ -1398,7 +1400,9 @@ class LinkStation(
             return FakeStation.INCOGNITO
         }
         val path = pathOf(project) ?: synchronized(lock) { projects.firstOrNull()?.first }
-        val model = respectPower(model ?: synchronized(lock) { chosenModel }).takeIf { it != "auto" }
+        // "Auto" picked for this task is a pick when the PC has its own default; the phone's usual "Auto" leaves it to the PC.
+        val picked = model == "auto" && synchronized(lock) { !pcModels?.defaultModel.isNullOrEmpty() }
+        val model = respectPower(model ?: synchronized(lock) { chosenModel }).takeIf { it != "auto" || picked }
         if (path == null) { startWhy = "Pick a project first."; note(startWhy); return "" }
         // The screen opens on this name at once and becomes the real task when the PC answers.
         // The task is kept on this phone first: started while the PC is away, it waits and starts
@@ -1615,6 +1619,16 @@ class LinkStation(
 
     override fun setWeeklyCheck(on: Boolean) {
         if (!call(Wire.setWeeklyCheck(on)) { _, err -> if (err != null) note(err); refreshModels() }) note("Your PC is away: try again when it's back.")
+    }
+
+    override fun setNewWorkDefault(model: String?, effort: String?) {
+        // Shown at once; the PC's own answer then replaces it.
+        synchronized(lock) { pcModels = pcModels?.copy(defaultModel = model ?: pcModels?.defaultModel, defaultEffort = effort ?: pcModels?.defaultEffort) }
+        publish()
+        if (!call(Wire.setNewWork(model, effort)) { _, err -> if (err != null) note(err); refreshModels() }) {
+            note("Your PC is away: try again when it's back.")
+            refreshModels()
+        }
     }
 
     override fun setChatModel(id: String) {
@@ -1968,7 +1982,7 @@ class LinkStation(
             title = t.title,
             project = name(t.project),
             model = Mapping.modelName(t.model),
-            effort = chosenEfforts[t.id].orEmpty(),
+            effort = t.effort ?: chosenEfforts[t.id].orEmpty(),
             age = "",
             // ✓ done, ✕ refused or failed, … still going or waiting for an answer.
             steps = es.filterIsInstance<LEntry.Step>().takeLast(8).map { (when (it.ok) { true -> "✓ "; false -> "✕ "; null -> "… " }) + it.what },

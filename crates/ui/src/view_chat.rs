@@ -663,7 +663,7 @@ impl App {
                     self.settings_dirty = true;
                 }
                 let mode = if busy { SendMode::Stop } else { SendMode::Send };
-                let new_effort = self.new_effort.clone();
+                let chat_effort = self.chat_effort.clone();
                 let model_words = chip_words(
                     self.settings.chats_paid(),
                     self.settings.chats_model_alias(),
@@ -691,7 +691,7 @@ impl App {
                             &mut chose_model,
                             actions,
                         );
-                        crate::view_task::effort_chip(ui, "chat", &None, &new_effort, &mut picked);
+                        crate::view_task::effort_chip(ui, "chat", &None, &chat_effort, &mut picked);
                     },
                     actions,
                 );
@@ -725,7 +725,7 @@ impl App {
         }
         for a in picked {
             if let Action::SetEffort(_, e) = a {
-                self.new_effort = e;
+                self.chat_effort = e;
             }
         }
         if !pics.is_empty() {

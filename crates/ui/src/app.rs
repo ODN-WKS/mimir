@@ -352,6 +352,8 @@ pub struct App {
     /// New task: Incognito (a free model in a sealed space, nothing kept).
     pub(crate) new_incognito: bool,
     pub(crate) new_effort: Option<String>,
+    /// The effort chats are asked at (the chat box's own chip).
+    pub(crate) chat_effort: Option<String>,
     /// The project whose defaults the new-task choices were last set from.
     pub(crate) defaults_for: Option<String>,
     pub(crate) picking: Option<Receiver<Option<PathBuf>>>,
@@ -567,6 +569,7 @@ impl App {
             new_model: None,
             new_incognito: false,
             new_effort: None,
+            chat_effort: None,
             defaults_for: None,
             picking: None,
             attaching: None,
@@ -908,7 +911,7 @@ impl App {
                     let key = chat.clone().unwrap_or_default();
                     let pending = self.chat_pics.remove(&key).unwrap_or_default();
                     let pictures: Vec<Picture> = pending.iter().map(|p| p.pic.clone()).collect();
-                    let effort = self.new_effort.clone();
+                    let effort = self.chat_effort.clone();
                     r.next_typed = true;
                     match r.send_chat(chat.as_deref(), &text, pictures, effort.as_deref()) {
                         Ok(id) => {
@@ -1176,6 +1179,9 @@ impl App {
                     let typed = !text.trim().is_empty();
                     let (text, pictures) = with_files(&text, &files);
                     r.next_typed = typed;
+                    // The form already shows the PC's default: "Medium" picked
+                    // there means medium, not "nothing picked".
+                    let effort = effort.or_else(|| Some("medium".into()));
                     let id = match r
                         .new_task(&project, &text, &pictures, mode, model, effort, separate)
                     {

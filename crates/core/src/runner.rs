@@ -2118,6 +2118,15 @@ impl Runner {
     }
 
     /// Adds a note to a task's conversation.
+    /// Words meant for Mímir itself and its one-line answer: both are shown,
+    /// nothing goes to the AI and the task's state stays as it is.
+    pub fn told_mimir(&mut self, id: &str, words: &str, answer: &str) {
+        self.edit(id, |t| {
+            t.add_told_mimir(words);
+            t.add_note(answer);
+        });
+    }
+
     pub fn note(&mut self, id: &str, text: &str) {
         self.edit(id, |t| t.add_note(text));
     }
@@ -2268,7 +2277,9 @@ impl Runner {
                 )
                 .find_map(|e| match e {
                     crate::task::Entry::You(x)
-                        if !x.trim().is_empty() && x.trim() != CONTINUE_TEXT =>
+                        if !x.trim().is_empty()
+                            && x.trim() != CONTINUE_TEXT
+                            && crate::model_words::parse(x).is_none() =>
                     {
                         Some(x.clone())
                     }

@@ -312,7 +312,7 @@ LazyColumn(
         // The one reply box (owner, 2026-11-25): +, the model and effort chip, Send. "To:" has no room
         // in the row at large text, so it is in the three dots. Only the box rides the keyboard.
         val canOptions = station.canSetReplyOptions()
-        val modelName = (state.models.claude + state.models.local).firstOrNull { it.id == to.model }?.name ?: state.models.selectedName
+        val modelName = (state.models.claude + state.models.local).firstOrNull { it.id == to.model }?.name ?: state.models.usualName
         Composer(
             draft, { draft = it },
             hint = when {
@@ -325,8 +325,8 @@ LazyColumn(
             attach = attach.takeIf { !to.auto && station.canAttachToTasks() }, needsWords = true,
             onSend = { if (sendFromChat(draft, state, station, nav, engine, attach.pictures.toList(), attach.files.toList(), typed = true)) { draft = ""; attach.clear() } },
             modifier = Modifier.imePadding().padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 10.dp),
-            optionsChip = if (state.paired) optionsWords(modelName, to.effort, withEffort = canOptions) else null,
-            optionsShort = optionsShorter(modelName, to.effort, withEffort = canOptions),
+            optionsChip = if (state.paired) optionsWords(modelName, to.effort.ifEmpty { state.models.defaultEffort.orEmpty() }, withEffort = canOptions) else null,
+            optionsShort = optionsShorter(modelName, to.effort.ifEmpty { state.models.defaultEffort.orEmpty() }, withEffort = canOptions),
             onOptions = { nav.openSheet(io.github.odnwks.mimir.nav.Sheet.NewTaskModel()) },
             whisper = to.whisper,
             // A Whisper hides the three dots (where Talk lives): the mic stays in the box, as in the Mímir chat.

@@ -164,6 +164,7 @@ class WireTest {
             Wire.chatPut("c-2", null, emptyList(), deleted = true),
             Wire.setEngines("paid", null),
             Wire.setChatModel("sonnet"),
+            Wire.setNewWork("auto-capable", "high"),
             Wire.chatsSince(40),
             Wire.setGroundRules("Be brief.", 1794000000000),
         ).map { parse(it) }

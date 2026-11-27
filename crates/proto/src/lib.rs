@@ -1465,6 +1465,12 @@ pub enum Call {
         /// lists; applies to every chat on this PC. None: unchanged.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         chat_model: Option<String>,
+        /// The model and effort new work starts with when nothing is picked: "" is Claude Code's own choice. The
+        /// `Models` reply gives both. None: unchanged.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        default_model: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        default_effort: Option<String>,
     },
     /// Stops the answer to `turn_id`.
     TalkStop {

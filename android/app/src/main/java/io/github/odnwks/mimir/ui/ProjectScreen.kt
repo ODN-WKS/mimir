@@ -115,7 +115,7 @@ fun ProjectScreen(name: String, state: StationState, station: Station, nav: Navi
         val choice = nav.newTaskChoice.takeIf { it.project == p.name } ?: io.github.odnwks.mimir.nav.TaskChoice(p.name)
         var starting by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
         val canOptions = station.canSetReplyOptions()
-        val modelName = (state.models.claude + state.models.local).firstOrNull { it.id == choice.model }?.name ?: state.models.selectedName
+        val modelName = (state.models.claude + state.models.local).firstOrNull { it.id == choice.model }?.name ?: state.models.usualName
         Composer(
             draft, { draft = it },
             hint = if (state.pcAway) "Message Mímir (${state.waitsUntil})" else "New task in ${p.name}",
@@ -139,8 +139,8 @@ fun ProjectScreen(name: String, state: StationState, station: Station, nav: Navi
             },
             modifier = Modifier.padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 10.dp),
             attach = attach.takeIf { station.canAttachToTasks() }, needsWords = true,
-            optionsChip = optionsWords(modelName, choice.effort, withEffort = canOptions),
-            optionsShort = optionsShorter(modelName, choice.effort, withEffort = canOptions),
+            optionsChip = optionsWords(modelName, choice.effort.ifEmpty { state.models.defaultEffort.orEmpty() }, withEffort = canOptions),
+            optionsShort = optionsShorter(modelName, choice.effort.ifEmpty { state.models.defaultEffort.orEmpty() }, withEffort = canOptions),
             onOptions = { nav.openSheet(Sheet.NewTaskModel(p.name)) },
             optionsNote = UPDATE_PC_FOR_OPTIONS.takeIf { !canOptions && state.paired },
         )

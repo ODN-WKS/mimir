@@ -836,6 +836,8 @@ fn p5_the_phone_reads_and_sets_what_answers() {
                 chats: Some("paid".into()),
                 project: Some("free".into()),
                 chat_model: None,
+                default_model: None,
+                default_effort: None,
             },
         )
         .unwrap();
@@ -851,6 +853,8 @@ fn p5_the_phone_reads_and_sets_what_answers() {
                 chats: None,
                 project: None,
                 chat_model: Some("sonnet".into()),
+                default_model: None,
+                default_effort: None,
             },
         )
         .unwrap();
@@ -871,6 +875,8 @@ fn p5_the_phone_reads_and_sets_what_answers() {
                 chats: None,
                 project: None,
                 chat_model: Some("claude-sonnet-4-6-20250929".into()),
+                default_model: None,
+                default_effort: None,
             },
         )
         .is_err(),
@@ -882,7 +888,9 @@ fn p5_the_phone_reads_and_sets_what_answers() {
             Call::SetEngines {
                 chats: Some("x".into()),
                 project: None,
-                chat_model: None
+                chat_model: None,
+                default_model: None,
+                default_effort: None,
             }
         )
         .is_err()

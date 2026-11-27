@@ -384,7 +384,7 @@ fun WhereToSheet(state: StationState, nav: Navigator, canEffort: Boolean = false
                 ) {
                     Column(Modifier.weight(1f)) {
                         Text("Model for this task", style = Type.BodyTight, color = Palette.Text)
-                        Text(model?.let { "${it.name} · for this task only" } ?: "${state.models.selectedName} · your usual", style = Type.Small, color = Palette.TextDim)
+                        Text(model?.let { "${it.name} · for this task only" } ?: "${state.models.usualName} · your usual", style = Type.Small, color = Palette.TextDim)
                     }
                     Icon(Glyphs.Next, null, tint = Palette.TextDim, modifier = Modifier.size(20.dp))
                 }
@@ -396,7 +396,7 @@ fun WhereToSheet(state: StationState, nav: Navigator, canEffort: Boolean = false
                     Column(Modifier.weight(1f)) {
                         Text("Effort for this task", style = Type.BodyTight, color = if (canEffort) Palette.Text else Palette.TextSoft)
                         Text(
-                            if (canEffort) TaskEffort.of(to.effort.ifEmpty { null }).let { if (it == TaskEffort.Usual) "Usual · its own choice" else "${it.words} · ${it.about}" } else UPDATE_PC_FOR_OPTIONS,
+                            if (canEffort) TaskEffort.of(to.effort.ifEmpty { state.models.defaultEffort?.ifEmpty { null } }).let { if (it == TaskEffort.Usual) "Usual · its own choice" else "${it.words} · ${it.about}" } else UPDATE_PC_FOR_OPTIONS,
                             style = Type.Small, color = Palette.TextDim,
                         )
                     }

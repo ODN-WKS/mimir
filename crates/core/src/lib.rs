@@ -27,6 +27,7 @@ pub mod listen;
 pub mod log;
 pub mod long;
 pub mod lookup;
+pub mod model_words;
 pub mod models;
 pub mod needs;
 pub mod notify;

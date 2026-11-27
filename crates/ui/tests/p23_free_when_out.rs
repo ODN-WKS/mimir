@@ -1307,6 +1307,8 @@ fn p26_someone_elses_phone_never_uses_the_credits_or_sees_the_key_hint() {
             chats: Some("paid".into()),
             project: None,
             chat_model: None,
+            default_model: None,
+            default_effort: None,
         },
     )
     .unwrap();

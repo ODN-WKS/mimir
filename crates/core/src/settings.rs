@@ -134,6 +134,14 @@ pub struct Settings {
     /// "paid" (Claude, through Claude Code, when it's signed in).
     #[serde(default)]
     pub chats_engine: Option<String>,
+    /// The model new work starts with when nothing is picked and its project
+    /// has no saved one: None is [`crate::auto::AUTO_CAPABLE`], "" Claude
+    /// Code's own choice.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_model: Option<String>,
+    /// The same for effort: None is "high", "" Claude Code's own.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_effort: Option<String>,
     /// Which Claude model answers chats: None or "auto" (Claude Code's own
     /// choice), else one of `talk::CLAUDE_CHOICES`.
     #[serde(default)]
@@ -361,9 +369,11 @@ impl Settings {
         if is_chat {
             return self.chats_paid();
         }
+        // An Auto style is not a pick of where it runs: as with none, the
+        // project work setting says.
         match model {
-            Some(_) => !crate::models::is_free(model),
-            None => self.task_goes_online(None, false, free_model_here),
+            Some(_) if crate::auto::Style::of(model).is_none() => !crate::models::is_free(model),
+            _ => self.task_goes_online(None, false, free_model_here),
         }
     }
 
@@ -394,6 +404,31 @@ impl Settings {
     }
 
     /// Chats run on a paid model (Claude) instead of the PC's own.
+    /// The model new work starts with ([`Settings::default_model`]).
+    pub fn new_work_model(&self) -> Option<String> {
+        let m = self.default_model.as_deref();
+        let m = m.unwrap_or(crate::auto::AUTO_CAPABLE);
+        (!m.is_empty()).then(|| m.to_string())
+    }
+
+    /// The effort new work starts with ([`Settings::default_effort`]).
+    pub fn new_work_effort(&self) -> Option<String> {
+        let e = self.default_effort.as_deref().unwrap_or("high");
+        (!e.is_empty()).then(|| e.to_string())
+    }
+
+    /// A new task's model and effort where nothing was picked: the
+    /// project's saved defaults, else the PC's.
+    pub fn new_work(&self, project: &str) -> (Option<String>, Option<String>) {
+        let d = self.defaults.get(project);
+        (
+            d.and_then(|d| d.model.clone())
+                .or_else(|| self.new_work_model()),
+            d.and_then(|d| d.effort.clone())
+                .or_else(|| self.new_work_effort()),
+        )
+    }
+
     /// The `--model` alias chats use with Claude, or None for Claude Code's own choice.
     pub fn chats_model_alias(&self) -> Option<&'static str> {
         crate::talk::CLAUDE_CHOICES
