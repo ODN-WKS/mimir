@@ -2,6 +2,8 @@ package io.github.odnwks.mimir.ui
 
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.test.TouchInjectionScope
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.onNodeWithText
@@ -63,6 +65,9 @@ class U2b1TaskMessagesTest {
         return station
     }
 
+    /** P37: a long press on the words selects them; the message menu opens from the bubble's edge. */
+    private fun TouchInjectionScope.bubbleEdge() = Offset(4f, height / 2f)
+
     @Test fun listenUsesThePcVoiceWhileThePcIsThere() {
         val station = open(task())
         compose.holdAnswerAndPick("the title is bigger now", "Listen")
@@ -96,7 +101,7 @@ class U2b1TaskMessagesTest {
 
     @Test fun editSendsTheEditedWordsForThatMessage() {
         val station = open(task())
-        compose.onAllNodesWithText("Make the title bigger")[0].performTouchInput { longClick() }
+        compose.onAllNodesWithText("Make the title bigger")[0].performTouchInput { longClick(bubbleEdge()) }
         compose.onNodeWithText("Edit").performClick()
         // It says plainly that later replies are replaced.
         compose.onNodeWithTag("edit-note").assertIsDisplayed()
@@ -107,7 +112,7 @@ class U2b1TaskMessagesTest {
 
     @Test fun editIsHiddenWhileTheTaskWorks() {
         open(task("Working", busy = true))
-        compose.onAllNodesWithText("Make the title bigger")[0].performTouchInput { longClick() }
+        compose.onAllNodesWithText("Make the title bigger")[0].performTouchInput { longClick(bubbleEdge()) }
         compose.onAllNodesWithText("Edit").assertCountEquals(0)
     }
 
@@ -132,7 +137,7 @@ class U2b1TaskMessagesTest {
                 }
             }
         }
-        compose.onAllNodesWithText("Make the title bigger")[0].performTouchInput { longClick() }
+        compose.onAllNodesWithText("Make the title bigger")[0].performTouchInput { longClick(bubbleEdge()) }
         compose.onNodeWithText("Edit").performClick()
         compose.onNodeWithTag("edit-box").performTextReplacement("Kept words")
         compose.onNodeWithContentDescription("Send the edited message").performClick()

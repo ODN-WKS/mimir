@@ -52,6 +52,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.text.selection.DisableSelection
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.semantics.Role
@@ -518,11 +519,14 @@ private fun Steps(task: Task, open: Boolean, toggle: () -> Unit) {
             enter = expandVertically(motionSpec(Motion.NEEDS_YOU_BAR_MS)) + fadeIn(motionSpec(Motion.NEEDS_YOU_BAR_MS)),
             exit = shrinkVertically(motionSpec(Motion.NEEDS_YOU_BAR_MS)) + fadeOut(motionSpec(Motion.NEEDS_YOU_BAR_MS)),
         ) {
-            Column(Modifier.padding(start = 14.dp, end = 14.dp, bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                task.steps.forEachIndexed { i, s ->
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("${i + 1}.", style = Type.Label.copy(lineHeight = Type.Label.fontSize * 1.5f), color = Palette.TextDim)
-                        Text(s, style = Type.Label.copy(lineHeight = Type.Label.fontSize * 1.5f), color = Palette.TextDim)
+            // The steps' words can be selected and copied; their numbers are not part of the words.
+            SelectableWords {
+                Column(Modifier.padding(start = 14.dp, end = 14.dp, bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    task.steps.forEachIndexed { i, s ->
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            DisableSelection { Text("${i + 1}.", style = Type.Label.copy(lineHeight = Type.Label.fontSize * 1.5f), color = Palette.TextDim) }
+                            Text(s, style = Type.Label.copy(lineHeight = Type.Label.fontSize * 1.5f), color = Palette.TextDim)
+                        }
                     }
                 }
             }

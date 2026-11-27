@@ -30,6 +30,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.selection.DisableSelection
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -290,13 +291,16 @@ fun MarkdownText(md: String, style: TextStyle, color: Color, modifier: Modifier 
 private fun CodeBlock(b: Markdown.Block.Code, style: TextStyle, color: Color) {
     val clip = LocalClipboardManager.current
     Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Palette.Bar)) {
-        Row(Modifier.fillMaxWidth().padding(start = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(b.lang.ifEmpty { "code" }, style = style.copy(fontSize = 12.sp), color = Palette.TextDim, modifier = Modifier.weight(1f))
-            Box(
-                Modifier.heightIn(min = 48.dp).clickable(role = Role.Button) { clip.setText(AnnotatedString(b.text)) }
-                    .semantics { contentDescription = "Copy this code" }.padding(horizontal = 14.dp),
-                contentAlignment = Alignment.Center,
-            ) { Text("Copy", style = style.copy(fontSize = 13.sp), color = Palette.BlueText) }
+        // The block's own label and button are not part of the words a selection takes.
+        DisableSelection {
+            Row(Modifier.fillMaxWidth().padding(start = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(b.lang.ifEmpty { "code" }, style = style.copy(fontSize = 12.sp), color = Palette.TextDim, modifier = Modifier.weight(1f))
+                Box(
+                    Modifier.heightIn(min = 48.dp).clickable(role = Role.Button) { clip.setText(AnnotatedString(b.text)) }
+                        .semantics { contentDescription = "Copy this code" }.padding(horizontal = 14.dp),
+                    contentAlignment = Alignment.Center,
+                ) { Text("Copy", style = style.copy(fontSize = 13.sp), color = Palette.BlueText) }
+            }
         }
         Box(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(start = 10.dp, end = 10.dp, bottom = 10.dp)) {
             Text(b.text, style = style.copy(fontFamily = FontFamily.Monospace, fontSize = style.fontSize * 0.9f), color = color, softWrap = false)
@@ -356,7 +360,7 @@ private fun TableBlock(b: Markdown.Block.Table, style: TextStyle, color: Color, 
                     }
                 }
             }
-            if (!fits) Text("Scroll sideways to see more", style = Type.Small, color = Palette.TextDim, modifier = Modifier.fillMaxWidth().padding(top = 4.dp).testTag("md-table-hint"))
+            if (!fits) DisableSelection { Text("Scroll sideways to see more", style = Type.Small, color = Palette.TextDim, modifier = Modifier.fillMaxWidth().padding(top = 4.dp).testTag("md-table-hint")) }
         }
     }
 }

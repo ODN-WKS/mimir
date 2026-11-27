@@ -51,7 +51,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -536,12 +535,13 @@ fun MineBubble(
     Column(modifier.fillMaxWidth(), horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text("You", style = Type.Small, color = Palette.TextDim)
         io.github.odnwks.mimir.ui.theme.ChatText {
-            Text(
-                text, style = Type.Body, color = Palette.Text,
-                modifier = Modifier.widthIn(max = 300.dp + 28.dp).clip(mineShape).background(bubble)
+            Box(
+                Modifier.widthIn(max = 300.dp + 28.dp).clip(mineShape).background(bubble)
                     .then(if (dashed) Modifier.dashedBorder(Palette.BlueLight, 18.dp) else Modifier)
                     .padding(horizontal = 14.dp, vertical = 11.dp),
-            )
+            ) {
+                SelectableWords { Text(text, style = Type.Body, color = Palette.Text) }
+            }
         }
         if (under != null) {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End), verticalArrangement = Arrangement.spacedBy(4.dp), itemVerticalAlignment = Alignment.CenterVertically) {
@@ -585,23 +585,16 @@ fun TheirBubble(
         }
         Box {
             io.github.odnwks.mimir.ui.theme.ChatText {
-                Column(
-                    Modifier.widthIn(max = maxWidth + 28.dp).clip(theirShape).background(background).border(1.dp, border, theirShape)
-                        .then(if (readText != null) Modifier.longPressMenu { menu = true } else Modifier)
-                        .padding(horizontal = 14.dp, vertical = 12.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                    content = content,
-                )
+                BubbleWords(
+                    Modifier.widthIn(max = maxWidth + 28.dp).clip(theirShape).background(background).border(1.dp, border, theirShape),
+                    PaddingValues(horizontal = 14.dp, vertical = 12.dp), if (readText != null) ({ menu = true }) else null,
+                    label = "Read aloud or copy",
+                ) { Column(verticalArrangement = Arrangement.spacedBy(8.dp), content = content) }
             }
             if (readText != null) ReplyMenu(menu, { menu = false }, readId, readText, onPlay)
         }
     }
 }
-
-/** A long press opens a menu (a plain tap does nothing), for a message's Read aloud and Copy. */
-@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
-fun Modifier.longPressMenu(open: () -> Unit): Modifier =
-    combinedClickable(onClickLabel = null, onLongClickLabel = "Read aloud or copy", onLongClick = open, onClick = {})
 
 fun Modifier.dashedBorder(color: Color, radius: Dp) = drawBehind {
     drawRoundRect(

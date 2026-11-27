@@ -6,6 +6,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.relocation.bringIntoViewRequester
@@ -21,6 +23,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.contextmenu.builder.item
+import androidx.compose.foundation.text.contextmenu.modifier.appendTextContextMenuComponents
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
@@ -31,6 +35,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.focus.focusRequester
@@ -47,6 +52,9 @@ import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.onLongClick
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.customActions
@@ -93,6 +101,8 @@ const val SHARE = "Share"
 const val LISTEN_ITEM = "Listen"
 const val LOOKED_UP_TAG = "Sources:"
 const val EDIT = "Edit"
+/** In the bar over selected words: opens the whole message's actions. */
+const val MORE_ITEM = "More"
 const val YOU_STOPPED = "You stopped this answer."
 
 /** What the chat says under a message that got no answer: the owner's own Stop, or a real interruption. */
@@ -139,13 +149,11 @@ fun OwnMessage(
             note = editFailure ?: editNote,
         ) else MessageMenuHost(plain = text, id = id, lookUp = null, onEdit = onEdit?.let { { draft = text; editing = true } }) { onHold ->
             ChatText {
-                Text(
-                    text, style = ChatLook.MessageText, color = Palette.Text,
-                    modifier = Modifier.widthIn(max = 320.dp).clip(ChatLook.ownShape).background(bubble)
-                        .then(if (dashed) Modifier.dashedBorder(Palette.BlueLight, 20.dp) else Modifier)
-                        .holdMenu(onHold)
-                        .padding(horizontal = 14.dp, vertical = 11.dp),
-                )
+                BubbleWords(
+                    Modifier.widthIn(max = 320.dp).clip(ChatLook.ownShape).background(bubble)
+                        .then(if (dashed) Modifier.dashedBorder(Palette.BlueLight, 20.dp) else Modifier),
+                    PaddingValues(horizontal = 14.dp, vertical = 11.dp), onHold,
+                ) { Text(text, style = ChatLook.MessageText, color = Palette.Text) }
             }
         }
         if (meta != null && !editing) Box(Modifier.padding(end = 6.dp)) { meta() }
@@ -230,14 +238,14 @@ fun Answer(
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(5.dp)) {
         MessageMenuHost(plain = plain, id = id, lookUp = lookUp.takeIf { !dim }, pc = pc, enabled = !dim && buttons, onTryAgain = onTryAgain) { onHold ->
             ChatText {
-                Column(
+                BubbleWords(
                     Modifier.widthIn(max = ChatLook.ReplyMaxWidth).clip(ChatLook.replyShape).background(Palette.Card)
                         .border(1.dp, Palette.Line, ChatLook.replyShape)
-                        .then(if (dim) Modifier else Modifier.holdMenu(onHold)).semantics { liveRegion = LiveRegionMode.Polite }
-                        .testTag(REPLY_BUBBLE_TAG)
-                        .padding(horizontal = 14.dp, vertical = 11.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp), content = content,
-                )
+                        .semantics { liveRegion = LiveRegionMode.Polite }
+                        .testTag(REPLY_BUBBLE_TAG),
+                    // While the answer is still being written its words can be selected, and there is no "More".
+                    PaddingValues(horizontal = 14.dp, vertical = 11.dp), onHold.takeIf { !dim }, offerMore = buttons,
+                ) { Column(verticalArrangement = Arrangement.spacedBy(8.dp), content = content) }
             }
         }
         if (!dim && buttons) {
@@ -327,9 +335,55 @@ fun sharePlain(ctx: android.content.Context, plain: String) {
     }
 }
 
+/**
+ * The words of one bubble: a long press on them selects, and the phone's bar over the selection offers
+ * Copy and Select all. [more] (null: none) adds "More" there, which opens the whole message's menu
+ * (the same one a long press on the bubble's edge opens).
+ */
+@Composable
+fun SelectableWords(more: (() -> Unit)? = null, content: @Composable () -> Unit) {
+    val open by rememberUpdatedState(more)
+    SelectionContainer(
+        if (more == null) Modifier else Modifier.appendTextContextMenuComponents {
+            separator()
+            item(MoreKey, MORE_ITEM) { close(); open?.invoke() }
+        },
+        content,
+    )
+}
+
+private object MoreKey
+
+/**
+ * One bubble: its words can be selected ([SelectableWords]), and holding the bubble's edge, around the
+ * words, opens the message's menu ([onHold]; null: no menu). A screen reader's long press on the whole
+ * bubble opens the menu too. A tap on the bubble does nothing and goes no further, as before.
+ */
+@Composable
+fun BubbleWords(
+    modifier: Modifier, padding: PaddingValues, onHold: (() -> Unit)?, label: String = HOLD_LABEL, offerMore: Boolean = true,
+    words: @Composable () -> Unit,
+) {
+    val held by rememberUpdatedState(onHold)
+    Box(
+        modifier.then(
+            if (onHold == null) Modifier
+            else Modifier.semantics(mergeDescendants = true) { onLongClick(label) { held?.invoke(); true } }
+                .pointerInput(Unit) { detectTapGestures(onTap = {}) },
+        ),
+    ) {
+        // Behind the words, so a long press on the words themselves never reaches it.
+        if (onHold != null) Box(Modifier.matchParentSize().holdMenu({ held?.invoke() }, label).clearAndSetSemantics {})
+        Box(Modifier.padding(padding)) { SelectableWords(more = if (onHold != null && offerMore) ({ held?.invoke() }) else null, content = words) }
+    }
+}
+
+/** What a screen reader says a long press on a message does. */
+private const val HOLD_LABEL = "More: copy, select, share, listen or try again"
+
 /** What a message's long press holds: Copy, Select text, Share, Listen (and Look it up on the newest answer). */
 @OptIn(ExperimentalFoundationApi::class)
-fun Modifier.holdMenu(open: () -> Unit, label: String = "More: copy, select, share, listen or try again"): Modifier =
+fun Modifier.holdMenu(open: () -> Unit, label: String = HOLD_LABEL): Modifier =
     combinedClickable(onClickLabel = null, onLongClickLabel = label, onLongClick = open, onClick = {})
 
 /**
