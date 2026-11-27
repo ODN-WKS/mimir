@@ -6,7 +6,8 @@
 #   tools/piece.sh --dry-run <piece>...   print the steps, change nothing
 # A piece is branch <piece> in worktree ~/.cache/mimir/wt-<piece>, with ~/.cache/mimir/piece-<piece>.conf:
 #   BRIEFS="P24-back-goes-home.md P24-F1-keep-typed-text.md"   (names in the briefs folder, or full paths)
-#   BASE=<commit the piece started from>
+#   BASE=<commit the piece started from: on main, or the tip of an earlier piece named in the same run>
+# Only BASE..tip is verified and reviewed, so nothing before BASE may be new to main.
 # Every step: ~/.cache/mimir/piece-<pieces>.log. The PIECE_* variables exist for tools/test_piece.sh.
 set -u
 unset LISTEN_FDS LISTEN_PID LISTEN_FDNAMES LISTEN_PIDFDID
@@ -23,8 +24,11 @@ S25_UPDATE=${PIECE_S25_UPDATE:-$M/s25-update.sh}
 S25_RESULT=${PIECE_S25_RESULT:-$M/s25-update-result.txt}
 S25_TREE=${PIECE_S25_TREE:-/tmp/mimir-integ}
 POLL=${PIECE_POLL:-30}
-INTEG=$M/wt-integ
-LIMIT_RE="hit your [a-z0-9 -]*limit|usage limit reached|out of (extra )?usage|(session|weekly|5-hour|usage) limit (reached|will reset)"
+# Its own join branch and folder: "integ" belongs to whoever else joins by hand.
+JOIN_BRANCH=piece-join
+INTEG=$M/wt-$JOIN_BRANCH
+# Claude's own limit notices, only at the start of a line.
+LIMIT_RE="^(error: )?(you[^ ]{0,3}(ve|re) )?(hit your [a-z0-9 -]*limit|out of (extra )?usage)|^(error: )?(claude (ai )?)?((session|weekly|5-hour) )?(usage )?limit (reached|will reset)"
 
 die() { echo "piece: $*" >&2; exit 2; }
 usage() { die "use: tools/piece.sh [--unit|--dry-run] <piece>..."; }
@@ -40,7 +44,7 @@ esac
 PIECES=("$@")
 for p in "${PIECES[@]}"; do
     [[ "$p" =~ ^[a-z0-9][a-z0-9-]*$ ]] || die "bad piece name '$p'"
-    case "$p" in main | integ | target | android-out | android-target) die "'$p' is a reserved name" ;; esac
+    case "$p" in main | integ | piece-join* | target | android-out | android-target) die "'$p' is a reserved name" ;; esac
 done
 NAME=$(IFS=-; echo "${PIECES[*]}")
 L=$M/piece-$NAME.log
@@ -65,11 +69,14 @@ builder_units() {
 # Changed or untracked files, apart from the two report files a builder leaves.
 dirty() { git -C "$1" --no-optional-locks status --porcelain | grep -vE '^\?\? (REPORT\.md|\.agent-results\.md)$'; }
 
-# Reads the piece's conf and checks it can be finished. Sets BRIEF_LIST, BASE, TIP; or WHY and returns 1.
+declare -A TIPS=() LEFT=() NEEDS=()
+
+# Reads the piece's conf and checks it can be finished. Sets BRIEF_LIST, BASE, TIP and NEED (the earlier
+# piece it is stacked on, if any); or WHY and returns 1. TIPS holds the earlier pieces that passed.
 ready() {
-    local p=$1 wt=$M/wt-$1 conf=$M/piece-$1.conf b n
+    local p=$1 wt=$M/wt-$1 conf=$M/piece-$1.conf b n q
     local BRIEFS=""
-    BASE="" WHY="" TIP="" BRIEF_LIST=""
+    BASE="" WHY="" TIP="" BRIEF_LIST="" NEED=""
     [ -f "$conf" ] || { WHY="no conf file $conf"; return 1; }
     # shellcheck disable=SC1090
     . "$conf"
@@ -87,10 +94,24 @@ ready() {
     TIP=$(git -C "$wt" rev-parse HEAD)
     n=$(git -C "$R" rev-list --count "main..$TIP") || { WHY="cannot compare the branch with main"; return 1; }
     [ "$n" -gt 0 ] || { WHY="no commits on the branch beyond main, so there is nothing to join"; return 1; }
+    BASE=$(git -C "$wt" rev-parse "$BASE^{commit}")
+    git -C "$R" merge-base --is-ancestor "$BASE" "$TIP" || { WHY="BASE ${BASE:0:7} is not an ancestor of the branch"; return 1; }
+    [ "$BASE" != "$TIP" ] || { WHY="no commits on the branch beyond BASE, so there is nothing to join"; return 1; }
+    git -C "$R" merge-base --is-ancestor "$BASE" main && return 0
+    for q in "${!TIPS[@]}"; do
+        if [ "$q" != "$p" ] && [ "${TIPS[$q]}" = "$BASE" ]; then NEED=$q; return 0; fi
+    done
+    WHY="BASE ${BASE:0:7} is not on main, nor the tip of an earlier piece in this run that passed, so commits before it would join unchecked (use BASE=$(git -C "$R" merge-base main "$TIP"))"
+    return 1
 }
 
 claude_run() { # <worktree> <agent> <output file> <prompt>
     (cd "$1" && claude -p --agent "$2" --model sonnet --permission-mode auto "$4" < /dev/null > "$3" 2>&1)
+}
+
+# A usage limit is claude failing with nothing but its short notice, never words inside a longer answer.
+is_limit() { # <claude's exit code> <its output>
+    [ "$1" -ne 0 ] && [ "$(grep -c . "$2")" -le 3 ] && [ "$(wc -c < "$2")" -le 600 ] && grep -qiE "$LIMIT_RE" "$2"
 }
 
 android_clean() { # removes a worktree's Gradle output, including the folder in memory it links to
@@ -135,7 +156,7 @@ fallback() { # <piece>
 }
 
 verify() { # <piece>: leaves the verdict in $M/verify-<piece>.md
-    local p=$1 wt=$M/wt-$1 v=$M/verify-$1.md o=$M/out-verify-$1.txt
+    local p=$1 wt=$M/wt-$1 v=$M/verify-$1.md o=$M/out-verify-$1.txt rc
     rm -f "$v"
     # The verifier writes its own results file; the builder's is kept aside.
     [ -f "$wt/.agent-results.md" ] && mv -f "$wt/.agent-results.md" "$M/results-$p-builder.md"
@@ -146,9 +167,8 @@ Brief(s):$BRIEF_LIST. Common rules: $BRIEF_DIR/COMMON.md. Worktree $wt, branch $
 3. Remove Gradle output left in the worktree (android/app/build, android/app/src/main/jniLibs).
 No devices, no push, no writes under Claude's settings folder, never the owner's running Mímir or its data.
 Write your findings to $v with a first line exactly 'VERDICT: pass' or 'VERDICT: fail', then each command's exit code and last lines."
-    if head -1 "$v" 2> /dev/null | grep -qE '^VERDICT: (pass|fail)'; then
-        :
-    elif grep -qiE "$LIMIT_RE" "$o"; then
+    rc=$?
+    if is_limit "$rc" "$o" && ! head -1 "$v" 2> /dev/null | grep -q '^VERDICT: fail'; then
         log "$p: Claude usage limit, running the brief's tests here instead"
         if (fallback "$p") > "$M/fallback-$p.log" 2>&1; then
             echo "VERDICT: pass (fallback, no bite check)" > "$v"
@@ -156,7 +176,11 @@ Write your findings to $v with a first line exactly 'VERDICT: pass' or 'VERDICT:
             echo "VERDICT: fail (fallback, no bite check; see fallback-$p.log)" > "$v"
         fi
         android_clean "$wt"
-    else
+    elif head -1 "$v" 2> /dev/null | grep -q '^VERDICT: fail'; then
+        :
+    elif [ "$rc" -ne 0 ]; then
+        echo "VERDICT: fail (the verifier ended with exit $rc; see $o)" > "$v"
+    elif ! head -1 "$v" 2> /dev/null | grep -q '^VERDICT: pass'; then
         echo "VERDICT: fail (the verifier wrote no verdict; see $o)" > "$v"
     fi
     if [ "$(git -C "$wt" rev-parse HEAD)" != "$TIP" ] || [ -n "$(dirty "$wt")" ]; then
@@ -165,16 +189,25 @@ Write your findings to $v with a first line exactly 'VERDICT: pass' or 'VERDICT:
 }
 
 review() { # <piece>: leaves the answer in $M/review-<piece>.md
-    local p=$1 wt=$M/wt-$1 v=$M/review-$1.md o=$M/out-review-$1.txt
+    local p=$1 wt=$M/wt-$1 v=$M/review-$1.md o=$M/out-review-$1.txt rc other
     claude_run "$wt" reviewer "$o" "Review one finished piece of the Mímir project for real bugs only. Read-only. Brief(s):$BRIEF_LIST. Diff: in $wt run git diff $BASE $TIP. Builder report: $wt/REPORT.md.
 Look hardest at behaviour the owner would see that differs from the brief, anything that loses typed text, messages or settings, and anything that breaks other navigation.
 Print your answer; one line must be exactly 'BUGS: <number of confirmed bugs>' and come first, then each bug with file:line, a concrete input and what goes wrong, then risks that are not bugs."
-    sed -n '/^BUGS:/,$p' "$o" > "$v"
-    [ -s "$v" ] && return 0
-    if grep -qiE "$LIMIT_RE" "$o"; then
+    rc=$?
+    if is_limit "$rc" "$o"; then
         echo "NOT REVIEWED (Claude usage limit)" > "$v"
-    else
-        echo "REVIEW FAILED (no BUGS: line; see $o)" > "$v"
+        return
+    fi
+    if [ "$rc" -ne 0 ]; then
+        echo "REVIEW FAILED (the reviewer ended with exit $rc; see $o)" > "$v"
+        return
+    fi
+    sed -n '/^BUGS:/,$p' "$o" > "$v"
+    [ -s "$v" ] || { echo "REVIEW FAILED (no BUGS: line; see $o)" > "$v"; return; }
+    # Every BUGS line counts, bold or quoted too: one that is not zero overrules a first line of zero.
+    other=$(grep -iE '^[[:space:]*_#>`-]*BUGS[[:space:]*_]*:[[:space:]*_]*0*[1-9]' "$o" | head -1)
+    if [ -n "$other" ] && head -1 "$v" | grep -qE '^BUGS: 0([^0-9]|$)'; then
+        { echo "REVIEW FAILED (BUGS lines disagree, one says: $other)"; cat "$o"; } > "$v"
     fi
 }
 
@@ -186,14 +219,16 @@ plan() {
         units=$(builder_units "$p" | tr '\n' ' ')
         if [ -n "$units" ]; then echo "1. wait for: $units"; else echo "1. no builder unit is running"; fi
         if ready "$p"; then
-            echo "2. ready: $(git -C "$R" rev-list --count "main..$TIP") commit(s), tip ${TIP:0:7}, briefs:$BRIEF_LIST"
+            echo "2. ready: $(git -C "$R" rev-list --count "$BASE..$TIP") commit(s), tip ${TIP:0:7}, briefs:$BRIEF_LIST"
+            [ -z "$NEED" ] || echo "   stacked on $NEED: joins only if $NEED does"
+            TIPS[$p]=$TIP
         else
             echo "2. would stop here: $WHY"
         fi
         echo "3. verifier (Sonnet), verdict in $M/verify-$p.md; usage limit: brief's tests and headcheck here"
         echo "4. reviewer, answer in $M/review-$p.md; usage limit: NOT REVIEWED"
     done
-    echo "5. join pieces with verdict pass and BUGS: 0 (or NOT REVIEWED) by rebase onto a fresh $INTEG from main, in order: ${PIECES[*]}"
+    echo "5. join pieces with verdict pass and BUGS: 0 (or NOT REVIEWED) by rebase onto a fresh $INTEG (branch $JOIN_BRANCH) from main, in order: ${PIECES[*]}"
     echo "6. run $RUN_CHECKS on the joined tip; on exit 0, fast-forward main in $R"
     echo "7. $S25_UPDATE <main>, only if main moved"
     echo "8. add a line to $HANDOFF and run handoff-sync"
@@ -204,10 +239,10 @@ if [ "$mode" = dry ]; then plan; exit 0; fi
 
 mkdir -p "$M" || die "cannot make $M"
 log "start: ${PIECES[*]}"
-declare -A TIPS=() LEFT=()
 PASSED=()
 JOINED=()
 NOTREVIEWED=""
+declare -A BASES=()
 
 leave() { LEFT[$1]=$2; log "$1 left out: $2"; }
 
@@ -238,6 +273,8 @@ for p in "${PIECES[@]}"; do
     elif [[ "$found" == "NOT REVIEWED"* ]]; then NOTREVIEWED="$NOTREVIEWED $p"
     else leave "$p" "$found (see review-$p.md)"; continue; fi
     TIPS[$p]=$TIP
+    BASES[$p]=$BASE
+    NEEDS[$p]=$NEED
     PASSED+=("$p")
 done
 
@@ -246,30 +283,56 @@ exec 9> "$M/piece-join.lock"
 flock 9
 MOVED=""
 S25="not run"
+S25_FAILED=""
+
+# Commits left on the join branch or folder (a hand fix after a failed run) that are nowhere else get a
+# branch of their own before the folder is made afresh.
+keep_leftovers() {
+    local c name
+    for c in $([ -d "$INTEG" ] && git -C "$INTEG" rev-parse -q --verify HEAD) $(git -C "$R" rev-parse -q --verify "refs/heads/$JOIN_BRANCH"); do
+        [ -z "$(git -C "$R" for-each-ref --format='%(refname)' --contains "$c" refs/heads | grep -vx "refs/heads/$JOIN_BRANCH")" ] || continue
+        name=$JOIN_BRANCH-saved-$(date +%Y%m%d)-${c:0:7}
+        git -C "$R" branch -f "$name" "$c" >> "$OUT" 2>&1 || return 1
+        log "commits on the old join branch were nowhere else: saved as $name"
+    done
+}
 
 join() {
-    local p before
+    local p before onto
     if [ -d "$INTEG" ]; then
         if [ -n "$(git -C "$INTEG" status --porcelain)" ]; then
             for p in "${PASSED[@]}"; do leave "$p" "$INTEG has uncommitted work; not touching it"; done
             return 1
         fi
+    fi
+    if ! keep_leftovers; then
+        for p in "${PASSED[@]}"; do leave "$p" "cannot save the commits on $JOIN_BRANCH; not touching it"; done
+        return 1
+    fi
+    if [ -d "$INTEG" ]; then
         log "removing the old join worktree (it was at $(git -C "$INTEG" rev-parse --short HEAD))"
         git -C "$R" worktree remove --force "$INTEG" >> "$OUT" 2>&1
     fi
     git -C "$R" worktree prune
-    if ! git -C "$R" worktree add -q -B integ "$INTEG" main >> "$OUT" 2>&1; then
+    if ! git -C "$R" worktree add -q -B "$JOIN_BRANCH" "$INTEG" main >> "$OUT" 2>&1; then
         for p in "${PASSED[@]}"; do leave "$p" "cannot make the join worktree (see $OUT)"; done
         return 1
     fi
     for p in "${PASSED[@]}"; do
-        before=$(git -C "$INTEG" rev-parse integ)
+        if [ -n "${NEEDS[$p]}" ] && [[ " ${JOINED[*]} " != *" ${NEEDS[$p]} "* ]]; then
+            leave "$p" "it builds on ${NEEDS[$p]}, which did not join"
+            continue
+        fi
+        before=$(git -C "$INTEG" rev-parse "$JOIN_BRANCH")
+        # A stacked piece brings only its own commits; the ones below are already joined.
+        onto=("$JOIN_BRANCH")
+        [ -z "${NEEDS[$p]}" ] || onto=(--onto "$JOIN_BRANCH" "${BASES[$p]}")
         # A detached copy of the piece is rebased; the piece's own branch stays as it was.
-        if g -C "$INTEG" rebase integ "${TIPS[$p]}" >> "$OUT" 2>&1; then
+        if g -C "$INTEG" rebase "${onto[@]}" "${TIPS[$p]}" >> "$OUT" 2>&1; then
             if [ "$(git -C "$INTEG" rev-parse HEAD)" = "$before" ]; then
                 leave "$p" "its changes are already there, so there is nothing to join"
             else
-                git -C "$INTEG" checkout -q -B integ HEAD >> "$OUT" 2>&1
+                git -C "$INTEG" checkout -q -B "$JOIN_BRANCH" HEAD >> "$OUT" 2>&1
                 JOINED+=("$p")
                 log "joined $p"
                 continue
@@ -278,7 +341,7 @@ join() {
             git -C "$INTEG" rebase --abort >> "$OUT" 2>&1
             leave "$p" "it conflicts with what is already joined (see $OUT)"
         fi
-        git -C "$INTEG" checkout -q -f integ >> "$OUT" 2>&1
+        git -C "$INTEG" checkout -q -f "$JOIN_BRANCH" >> "$OUT" 2>&1
     done
     [ ${#JOINED[@]} -gt 0 ]
 }
@@ -288,10 +351,10 @@ checks_and_merge() {
     tip=$(git -C "$INTEG" rev-parse HEAD)
     cp "$R/android/local.properties" "$INTEG/android/" 2> /dev/null
     log "run-checks on ${tip:0:7} (${JOINED[*]})"
-    (cd "$INTEG" && CARGO_TARGET_DIR=$BUILD/rc-integ bash "$RUN_CHECKS") > "$M/runchecks-$NAME.log" 2>&1 9>&-
+    (cd "$INTEG" && CARGO_TARGET_DIR=$BUILD/rc-piece-join bash "$RUN_CHECKS") > "$M/runchecks-$NAME.log" 2>&1 9>&-
     rc=$?
     log "run-checks exit $rc: $(tail -1 "$M/runchecks-$NAME.log" | cut -c1-120)"
-    rm -rf "${BUILD:?}/rc-integ"
+    rm -rf "${BUILD:?}/rc-piece-join"
     ram_clean "$INTEG"
     if [ $rc -ne 0 ]; then why="run-checks failed on the joined code (see runchecks-$NAME.log)"
     elif [ "$(git -C "$R" symbolic-ref -q --short HEAD)" != main ]; then why="$R is not on main"
@@ -314,7 +377,14 @@ if [ ${#PASSED[@]} -gt 0 ] && join && checks_and_merge; then
     flock -o "$BUILD/gradle-p21.lock" "$S25_UPDATE" "$MAIN" >> "$OUT" 2>&1 9>&-
     S25=$(grep -E 'apk exit|install exit|tests ' "$S25_RESULT" 2> /dev/null | tr '\n' ' ')
     S25=${S25:-"no result (see $OUT)"}
-    log "S25: $S25"
+    if grep -qE '^install exit 0( |$)' "$S25_RESULT" 2> /dev/null; then
+        log "S25: $S25"
+    else
+        S25_FAILED=1
+        S25="UPDATE FAILED: $S25"
+        log "S25 update FAILED: $S25"
+        log "to retry: flock -o $BUILD/gradle-p21.lock $S25_UPDATE $MAIN"
+    fi
     ram_clean "$S25_TREE"
     git -C "$R" worktree remove --force "$S25_TREE" >> "$OUT" 2>&1
 else
@@ -342,7 +412,9 @@ else
 fi
 
 # Step 9: only what is now on main, and only if nobody added to it meanwhile.
-if [ -n "$MOVED" ]; then
+if [ -n "$S25_FAILED" ]; then
+    log "kept the joined pieces' worktrees and branches: the S25 update failed"
+elif [ -n "$MOVED" ]; then
     for p in "${JOINED[@]}"; do
         wt=$M/wt-$p
         if [ "$(git -C "$wt" rev-parse HEAD)" != "${TIPS[$p]}" ] || [ -n "$(dirty "$wt")" ]; then
@@ -359,5 +431,5 @@ if [ -n "$MOVED" ]; then
         fi
     done
 fi
-log "done: joined ${JOINED[*]:-none}, left out ${#LEFT[@]}"
-[ ${#LEFT[@]} -eq 0 ]
+log "done: joined ${JOINED[*]:-none}, left out ${#LEFT[@]}${S25_FAILED:+, S25 update FAILED}"
+[ ${#LEFT[@]} -eq 0 ] && [ -z "$S25_FAILED" ]

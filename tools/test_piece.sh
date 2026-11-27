@@ -17,6 +17,12 @@ stub claude <<'EOF'
 agent=$3; prompt=${!#}; p=$(basename "$PWD"); p=${p#wt-}
 echo "$agent $p" >> "$T/calls"
 if [ -e "$T/limit" ]; then echo "You've hit your weekly limit · resets 10pm"; exit 1; fi
+# A scripted answer: say-<agent>-<piece> is printed, rc- is the exit code, verdict- the results file.
+if [ -e "$T/say-$agent-$p" ]; then
+    if [ -e "$T/verdict-$p" ]; then cp "$T/verdict-$p" "$(grep -oE "[^ ]+/verify-$p\.md" <<< "$prompt" | head -1)"; fi
+    cat "$T/say-$agent-$p"
+    exit "$(cat "$T/rc-$agent-$p" 2> /dev/null || echo 0)"
+fi
 if [ "$agent" = verifier ]; then
     v=$(grep -oE "[^ ]+/verify-$p\.md" <<< "$prompt" | head -1)
     echo "VERDICT: pass" > "$v"
@@ -32,7 +38,9 @@ EOF
 stub s25-update <<'EOF'
 #!/usr/bin/env bash
 echo "$1" >> "$T/s25"
-echo "install exit 0" > "$T/s25-result"
+if [ -e "$T/s25-fails" ]; then printf 'apk exit 0\ninstall exit 1 at 10:00\n' > "$T/s25-result"
+elif [ -e "$T/s25-silent" ]; then exit 1
+else echo "install exit 0 at 10:00" > "$T/s25-result"; fi
 EOF
 stub systemctl <<'EOF'
 #!/usr/bin/env bash
@@ -55,6 +63,8 @@ export PIECE_S25_RESULT=$T/s25-result PIECE_S25_TREE=$T/s25-tree PIECE_POLL=1
 # Pieces "clean" and "clash" both change a.txt from the same start, so the second conflicts.
 setup() {
     rm -rf "$T/repo" "$T/cache" "$T/calls" "$T/checked" "$T/s25" "$T/synced" "$T/limit" "$T/checks-fail" "$T/distrobox"
+    rm -rf "$T"/say-* "$T"/rc-* "$T"/verdict-* "$T/s25-fails" "$T/s25-silent" "$T/build"
+    mkdir -p "$T/build"
     mkdir -p "$T/cache"
     printf '# Hand-off\n\n## 1. Where things stand\n- older\n' > "$T/HANDOFF.md"
     printf 'Checks: `tools/cargo.sh test -p demo` and testDevDebugUnitTest.\n' > "$T/briefs/B.md"
@@ -169,6 +179,158 @@ ok "exit 0" [ "$rc" = 0 ]
 ok "plan printed" has "$T/run.out" "ready: 1 commit(s)"
 ok "nothing changed" [ "$(state)" = "$before" ]
 ok "no model, checks or S25" [ ! -e "$T/calls" ]
+
+# say <agent> <piece> <exit code> <line>...: what that stubbed model prints.
+say() { local a=$1 p=$2 rc=$3; shift 3; printf '%s\n' "$@" > "$T/say-$a-$p"; echo "$rc" > "$T/rc-$a-$p"; }
+tip() { git -C "$T/repo" rev-parse "$1"; }
+main_is() { [ "$(tip main)" = "$1" ]; }
+stacked() { # <name> <on piece> <file> <text>
+    local keep=$BASE
+    BASE=$(tip "$2")
+    piece "$1" "$3" "$4"
+    BASE=$keep
+}
+
+echo "== a stacked piece never carries unverified commits onto main"
+setup
+piece low b.txt low
+stacked high low c.txt high
+say verifier low 0 "tests failed"
+echo "VERDICT: fail" > "$T/verdict-low"
+before=$(tip main)
+run low high
+L=$T/cache/piece-low-high.log
+ok "exit 1" [ "$rc" = 1 ]
+ok "main unchanged" main_is "$before"
+ok "stacked piece refused for its BASE" has "$L" "high left out: BASE"
+ok "no model called for it" lacks "$T/calls" "verifier high"
+run high
+ok "alone: refused too" has "$T/cache/piece-high.log" "high left out: BASE"
+ok "alone: main unchanged" main_is "$before"
+
+setup
+piece low b.txt low
+stacked high low c.txt high
+run --dry-run low high
+ok "dry run: stacked on an earlier piece" has "$T/run.out" "stacked on low"
+run low high
+ok "stacked on a joined piece: exit 0" [ "$rc" = 0 ]
+ok "both on main" main_has c.txt high
+ok "the lower one too" main_has b.txt low
+
+setup
+piece clean a.txt clean
+piece low a.txt low
+stacked high low c.txt high
+run clean low high
+ok "stacked on a piece that did not join: left out" has "$T/cache/piece-clean-low-high.log" "high left out: it builds on low, which did not join"
+ok "its file is not on main" [ ! -e "$T/repo/c.txt" ]
+ok "main holds only the clean piece" [ "$(git -C "$T/repo" ls-tree --name-only main | grep -c c.txt)" = 0 ]
+
+setup
+piece off b.txt off
+git -C "$T/repo" commit -q --allow-empty -m later
+printf 'BRIEFS="B.md"\nBASE=%s\n' "$(tip main)" > "$T/cache/piece-off.conf"
+run off
+ok "BASE outside the branch refused" has "$T/cache/piece-off.log" "is not an ancestor of the branch"
+
+echo "== a failed verification or review is never taken for a usage limit"
+unsafe() { # <what>: one piece "x" that must stay off main
+    before=$(tip main)
+    run x
+    ok "$1: exit 1" [ "$rc" = 1 ]
+    ok "$1: main unchanged" main_is "$before"
+}
+setup
+piece x b.txt x
+say verifier x 0 "I checked the usage limit reached branch of the script; tests FAILED"
+unsafe "no verdict file, limit words in the answer"
+ok "no fallback ran" [ ! -e "$T/cache/fallback-x.log" ]
+setup
+piece x b.txt x
+say verifier x 1 "Report:" "the bite check fails" "the test string is" "usage limit reached" "so it failed"
+unsafe "long answer, non-zero exit"
+ok "no fallback ran" [ ! -e "$T/cache/fallback-x.log" ]
+setup
+piece x b.txt x
+say verifier x 1 "Error: something broke"
+echo "VERDICT: pass" > "$T/verdict-x"
+unsafe "verifier wrote pass but exited non-zero"
+setup
+piece x b.txt x
+say reviewer x 0 "**BUGS: 2**" "1. the 'session limit reached' banner erases typed text"
+unsafe "bold BUGS line and limit words"
+ok "marked as failed review" has "$T/cache/review-x.md" "REVIEW FAILED"
+setup
+piece x b.txt x
+say reviewer x 0 "Usage limit reached"
+unsafe "limit words with exit 0"
+setup
+piece x b.txt x
+say reviewer x 1 "BUGS: 0" "then it crashed"
+unsafe "reviewer exited non-zero"
+setup
+piece x b.txt x
+say reviewer x 1 "Claude AI usage limit reached|1764200000"
+run x
+ok "a real limit notice is still NOT REVIEWED" has "$T/cache/review-x.md" "NOT REVIEWED"
+
+echo "== every BUGS line counts"
+setup
+piece x b.txt x
+say reviewer x 0 "BUGS: 0" "On a second look:" "BUGS: 1" "x.txt:1 loses text"
+unsafe "later BUGS: 1"
+setup
+piece x b.txt x
+say reviewer x 0 "**BUGS: 2**" "BUGS: 0"
+unsafe "earlier bold BUGS: 2"
+
+echo "== other jobs' join folders and commits are left alone"
+setup
+piece x b.txt x
+git -C "$T/repo" worktree add -q -b integ "$T/cache/wt-integ" main
+git -C "$T/cache/wt-integ" commit -q --allow-empty -m unjoined-work
+held=$(tip integ)
+mkdir -p "$T/build/rc-integ"
+: > "$T/build/rc-integ/in-use"
+run x
+ok "exit 0" [ "$rc" = 0 ]
+ok "integ still holds its commit" [ "$(tip integ)" = "$held" ]
+ok "integ folder still there" [ "$(git -C "$T/cache/wt-integ" rev-parse HEAD)" = "$held" ]
+ok "other job's build folder kept" [ -e "$T/build/rc-integ/in-use" ]
+ok "main moved" main_has b.txt x
+
+saved() { [ -n "$(git -C "$T/repo" branch --list 'piece-join-saved-*' --contains "$1")" ]; }
+setup
+piece x b.txt x
+git -C "$T/repo" worktree add -q -b piece-join "$T/cache/wt-piece-join" main
+git -C "$T/cache/wt-piece-join" commit -q --allow-empty -m hand-fix
+held=$(tip piece-join)
+run x
+ok "commit left on the join branch is saved" saved "$held"
+ok "save is logged" has "$T/cache/piece-x.log" "saved as piece-join-saved-"
+setup
+piece x b.txt x
+git -C "$T/repo" worktree add -q --detach "$T/cache/wt-piece-join" main
+git -C "$T/cache/wt-piece-join" commit -q --allow-empty -m detached-fix
+held=$(git -C "$T/cache/wt-piece-join" rev-parse HEAD)
+run x
+ok "commit on a detached join folder is saved" saved "$held"
+
+echo "== a failed S25 install is a failure"
+for how in s25-fails s25-silent; do
+    setup
+    piece x b.txt x
+    touch "$T/$how"
+    run x
+    L=$T/cache/piece-x.log
+    ok "$how: exit not 0" [ "$rc" != 0 ]
+    ok "$how: said in the log" has "$L" "S25 update FAILED"
+    ok "$how: said in the hand-off" has "$T/HANDOFF.md" "S25: UPDATE FAILED"
+    ok "$how: worktree kept" [ -d "$T/cache/wt-x" ]
+    ok "$how: branch kept" [ -n "$(git -C "$T/repo" branch --list x)" ]
+    ok "$how: main still moved" main_has b.txt x
+done
 
 echo "== --unit starts a user unit"
 stub systemd-run <<'STUB'
