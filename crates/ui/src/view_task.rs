@@ -560,6 +560,10 @@ impl App {
                     if !mimir_core::models::is_free(t.model.as_deref())
                         && !self.settings.project_free()
                         && self.setup.claude_ready() == Some(false)
+                        // An answer that just came through is proof enough.
+                        && !(t.status == Status::Done
+                            && !t.failed
+                            && t.entries.iter().any(|e| matches!(e, Entry::Claude(_))))
                         && crate::setup_view::claude_missing_line(ui, actions)
                         && let Some(f) =
                             mimir_core::models::default_free(&mimir_core::models::cached())

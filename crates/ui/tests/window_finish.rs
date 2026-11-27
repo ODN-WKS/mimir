@@ -162,8 +162,6 @@ fn the_rename_box_takes_focus_once_and_ends_on_blur() {
         "the task didn't finish\n{}",
         screen_text(&h)
     );
-    // P17: the task is named by its start time.
-    let names = time_names();
     // ⋯ › Rename.
     click(&mut h, station_ui::labels::PILL_MENU);
     click(&mut h, "Rename");
@@ -171,7 +169,7 @@ fn the_rename_box_takes_focus_once_and_ends_on_blur() {
     // one-line box on the screen).
     let rename_box = |h: &egui_kittest::Harness<'static, station_ui::App>| {
         h.query_all_by_role(Role::TextInput)
-            .any(|n| n.value().is_some_and(|v| names.contains(&v)))
+            .any(|n| n.value().is_some_and(|v| v == "Tidy up notes.txt."))
     };
     assert!(
         wait_for(&mut h, |h| rename_box(h)),

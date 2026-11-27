@@ -1,82 +1,59 @@
-//! P17 (owner, 2026-11-25): a new task started in a project is named by its
-//! start time on the PC's clock ("Nov 25, 5:50 PM"; the year only when it is
-//! not this year). Chats outside projects keep their first-words names, and a
-//! name the owner gave is never overwritten.
+//! A new task is named by the first words of its first message (owner,
+//! 2026-11-27; it replaced the start-time names of 2026-11-25). A task still
+//! carrying a start-time name is renamed the same way when it is loaded, and
+//! a name the owner gave is never overwritten.
 
-use mimir_core::runner::{ClockTime, Config, Runner, first_title, time_title, title_from};
-use std::path::{Path, PathBuf};
+use mimir_core::runner::{ClockTime, Config, Runner, time_title, title_from};
+use mimir_core::store::Store;
+use mimir_core::task::{Entry, Task};
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-fn at(year: i32, month: u32, day: u32, hour: u32, minute: u32) -> ClockTime {
-    ClockTime {
-        year,
-        month,
-        day,
-        hour,
-        minute,
+#[test]
+fn a_task_saved_under_its_start_time_is_named_by_its_first_words() {
+    let dir = std::env::temp_dir().join(format!("mimir-old-titles-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let store = Store::new(dir.join("tasks")).unwrap();
+    let created = 1_795_000_000;
+    let c = ClockTime::at(created);
+    let dated = time_title(c, c.year);
+    for (id, title, by_owner) in [
+        ("old", dated.as_str(), false),
+        ("kept", dated.as_str(), true),
+        ("named", "Watering reminder", false),
+    ] {
+        let mut t = Task::new(
+            id.into(),
+            title.into(),
+            "/home/someone/garden".into(),
+            created,
+        );
+        t.title_by_owner = by_owner;
+        t.entries = vec![Entry::You("make the reminder louder".into())];
+        store.save(&t).unwrap();
     }
-}
-
-#[test]
-fn a_project_task_started_at_a_fixed_time_is_named_by_it() {
-    let project = Path::new("/home/someone/Projects/garden-app");
+    let config = || Config {
+        claude: PathBuf::from("/nonexistent"),
+        hook_exe: PathBuf::from("/nonexistent"),
+        socket: dir.join("run/approvals.sock"),
+        store_dir: dir.join("tasks"),
+        env: vec![],
+    };
+    let mut r = Runner::new(config(), Arc::new(|| {})).unwrap();
+    assert_eq!(title(&r, "old"), title_from("make the reminder louder"));
+    assert_eq!(title(&r, "kept"), dated);
+    assert_eq!(title(&r, "named"), "Watering reminder");
+    r.tick();
+    drop(r);
+    let (saved, _) = Store::new(dir.join("tasks")).unwrap().load_all();
+    let old = saved.iter().find(|t| t.id == "old").unwrap();
     assert_eq!(
-        first_title(
-            project,
-            "make the watering reminder louder",
-            at(2026, 11, 25, 17, 50),
-            2026
-        ),
-        "Nov 25, 5:50 PM"
+        old.title,
+        title_from("make the reminder louder"),
+        "saved too"
     );
-    // 12-hour style, both ends of the day.
-    assert_eq!(time_title(at(2026, 11, 25, 0, 5), 2026), "Nov 25, 12:05 AM");
-    assert_eq!(
-        time_title(at(2026, 11, 25, 12, 0), 2026),
-        "Nov 25, 12:00 PM"
-    );
-    assert_eq!(time_title(at(2026, 1, 3, 9, 31), 2026), "Jan 3, 9:31 AM");
-}
-
-#[test]
-fn another_year_adds_the_year() {
-    assert_eq!(
-        time_title(at(2025, 12, 30, 17, 41), 2026),
-        "Dec 30, 2025, 5:41 PM"
-    );
-    assert_eq!(
-        first_title(
-            Path::new("/home/someone/Projects/recipes-site"),
-            "add a print button",
-            at(2025, 12, 30, 17, 41),
-            2026
-        ),
-        "Dec 30, 2025, 5:41 PM"
-    );
-}
-
-#[test]
-fn a_chat_outside_a_project_keeps_its_first_words_name() {
-    let text = "which soil is best for tomatoes in pots";
-    assert_eq!(
-        first_title(
-            &mimir_core::paths::chats_dir(),
-            text,
-            at(2026, 11, 25, 15, 2),
-            2026
-        ),
-        title_from(text)
-    );
-    assert_eq!(
-        first_title(
-            Path::new("/somewhere/else/mimir/chats"),
-            text,
-            at(2026, 11, 25, 15, 2),
-            2026
-        ),
-        title_from(text)
-    );
+    let _ = std::fs::remove_dir_all(&dir);
 }
 
 fn until(r: &mut Runner, what: &str, done: impl Fn(&Runner) -> bool) {
@@ -109,7 +86,7 @@ fn finished(r: &Runner, id: &str, replies: usize) -> bool {
             >= replies
 }
 
-/// A project task is named by its start time when the runner makes it, keeps
+/// A project task is named by its first words when the runner makes it, keeps
 /// that name when Claude Code gives the session a title of its own, and a
 /// name the owner gives it stays after more messages.
 #[test]
@@ -155,25 +132,13 @@ fn a_renamed_task_keeps_its_name_after_more_messages() {
     .unwrap();
 
     let id = r.new_task(&proj, "Tidy up notes.txt.");
-    let created = r
-        .tasks
-        .iter()
-        .find(|l| l.task.id == id)
-        .unwrap()
-        .task
-        .created_unix;
-    let started = ClockTime::at(created);
-    let named = time_title(started, started.year);
-    assert_eq!(title(&r, &id), named, "a project task is named by its time");
-    assert!(
-        named.contains(", ") && (named.ends_with(" AM") || named.ends_with(" PM")),
-        "{named}"
-    );
+    let named = title_from("Tidy up notes.txt.");
+    assert_eq!(title(&r, &id), named, "a task is named by its first words");
     until(&mut r, "the first reply", |r| finished(r, &id, 1));
     assert_eq!(
         title(&r, &id),
         named,
-        "Claude Code's own title never replaces the time name"
+        "Claude Code's own title never replaces a project task's name"
     );
 
     r.rename(&id, "Watering reminder");
@@ -181,7 +146,7 @@ fn a_renamed_task_keeps_its_name_after_more_messages() {
     until(&mut r, "the second reply", |r| finished(r, &id, 2));
     assert_eq!(title(&r, &id), "Watering reminder");
 
-    // A chat outside a project keeps today's first-words name.
+    // A chat outside a project is named the same way.
     let chat = r.new_task(&chats, "which soil is best for tomatoes in pots");
     assert_eq!(
         title(&r, &chat),

@@ -102,10 +102,10 @@ fn a_running_task_is_listed_once() {
     for _ in 0..20 {
         h.step();
     }
-    // P17: the task is named by its start time.
-    let name = shown_time_name(&h).expect("the task's time name");
+    // The task is named by its first words.
+    let name = "Tidy up notes.txt.";
     assert_eq!(
-        task_rows(&h, &name),
+        task_rows(&h, name),
         1,
         "the task is not listed exactly once\n{}",
         screen_text(&h)

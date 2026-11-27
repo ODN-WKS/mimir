@@ -79,8 +79,8 @@ fn nothing_moves(
         "{notice}: the task never showed as working\n{}",
         screen_text(&h)
     );
-    // P17: the task's row is named by its start time.
-    let name = shown_time_name(&h).unwrap_or_default();
+    // The task's row is named by its first words.
+    let name = mimir_core::runner::title_from(prompt);
     let row = name.as_str();
     let before = anchors(&h, row);
     assert!(

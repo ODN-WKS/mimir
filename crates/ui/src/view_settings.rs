@@ -218,24 +218,16 @@ impl App {
         gap(ui);
         // Only with Online project work set up and at least one listed.
         let online_work = !self.settings.project_free();
-        if let Ok(r) = &self.station
-            && online_work
-            && !(if r.mcp_servers.is_empty() {
-                &self.settings.connectors
-            } else {
-                &r.mcp_servers
-            })
-            .is_empty()
-        {
+        // The last ones Claude Code reported, also after a restart.
+        let list = match &self.station {
+            Ok(r) if online_work && !r.mcp_servers.is_empty() => shown_connectors(&r.mcp_servers),
+            Ok(_) if online_work => shown_connectors(&self.settings.connectors),
+            _ => vec![],
+        };
+        if !list.is_empty() {
             theme::card().show(ui, |ui| {
                 ui.set_width(ui.available_width());
                 theme::heading(ui, "Connectors");
-                // The last ones Claude Code reported, also after a restart.
-                let list = if r.mcp_servers.is_empty() {
-                    &self.settings.connectors
-                } else {
-                    &r.mcp_servers
-                };
                 for (name, status) in list {
                     let c = if status == "connected" { JADE } else { ORANGE };
                     ui.horizontal(|ui| {
@@ -594,5 +586,30 @@ impl App {
                 self.open_labs();
             }
         });
+    }
+}
+
+/// A "pending" connector says nothing and offers nothing to do, so it is left out.
+fn shown_connectors(list: &[(String, String)]) -> Vec<(String, String)> {
+    list.iter()
+        .filter(|(_, status)| status != "pending")
+        .cloned()
+        .collect()
+}
+
+#[cfg(test)]
+mod connector_tests {
+    #[test]
+    fn pending_connectors_are_left_out() {
+        let s = |a: &str, b: &str| (a.to_string(), b.to_string());
+        let list = [
+            s("mail", "pending"),
+            s("notes", "connected"),
+            s("files", "needs-auth"),
+        ];
+        assert_eq!(
+            super::shown_connectors(&list),
+            [s("notes", "connected"), s("files", "needs-auth")]
+        );
     }
 }

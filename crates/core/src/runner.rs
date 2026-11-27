@@ -360,7 +360,7 @@ impl Runner {
         let mut tasks = vec![];
         let mut attach = vec![];
         for mut t in loaded {
-            let mut dirty = false;
+            let mut dirty = name_dated(&mut t);
             // A task saved before the person's last message was kept: read
             // it from its history, once.
             if t.you_ms.is_none() {
@@ -656,8 +656,8 @@ impl Runner {
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_secs() as i64)
             .unwrap_or(0);
-        let started = ClockTime::at(now);
-        let title = first_title(project, text, started, started.year);
+        // A new task is named by its first words (owner, 2026-11-27).
+        let title = title_from(text);
         let mut task = Task::new(id.to_string(), title, project.display().to_string(), now);
         task.mode = mode;
         task.model = model;
@@ -2766,7 +2766,7 @@ impl Runner {
                             }
                             l.task.apply(e, now);
                             // Claude Code's own short title for the session: chats
-                            // only, as a project task keeps its time name (P17).
+                            // only, as a project task keeps its first words.
                             if matches!(e, Event::Finished(_))
                                 && !l.task.title_by_owner
                                 && l.task.is_chat()
@@ -3101,7 +3101,7 @@ impl ClockTime {
     }
 }
 
-/// A project task's name: when it started, 12-hour style ("Nov 25, 5:50 PM"),
+/// The name tasks were given until 2026-11-27: when it started, 12-hour style ("Nov 25, 5:50 PM"),
 /// with the year only when it is not `this_year` ("Dec 30, 2025, 5:41 PM").
 pub fn time_title(at: ClockTime, this_year: i32) -> String {
     const MONTHS: [&str; 12] = [
@@ -3119,17 +3119,6 @@ pub fn time_title(at: ClockTime, this_year: i32) -> String {
     };
     let half = if at.hour < 12 { "AM" } else { "PM" };
     format!("{month} {}{year}, {hour}:{:02} {half}", at.day, at.minute)
-}
-
-/// A new task's first name (P17, owner 2026-11-25): a task in a project is
-/// named by its start time, so the list reads as a diary; a chat outside a
-/// project keeps the first words of its first message.
-pub fn first_title(project: &Path, text: &str, at: ClockTime, this_year: i32) -> String {
-    if crate::task::in_chats_folder(&project.display().to_string()) {
-        title_from(text)
-    } else {
-        time_title(at, this_year)
-    }
 }
 
 pub fn title_from(text: &str) -> String {
@@ -3195,6 +3184,26 @@ pub fn title_from(text: &str) -> String {
         "New task".into()
     } else {
         out
+    }
+}
+
+/// A task saved under its start time gets its first words instead; a name the
+/// owner gave stays. True if renamed.
+fn name_dated(t: &mut Task) -> bool {
+    let at = ClockTime::at(t.created_unix);
+    if t.title_by_owner || t.title != time_title(at, at.year) {
+        return false;
+    }
+    let first = t.entries.iter().find_map(|e| match e {
+        crate::task::Entry::You(text) if !crate::task::system_like(text) => Some(title_from(text)),
+        _ => None,
+    });
+    match first {
+        Some(name) => {
+            t.title = name;
+            true
+        }
+        None => false,
     }
 }
 
