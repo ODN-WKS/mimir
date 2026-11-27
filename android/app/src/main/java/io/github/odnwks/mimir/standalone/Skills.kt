@@ -69,8 +69,11 @@ enum class Skill(
         /** A PC Whisper's message takes its skill inside the words. */
         fun withWords(text: String, skill: Skill?): String = if (skill == null) text else "$text\n\n[${skill.instruction}]"
 
+        /** Words sent with [withWords], taken apart again: the person's own words and their skill (null: none). */
+        fun split(text: String): Pair<String, Skill?> = entries.firstOrNull { text.endsWith("\n\n[${it.instruction}]") }
+            ?.let { text.removeSuffix("\n\n[${it.instruction}]") to it } ?: (text to null)
+
         /** Those words as the person sees them: the instruction reads as the skill's name. */
-        fun shown(text: String): String = entries.firstOrNull { text.endsWith("\n\n[${it.instruction}]") }
-            ?.let { text.removeSuffix("\n\n[${it.instruction}]") + "\n\nSkill: ${it.title}" } ?: text
+        fun shown(text: String): String = split(text).let { (words, skill) -> if (skill == null) words else "$words\n\nSkill: ${skill.title}" }
     }
 }

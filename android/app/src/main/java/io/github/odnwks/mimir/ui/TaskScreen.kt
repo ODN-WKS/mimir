@@ -352,12 +352,14 @@ fun TaskScreen(taskId: String, state: StationState, station: Station, nav: Navig
                             )
                         },
                     ) else AttachedAware(m.text) { shown, chips ->
+                      // A PC Whisper's skill rides in the words: the edit box gets the person's words, and the edit keeps the skill.
+                      val (words, skill) = io.github.odnwks.mimir.standalone.Skill.split(shown)
                       if (shown.isNotBlank()) OwnMessage(
-                        io.github.odnwks.mimir.standalone.Skill.shown(shown), id = "task-${task.id}-${m.id}",
+                        io.github.odnwks.mimir.standalone.Skill.shown(shown), id = "task-${task.id}-${m.id}", editText = words,
                         meta = { ownMeta(m) },
                         under = chips,
                         onEdit = if (quiet && m.id == lastOwn?.id && io.github.odnwks.mimir.link.Wire.entryIndex(task.id, m.id) != null) {
-                            { words -> editFailure = null; station.editTaskMessage(task.id, m.id, words.trim()) { why -> editFailure = why } }
+                            { edited -> editFailure = null; station.editTaskMessage(task.id, m.id, io.github.odnwks.mimir.standalone.Skill.withWords(edited.trim(), skill)) { why -> editFailure = why } }
                         } else null,
                         editNote = EDIT_TASK_NOTE, editFailure = editFailure, onEditCancel = { editFailure = null },
                       ) else Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.End) { chips?.invoke(); ownMeta(m) }

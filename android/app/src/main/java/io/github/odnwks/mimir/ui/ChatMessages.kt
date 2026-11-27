@@ -135,19 +135,21 @@ fun OwnMessage(
     /** The reason the last edit was not sent: the box opens again with the words kept, and says why. */
     editFailure: String? = null,
     onEditCancel: () -> Unit = {},
+    /** The words the edit box starts from, when they differ from those shown (a skill's line is not the person's words). */
+    editText: String = text,
 ) {
     var editing by rememberSaveable(id) { mutableStateOf(false) }
-    var draft by rememberSaveable(id) { mutableStateOf(text) }
+    var draft by rememberSaveable(id) { mutableStateOf(editText) }
     LaunchedEffect(editFailure) { if (editFailure != null) editing = true }
     Column(modifier.fillMaxWidth(), horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(6.dp)) {
       // The small print sits snug under the bubble's corner (P11, mock-up 5).
       Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(3.dp)) {
         if (editing && onEdit != null) EditBox(
             draft, { draft = it }, bubble,
-            onCancel = { editing = false; draft = text; onEditCancel() },
+            onCancel = { editing = false; draft = editText; onEditCancel() },
             onSend = { editing = false; onEdit(draft) },
             note = editFailure ?: editNote,
-        ) else MessageMenuHost(plain = text, id = id, lookUp = null, onEdit = onEdit?.let { { draft = text; editing = true } }) { onHold ->
+        ) else MessageMenuHost(plain = text, id = id, lookUp = null, onEdit = onEdit?.let { { draft = editText; editing = true } }) { onHold ->
             ChatText {
                 BubbleWords(
                     Modifier.widthIn(max = 320.dp).clip(ChatLook.ownShape).background(bubble)
