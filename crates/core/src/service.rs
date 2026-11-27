@@ -4584,6 +4584,7 @@ impl Service {
             model: pick.as_ref().map(|p| p.model.clone()).unwrap_or_default(),
             model_words: model_words.clone(),
             messages: crate::talk::messages(system, &turns),
+            lookup: a.lookup.clone(),
             think,
             max_tokens,
             context: crate::engine::CHAT_CONTEXT,

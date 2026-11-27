@@ -56,6 +56,10 @@ pub struct Job {
     pub model_words: String,
     /// (role, text), the instructions first.
     pub messages: Vec<(String, String)>,
+    /// What was looked up for the newest message, also at the end of the
+    /// instructions. Claude is sent it with the message instead: a resumed
+    /// Claude Code conversation keeps its first instructions.
+    pub lookup: Option<String>,
     pub think: bool,
     pub max_tokens: u32,
     pub context: u64,
@@ -768,7 +772,7 @@ impl Talk {
         let turns: Vec<&(String, String)> =
             job.messages.iter().filter(|(r, _)| r != "system").collect();
         let last = turns.last().map(|(_, t)| t.clone()).unwrap_or_default();
-        let message = match (&session, turns.len()) {
+        let mut message = match (&session, turns.len()) {
             (Some(_), _) | (None, 0..=1) => last,
             (None, _) => {
                 let mut m = String::from("(Earlier in this chat:)\n");
@@ -781,7 +785,17 @@ impl Talk {
                 m
             }
         };
-        let system = online_system(job.messages.first().map(|(r, t)| (r.as_str(), t.as_str())));
+        let mut first = job.messages.first().map(|(r, t)| (r.as_str(), t.as_str()));
+        // What was looked up goes with this message, never into the
+        // instructions: those of the first message stay for the whole
+        // conversation, so a later forecast there was never seen.
+        let found = job.lookup.as_deref().map(str::trim).unwrap_or("");
+        if !found.is_empty() {
+            message.push_str("\n\n");
+            message.push_str(found);
+            first = first.map(|(r, t)| (r, t.strip_suffix(found).unwrap_or(t).trim_end()));
+        }
+        let system = online_system(first);
         let mut cmd = Command::new(&p.program);
         cmd.current_dir(&p.dir)
             .args([
@@ -1112,6 +1126,7 @@ mod tests {
                 ("system".into(), system(Some("Be brief."), None)),
                 ("user".into(), words.into()),
             ],
+            lookup: None,
             think: false,
             max_tokens: 100,
             context: 16_384,
