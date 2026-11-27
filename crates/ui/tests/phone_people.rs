@@ -1230,6 +1230,9 @@ fn p38_the_pcs_model_is_told_a_chat_runs_nothing_and_offers_project_work() {
         assert!(s.contains("never make up its result"), "{s}");
         assert!(s.contains("never answer \"Stopped\""), "{s}");
         assert!(s.contains("never make one up"), "{s}");
+        // Only stopping work gets the Stop line; "stop" about the replies is done.
+        assert!(s.contains("wants your replies to stop or change"), "{s}");
+        assert!(s.contains("just do it. When they want work stopped"), "{s}");
     }
     let s = told("stop whatever you're doing");
     assert!(s.contains("offer it as project work"), "{s}");

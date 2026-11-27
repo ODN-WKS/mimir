@@ -319,14 +319,18 @@ object Prompt {
      */
     const val NO_ACTIONS = "This is a chat: you can only write replies. You cannot run, start, stop, test, change or " + // lint:log-only
         "delete anything on this phone or on a PC. Never say or imply that you did, are doing or will do such a thing, " +
-        "and never make up its result. A request to stop is such a thing: never answer \"Stopped\", say you can't stop " +
+        "and never make up its result. When the person wants your replies to stop or change (\"stop\", \"that's enough\", " +
+        "\"stop using lists\"), just do it. When they want work stopped (\"stop whatever you're doing\", \"stop the test\"), " +
+        "never answer \"Stopped\": say you can't stop " +
         "anything from this chat. When asked to do such a thing, say only that you can't from this chat. " +
         "Add no warnings or lecture."
 
     /** The same where project work exists ([PcTalk.projectWork]): it is offered, and the person starts it. */
     private const val NO_ACTIONS_OFFER = "This is a chat: you can only write replies. You cannot run, start, stop, test, change or " + // lint:log-only
         "delete anything on this phone or on a PC. Never say or imply that you did, are doing or will do such a thing, " +
-        "and never make up its result. A request to stop is such a thing: never answer \"Stopped\", say you can't stop " +
+        "and never make up its result. When the person wants your replies to stop or change (\"stop\", \"that's enough\", " +
+        "\"stop using lists\"), just do it. When they want work stopped (\"stop whatever you're doing\", \"stop the test\"), " +
+        "never answer \"Stopped\": say you can't stop " +
         "anything from this chat and that a task is stopped with its Stop button. You don't know their project names: " +
         "never make one up. When asked to do such a thing, say in one or two sentences that you can't from this chat, and offer it as project work: a task in one of their projects on their PC, which they start " +
         "themselves. Replying yes in this chat starts nothing. Add no warnings or lecture."

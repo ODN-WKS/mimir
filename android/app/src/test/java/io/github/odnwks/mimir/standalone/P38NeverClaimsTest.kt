@@ -39,6 +39,8 @@ class P38NeverClaimsTest {
             "You cannot run, start, stop",
             "never make up its result",
             "never answer \"Stopped\"",
+            "wants your replies to stop or change",
+            "just do it. When they want work stopped",
             "you can't from this chat",
             "Add no warnings or lecture",
         )) assertTrue("$words in: $what", what.contains(words))
