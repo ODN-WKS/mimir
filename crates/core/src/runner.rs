@@ -238,6 +238,19 @@ pub const FRESH_ROW_MAX: u8 = 3;
 pub const FRESH_ROW_FULL: &str = "Waiting for you: 3 fresh starts in a row.";
 /// How the line in the chat where a new session begins starts.
 const FRESH_DIVIDER: &str = "Fresh start at ";
+/// Conversation size (in tokens) past which a task starts fresh by itself
+/// (owner, 2026-11-26 22:39).
+pub const AUTO_FRESH_FROM: u64 = 100_000;
+/// The warning line in the chat when it gets there.
+pub const AUTO_FRESH_LINE: &str = "This chat has grown long. To save usage, it starts fresh here \
+                                   once this answer ends and the hand-off is saved.";
+/// What the session is asked before it is left (never shown as the owner's
+/// words).
+pub const HANDOFF_ASK: &str = "This conversation is past 100,000 tokens, so Mímir starts a fresh \
+                               session for this task next. Before that, update the project's \
+                               hand-off document: what is done, what comes next, and any \
+                               background jobs still running (they keep going). Then end your \
+                               turn. Start no new work and answer nothing meant for the owner.";
 
 /// Who asked for a fresh start.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -247,6 +260,9 @@ pub enum FreshWhy {
     Owner,
     /// The session itself, as its last step: the new session starts working.
     Session,
+    /// Mímir, past [`AUTO_FRESH_FROM`]: the next message goes to the new
+    /// session.
+    Auto,
 }
 
 /// What [`Runner::fresh_start`] did.
@@ -1654,6 +1670,7 @@ impl Runner {
                 t.brief_pending = true;
             }
             t.session_id = None;
+            t.auto_fresh = 0;
         });
         self.drop_local_only_files(id);
         if let Some(i) = self.index(id)
@@ -1692,7 +1709,7 @@ impl Runner {
                 .rev()
                 .take_while(|e| !matches!(e, crate::task::Entry::You(_)))
                 .any(|e| matches!(e, crate::task::Entry::Note(n) if n == FRESH_ROW_FULL));
-            if why == FreshWhy::Session && !said {
+            if why != FreshWhy::Owner && !said {
                 t.add_note(FRESH_ROW_FULL);
                 self.tasks[i].dirty = true;
                 self.save_dirty();
@@ -1708,6 +1725,83 @@ impl Runner {
             Some(_) => Fresh::Queued,
             None => Fresh::Done,
         })
+    }
+
+    /// Past [`AUTO_FRESH_FROM`]: the warning line at once, then, each step
+    /// only once the turn on now has ended, the hand-off and the fresh start.
+    /// Nothing running is ended.
+    fn auto_fresh(&mut self) {
+        for i in 0..self.tasks.len() {
+            let l = &self.tasks[i];
+            let t = &l.task;
+            if t.incognito
+                || t.live_elsewhere
+                || t.outside
+                || t.from_phone.is_some()
+                || t.fresh_pending.is_some()
+                || t.session_id.is_none()
+            {
+                continue;
+            }
+            if t.auto_fresh == 0 {
+                if t.context_used < AUTO_FRESH_FROM {
+                    continue;
+                }
+                let l = &mut self.tasks[i];
+                l.task.auto_fresh = 1;
+                l.task.add_note(AUTO_FRESH_LINE);
+                l.dirty = true;
+                self.save_dirty();
+            }
+            let l = &self.tasks[i];
+            let ended = !l.busy()
+                && l.asks.is_empty()
+                && !self.resend.iter().any(|(t, _, _, _)| *t == l.task.id);
+            if !ended {
+                continue;
+            }
+            let id = l.task.id.clone();
+            // A turn that did not end well counts as stopped.
+            let status = match l.task.status {
+                Status::Done if l.task.failed => Status::Stopped,
+                s => s,
+            };
+            match (l.task.auto_fresh, status) {
+                // A plan waiting for the owner waits for the owner.
+                (_, Status::Done) if l.task.plan_waiting() => {}
+                (1, Status::Done) => {
+                    if l.task.fresh_row >= FRESH_ROW_MAX {
+                        // Says it once; no hand-off for a start that can't follow.
+                        let _ = self.fresh_start(&id, FreshWhy::Auto);
+                        continue;
+                    }
+                    let ask = match self.handoff_files.get(&l.task.project) {
+                        Some(f) if !f.trim().is_empty() => {
+                            format!("{HANDOFF_ASK} The hand-off document is {}.", f.trim())
+                        }
+                        _ => HANDOFF_ASK.to_string(),
+                    };
+                    self.tasks[i].task.auto_fresh = 2;
+                    self.tasks[i].dirty = true;
+                    self.send_inner(&id, &ask, &[], false);
+                }
+                (2, Status::Done) if !l.running() => {
+                    if self.fresh_start(&id, FreshWhy::Auto).is_err()
+                        && let Some(i) = self.index(&id)
+                    {
+                        self.tasks[i].task.auto_fresh = 1;
+                    }
+                }
+                // Stopped or failed while saving the hand-off: asked again
+                // after the owner's next turn.
+                (2, Status::Stopped | Status::Paused) => {
+                    self.tasks[i].task.auto_fresh = 1;
+                    self.tasks[i].dirty = true;
+                    self.save_dirty();
+                }
+                _ => {}
+            }
+        }
     }
 
     /// Carries out the fresh starts whose run has ended.
@@ -1739,6 +1833,7 @@ impl Runner {
             l.dirty = true;
             let t = &mut l.task;
             t.fresh_pending = None;
+            t.auto_fresh = 0;
             // A session the person had before Mímir is never deleted by it.
             if let Some(old) = t.session_id.take() {
                 if t.imported {
@@ -2299,6 +2394,7 @@ impl Runner {
         self.end_stuck_runs();
         self.tick_inner();
         self.send_resends();
+        self.auto_fresh();
         if self.tasks.iter().any(|l| l.task.fresh_pending.is_some()) {
             self.fresh_starts();
             self.save_dirty();

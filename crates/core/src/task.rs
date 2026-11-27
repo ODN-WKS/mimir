@@ -263,6 +263,10 @@ pub struct Task {
     /// Fresh starts since the owner last wrote.
     #[serde(default, skip_serializing_if = "is_zero_u8")]
     pub fresh_row: u8,
+    /// The automatic fresh start past 100,000 tokens: 0 not yet, 1 the
+    /// warning line is shown, 2 the session was asked to save the hand-off.
+    #[serde(default, skip_serializing_if = "is_zero_u8")]
+    pub auto_fresh: u8,
     /// Claude Code sessions this task left behind with a fresh start:
     /// deleting the task deletes them too.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -473,6 +477,7 @@ impl Task {
             is_agentic: false,
             fresh_pending: None,
             fresh_row: 0,
+            auto_fresh: 0,
             past_sessions: Vec::new(),
             kept_sessions: Vec::new(),
         }
