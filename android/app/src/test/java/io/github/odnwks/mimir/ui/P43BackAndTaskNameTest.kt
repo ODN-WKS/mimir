@@ -23,7 +23,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
-/** P43: Back from a Settings page or a task goes where you came from, and a task says what it is. */
+/** P43: Back from a Settings page or a task goes where you came from. P47: a task has no arrow or name. */
 @RunWith(RobolectricTestRunner::class)
 @Config(qualifiers = "w360dp-h780dp-xxhdpi")
 class P43BackAndTaskNameTest {
@@ -92,23 +92,21 @@ class P43BackAndTaskNameTest {
         assertTrue(nav.menuOpen)
     }
 
-    @Test fun aTaskShowsAnArrowItsNameAndItsProject() {
+    @Test fun aTaskShowsItsProjectAndNoArrowOrName() {
         start()
         open(Screen.Task(id))
         val task = station.state.value.task(id)!!
-        compose.onAllNodesWithContentDescription("Back").onFirst().assertIsDisplayed()
-        compose.onAllNodesWithText(task.title).onFirst().assertIsDisplayed()
+        assertEquals(0, compose.onAllNodesWithContentDescription("Back").fetchSemanticsNodes().size)
+        assertEquals(0, compose.onAllNodesWithText(task.title).fetchSemanticsNodes().size)
         compose.onAllNodesWithText(task.project).onFirst().assertIsDisplayed()
     }
 
     @Test fun oneBackFromATaskIsItsProject() {
         start()
         val project = station.state.value.task(id)!!.project
-        for (press in listOf(::systemBack, ::arrow)) {
-            compose.runOnUiThread { nav.resetTo(Screen.Chat) }; compose.waitForIdle()
-            open(Screen.Project(project), Screen.Task(id))
-            press(); at(Screen.Chat, Screen.Project(project))
-        }
+        compose.runOnUiThread { nav.resetTo(Screen.Chat) }; compose.waitForIdle()
+        open(Screen.Project(project), Screen.Task(id))
+        systemBack(); at(Screen.Chat, Screen.Project(project))
     }
 
     @Test fun oneBackFromATaskIsWhereverItWasOpenedFrom() {
@@ -120,7 +118,7 @@ class P43BackAndTaskNameTest {
         }
         compose.runOnUiThread { nav.resetTo(Screen.Chat) }; compose.waitForIdle()
         open(Screen.Task(id))
-        arrow(); at(Screen.Chat)
+        systemBack(); at(Screen.Chat)
     }
 
     // A task carried on into a fresh one: still one press to where the first was opened from.

@@ -25,8 +25,8 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 /**
- * The compact task top (owner, 2026-11-25): one short row with a small round Stop while work runs and
- * the ⋯ menu; Find and voice typing in the menu. P43 adds Back, the task's name and its project to it.
+ * The compact task top (owner, 2026-11-25 and 2026-11-27): one short row with the state, the project, a
+ * small round Stop while work runs and the ⋯ menu; no task name or Back; Find and voice typing in the menu.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(qualifiers = "w390dp-h844dp-xhdpi")
@@ -49,11 +49,14 @@ class P10TopBarTest {
     private fun working(t: Task) = t.copy(permission = null, question = null, stopped = false, busy = true, status = "Working")
     private fun done(t: Task) = t.copy(permission = null, question = null, busy = false, stopped = false, status = "Done", messages = listOf(TaskMessage("1", false, "go"), TaskMessage("2", true, "All saved.")))
 
-    @Test fun theTaskNameAndBackAreInTheTopRow() {
+    @Test fun theTaskNameAndBackAreNotInTheTopRow() {
         show(station { working(it).copy(title = longTitle) })
-        compose.onNodeWithText(longTitle).assertIsDisplayed()
-        val back = compose.onNodeWithContentDescription("Back").fetchSemanticsNode().boundsInRoot
-        assertTrue("Back is at the left: ${dp(back.left)} dp", dp(back.left) <= 8f)
+        assertEquals(0, compose.onAllNodesWithText(longTitle).fetchSemanticsNodes().size)
+        assertEquals(0, compose.onAllNodesWithContentDescription("Back").fetchSemanticsNodes().size)
+        // The name is one tap away on the line.
+        compose.onAllNodes(androidx.compose.ui.test.SemanticsMatcher("shows the details") { it.config.getOrElseNullable(androidx.compose.ui.semantics.SemanticsActions.OnClick) { null }?.label == "Show more about this task" })[0].performClick()
+        compose.waitForIdle()
+        compose.onNodeWithText(longTitle, substring = true).assertIsDisplayed()
     }
 
     @Test fun aSmallRoundStopSitsInTheTopRowWhileWorking() {
@@ -120,6 +123,6 @@ class P10TopBarTest {
     @Test fun theTopAreaIsOneShortRow() {
         show(station { working(it) })
         val bottom = compose.onNodeWithContentDescription("Task options").fetchSemanticsNode().boundsInRoot.bottom
-        assertTrue("the top row ends within 60 dp: ${dp(bottom)}", dp(bottom) <= 60f)
+        assertTrue("the top row ends within 41 dp: ${dp(bottom)}", dp(bottom) <= 41f)
     }
 }

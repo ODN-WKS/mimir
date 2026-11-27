@@ -7,8 +7,6 @@ import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
-import androidx.compose.ui.test.onAllNodesWithContentDescription
-import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.performClick
 import io.github.odnwks.mimir.data.ExampleData
 import io.github.odnwks.mimir.data.FakeStation
@@ -90,11 +88,11 @@ class P43BackNeverFocusesTest {
 
     @Test fun backFromATaskIntoItsProjectLeavesItsBoxAlone() {
         start()
-        for (arrow in listOf(false, true)) {
+        for (inApp in listOf(false, true)) {
             touch { nav.resetTo(Screen.Chat) }
             touch { nav.open(Screen.Project(project)) }
             touch { nav.open(Screen.Task(id)) }
-            if (arrow) { compose.onAllNodesWithContentDescription("Back").onFirst().performClick(); settle() } else systemBack()
+            if (inApp) navBack() else systemBack()
             assertEquals(Screen.Project(project), nav.current)
             assertEquals(emptyList<String>(), focused())
         }

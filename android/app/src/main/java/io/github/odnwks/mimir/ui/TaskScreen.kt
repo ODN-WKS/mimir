@@ -34,10 +34,6 @@ import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.ui.semantics.heading
-import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.border
@@ -179,31 +175,27 @@ fun TaskScreen(taskId: String, state: StationState, station: Station, nav: Navig
     BoxWithConstraints(Modifier.fillMaxSize().background(Palette.Ground)) {
         val screenHeight = maxHeight
         Column(Modifier.fillMaxSize()) {
-            // The top: Back, the task's name, then its project and state on one line, a small Stop while it
-            // works, and the three dots. Find is in the menu.
+            // The top is one small line (owner, 2026-11-27): the state at the very left, the mode, the project,
+            // a small Stop while it works, and the three dots. Back is the phone's own; Find is in the menu.
             Row(
-                Modifier.fillMaxWidth().padding(start = 4.dp, end = 4.dp),
-                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp),
+                Modifier.fillMaxWidth().padding(start = 12.dp, end = 4.dp),
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 var more by rememberSaveable(task.id) { mutableStateOf(false) }
-                // In a tablet's right pane with nothing to go back to, the arrow is left out.
-                if (io.github.odnwks.mimir.ui.adaptive.LocalPaneBack.current) IconTarget(Glyphs.Back, "Back", { nav.back() })
-                else Spacer(Modifier.width(8.dp))
                 Column(
-                    Modifier.weight(1f).heightIn(min = 48.dp)
+                    Modifier.weight(1f).heightIn(min = 40.dp)
                         .clickable(role = androidx.compose.ui.semantics.Role.Button, onClickLabel = if (more) "Hide the details" else "Show more about this task") { more = !more }
                         .semantics(mergeDescendants = true) { liveRegion = androidx.compose.ui.semantics.LiveRegionMode.Polite },
                     verticalArrangement = Arrangement.Center,
                 ) {
-                    Text(task.title, style = Type.Label.copy(fontWeight = FontWeight.SemiBold), color = Palette.Text, maxLines = if (more) 4 else 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.semantics { heading() })
                     TaskFacts(
-                        project = { if (task.project.isNotBlank()) Text(task.project, style = Type.Small, color = Palette.BlueText, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                         tags = {
-                        val (fg, bg) = stateColours(task.stateWords)
-                        Tag(task.stateWords, fg, bg)
-                        // A mode that doesn't ask first is always in sight.
-                        task.riskyMode?.let { if (task.yolo) Tag(it, Palette.Ground, Palette.Red) else Tag(it, Palette.AmberInk, Palette.Amber) }
+                            val (fg, bg) = stateColours(task.stateWords)
+                            Tag(task.stateWords, fg, bg)
+                            // A mode that doesn't ask first is always in sight.
+                            task.riskyMode?.let { if (task.yolo) Tag(it, Palette.Ground, Palette.Red) else Tag(it, Palette.AmberInk, Palette.Amber) }
                         },
+                        project = { if (task.project.isNotBlank()) Text(task.project, style = Type.Small, color = Palette.BlueText, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                     ) {
                         // What it's doing right now, on the same line: the words first, the time after them while it fits.
                         Box {
@@ -212,8 +204,7 @@ fun TaskScreen(taskId: String, state: StationState, station: Station, nav: Navig
                             }
                         }
                     }
-                    val about = listOf(if (task.plan) "Plan first" else "", task.age).filter { it.isNotBlank() }.joinToString(" · ")
-                    if (more && about.isNotEmpty()) Text(about, style = Type.Small, color = Palette.TextDim, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
+                    if (more) Text(listOf(task.title, task.project, if (task.plan) "Plan first" else "", task.age).filter { it.isNotBlank() }.joinToString(" · "), style = Type.Small, color = Palette.TextDim, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
                 }
                 // Stop: small and round; its confirmation is a ring that unwinds (a followed session has its own Stop below).
                 if (task.showsStop && !task.stopPending && !(listsSessions && followed && !carried)) StopControl(
@@ -737,13 +728,13 @@ private fun ElsewhereNote(modifier: Modifier) {
 }
 
 /**
- * The task top's second line: project, state, mode, then what it's doing. The state and mode tags are
- * measured first, so they always show whole; the project name takes what is left (up to 96 dp) and is
- * shortened with "…", and the doing-now line gets the rest.
+ * The task top's line: state, mode, project, then what it's doing. The state and mode tags are measured
+ * first, so they always show whole; the project name takes what is left (up to 96 dp) and is shortened
+ * with "…", and the doing-now line gets the rest.
  */
 @Composable
-private fun TaskFacts(project: @Composable () -> Unit, tags: @Composable () -> Unit, now: @Composable () -> Unit) {
-    androidx.compose.ui.layout.Layout(listOf(project, tags, now)) { (projects, tagged, doing), limits ->
+private fun TaskFacts(tags: @Composable () -> Unit, project: @Composable () -> Unit, now: @Composable () -> Unit) {
+    androidx.compose.ui.layout.Layout(listOf(tags, project, now)) { (tagged, projects, doing), limits ->
         val gap = 6.dp.roundToPx()
         var left = limits.maxWidth
         fun take(m: androidx.compose.ui.layout.Measurable, most: Int = left) =
@@ -751,7 +742,7 @@ private fun TaskFacts(project: @Composable () -> Unit, tags: @Composable () -> U
         val shownTags = tagged.map { take(it) }
         val name = projects.map { take(it, 96.dp.roundToPx()) }
         val line = doing.map { take(it) }
-        val all = (name + shownTags + line).filter { it.width > 0 }
+        val all = (shownTags + name + line).filter { it.width > 0 }
         val height = all.maxOfOrNull { it.height } ?: 0
         layout(limits.maxWidth, height) {
             var x = 0

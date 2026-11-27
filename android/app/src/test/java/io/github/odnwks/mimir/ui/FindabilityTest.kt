@@ -345,7 +345,7 @@ class FindabilityTest {
         compose.onNodeWithContentDescription("Task options").performClick()
         compose.waitForIdle()
         tap("Plan first, change nothing yet")
-        // Plan first is a tap away on the task's name, so the conversation stays clean.
+        // Plan first is a tap away on the top line, so the conversation stays clean.
         compose.onAllNodes(androidx.compose.ui.test.SemanticsMatcher("shows the details") { it.config.getOrElseNullable(androidx.compose.ui.semantics.SemanticsActions.OnClick) { null }?.label == "Show more about this task" })[0].performClick()
         compose.waitForIdle()
         compose.onNodeWithText("Plan first", substring = true).assertExists()
