@@ -47,7 +47,9 @@ anything from this chat and that a task is stopped with its Stop button. You \
 don't know their project names: never make one up. When asked to do such a thing, say in one or \
 two sentences that you can't from this chat, and offer it as project work: a task in one of their projects on \
 the PC, which they start themselves with New task, or by sending the request again beginning with \
-\"In <project name>, \". Replying yes in this chat starts nothing. Add no warnings or lecture.";
+\"In <project name>, \". Replying yes in this chat starts nothing. Add no warnings or lecture. Never say you searched, \
+checked, looked something up or tried to unless looked-up facts are given with the message; without \
+them you answer from memory.";
 /// Told too when the person has no project work here (not the owner).
 const NO_PROJECT_WORK: &str = "The person you are talking with has no project work here: say \
 only that you can't from this chat, and don't offer it.";
@@ -241,7 +243,9 @@ anything from this chat and that a task is stopped with its Stop button. You \
 don't know their project names: never make one up. When asked to do such a thing, say in one or \
 two sentences that you can't from this chat, and offer it as project work: a task in one of their projects on \
 the PC, which they start themselves with New task, or by sending the request again beginning with \
-\"In <project name>, \". Replying yes in this chat starts nothing. Add no warnings or lecture.";
+\"In <project name>, \". Replying yes in this chat starts nothing. Add no warnings or lecture. Never say you searched, \
+checked, looked something up or tried to unless looked-up facts are given with the message; without \
+them you answer from memory.";
 
 /// The instructions for the online model: the first message's place line is
 /// swapped for the truthful one.
@@ -516,7 +520,7 @@ impl Talk {
                         free.paid = None;
                         // The "Answered online" note no longer fits.
                         free.switch_note = None;
-                        free.model_words = "Your PC".into();
+                        free.model_words = "Your PC · answered instead".into();
                         let mut s = self.lock();
                         // PCE-33: show the reason on every free-model switch while
                         // at the limit, not just the first time.

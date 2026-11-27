@@ -505,6 +505,17 @@ fn mic_icon(ui: &mut egui::Ui, draft: &mut String, actions: &mut Vec<Action>) {
 /// The small line under an answer that used lookups.
 pub(crate) const SOURCES_TAG: &str = "Sources:";
 
+/// Under an answer that no looked-up source stands behind (the phone's words).
+pub(crate) const FROM_MEMORY: &str = "From memory, no sources";
+
+/// A model wrote it and nothing looked up came with it. A model's line is
+/// "model · where"; the PC's own report ("What's running?") is just its name.
+fn from_memory(t: &ChatTurn) -> bool {
+    t.sources.is_empty()
+        && t.ran.is_some()
+        && t.model_words.as_deref().is_none_or(|w| w.contains('·'))
+}
+
 /// The sites an answer used, once each, with the page to open (a blocked search's results page
 /// is not a source). Only web addresses.
 pub(crate) fn source_links(t: &ChatTurn) -> Vec<(String, String)> {
@@ -854,6 +865,9 @@ impl App {
                             ui.add_space(2.0);
                             // Under an answer that used lookups: "Sources: site, site", each a link.
                             let sources = source_links(t);
+                            if from_memory(t) {
+                                ui.label(RichText::new(FROM_MEMORY).color(MUTED).size(12.0));
+                            }
                             if !sources.is_empty() {
                                 ui.horizontal_wrapped(|ui| {
                                     ui.spacing_mut().item_spacing.x = 8.0;
