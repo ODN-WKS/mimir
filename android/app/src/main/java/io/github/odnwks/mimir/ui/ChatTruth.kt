@@ -48,9 +48,9 @@ fun whoNow(paired: Boolean, usePc: Boolean, phoneCan: Boolean, pcOnline: Boolean
     return WhoNow(false, null)
 }
 
-/** Claude's use left this week in plain words, on the chat screen and in the side menu; "not read yet" when the phone has no reading. */
-fun usageLeftWords(u: Usage): String =
-    if (u.percentText == "—") "Claude use this week: not read yet" else "Claude use left this week: ${100 - u.percent}%" + (u.resets.takeIf { it.isNotBlank() }?.let { " · $it" } ?: "")
+/** Claude's use left this week in plain words, on the chat screen; null (nothing is said) when the phone has no reading. */
+fun usageLeftWords(u: Usage): String? =
+    if (u.percentText == "—") null else "Claude use left this week: ${100 - u.percent}%" + (u.resets.takeIf { it.isNotBlank() }?.let { " · $it" } ?: "")
 
-/** The side menu's right-hand word: the share left, or "not read yet". */
-fun usageLeftShort(u: Usage): String = if (u.percentText == "—") "not read yet" else "${100 - u.percent}%"
+/** The side menu's right-hand word: the share left; null (no row) when there is no reading. */
+fun usageLeftShort(u: Usage): String? = if (u.percentText == "—") null else "${100 - u.percent}%"

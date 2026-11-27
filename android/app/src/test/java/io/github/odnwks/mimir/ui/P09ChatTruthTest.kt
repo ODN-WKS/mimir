@@ -47,14 +47,14 @@ class P09ChatTruthTest {
     @Test fun pcStaysTheAnswererWhileItAnswers() = assertFalse(whoNow(true, true, true, true, "pc", null, false, false).phoneTookOver)
     @Test fun autoPickIsNeverShownForAnotherModel() = assertEquals("Your PC's model", pcModelWord(null))
 
-    // Item 11 (phone part): use left, or a plain "not read yet".
+    // Item 11 (phone part): use left, or nothing when unknown.
     @Test fun useLeftShowsTheShareLeft() {
         assertEquals("Claude use left this week: 38% · resets in 3 days", usageLeftWords(Usage("62%", 62, "resets in 3 days")))
         assertEquals("38%", usageLeftShort(Usage("62%", 62, "")))
     }
     @Test fun useLeftSaysNotReadYetWithoutAReading() {
-        assertEquals("Claude use this week: not read yet", usageLeftWords(Usage("—", 0, "")))
-        assertEquals("not read yet", usageLeftShort(Usage("—", 0, "")))
+        assertEquals(null, usageLeftWords(Usage("—", 0, "")))
+        assertEquals(null, usageLeftShort(Usage("—", 0, "")))
     }
 
     // Item 23: the box takes the cursor when asked, and not when the setting is off.

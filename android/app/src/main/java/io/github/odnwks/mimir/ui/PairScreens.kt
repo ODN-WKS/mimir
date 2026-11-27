@@ -194,9 +194,8 @@ fun PairScreen(station: Station, nav: Navigator, screenLock: Boolean = true) {
                         .clearAndSetSemantics { contentDescription = "Scan the code with the camera"; role = Role.Button },
                     contentAlignment = Alignment.Center,
                 ) {
-                    Box(Modifier.size(150.dp).border(3.dp, Palette.BlueLight, RoundedCornerShape(16.dp)), contentAlignment = Alignment.Center) {
-                        Text(CONNECT_SCAN, style = Type.Label, color = Palette.TextDim)
-                    }
+                    // Only the frame: the button below says it once.
+                    Box(Modifier.size(150.dp).border(3.dp, Palette.BlueLight, RoundedCornerShape(16.dp)))
                 }
             }
         }

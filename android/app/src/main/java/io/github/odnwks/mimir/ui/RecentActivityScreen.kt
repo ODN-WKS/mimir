@@ -84,6 +84,26 @@ data class RecentItem(
 fun firstWords(t: Task?): String =
     t?.messages?.firstOrNull { !it.fromClaude && !it.note }?.text.orEmpty().lineSequence().map { it.trim() }.firstOrNull { it.isNotEmpty() }.orEmpty()
 
+/**
+ * [words] (a first message) for the line under [name]: nothing when the name was made from them,
+ * so a conversation is named once. "Please" and the like before the name don't count as new words.
+ */
+fun wordsBeyondName(name: String, words: String): String {
+    val head = name.trim().trimEnd('…', '.', '?', '!').trim()
+    if (head.isEmpty()) return words
+    val at = words.indexOf(head, ignoreCase = true)
+    val lead = if (at < 0) null else words.take(at).trim().lowercase()
+    val end = at + head.length
+    val whole = at >= 0 && (name.trimEnd().endsWith('…') || words.getOrNull(end)?.isLetterOrDigit() != true)
+    return if (whole && lead in NAME_LEADS) "" else words
+}
+
+/** What a name leaves off the front of a first message (as the PC's naming does). */
+private val NAME_LEADS = setOf(
+    "", "can you", "could you", "please", "can you please", "could you please",
+    "i want you to", "i'd like you to", "i would like you to", "hey claude,", "hi claude,", "claude,",
+)
+
 /** How many tasks work right now: the menu row's "N working". */
 fun recentWorking(state: StationState): Int = state.tasks.count { !it.whisper && it.stateWords in WORKING_WORDS }
 
@@ -241,7 +261,8 @@ private fun RecentBubble(item: RecentItem, onOpen: () -> Unit) {
         }
         val line = buildAnnotatedString {
             if (item.project != null) { pushStyle(SpanStyle(color = RecentColors.Project)); append(item.project); pop() } else append("Chat")
-            if (item.words.isNotEmpty()) { append(" · "); append(item.words) }
+            val more = wordsBeyondName(item.name, item.words)
+            if (more.isNotEmpty()) { append(" · "); append(more) }
         }
         Text(line, style = TextStyle(fontSize = 13.sp, lineHeight = 17.sp), color = RecentColors.Dim, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }

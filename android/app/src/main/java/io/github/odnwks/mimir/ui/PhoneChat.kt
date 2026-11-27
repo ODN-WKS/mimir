@@ -362,7 +362,7 @@ fun PhoneChat(
             s.chat.turns.count { it.user } + s.chat.queued.size,
         )
         ChatTextSize {
-        if (showHome) HomeEmpty(first, answerer, java.time.LocalTime.now().hour, Modifier.weight(1f), online = io.github.odnwks.mimir.online.OnlineModels.answering()?.let(io.github.odnwks.mimir.online.OnlineModels::serviceOf))
+        if (showHome) HomeEmpty(first, answerer, Modifier.weight(1f), online = io.github.odnwks.mimir.online.OnlineModels.answering()?.let(io.github.odnwks.mimir.online.OnlineModels::serviceOf))
         else LazyColumn(
             Modifier.weight(1f).fillMaxWidth().pinchToZoomText(LocalAppSize.current).pointerInput(Unit) { detectTapGestures(onTap = { focus.clearFocus() }) },
             state = list,
@@ -523,9 +523,9 @@ fun PhoneChat(
                 Modifier.startupBottom(startup, on = first),
             )
         }
-        // Claude use left this week, with the model choice (a reading from the PC, or a plain "not read yet").
-        if (paired && claudeOffered && !s.whisper && !pcWhisper) link?.state?.collectAsStateWithLifecycle()?.value?.usage?.let { u ->
-            Text(usageLeftWords(u), style = Type.Small, color = Palette.TextDim, modifier = Modifier.padding(horizontal = 20.dp, vertical = 2.dp).testTag("usage-left"))
+        // Claude use left this week, with the model choice: only once the PC has a reading.
+        if (paired && claudeOffered && !s.whisper && !pcWhisper) link?.state?.collectAsStateWithLifecycle()?.value?.usage?.let(::usageLeftWords)?.let { words ->
+            Text(words, style = Type.Small, color = Palette.TextDim, modifier = Modifier.padding(horizontal = 20.dp, vertical = 2.dp).testTag("usage-left"))
         }
         // The three dots' "Talk (voice typing)", done here (the mic in the box does the same).
         val startVoice = rememberStartVoice(voice)

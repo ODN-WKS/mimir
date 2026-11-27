@@ -81,8 +81,8 @@ fun ProjectScreen(name: String, state: StationState, station: Station, nav: Navi
                 TaskRow(
                     t.taskId ?: t.name, t.name,
                     // The state shows once, in the tag; a line under the name only when it says more,
-                    // else the first words of its first message under its time name (P17).
-                    t.meta.takeIf { it.isNotBlank() && it != t.chip.label } ?: t.taskId?.let { firstWords(state.task(it)) }?.ifEmpty { null }, t.chip.label, fg, bg,
+                    // else the first words of its first message, unless the name already says them.
+                    t.meta.takeIf { it.isNotBlank() && it != t.chip.label } ?: t.taskId?.let { wordsBeyondName(t.name, firstWords(state.task(it))) }?.ifEmpty { null }, t.chip.label, fg, bg,
                     onOpen = t.taskId?.let { id -> { nav.open(Screen.Task(id), tap.last) } },
                     onArchive = {
                         t.taskId?.let { id ->

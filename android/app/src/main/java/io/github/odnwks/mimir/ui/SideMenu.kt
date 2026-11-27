@@ -236,7 +236,8 @@ fun SideMenu(
                 // P17: every conversation, newest first; "N working" in green while something works.
                 item("recent") { MenuRow(MENU_RECENT, right = if (working > 0) "$working working" else "", rightColor = PcGreen) { go { nav.open(Screen.Recent) } } }
                 pcRow()
-                if (state.paired) item("usage") { MenuRow(MENU_USAGE, right = usageLeftShort(state.usage), dim = true, ellipsize = true, modifier = Modifier.testTag("menu-usage")) { go { nav.openFromMenu(Screen.Models) } } }
+                val left = usageLeftShort(state.usage)
+                if (state.paired && left != null) item("usage") { MenuRow(MENU_USAGE, right = left, dim = true, ellipsize = true, modifier = Modifier.testTag("menu-usage")) { go { nav.openFromMenu(Screen.Models) } } }
             }
             item("chats-head") {
                 Section(MENU_CHATS, if (shownChats.isEmpty()) "" else "${shownChats.size}", fold.chatsOpen, amber = false, fold::toggleChats)

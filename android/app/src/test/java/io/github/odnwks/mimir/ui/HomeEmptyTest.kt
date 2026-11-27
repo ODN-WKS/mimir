@@ -37,7 +37,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
-/** The phone's empty chat (redesign R4): first hello, everyday greeting, starters, the amber pill, the box. */
+/** The phone's empty chat (redesign R4): first hello, everyday question, starters, the amber pill, the box. */
 @RunWith(RobolectricTestRunner::class)
 @Config(qualifiers = "w360dp-h740dp-xhdpi")
 @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
@@ -63,12 +63,6 @@ class HomeEmptyTest {
         assertFalse(isFirstOpen(hasChatted = false, anyChat = true))
     }
 
-    @Test fun greetingFollowsTheHour() {
-        assertEquals("Good morning.", greetingFor(5)); assertEquals("Good morning.", greetingFor(11))
-        assertEquals("Good afternoon.", greetingFor(12)); assertEquals("Good afternoon.", greetingFor(17))
-        assertEquals("Good evening.", greetingFor(18)); assertEquals("Good evening.", greetingFor(23)); assertEquals("Good evening.", greetingFor(2))
-    }
-
     @Test fun theFirstOpenWordsAreExact() {
         assertEquals("Hi, I'm Mímir.", HELLO)
         assertEquals("Ask me anything. Private by design.", firstOpenLead(Answerer.Phone))
@@ -85,7 +79,7 @@ class HomeEmptyTest {
 
     @Test fun whenClaudeAnswersTheDimLineSaysSo() {
         assertEquals("An online model answers this chat, so your messages go to Anthropic.", firstOpenFine(Answerer.Claude))
-        compose.setContent { MimirTheme { HomeEmpty(first = true, answerer = Answerer.Claude, hour = 9) } }
+        compose.setContent { MimirTheme { HomeEmpty(first = true, answerer = Answerer.Claude) } }
         compose.onNodeWithText("An online model answers this chat, so your messages go to Anthropic.").assertIsDisplayed()
         compose.onNodeWithText("Your chats stay on this phone", substring = true).assertDoesNotExist()
     }
@@ -105,9 +99,8 @@ class HomeEmptyTest {
         assertTrue(prefs().getBoolean("connect_hint_hidden", false))
     }
 
-    @Test fun everydayIsOnlyAGreetingAndTheBox() {
+    @Test fun everydayIsOnlyTheQuestionAndTheBox() {
         open(hasChatted = true)
-        compose.onNodeWithText(greetingFor(java.time.LocalTime.now().hour)).assertIsDisplayed()
         compose.onNodeWithText("What can I help with?").assertIsDisplayed()
         compose.onNodeWithText("Hi, I'm Mímir.").assertDoesNotExist()
         compose.onNodeWithText("Have a PC with Mímir?", substring = true).assertDoesNotExist()
@@ -261,7 +254,7 @@ class HomeEmptyTest {
     @Config(qualifiers = "w360dp-h640dp-xhdpi", fontScale = 1.15f)
     @Test fun helloShowsEyeWithoutRingAndKeyboardHidesEyeAndSmallLine() {
         var kb by mutableStateOf(false)
-        compose.setContent { MimirTheme { HomeEmpty(first = true, answerer = Answerer.Pc, hour = 9, keyboardOpen = kb) } }
+        compose.setContent { MimirTheme { HomeEmpty(first = true, answerer = Answerer.Pc, keyboardOpen = kb) } }
         compose.onNodeWithTag("hello-eye").assertIsDisplayed()
         compose.onNodeWithText("Ask me anything. Private by design.").assertIsDisplayed()
         kb = true

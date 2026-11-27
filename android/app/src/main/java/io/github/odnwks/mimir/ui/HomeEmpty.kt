@@ -58,7 +58,7 @@ import kotlin.math.roundToInt
 
 /**
  * The phone's empty chat (redesign R4): the very first time a hello that says plainly it is private;
- * every day after, only a greeting by the hour, a few starters and the box.
+ * every day after, only the question, a few starters and the box.
  */
 
 /** Who is answering this chat: the words of the first hello follow it, so they stay true. */
@@ -66,12 +66,6 @@ enum class Answerer { Phone, Pc, Claude, Online }
 
 /** The first hello shows only while no chat exists yet and no message was ever sent on this phone. */
 fun isFirstOpen(hasChatted: Boolean, anyChat: Boolean): Boolean = !hasChatted && !anyChat
-
-fun greetingFor(hour: Int): String = when (hour) {
-    in 5..11 -> "Good morning."
-    in 12..17 -> "Good afternoon."
-    else -> "Good evening."
-}
 
 const val HELLO = "Hi, I'm Mímir."
 const val EVERYDAY_LEAD = "What can I help with?"
@@ -149,11 +143,11 @@ fun helloEyeDp(availableDp: Float, fontScale: Float): Float {
     return (availableDp - textDp).coerceIn(64f, 250f)
 }
 
-/** The middle of the empty phone chat. [first]: the hello; otherwise the greeting. [keyboardOpen]: the eye and small line step aside. */
+/** The middle of the empty phone chat. [first]: the hello; otherwise the question. [keyboardOpen]: the eye and small line step aside. */
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 fun HomeEmpty(
-    first: Boolean, answerer: Answerer, hour: Int, modifier: Modifier = Modifier, online: io.github.odnwks.mimir.online.Service? = null,
+    first: Boolean, answerer: Answerer, modifier: Modifier = Modifier, online: io.github.odnwks.mimir.online.Service? = null,
     keyboardOpen: Boolean = androidx.compose.foundation.layout.WindowInsets.isImeVisible,
 ) {
     val startup = LocalEyeStartup.current
@@ -176,12 +170,10 @@ fun HomeEmpty(
                     Text(firstOpenFine(answerer, online), style = Type.Body.copy(fontSize = 13.5.sp, lineHeight = 20.sp), color = FineColor, textAlign = TextAlign.Center, modifier = words)
                 }
             } else {
-                Text(greetingFor(hour), style = Type.Hello, color = Palette.Text, textAlign = TextAlign.Center, modifier = Modifier.semantics { heading() })
-                Box(Modifier.size(10.dp))
-                Text(EVERYDAY_LEAD, style = Type.Body.copy(fontSize = 16.sp), color = FineColor, textAlign = TextAlign.Center)
+                Text(EVERYDAY_LEAD, style = Type.Hello.copy(lineBreak = androidx.compose.ui.text.style.LineBreak.Heading), color = Palette.Text, textAlign = TextAlign.Center, modifier = Modifier.semantics { heading() })
             }
         }
-        // The everyday screen has no eye: on a fresh start the eye plays over it, in the hello's place, then fades into the greeting.
+        // The everyday screen has no eye: on a fresh start the eye plays over it, in the hello's place, then fades into the question.
         if (!first && startup.playing) {
             Box(
                 Modifier.fillMaxSize().graphicsLayer { alpha = overlayAlpha(startup.t) }.background(Palette.Ground).testTag("startup-overlay"),
