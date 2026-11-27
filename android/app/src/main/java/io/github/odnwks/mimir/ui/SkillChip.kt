@@ -43,10 +43,10 @@ const val SKILL_FOOT = "No skill needed for weather, quick facts or general know
 
 private val chipWords get() = Type.Small.copy(fontWeight = FontWeight.Bold)
 
-/** The width the bubble needs for its shortest whole words. */
+/** The width the bubble needs for the skill's whole name (never shortened words that don't name it). */
 @Composable
 fun skillChipNeeds(skill: Skill?): Int {
-    val words = rememberTextMeasurer().measure(skill?.short ?: "Skill", chipWords, maxLines = 1).size.width
+    val words = rememberTextMeasurer().measure(skill?.title ?: "Skill", chipWords, maxLines = 1).size.width
     return words + with(LocalDensity.current) { 18.dp.roundToPx() }
 }
 
@@ -57,7 +57,7 @@ fun SkillChip(skill: Skill?, onClick: () -> Unit) {
         val measurer = rememberTextMeasurer()
         val style = chipWords
         val padding = with(LocalDensity.current) { 18.dp.roundToPx() }
-        val forms = if (skill == null) listOf("Skill") else listOf("Skill: ${skill.title}", skill.title, skill.short)
+        val forms = if (skill == null) listOf("Skill") else listOf("Skill: ${skill.title}", skill.title)
         val words = forms.firstOrNull { measurer.measure(it, style, maxLines = 1).size.width <= constraints.maxWidth - padding } ?: forms.last()
         val shape = RoundedCornerShape(12.dp)
         Box(

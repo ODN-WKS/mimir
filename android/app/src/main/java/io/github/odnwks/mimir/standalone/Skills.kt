@@ -9,37 +9,35 @@ import io.github.odnwks.mimir.online.Router
  */
 enum class Skill(
     val id: String, val title: String, val about: String,
-    /** The bubble's shorter words when room is short. */
-    val short: String,
     val lookup: Boolean, private val how: String,
 ) {
     Deep(
-        "deep_research", "Deep research", "Many sites, reads the pages, with sources", "Research", true,
+        "deep_research", "Deep research", "Many sites, reads the pages, with sources", true,
         "Write a short report. One section for each sub-question. Number the sources and cite them. End with a \"Bottom line\" of 3 to 5 points.",
     ),
     Shopping(
-        "shopping", "Shopping research", "Best options and prices", "Shopping", true,
+        "shopping", "Shopping research", "Best options and prices", true,
         "List the best options. For each, give the price, the shop and the date exactly as the fetched pages show them. Never invent a price; say when a page gives none.",
     ),
     Writing(
-        "fix_writing", "Fix my writing", "Edit, shorten, change tone, translate", "Writing", false,
+        "fix_writing", "Fix my writing", "Edit, shorten, change tone, translate", false,
         "Work on the person's own text, in the message or the attached file. Fix, shorten, change the tone or translate as asked. Give the finished text first.",
     ),
     Teach(
-        "teach", "Teach me", "Step by step, in plain words", "Teach", false,
+        "teach", "Teach me", "Step by step, in plain words", false,
         "Explain step by step in plain words. End with one question that checks understanding.",
     ),
     People(
-        "people_saying", "What people are saying", "Forums and posts on a topic, now", "People say", true,
+        "people_saying", "What people are saying", "Forums and posts on a topic, now", true,
         "Report what people are saying in the forums, question sites and news found, newest first. Quote their own words and cite each source.",
     ),
     Summarize(
-        "summarize", "Summarize", "A page, file or pasted text", "Summarize", false,
+        "summarize", "Summarize", "A page, file or pasted text", false,
         "Summarize the attached file or picture, the page given to you, or the pasted text. Short points first. " +
             "If a link's page was not given to you, say to tap \"Read\" under the message.",
     ),
     Trace(
-        "trace_claim", "Trace a claim", "Follows it to the original source, both sides", "Trace", true,
+        "trace_claim", "Trace a claim", "Follows it to the original source, both sides", true,
         "Follow the claim to its original source. Show the evidence on each side in the sources' own words, with citations. Give no verdict words.",
     );
 
