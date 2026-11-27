@@ -259,6 +259,7 @@ fn saved(home: &TestHome) -> serde_json::Value {
 fn chat(id: &str, text: &str) -> Call {
     Call::Talk {
         typed: false,
+        again: false,
         chat_id: "c1".into(),
         turn_id: id.into(),
         turns: vec![ChatTurn {
