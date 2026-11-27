@@ -1,0 +1,18 @@
+expect: "From elsewhere" stayed folded
+files: crates/ui/src/view_left.rs
+breaks: the folded state is saved before any session from elsewhere is read
+diff --git a/crates/ui/src/view_left.rs b/crates/ui/src/view_left.rs
+index 2155865..b2ebdcc 100644
+--- a/crates/ui/src/view_left.rs
++++ b/crates/ui/src/view_left.rs
+@@ -293,9 +293,7 @@ impl App {
+                     });
+                     ui.data_mut(|d| {
+                         d.insert_temp(arch_id, arch_open);
+-                        if !elsewhere.is_empty() {
+-                            d.insert_temp(else_id, else_open);
+-                        }
++                        d.insert_temp(else_id, else_open);
+                     });
+                     let arch = ease(ui.ctx().animate_bool_with_time(
+                         arch_id.with("anim"),
