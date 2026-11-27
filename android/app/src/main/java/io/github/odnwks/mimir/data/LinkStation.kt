@@ -323,15 +323,16 @@ class LinkStation(
     }
 
     /**
-     * A chat message not taken within [TALK_TAKEN_MS]: the link is redone only when it carries nothing. Anything
-     * heard from the PC since the message went out, or an answer to a quick check within [PROBE_WAIT_MS], means
-     * the PC is only slow, and the link with every call still waiting on it is kept (P40).
+     * A chat message not taken within [TALK_TAKEN_MS]: the link is redone only when this phone's calls don't get
+     * through. An answer to any call since the message went out, or to a quick check within [PROBE_WAIT_MS],
+     * means the PC is only slow, and the link with every call still waiting on it is kept (P40). The PC's own
+     * events prove nothing here: a link can carry them while the phone's calls are stuck (P46 walk, problem 1).
      */
     private fun redoIfSilent(answer: String, since: Long) {
-        if (lastSeenAt >= since) return
+        if (lastReplyAt >= since) return
         val heard = java.util.concurrent.CountDownLatch(1)
         if (call(Wire.projects()) { _, _ -> heard.countDown() }) heard.await(PROBE_WAIT_MS, java.util.concurrent.TimeUnit.MILLISECONDS)
-        if (lastSeenAt < since && synchronized(lock) { talking.containsKey(answer) }) redoLink("a chat message wasn't taken") // lint:log-only
+        if (lastReplyAt < since && synchronized(lock) { talking.containsKey(answer) }) redoLink("a chat message wasn't taken") // lint:log-only
     }
 
     private fun probe() {
@@ -525,7 +526,10 @@ class LinkStation(
                     cards = ev.cards.distinctBy { it.id }
                     after = { fetchAudio() }
                 }
-                is Ev.Reply -> replies.answered(ev.callId)?.let { cb -> after = { cb(ev.ok, ev.err) } }
+                is Ev.Reply -> {
+                    lastReplyAt = System.currentTimeMillis()
+                    replies.answered(ev.callId)?.let { cb -> after = { cb(ev.ok, ev.err) } }
+                }
                 is Ev.TestNotice, is Ev.TestNoticeOff -> {}
                 is Ev.ModelsChanged -> after = { refreshModels() }
                 is Ev.TalkPiece -> talking[ev.turnId]?.let { l -> after = { l.piece(ev.text, ev.thinking) } }
@@ -2079,6 +2083,8 @@ class LinkStation(
 
     /** When the PC was last reached (kept, so "as of" is true after the app closes too). */
     @Volatile private var lastSeenAt = data.seenAt
+    /** When the PC last answered one of this phone's calls: the proof that the phone's calls get through. */
+    @Volatile private var lastReplyAt = 0L
     /** A try to reach the PC failed since the app started (until then it's still being reached). */
     @Volatile private var failedOnce = false
 
