@@ -237,10 +237,23 @@ fun chatWho(answer: io.github.odnwks.mimir.standalone.Turn, pcName: String): Str
     return listOfNotNull(model, effort).joinToString(" · ").ifEmpty { null }
 }
 
-/** The small print of a chat message: the time it was made, with the model and effort of [answer] (itself, or the one a message got). */
+/**
+ * The read mark of the person's message at [i]: read once an answer follows it or the one being written
+ * has words, delivered while the answerer has it and no words yet, else only sent.
+ */
+fun chatReceipt(turns: List<io.github.odnwks.mimir.standalone.Turn>, i: Int, writing: Boolean, started: Boolean): MessageReceipt = when {
+    turns.drop(i + 1).any { !it.user } -> MessageReceipt.Read
+    writing && i == turns.indexOfLast { it.user } -> if (started) MessageReceipt.Read else MessageReceipt.Delivered
+    else -> MessageReceipt.Sent
+}
+
+/**
+ * The small print of a chat message: the time it was made, with the model and effort of [answer] (itself,
+ * or the one a message got), and on the person's own messages the [receipt] circle.
+ */
 @Composable
-fun ChatMeta(atMs: Long, answer: io.github.odnwks.mimir.standalone.Turn?, pcName: String) =
-    SmallPrint(answer?.let { chatWho(it, pcName) }, atMs.takeIf { it > 0 })
+fun ChatMeta(atMs: Long, answer: io.github.odnwks.mimir.standalone.Turn?, pcName: String, receipt: MessageReceipt? = null) =
+    SmallPrint(answer?.let { chatWho(it, pcName) }, atMs.takeIf { it > 0 }, receipt = receipt)
 
 /** A reply's small print, beside its Listen pill: a tap on a switched one gives the full reason. */
 @Composable

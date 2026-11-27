@@ -93,6 +93,8 @@ class P25OneChatLayoutTest {
         assertEquals(2, timeLines())
         val model = engine.state.value.chat.turns.last().modelWords!!.substringBefore(" · ")
         assertEquals(2, timeLinesWith("$model · Balanced · "))
+        // The round read mark under your own message, as in a task chat.
+        assertEquals(1, tagged("receipt-Read"))
     }
 
     @Test fun thePcsAnswerShowsItsModelAndTime() {
@@ -122,9 +124,14 @@ class P25OneChatLayoutTest {
         assertEquals(1, tagged(THINKING_TAG))
         assertEquals(1, tagged("chat-live"))
         compose.onNodeWithText("Reading your message…").assertIsDisplayed()
+        // Handed over, no words yet: not read.
+        assertEquals(1, tagged("receipt-Delivered"))
+        assertEquals(0, tagged("receipt-Read"))
         gate.countDown(); answered(engine)
         assertEquals(0, tagged(THINKING_TAG))
         assertEquals(0, tagged("chat-live"))
+        assertEquals(1, tagged("receipt-Read"))
+        assertEquals(0, tagged("receipt-Delivered"))
     }
 
     @Test fun scrolledUpANewAnswerWaitsBehindNewLines() {

@@ -296,7 +296,7 @@ LazyColumn(
             val m = Modifier.animateItem(fadeInSpec = motionSpec(Motion.NEW_ITEM_MS), placementSpec = motionSpec(Motion.NEW_ITEM_MS), fadeOutSpec = motionSpec(Motion.NEW_ITEM_MS))
             if (turn.user) OwnMessage(
                 turn.text, m, id = turn.id.ifEmpty { "mine-${turn.text.hashCode()}" }, under = readLink?.invoke(turn, i),
-                meta = { ChatMeta(turn.at, answerTo(s.chat.turns, i), "Your PC") },
+                meta = { ChatMeta(turn.at, answerTo(s.chat.turns, i), "Your PC", chatReceipt(s.chat.turns, i, s.writing, s.partial.isNotEmpty())) },
             ) else Box(m) {
                 val before = s.chat.turns.getOrNull(i - 1)?.takeIf { it.user }
                 Reply(

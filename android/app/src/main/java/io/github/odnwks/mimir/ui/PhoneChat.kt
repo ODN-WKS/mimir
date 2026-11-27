@@ -46,6 +46,7 @@ import io.github.odnwks.mimir.nav.ChatAsk
 import io.github.odnwks.mimir.nav.Navigator
 import io.github.odnwks.mimir.nav.Screen
 import io.github.odnwks.mimir.nav.Tab
+import io.github.odnwks.mimir.data.MessageReceipt
 import io.github.odnwks.mimir.standalone.Catalog
 import io.github.odnwks.mimir.standalone.Effort
 import io.github.odnwks.mimir.standalone.Engine
@@ -340,7 +341,7 @@ fun PhoneChat(
                     q.text.ifBlank { if (q.voice != null) "Voice message" else (q.files.map { it.name } + listOfNotNull(q.pictures.size.takeIf { it > 0 }?.let { n -> if (n == 1) "A picture" else "$n pictures" })).joinToString() },
                     Modifier.animateItem(fadeInSpec = motionSpec(Motion.NEW_ITEM_MS), placementSpec = motionSpec(Motion.NEW_ITEM_MS), fadeOutSpec = motionSpec(Motion.NEW_ITEM_MS)),
                     bubble = Palette.BlueBubble.copy(alpha = 0.55f), dashed = true, id = "queued-${q.id}",
-                    meta = { ChatMeta(q.at, null, pcName) },
+                    meta = { ChatMeta(q.at, null, pcName, MessageReceipt.Sent) },
                     under = {
                         Text(QUEUED_WORDS, style = Type.Small, color = Palette.TextDim, modifier = Modifier.semantics { liveRegion = androidx.compose.ui.semantics.LiveRegionMode.Polite })
                         IconTarget(Glyphs.Close, "Cancel this message: it won't be sent", { engine.cancelQueued(q.id) }, tint = Palette.TextDim)
@@ -388,7 +389,7 @@ fun PhoneChat(
                 if (turn.user) OwnMessage(
                     turn.text.ifBlank { (turn.files.map { it.name } + listOfNotNull(turn.pictures.size.takeIf { it > 0 }?.let { if (it == 1) "A picture" else "$it pictures" })).joinToString() },
                     m, bubble = if (s.whisper) WhisperTint.Bubble else Palette.BlueBubble,
-                    meta = { ChatMeta(turn.at, answerTo(s.chat.turns, i), pcName) },
+                    meta = { ChatMeta(turn.at, answerTo(s.chat.turns, i), pcName, chatReceipt(s.chat.turns, i, s.writing, s.partial.isNotEmpty())) },
                     id = turn.id.ifEmpty { "mine-${turn.text.hashCode()}" },
                     onEdit = if (!s.writing && turn.text.isNotBlank() && engine.canEdit(s.chat, i) && engine.canReplyNow()) ({ words -> engine.editMessage(turn.id, words)?.let { edited = it } }) else null,
                     under = readLinkFor(s, engine, turn, i).let { read ->
