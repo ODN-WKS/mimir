@@ -1,6 +1,6 @@
 //! Separate copies of a git project (git worktrees), so tasks that run at
 //! the same time in one project never edit the same files. Each copy has
-//! its own branch, `station/<name>`, and lives in Mímir's data
+//! its own branch, `mimir/<name>`, and lives in Mímir's data
 //! folder. "Bring the changes in" commits the copy's work on its branch and
 //! merges that branch into the main folder; "Remove" deletes the copy and
 //! its branch.
@@ -42,7 +42,7 @@ pub fn create(project: &Path, data_dir: &Path, name: &str) -> Result<(PathBuf, S
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_else(|| "project".into());
     let copy = data_dir.join("copies").join(format!("{base}-{short}"));
-    let branch = format!("station/{short}");
+    let branch = format!("mimir/{short}");
     std::fs::create_dir_all(data_dir.join("copies")).map_err(|e| e.to_string())?;
     let copy_s = copy.display().to_string();
     git(
@@ -209,7 +209,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
         let p = repo(&root);
         let (copy, branch) = create(&p, &root.join("data"), "t1").unwrap();
-        assert_eq!(branch, "station/t1");
+        assert_eq!(branch, "mimir/t1");
         std::fs::write(copy.join("a.txt"), "two\n").unwrap();
         std::fs::write(copy.join("new.txt"), "new\n").unwrap();
         // The main folder is untouched until the changes are brought in.
@@ -220,7 +220,7 @@ mod tests {
         assert!(p.join("new.txt").exists());
         remove(&p, &copy, &branch).unwrap();
         assert!(!copy.exists());
-        assert!(git(&p, &["rev-parse", "--verify", "station/t1"]).is_err());
+        assert!(git(&p, &["rev-parse", "--verify", "mimir/t1"]).is_err());
         std::fs::remove_dir_all(&root).unwrap();
     }
 
