@@ -455,6 +455,7 @@ mod new_project_tests {
 
     #[test]
     fn helper_copies_are_not_listed_as_projects() {
+        let _env = crate::test_env::hold();
         // Owner-found 2026-11-25: helper worktrees (gone or still there) showed as projects on the phone.
         let root = std::env::temp_dir().join(format!("hc-{}", std::process::id()));
         let real = root.join("Garden");
@@ -505,6 +506,7 @@ mod new_project_tests {
 
     #[test]
     fn new_projects_go_where_most_projects_are() {
+        let _env = crate::test_env::hold();
         let h = home();
         let p = |s: &str| h.join(s).display().to_string();
         let list = vec![p("Projects/A"), p("Projects/B"), p("Downloads/C"), p("D")];
@@ -515,6 +517,7 @@ mod new_project_tests {
 
     #[test]
     fn a_folder_is_made_once_and_then_just_chosen() {
+        let _env = crate::test_env::hold();
         let root = std::env::temp_dir().join(format!("np-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(root.join("Work/Old")).unwrap();
@@ -549,6 +552,7 @@ mod new_project_tests {
 
     #[test]
     fn the_project_list_has_no_stand_ins_or_doubles() {
+        let _env = crate::test_env::hold();
         let root = std::env::temp_dir().join(format!("pl-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         let d = |s: &str| root.join(s).display().to_string();

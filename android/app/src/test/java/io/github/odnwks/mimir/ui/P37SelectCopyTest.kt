@@ -85,6 +85,9 @@ class P37SelectCopyTest {
 
     private fun holdWords(text: String) {
         compose.onAllNodesWithText(text, substring = true, useUnmergedTree = true).onLast().performTouchInput { longClick(center) }
+        // The bar is asked for only after the phone's text classifier has looked at the words, on a
+        // background thread that waitForIdle does not wait for: wait for the bar itself.
+        compose.waitUntil("the selection bar for $text", 20_000) { bar.items().isNotEmpty() }
         compose.waitForIdle()
     }
 

@@ -229,9 +229,12 @@ mod tests {
         root: PathBuf,
         base: PathBuf,
         project: PathBuf,
+        /// One test at a time: they set and build on the same variables.
+        _env: crate::test_env::Held,
     }
 
     fn home(tag: &str) -> Home {
+        let env = crate::test_env::hold();
         // Not under /tmp: sessions there are left out of the list.
         let base = std::env::var_os("HOME")
             .map(PathBuf::from)
@@ -247,6 +250,7 @@ mod tests {
             root,
             base,
             project,
+            _env: env,
         }
     }
 

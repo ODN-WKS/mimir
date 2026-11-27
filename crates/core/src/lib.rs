@@ -67,3 +67,41 @@ pub mod wipe;
 pub mod yolo;
 
 pub use mimir_proto as proto;
+
+/// Tests share one process under a plain `cargo test`, and HOME and the
+/// Claude folder variable belong to all of it: a test that changes one, or
+/// builds on it, holds this for its whole length.
+#[cfg(test)]
+pub(crate) mod test_env {
+    use std::ffi::OsString;
+    use std::sync::{Mutex, MutexGuard, PoisonError};
+
+    static LOCK: Mutex<()> = Mutex::new(());
+    const VARS: [&str; 2] = ["HOME", "CLAUDE_CONFIG_DIR"];
+
+    pub struct Held {
+        saved: Vec<Option<OsString>>,
+        _lock: MutexGuard<'static, ()>,
+    }
+
+    pub fn hold() -> Held {
+        let lock = LOCK.lock().unwrap_or_else(PoisonError::into_inner);
+        Held {
+            saved: VARS.iter().map(std::env::var_os).collect(),
+            _lock: lock,
+        }
+    }
+
+    /// The variables go back before the lock is let go.
+    impl Drop for Held {
+        fn drop(&mut self) {
+            for (var, was) in VARS.iter().zip(&self.saved) {
+                // SAFETY: every test that changes these holds the lock.
+                match was {
+                    Some(v) => unsafe { std::env::set_var(var, v) },
+                    None => unsafe { std::env::remove_var(var) },
+                }
+            }
+        }
+    }
+}

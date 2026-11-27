@@ -221,13 +221,13 @@ impl App {
                     let else_id = egui::Id::unique("side-elsewhere-open");
                     let mut arch_open = ui.data(|d| d.get_temp::<bool>(arch_id).unwrap_or(false));
                     // Shown at once while there are no tasks of your own.
-                    let mut else_open = ui
-                        .data(|d| d.get_temp::<bool>(else_id))
-                        .unwrap_or(r.tasks.is_empty());
-                    // Nothing from elsewhere: no section, no toggle.
-                    if elsewhere.is_empty() {
-                        else_open = false;
-                    }
+                    // Sessions are read in the background, so nothing is
+                    // decided (or saved) until there is one to show; with
+                    // none there is no section and no toggle.
+                    let mut else_open = !elsewhere.is_empty()
+                        && ui
+                            .data(|d| d.get_temp::<bool>(else_id))
+                            .unwrap_or(r.tasks.is_empty());
                     ui.add_space(10.0);
                     ui.horizontal_wrapped(|ui| {
                         ui.spacing_mut().item_spacing.x = 6.0;
@@ -293,7 +293,9 @@ impl App {
                     });
                     ui.data_mut(|d| {
                         d.insert_temp(arch_id, arch_open);
-                        d.insert_temp(else_id, else_open);
+                        if !elsewhere.is_empty() {
+                            d.insert_temp(else_id, else_open);
+                        }
                     });
                     let arch = ease(ui.ctx().animate_bool_with_time(
                         arch_id.with("anim"),

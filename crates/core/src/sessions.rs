@@ -1892,10 +1892,11 @@ mod tests {
             r#"{"type":"assistant","isSidechain":false,"message":{"content":[{"type":"text","text":"Built fine."}]}}"#,
         ];
         std::fs::write(folder.join("s1.jsonl"), lines.join("\n")).unwrap();
-        // SAFETY: tests in this module do not read the variable concurrently.
+        let env = crate::test_env::hold();
+        // SAFETY: every test that changes this holds `env`.
         unsafe { std::env::set_var("CLAUDE_CONFIG_DIR", &dir) };
         let found = list(project);
-        unsafe { std::env::remove_var("CLAUDE_CONFIG_DIR") };
+        drop(env);
         assert_eq!(found.len(), 1);
         assert_eq!(found[0].first, "Fix the build");
         assert_eq!(found[0].messages, 1);

@@ -78,6 +78,11 @@ class P09bWaitingInOldChatTest {
 
     private fun vault() = Vault(File(vaultFile.path), codec, { ByteArray(32) }, tries = 1, pause = {})
 
+    /** What the station has saved, only read: [Vault.load] also deletes the temp file of a save
+     *  under way, which fails that save and puts a "couldn't be saved" line in the open chat. */
+    private fun saved() = org.json.JSONObject(codec.open(vaultFile.readBytes()))
+    private fun outboxEmpty() = saved().getJSONArray("outbox").length() == 0
+
     private fun paired(link: FakeLink): LinkStation {
         vaultFile = File(tmp.root, "link.vault")
         val v = vault()
@@ -107,9 +112,10 @@ class P09bWaitingInOldChatTest {
     @Test fun aStatusAnswerLandsInTheOldChatNotTheNewOne() {
         val link = FakeLink(); val st = waitingThenNewChat(link)
         link.reply(link.callsOf("{\"Chat\"").first().first, """{"Status":{"reply":["All quiet"]}}""")
-        assertTrue("left the outbox", until { vault().load().outbox.isEmpty() })
-        Thread.sleep(300)
-        assertTrue("the new chat stays empty", st.state.value.chat.isEmpty())
+        assertTrue("left the outbox", until { outboxEmpty() })
+        // Saved with the older chats: the answer has been dealt with.
+        assertTrue("the reply was filed", until { "All quiet" in saved().getJSONArray("past").toString() })
+        assertTrue("the new chat stays empty ${st.state.value.chat}", st.state.value.chat.isEmpty())
         st.openPastChat(st.state.value.pastChats.single().id)
         assertTrue("the old chat has the reply", until { st.state.value.chat.any { it is ChatEntry.Reply && it.paragraphs == listOf("All quiet") } })
         assertTrue("and no longer waits", mine(st).single().filing?.kind != FilingKind.Waiting)
@@ -119,8 +125,9 @@ class P09bWaitingInOldChatTest {
     @Test fun aRefusalMarksTheOldChatsMessageFailed() {
         val link = FakeLink(); val st = waitingThenNewChat(link)
         link.refuse(link.callsOf("{\"Chat\"").first().first, "No.")
-        assertTrue("left the outbox", until { vault().load().outbox.isEmpty() })
-        Thread.sleep(300)
+        assertTrue("left the outbox", until { outboxEmpty() })
+        // The reason is said in the open chat once the old one has been marked.
+        assertTrue("the refusal was dealt with", until { st.state.value.chat.any { it is ChatEntry.Note && it.text == "No." } })
         assertTrue("the new chat stays empty", st.state.value.chat.none { it is ChatEntry.Mine })
         st.openPastChat(st.state.value.pastChats.single().id)
         assertEquals(FilingKind.Failed, mine(st).single().filing?.kind)

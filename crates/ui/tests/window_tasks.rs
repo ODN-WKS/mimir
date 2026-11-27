@@ -156,6 +156,29 @@ fn listed_and_continued(file: &str, what: &str) {
     close(h);
 }
 
+/// Sessions are read in the background: one that is only found after the
+/// window has drawn still shows at once while there are no tasks, with
+/// "From elsewhere" open. (It was saved as folded on the first frame.)
+#[test]
+fn cf13_session_found_after_the_first_frames_shows_unfolded() {
+    let Some(home) = TestHome::new() else { return };
+    let mut h = home.open();
+    settle(&mut h);
+    let (_, first) = put_session(&home, "terminal.jsonl");
+    let row = labels::session_row(&mimir_core::runner::title_from(&first), "project");
+    // The window looks again every 20 s: wait for that look itself.
+    let found = labels::from_elsewhere(1);
+    let listed =
+        wait_for(&mut h, |h| has_button(h, &found)) || wait_for(&mut h, |h| has_button(h, &found));
+    assert!(listed, "the session was never found\n{}", screen_text(&h));
+    assert!(
+        wait_for(&mut h, |h| has_label(h, &row)),
+        "\"From elsewhere\" stayed folded\n{}",
+        screen_text(&h)
+    );
+    close(h);
+}
+
 #[test]
 fn cf13_terminal_session_listed_and_continued() {
     listed_and_continued("terminal.jsonl", "terminal");
