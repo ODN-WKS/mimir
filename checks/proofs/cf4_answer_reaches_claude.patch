@@ -2,13 +2,13 @@ expect: the answer didn't reach Claude
 files: crates/ui/src/app.rs
 breaks: a typed message is never handed to Claude
 diff --git a/crates/ui/src/app.rs b/crates/ui/src/app.rs
-index b5c81ea..6a26324 100644
+index 74f93e6..5b2351d 100644
 --- a/crates/ui/src/app.rs
 +++ b/crates/ui/src/app.rs
-@@ -778,7 +778,7 @@ impl App {
-                 Action::Send(id, text, files) => {
+@@ -1218,7 +1218,7 @@ impl App {
                      self.scroll_down = SCROLL_FRAMES;
                      let (text, pictures) = with_files(&text, &files);
+                     r.next_typed = typed;
 -                    r.send_with(&id, &text, &pictures);
 +                    let _ = (&id, &text, &pictures);
                      self.draft.clear();

@@ -2,15 +2,15 @@ expect: a task isn't listed under its project
 files: crates/ui/src/organize.rs
 breaks: every task is listed under every project
 diff --git a/crates/ui/src/organize.rs b/crates/ui/src/organize.rs
-index f53f2e8..95f5d23 100644
+index 25766f2..c1c590a 100644
 --- a/crates/ui/src/organize.rs
 +++ b/crates/ui/src/organize.rs
-@@ -110,7 +110,7 @@ pub fn project_tasks<'a>(r: &'a Runner, settings: &Settings, project: &str) -> V
+@@ -66,7 +66,7 @@ pub fn project_tasks<'a>(r: &'a Station, settings: &Settings, project: &str) ->
          .tasks
          .iter()
          .rev()
 -        .filter(|l| same(l.task.home_project(), project) && !l.task.archived)
 +        .filter(|l| !project.is_empty() && !l.task.archived)
          .collect();
+     newest.sort_by_key(|l| std::cmp::Reverse(mimir_core::order::task_key(&l.task)));
      let ids: Vec<String> = newest.iter().map(|l| l.task.id.clone()).collect();
-     let order = settings
