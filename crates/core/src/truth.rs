@@ -273,6 +273,18 @@ pub fn notices_with(
     whisper: &dyn Fn(&str) -> bool,
     done: bool,
 ) -> Vec<(String, String)> {
+    notices_quiet(old, new, whisper, &|_| false, done)
+}
+
+/// [`notices_with`], with no Done pop-up for the tasks `quiet` names (the
+/// end of a turn that was no work of the owner's).
+pub fn notices_quiet(
+    old: &Truth,
+    new: &Truth,
+    whisper: &dyn Fn(&str) -> bool,
+    quiet: &dyn Fn(&str) -> bool,
+    done: bool,
+) -> Vec<(String, String)> {
     let mut out = vec![];
     for t in &new.tasks {
         let Some(before) = old.tasks.iter().find(|o| o.id == t.id) else {
@@ -291,7 +303,7 @@ pub fn notices_with(
                 },
                 "Open Mímir to answer.".to_string(),
             )),
-            TaskState::Done if !secret && done => {
+            TaskState::Done if !secret && done && !quiet(&t.id) => {
                 out.push((format!("{} is done", t.title), "Mímir".to_string()))
             }
             _ => {}
@@ -475,6 +487,11 @@ mod tests {
             notices(&before, &w, &|_| true)[0].0,
             "A Whisper task needs you"
         );
+        // The end of Mímir's hidden hand-off turn is no news; another
+        // task's end still is.
+        let q = notices_quiet(&old, &new, &|_| false, &|id| id == "b", true);
+        assert!(q.iter().all(|(t, _)| t != "Task b is done"), "{q:?}");
+        assert!(q.iter().any(|(t, _)| t == "Task w is done"), "{q:?}");
     }
 
     /// A finished task's pop-up is off until chosen; Needs you always shows.

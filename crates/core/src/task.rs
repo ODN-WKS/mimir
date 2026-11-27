@@ -264,7 +264,8 @@ pub struct Task {
     #[serde(default, skip_serializing_if = "is_zero_u8")]
     pub fresh_row: u8,
     /// The automatic fresh start past 100,000 tokens: 0 not yet, 1 the
-    /// warning line is shown, 2 the session was asked to save the hand-off.
+    /// warning line is shown, 2 the session was asked to save the hand-off,
+    /// 3 left to the owner (it can't be saved without asking them).
     #[serde(default, skip_serializing_if = "is_zero_u8")]
     pub auto_fresh: u8,
     /// Claude Code sessions this task left behind with a fresh start:

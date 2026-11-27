@@ -67,6 +67,14 @@ pub struct Live {
     /// closes only after a short quiet, so a message that arrives as a turn
     /// ends is still read.
     answered_at: Option<Instant>,
+    /// When a turn last ended here, as it happened (not one read back at
+    /// start-up), and how many looks at other apps' sessions had been done
+    /// by then: the automatic fresh start acts only after one more.
+    turn_end: Option<(Instant, u64)>,
+    /// The turn on now is Mímir's hidden hand-off ask (no owner words).
+    hidden: bool,
+    /// That turn just ended: its Done is no news for the owner (no pop-up).
+    quiet_done: bool,
 }
 
 impl Live {
@@ -97,6 +105,9 @@ impl Live {
             answered_at: None,
             bg_noted: false,
             held_delivery: Vec::new(),
+            turn_end: None,
+            hidden: false,
+            quiet_done: false,
         }
     }
 
@@ -113,6 +124,29 @@ impl Live {
     }
 
     /// Claude is working on this task right now (not just finishing up).
+    /// The hidden hand-off turn is on now: it is no work of the owner's
+    /// (no finished notice, no summary).
+    pub fn handing_off(&self) -> bool {
+        self.hidden
+    }
+
+    /// The hidden hand-off turn just ended: its Done is not told (taken by
+    /// the one who tells it).
+    pub fn take_quiet_done(&mut self) -> bool {
+        std::mem::take(&mut self.quiet_done)
+    }
+
+    /// Whether its Done shows as news (see [`Live::take_quiet_done`]).
+    pub fn quiet_done(&self) -> bool {
+        self.quiet_done
+    }
+
+    /// A message the owner queued until Claude is done waits: the hand-off
+    /// is being saved, and the message goes to the new session with it.
+    pub fn holds_queued(&self) -> bool {
+        self.task.auto_fresh == AUTO_HANDING_OFF
+    }
+
     pub fn busy(&self) -> bool {
         self.session.is_some()
             && (self.background || matches!(self.task.status, Status::Working | Status::NeedsYou))
@@ -190,6 +224,13 @@ pub struct Runner {
     /// The next message sent was typed by a person into a message box. Taken by
     /// that one message; whoever sets it clears it again after the call.
     pub next_typed: bool,
+    /// Tasks with a message the owner queued until Claude is done (the
+    /// service's, set before each tick): it goes before any hand-off.
+    pub owner_waiting: std::collections::HashSet<String>,
+    /// Looks at sessions in other apps done so far.
+    outside_scans: u64,
+    /// The conversations a Claude Code process ran at the last look.
+    claude_procs: std::collections::HashSet<String>,
     /// Tasks told to stop or pause: when their Claude Code is ended if it
     /// has not left by itself (it may ignore the interrupt).
     kill_after: Vec<(String, Instant)>,
@@ -244,6 +285,10 @@ pub const AUTO_FRESH_FROM: u64 = 100_000;
 /// The warning line in the chat when it gets there.
 pub const AUTO_FRESH_LINE: &str = "This chat has grown long. To save usage, it starts fresh here \
                                    once this answer ends and the hand-off is saved.";
+/// The warning line when the hand-off can't be saved without asking the
+/// owner (Ask or Plan mode): they start fresh themselves.
+pub const AUTO_FRESH_OWNER_LINE: &str = "This chat has grown long. To save usage, start fresh \
+                                         here: ⋯ › Fresh start.";
 /// What the session is asked before it is left (never shown as the owner's
 /// words).
 pub const HANDOFF_ASK: &str = "This conversation is past 100,000 tokens, so Mímir starts a fresh \
@@ -251,6 +296,24 @@ pub const HANDOFF_ASK: &str = "This conversation is past 100,000 tokens, so Mím
                                hand-off document: what is done, what comes next, and any \
                                background jobs still running (they keep going). Then end your \
                                turn. Start no new work and answer nothing meant for the owner.";
+
+/// How long after a turn ended the automatic fresh start takes its next
+/// step: the turn's own finished notice and pop-up go first.
+const AUTO_FRESH_WAIT: std::time::Duration = std::time::Duration::from_secs(2);
+/// The automatic fresh start's steps (`Task::auto_fresh`).
+const AUTO_WARNED: u8 = 1;
+const AUTO_HANDING_OFF: u8 = 2;
+/// Left to the owner: the hand-off can't be saved without asking them.
+const AUTO_OWNER: u8 = 3;
+/// Put before the owner's message when it reaches the hand-off turn (never
+/// shown): the owner comes first, and the hand-off is asked again later.
+pub const HANDOFF_WITHDRAWN: &str = "Leave the hand-off for now: the owner wrote while you were \
+                                     saving it. Answer the owner's message below as usual.";
+
+/// Whether the session can save the hand-off without asking the owner.
+fn can_hand_off(mode: Mode) -> bool {
+    !matches!(mode, Mode::Ask | Mode::Plan)
+}
 
 /// Who asked for a fresh start.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -333,6 +396,9 @@ impl Runner {
                             answered_at: None,
                             bg_noted: said_busy,
                             held_delivery: Vec::new(),
+                            turn_end: None,
+                            hidden: false,
+                            quiet_done: false,
                         });
                         continue;
                     }
@@ -372,6 +438,9 @@ impl Runner {
                 answered_at: None,
                 bg_noted: false,
                 held_delivery: Vec::new(),
+                turn_end: None,
+                hidden: false,
+                quiet_done: false,
             });
         }
         let weekly = tasks.iter().rev().find_map(|l| l.task.weekly.clone());
@@ -399,6 +468,9 @@ impl Runner {
             usage_poller: None,
             resend: vec![],
             next_typed: false,
+            owner_waiting: Default::default(),
+            outside_scans: 0,
+            claude_procs: Default::default(),
             kill_after: vec![],
             problems,
             notices: vec![],
@@ -600,6 +672,9 @@ impl Runner {
             answered_at: None,
             bg_noted: false,
             held_delivery: Vec::new(),
+            turn_end: None,
+            hidden: false,
+            quiet_done: false,
         });
     }
 
@@ -699,6 +774,15 @@ impl Runner {
     pub fn sweep_attachments(&self) {
         let ids: Vec<String> = self.tasks.iter().map(|l| l.task.id.clone()).collect();
         crate::task_files::sweep(&self.data_dir(), &ids);
+    }
+
+    /// The service has looked at sessions in other apps once more (see
+    /// [`Runner::set_elsewhere`]).
+    ///
+    /// `running`: the conversations a Claude Code process runs right now.
+    pub fn outside_scanned(&mut self, running: &std::collections::HashSet<String>) {
+        self.outside_scans += 1;
+        self.claude_procs = running.clone();
     }
 
     /// Sends a message with pictures.
@@ -808,8 +892,20 @@ impl Runner {
             let at = self.tasks[i].task.entries.len();
             self.tasks[i].task.checkpoints.push((at, snap));
         }
+        // The owner writes: their message comes before any hand-off. One
+        // being saved steps back (it is asked again once this turn ends, so
+        // it covers this exchange too), and a hand-off turn still on is told
+        // to answer them.
+        let mut withdraw = false;
         if show {
-            self.tasks[i].task.fresh_row = 0;
+            let l = &mut self.tasks[i];
+            l.task.fresh_row = 0;
+            l.turn_end = None;
+            l.quiet_done = false;
+            withdraw = std::mem::take(&mut l.hidden);
+            if l.task.auto_fresh == AUTO_HANDING_OFF {
+                l.task.auto_fresh = AUTO_WARNED;
+            }
         }
         let entry = show.then(|| {
             let (model, effort) = self.sent_to(i);
@@ -837,6 +933,13 @@ impl Runner {
                 text_owned.as_str()
             }
             None => text,
+        };
+        let withdrawn;
+        let text = if withdraw {
+            withdrawn = format!("{HANDOFF_WITHDRAWN}\n\n{text}");
+            withdrawn.as_str()
+        } else {
+            text
         };
         // After a handover the first message carries the brief.
         let line = match self.tasks[i].task.session_id.is_none() {
@@ -1727,14 +1830,23 @@ impl Runner {
         })
     }
 
-    /// Past [`AUTO_FRESH_FROM`]: the warning line at once, then, each step
-    /// only once the turn on now has ended, the hand-off and the fresh start.
-    /// Nothing running is ended.
+    /// Past [`AUTO_FRESH_FROM`]: the warning line while a turn is on, then,
+    /// each step only once that turn has ended here (never for a task read
+    /// back at start-up, an idle one or an archived one) and after one more
+    /// look at sessions in other apps, the hand-off and the fresh start.
+    /// Nothing running is ended, and what the owner writes always comes
+    /// first.
     fn auto_fresh(&mut self) {
+        let scans = self.outside_scans;
+        // Nothing before the first look at other apps' sessions.
+        if scans == 0 {
+            return;
+        }
         for i in 0..self.tasks.len() {
             let l = &self.tasks[i];
             let t = &l.task;
             if t.incognito
+                || t.archived
                 || t.live_elsewhere
                 || t.outside
                 || t.from_phone.is_some()
@@ -1743,13 +1855,20 @@ impl Runner {
             {
                 continue;
             }
+            let id = t.id.clone();
             if t.auto_fresh == 0 {
-                if t.context_used < AUTO_FRESH_FROM {
+                // Only a turn on now, or one that just ended here.
+                if t.context_used < AUTO_FRESH_FROM || !(l.busy() || l.turn_end.is_some()) {
                     continue;
                 }
+                let line = if t.is_chat() || can_hand_off(t.mode) {
+                    AUTO_FRESH_LINE
+                } else {
+                    AUTO_FRESH_OWNER_LINE
+                };
                 let l = &mut self.tasks[i];
-                l.task.auto_fresh = 1;
-                l.task.add_note(AUTO_FRESH_LINE);
+                l.task.auto_fresh = AUTO_WARNED;
+                l.task.add_note(line);
                 l.dirty = true;
                 self.save_dirty();
             }
@@ -1760,48 +1879,117 @@ impl Runner {
             if !ended {
                 continue;
             }
-            let id = l.task.id.clone();
             // A turn that did not end well counts as stopped.
             let status = match l.task.status {
                 Status::Done if l.task.failed => Status::Stopped,
                 s => s,
             };
+            // The turn ended here a moment ago (its own finished notice and
+            // pop-up went first), and other apps were looked at since.
+            let ended_now = l
+                .turn_end
+                .is_some_and(|(at, n)| at.elapsed() >= AUTO_FRESH_WAIT && scans > n);
+            let waiting = self.owner_waiting.contains(&id);
+            // Its conversation has a Claude Code that is not Mímir's run:
+            // another app took it up.
+            let taken_up = !l.running()
+                && (l.task.session_id.as_ref()).is_some_and(|s| self.claude_procs.contains(s));
+            if taken_up {
+                continue;
+            }
             match (l.task.auto_fresh, status) {
                 // A plan waiting for the owner waits for the owner.
                 (_, Status::Done) if l.task.plan_waiting() => {}
-                (1, Status::Done) => {
-                    if l.task.fresh_row >= FRESH_ROW_MAX {
+                // (An owner's message waiting to go is always served first.)
+                // A chat shares its folder with every other chat: no
+                // hand-off file is read or written; the new session starts
+                // from this chat's own brief once this run is over.
+                (AUTO_WARNED, Status::Done) if ended_now && !waiting && l.task.is_chat() => {
+                    if !l.running() {
+                        self.tasks[i].turn_end = None;
+                        let _ = self.fresh_start(&id, FreshWhy::Auto);
+                    }
+                }
+                (AUTO_WARNED, Status::Done) if ended_now && !waiting => {
+                    self.tasks[i].turn_end = None;
+                    let t = &self.tasks[i].task;
+                    if t.fresh_row >= FRESH_ROW_MAX {
                         // Says it once; no hand-off for a start that can't follow.
                         let _ = self.fresh_start(&id, FreshWhy::Auto);
                         continue;
                     }
-                    let ask = match self.handoff_files.get(&l.task.project) {
+                    // Writing the hand-off would ask the owner something they
+                    // never saw: they start fresh themselves.
+                    if !can_hand_off(t.mode) {
+                        self.leave_to_owner(i);
+                        continue;
+                    }
+                    let ask = match self.handoff_files.get(&t.project) {
                         Some(f) if !f.trim().is_empty() => {
                             format!("{HANDOFF_ASK} The hand-off document is {}.", f.trim())
                         }
                         _ => HANDOFF_ASK.to_string(),
                     };
-                    self.tasks[i].task.auto_fresh = 2;
-                    self.tasks[i].dirty = true;
-                    self.send_inner(&id, &ask, &[], false);
+                    self.tasks[i].task.auto_fresh = AUTO_HANDING_OFF;
+                    self.send_hidden(i, &ask);
                 }
-                (2, Status::Done) if !l.running() => {
+                (AUTO_HANDING_OFF, Status::Done) if !l.running() => {
                     if self.fresh_start(&id, FreshWhy::Auto).is_err()
                         && let Some(i) = self.index(&id)
                     {
-                        self.tasks[i].task.auto_fresh = 1;
+                        self.tasks[i].task.auto_fresh = AUTO_WARNED;
                     }
+                }
+                // Saved, but work it left running keeps the old session up:
+                // the owner's waiting message is not held for it.
+                (AUTO_HANDING_OFF, Status::Done) if waiting && !l.bg_tasks.is_empty() => {
+                    self.tasks[i].task.auto_fresh = AUTO_WARNED;
+                    self.tasks[i].dirty = true;
                 }
                 // Stopped or failed while saving the hand-off: asked again
                 // after the owner's next turn.
-                (2, Status::Stopped | Status::Paused) => {
-                    self.tasks[i].task.auto_fresh = 1;
-                    self.tasks[i].dirty = true;
+                (AUTO_HANDING_OFF, Status::Stopped | Status::Paused) => {
+                    let l = &mut self.tasks[i];
+                    l.task.auto_fresh = AUTO_WARNED;
+                    l.hidden = false;
+                    l.dirty = true;
                     self.save_dirty();
                 }
                 _ => {}
             }
         }
+    }
+
+    /// The hand-off can't be saved without asking the owner: the warning
+    /// line says they start fresh themselves, and nothing more happens.
+    fn leave_to_owner(&mut self, i: usize) {
+        let t = &mut self.tasks[i].task;
+        t.auto_fresh = AUTO_OWNER;
+        if t.drop_note(AUTO_FRESH_LINE) {
+            t.add_note(AUTO_FRESH_OWNER_LINE);
+        }
+        self.tasks[i].dirty = true;
+        self.save_dirty();
+    }
+
+    /// Mímir's own hand-off ask to task `i`: no owner's words, so none of a
+    /// message's side effects (no undo point, "put back", plan, typed mark,
+    /// told undo or brief).
+    fn send_hidden(&mut self, i: usize, text: &str) {
+        let id = self.tasks[i].task.id.clone();
+        let line = user_line(text, &[], false);
+        let l = &mut self.tasks[i];
+        l.task.status = Status::Working;
+        l.task.failed = false;
+        l.hidden = true;
+        l.quiet_done = false;
+        l.dirty = true;
+        match l.session.as_mut().map(|s| s.send_line(&line).is_ok()) {
+            Some(true) => l.sent += 1,
+            Some(false) => self.resend.push((id, line, Instant::now(), None)),
+            None => self.start_and_send(i, &line, None),
+        }
+        self.save_dirty();
     }
 
     /// Carries out the fresh starts whose run has ended.
@@ -1821,7 +2009,10 @@ impl Runner {
             // A run that did not end well, or a plan waiting for the owner,
             // is not carried on by itself.
             let run_on = run_on && l.task.status == Status::Done && !l.task.plan_waiting();
+            // A chat shares its folder with every other chat: its new session
+            // starts from this chat's own brief, never a shared hand-off.
             let brief = match self.handoff_files.get(&l.task.project) {
+                _ if l.task.is_chat() => crate::auto::brief(&l.task),
                 Some(f) if !f.trim().is_empty() => format!(
                     "Continue from the hand-off. Read {} first and follow its START HERE line.",
                     f.trim()
@@ -1967,6 +2158,9 @@ impl Runner {
             answered_at: None,
             bg_noted: false,
             held_delivery: Vec::new(),
+            turn_end: None,
+            hidden: false,
+            quiet_done: false,
         });
         self.save_dirty();
         Ok(id)
@@ -2322,6 +2516,9 @@ impl Runner {
             answered_at: None,
             bg_noted: false,
             held_delivery: Vec::new(),
+            turn_end: None,
+            hidden: false,
+            quiet_done: false,
         });
         self.send_with(&id, text, &[]);
         Ok(id)
@@ -2404,6 +2601,13 @@ impl Runner {
     fn tick_inner(&mut self) {
         while let Ok(p) = self.approvals.try_recv() {
             match self.index(&p.request.task) {
+                // Mímir's hidden hand-off turn never asks the owner anything
+                // they did not see: the step is refused, and the fresh start
+                // is left to them.
+                Some(i) if self.tasks[i].hidden => {
+                    p.answer(Answer::No);
+                    self.leave_to_owner(i);
+                }
                 Some(i)
                     if !matches!(self.tasks[i].task.status, Status::Paused | Status::Stopped) =>
                 {
@@ -2423,6 +2627,7 @@ impl Runner {
         }
         self.poll_usage();
         let now = self.now_ms();
+        let scans = self.outside_scans;
         for l in &mut self.tasks {
             let Some(s) = l.session.as_mut() else {
                 continue;
@@ -2495,11 +2700,18 @@ impl Runner {
                                 // into the same turn.
                                 l.finished = l.sent.max(l.finished + 1);
                                 if l.finished >= l.sent {
-                                    self.notices.push(Notice::Finished {
-                                        task: l.task.id.clone(),
-                                        title: l.task.title.clone(),
-                                        ok: !f.is_error,
-                                    });
+                                    if std::mem::take(&mut l.hidden) {
+                                        // Mímir's own hand-off turn: no
+                                        // news for the owner.
+                                        l.quiet_done = true;
+                                    } else {
+                                        l.turn_end = Some((Instant::now(), scans));
+                                        self.notices.push(Notice::Finished {
+                                            task: l.task.id.clone(),
+                                            title: l.task.title.clone(),
+                                            ok: !f.is_error,
+                                        });
+                                    }
                                 }
                             }
                             l.task.apply(e, now);

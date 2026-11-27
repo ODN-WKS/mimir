@@ -2537,7 +2537,9 @@ impl Service {
             if t.incognito {
                 continue;
             }
-            let active = l.working_now() || t.status == Status::NeedsYou || l.background_pending();
+            // Mímir's hidden hand-off turn is no work of the owner's.
+            let active = !l.handing_off()
+                && (l.working_now() || t.status == Status::NeedsYou || l.background_pending());
             let st = state.entry(t.id.clone()).or_insert(FinishState {
                 working: active && !first,
                 idle_since: None,
@@ -3947,11 +3949,11 @@ impl Service {
             return;
         }
         self.outside_scan = Some(now);
-        if self
+        let fresh_procs = self
             .procs
             .1
-            .is_none_or(|t| now.duration_since(t) >= PROCESS_SCAN)
-        {
+            .is_none_or(|t| now.duration_since(t) >= PROCESS_SCAN);
+        if fresh_procs {
             self.procs = (crate::sessions::running_sessions(), Some(now));
         }
         let unix = crate::needs::now();
@@ -4058,6 +4060,11 @@ impl Service {
                 }
                 self.touched.insert(id);
             }
+        }
+        // A look with a new process list: what is going on elsewhere is
+        // known from now on (the automatic fresh start waits for it).
+        if fresh_procs {
+            self.runner.outside_scanned(&self.procs.0);
         }
     }
 
@@ -4895,6 +4902,8 @@ impl Service {
         self.meter.refresh();
         // Pushed only when the meters moved a step a person can see (truth::seen).
         self.publish_truth();
+        // A message the owner queued goes before any hand-off.
+        self.runner.owner_waiting = self.queued.keys().cloned().collect();
         self.runner.tick();
         self.claude_ran_out();
         self.allow_by_rules();
@@ -4983,6 +4992,10 @@ impl Service {
                 self.queued.remove(&id);
                 continue;
             };
+            // The hand-off is being saved: it goes to the new session with it.
+            if l.holds_queued() {
+                continue;
+            }
             let now = waiting_now(
                 l.task.status,
                 !l.asks.is_empty(),
@@ -5573,10 +5586,15 @@ impl Service {
             && !self.focused()
         {
             let whisper = |id: &str| self.task(id).is_some_and(|l| l.task.incognito);
+            // The end of Mímir's hidden hand-off turn is no news.
+            let quiet = |id: &str| self.task(id).is_some_and(|l| l.quiet_done());
             let done = self.settings.popup_done_on();
-            for (title, body) in crate::truth::notices_with(old, &t, &whisper, done) {
+            for (title, body) in crate::truth::notices_quiet(old, &t, &whisper, &quiet, done) {
                 crate::notify::notify(&title, &body);
             }
+        }
+        for l in &mut self.runner.tasks {
+            l.take_quiet_done();
         }
         self.truth = Some(t.clone());
         self.broadcast(Event::Truth { truth: Box::new(t) });

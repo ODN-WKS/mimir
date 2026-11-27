@@ -3,6 +3,7 @@
 //! save the hand-off, then carries on in a new session in the same chat.
 //! Nothing running is cut, and the limit of 3 in a row stays.
 
+use mimir_core::proto::Mode;
 use mimir_core::runner::{
     AUTO_FRESH_FROM, AUTO_FRESH_LINE, Config, FRESH_ROW_FULL, HANDOFF_ASK, Runner,
 };
@@ -87,15 +88,21 @@ impl Env {
     fn until(&mut self, what: &str, done: impl Fn(&Runner) -> bool) {
         let end = Instant::now() + Duration::from_secs(30);
         while !done(&self.r) {
-            self.r.tick();
+            self.tick();
             assert!(Instant::now() < end, "timed out waiting for: {what}");
             std::thread::sleep(Duration::from_millis(10));
         }
     }
 
+    /// One service tick: a look at other apps' sessions, then the runner.
+    fn tick(&mut self) {
+        self.r.outside_scanned(&Default::default());
+        self.r.tick();
+    }
+
     fn ticks(&mut self, n: usize) {
         for _ in 0..n {
-            self.r.tick();
+            self.tick();
             std::thread::sleep(Duration::from_millis(10));
         }
     }
@@ -118,14 +125,31 @@ impl Env {
             .count()
     }
 
-    /// A task whose first turn has ended and whose Claude Code has exited.
+    /// A task whose first turn has ended and whose Claude Code has exited
+    /// (in a mode that saves the hand-off without asking).
     fn done_task(&mut self) -> String {
-        let id = self
-            .r
-            .new_task(&self.dir.join("proj"), "Tidy up notes.txt.");
+        let id = self.start();
+        std::fs::write(&self.step, "1000").unwrap();
         self.until("the first turn ends", |r| {
             r.tasks[0].task.status == Status::Done && !r.tasks[0].running()
         });
+        id
+    }
+}
+
+impl Env {
+    /// A task whose first turn is on, held until the step file is raised.
+    fn start(&mut self) -> String {
+        std::fs::write(&self.step, "0").unwrap();
+        let id = self.r.new_task_with(
+            &self.dir.join("proj"),
+            "Tidy up notes.txt.",
+            &[],
+            Mode::NoAsk,
+            None,
+            None,
+        );
+        self.until("the first turn starts", |r| r.tasks[0].busy());
         id
     }
 }
@@ -146,8 +170,7 @@ fn the_limit_is_100k_and_the_words_are_plain() {
 #[test]
 fn past_100k_it_warns_then_saves_the_hand_off_then_starts_fresh() {
     let mut e = Env::new("once", true);
-    std::fs::write(&e.step, "0").unwrap();
-    e.r.new_task(&e.dir.join("proj"), "Tidy up notes.txt.");
+    e.start();
     // The reply with the big size is out; the turn has not ended yet.
     std::fs::write(&e.step, "5").unwrap();
     e.until("the warning line", |r| {
@@ -240,7 +263,7 @@ fn it_keeps_doing_so_every_time() {
 fn below_100k_nothing_happens() {
     let mut e = Env::new("small", false);
     e.done_task();
-    e.ticks(50);
+    e.ticks(300);
     assert_eq!(e.notes(AUTO_FRESH_LINE), 0);
     assert_eq!(e.notes(DIVIDER), 0);
     assert_eq!(e.runs(), 1);
@@ -249,11 +272,12 @@ fn below_100k_nothing_happens() {
 
 #[test]
 fn three_in_a_row_still_waits_for_the_owner() {
-    let mut e = Env::new("row", false);
-    e.done_task();
+    let mut e = Env::new("row", true);
+    e.start();
     e.r.tasks[0].task.fresh_row = 3;
-    e.r.tasks[0].task.context_used = 120_000;
-    e.ticks(50);
+    std::fs::write(&e.step, "1000").unwrap();
+    e.until("the turn ends", |r| r.tasks[0].task.status == Status::Done);
+    e.ticks(300);
     assert_eq!(e.notes(AUTO_FRESH_LINE), 1);
     assert_eq!(e.notes(FRESH_ROW_FULL), 1, "said once");
     assert_eq!(e.notes(DIVIDER), 0);
@@ -267,11 +291,12 @@ fn three_in_a_row_still_waits_for_the_owner() {
 
 #[test]
 fn a_whisper_never_starts_fresh_by_itself() {
-    let mut e = Env::new("whisper", false);
-    e.done_task();
+    let mut e = Env::new("whisper", true);
+    e.start();
     e.r.tasks[0].task.incognito = true;
-    e.r.tasks[0].task.context_used = 120_000;
-    e.ticks(50);
+    std::fs::write(&e.step, "1000").unwrap();
+    e.until("the turn ends", |r| r.tasks[0].task.status == Status::Done);
+    e.ticks(300);
     assert_eq!(e.notes(AUTO_FRESH_LINE), 0);
     assert_eq!(e.notes(DIVIDER), 0);
     assert_eq!(e.runs(), 1);
@@ -279,14 +304,13 @@ fn a_whisper_never_starts_fresh_by_itself() {
 
 #[test]
 fn a_stopped_hand_off_turn_is_not_followed_by_a_fresh_start() {
-    let mut e = Env::new("stopped", false);
+    let mut e = Env::new("stopped", true);
     let id = e.done_task();
     std::fs::write(&e.step, "0").unwrap();
-    e.r.tasks[0].task.context_used = 120_000;
     e.until("the hand-off turn starts", |r| r.tasks[0].busy());
     e.r.stop(&id);
     e.until("the run ends", |r| !r.tasks[0].running());
-    e.ticks(50);
+    e.ticks(300);
     assert_eq!(e.notes(DIVIDER), 0);
     assert!(e.r.tasks[0].task.session_id.is_some());
     assert_eq!(e.runs(), 2, "not asked again until the owner writes");
