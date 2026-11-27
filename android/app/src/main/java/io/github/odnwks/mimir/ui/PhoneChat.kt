@@ -72,6 +72,8 @@ fun PhoneChat(
     needsYou: Int = 0, unheard: Int = 0, pcModel: String? = null, claudeAnswers: Boolean = false,
     /** The PC offers Claude for chats (it has the "engines" setting), and how to pick who answers there: "free" or "paid". */
     claudeOffered: Boolean = false, owner: Boolean = true, onPickEngine: (String) -> Unit = {},
+    /** False while the PC's choice of who answers has never been read on this phone: nothing is shown as chosen. */
+    choiceKnown: Boolean = true,
     /** Which Claude model chats use on the PC, what it offers (empty: an older PC), and how to pick one. */
     claudeModel: String? = null, claudeChoices: List<io.github.odnwks.mimir.link.LChoice> = emptyList(), onPickClaudeModel: (String) -> Unit = {},
     /** The PC's tasks (a project card's state), and moving one to another project. */
@@ -317,9 +319,9 @@ fun PhoneChat(
             waiting = menuWaiting,
         ) else MenuTopBar(
             waiting = menuWaiting,
-            answerer = answererWord(s.whisper, onlineOn, answeringPc, claudeAnswers, io.github.odnwks.mimir.online.OnlineModels.answering()?.let { io.github.odnwks.mimir.online.OnlineModels.serviceOf(it).name }),
+            answerer = answererWord(s.whisper, onlineOn, answeringPc, claudeAnswers, io.github.odnwks.mimir.online.OnlineModels.answering()?.let { io.github.odnwks.mimir.online.OnlineModels.serviceOf(it).name }, known = choiceKnown),
             online = if (s.whisper) null else answeringPc && pcOnline,
-            answererDescription = when { s.whisper && s.web -> END_WEB_WHISPER; s.whisper -> END_WHISPER; else -> whoLabel(if (onlineOn) (io.github.odnwks.mimir.online.OnlineModels.answering()?.let { io.github.odnwks.mimir.online.OnlineModels.serviceOf(it).name } ?: "Online") else if (answeringPc) (if (claudeAnswers) "Online" else "Your PC") else "This phone") },
+            answererDescription = when { s.whisper && s.web -> END_WEB_WHISPER; s.whisper -> END_WHISPER; else -> whoLabel(if (onlineOn) (io.github.odnwks.mimir.online.OnlineModels.answering()?.let { io.github.odnwks.mimir.online.OnlineModels.serviceOf(it).name } ?: "Online") else if (answeringPc) (if (!choiceKnown) WHO_READING else if (claudeAnswers) "Online" else "Your PC") else "This phone") },
             onNewChat = newChat,
             trailing = if (s.whisper && s.web) ({ ViaTorChip() }) else null,
             onAnswererHold = if (s.whisper) ({ draft = ""; files.clear(); pictures.clear(); emergencyExit(ctx, engine, readAloud) }) else null,
@@ -381,7 +383,7 @@ fun PhoneChat(
                     bubble = Palette.BlueBubble.copy(alpha = 0.55f), dashed = true, id = "queued-${q.id}",
                     meta = { ChatMeta(q.at, null, pcName, MessageReceipt.Sent) },
                     under = {
-                        Text(QUEUED_WORDS, style = Type.Small, color = Palette.TextDim, modifier = Modifier.semantics { liveRegion = androidx.compose.ui.semantics.LiveRegionMode.Polite })
+                        Text(if (pcOnline && paired) QUEUED_SOON else QUEUED_WORDS, style = Type.Small, color = Palette.TextDim, modifier = Modifier.semantics { liveRegion = androidx.compose.ui.semantics.LiveRegionMode.Polite })
                         IconTarget(Glyphs.Close, "Cancel this message: it won't be sent", { engine.cancelQueued(q.id) }, tint = Palette.TextDim)
                     },
                 )
@@ -534,8 +536,9 @@ fun PhoneChat(
             } else listOf(io.github.odnwks.mimir.nav.SheetChoice(word, about, true) {})
             // Claude answering: a way back to the PC's own free model, right here.
             val free = if (claudeAnswers) listOf(io.github.odnwks.mimir.nav.SheetChoice("Your PC's free model", "Quick answers that stay on your PC", false) { onPickEngine("free") }) else emptyList()
-            // Whole words on the chip ("Qwen 3.6" from "Qwen 3.6 35B-A3B"), never cut mid-word.
-            modelWord = chipShort(word, 16)
+            // Whole words on the chip ("Qwen 3.6" from "Qwen 3.6 35B-A3B"), never cut mid-word; no model is named
+            // while the PC's choice of who answers has never been read.
+            modelWord = chipShort(word, 16).takeIf { choiceKnown }
             choices = io.github.odnwks.mimir.nav.ModelEffortChoices(
                 rows + free,
                 listOfNotNull("Applies to all chats on this PC. $PC_PICKS".takeIf { claudeAnswers && claudeChoices.isNotEmpty() }, said?.takeIf { claudeAnswers }?.let { "Last answer: $it" }),
@@ -581,7 +584,7 @@ fun PhoneChat(
     val pcAnswers = paired && (s.usePc || !s.supported) && !s.whisper
     WhoAnswersSheet(
         open = whoOpen && !s.whisper,
-        chosen = when { claudeAnswers && pcAnswers -> Answerer.Claude; pcAnswers -> Answerer.Pc; else -> Answerer.Phone },
+        chosen = when { pcAnswers && !choiceKnown -> null; claudeAnswers && pcAnswers -> Answerer.Claude; pcAnswers -> Answerer.Pc; else -> Answerer.Phone },
         phoneCan = s.supported, paired = paired, claudeOffered = claudeOffered, pcOnline = pcOnline,
         onChoose = { who ->
             whoOpen = false
@@ -716,6 +719,9 @@ internal fun writingWords(s: io.github.odnwks.mimir.standalone.LocalState): Stri
 
 /** What a message waiting for the PC says under itself. */
 const val QUEUED_WORDS = "Sends when your PC is back"
+
+/** The same, while the PC is there (it is still saying who answers, or an earlier message is being answered). */
+const val QUEUED_SOON = "Sends in a moment"
 
 
 /** The line under the chat when a photo, the camera or a file can't be used: the words fill the width, the buttons wrap under them when they don't fit beside each other. */

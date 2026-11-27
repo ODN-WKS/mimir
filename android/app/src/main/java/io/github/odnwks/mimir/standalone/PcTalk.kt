@@ -17,6 +17,9 @@ interface PcTalk {
     /** Paired, and this person has project work there (the owner): only then may a chat offer it (P38). */
     fun projectWork(): Boolean = false
 
+    /** Which of its answerers the PC uses for chats (its own model or Online) has been read since the app started. */
+    fun choiceRead(): Boolean = true
+
     /** Whether the PC takes pictures with a message and its answerer can look at them ("chat_pictures"). */
     fun canSeePictures(): Boolean = false
 

@@ -78,9 +78,12 @@ fun claudeAbout(id: String, pcWords: String): String = if (id == "auto") "Mímir
 /** The chip's word with Claude answering: the model picked for chats, else the one that last answered, else "Auto-pick". */
 fun claudeChipWordFor(chosen: String?, @Suppress("UNUSED_PARAMETER") lastAnswer: String?): String = chosen ?: claudeChipWord()
 
-/** The top bar's word for who answers: Claude's own name when the PC routes chats to Claude, else the PC. */
-fun answererWord(whisper: Boolean, online: Boolean, answeringPc: Boolean, claudeAnswers: Boolean, serviceName: String? = null): String =
-    when { whisper -> "Whisper"; online -> serviceName ?: "Online"; answeringPc && claudeAnswers -> "Online"; answeringPc -> "Your PC"; else -> "This phone" }
+/**
+ * The top bar's word for who answers: Claude's own name when the PC routes chats to Claude, else the PC.
+ * While the PC's choice has never been read ([known] false) neither is named: a default is never shown as chosen.
+ */
+fun answererWord(whisper: Boolean, online: Boolean, answeringPc: Boolean, claudeAnswers: Boolean, serviceName: String? = null, known: Boolean = true): String =
+    when { whisper -> "Whisper"; online -> serviceName ?: "Online"; answeringPc && !known -> WHO_READING; answeringPc && claudeAnswers -> "Online"; answeringPc -> "Your PC"; else -> "This phone" }
 
 /** A model's short name for its chip ("Qwen 3.5 4B SOMPOA"). */
 val LocalModel.chipName: String get() = name.substringBefore(',').trim()

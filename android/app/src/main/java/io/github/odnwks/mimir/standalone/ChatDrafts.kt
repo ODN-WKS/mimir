@@ -26,6 +26,13 @@ class ChatDrafts(initial: Map<String, String> = emptyMap(), private val onTextCh
 
     @Synchronized fun remove(id: String) { if (kept.remove(id) != null) onTextChange() }
 
+    /** Keeps only the drafts of [ids] (the chats that can still be opened); true when any went. */
+    @Synchronized fun keepOnly(ids: Set<String>): Boolean {
+        val gone = kept.keys.filter { it !in ids }
+        gone.forEach { kept.remove(it) }
+        return gone.isNotEmpty()
+    }
+
     @Synchronized fun clear() { if (kept.isNotEmpty()) { kept.clear(); onTextChange() } }
 
     /** The words of every draft, for keeping on the phone. */

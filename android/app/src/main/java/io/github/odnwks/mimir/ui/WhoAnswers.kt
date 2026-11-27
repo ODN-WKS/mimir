@@ -62,6 +62,8 @@ const val WHO_PC = "Your PC"
 const val WHO_PC_ABOUT = "Smarter and faster. Your chats stay between this phone and your PC."
 const val WHO_CONNECT = "Connect your PC"
 const val WHO_CLAUDE = "Online"
+/** The top bar while the PC's choice of who answers has never been read on this phone. */
+const val WHO_READING = "One moment"
 const val WHO_PC_AWAY = "Your PC is away. Your message is kept and sends when it's back."
 const val WHO_CLAUDE_ABOUT = "Uses your Anthropic plan through your PC. Your messages go to Anthropic."
 
@@ -71,9 +73,9 @@ fun whoLabel(name: String) = "$name. Change who answers"
 /** Which cards the sheet shows, in order, and what each says; pure so a check can read it. */
 data class WhoCard(val who: Answerer, val title: String, val about: String, val enabled: Boolean, val chosen: Boolean, val online: Boolean = false)
 
-/** The cards for now: This phone always (disabled if it can't run a model), Your PC and Claude only when paired and offered. */
+/** The cards for now: This phone always (disabled if it can't run a model), Your PC and Claude only when paired and offered. [chosen] null: none is ticked (not known yet). */
 fun whoCards(
-    chosen: Answerer, phoneCan: Boolean, paired: Boolean, claudeOffered: Boolean,
+    chosen: Answerer?, phoneCan: Boolean, paired: Boolean, claudeOffered: Boolean,
     /** An online service the owner set up (a fourth card), and whether it is the one answering. */
     online: Setup? = null, onlineChosen: Boolean = false,
     /** False while the PC is away: its card says so, and Online (which goes through the PC) is offered only if it is already chosen. */
@@ -101,7 +103,7 @@ private val CardBorder = Color(0xFF3B6FD0)
 @Composable
 fun WhoAnswersSheet(
     open: Boolean,
-    chosen: Answerer,
+    chosen: Answerer?,
     phoneCan: Boolean,
     paired: Boolean,
     claudeOffered: Boolean,

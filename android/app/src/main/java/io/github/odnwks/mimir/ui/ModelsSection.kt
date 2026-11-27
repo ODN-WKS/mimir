@@ -161,7 +161,8 @@ fun ModelsSection(state: StationState, station: Station, nav: Navigator, phone: 
             val canRunHere = phone?.state?.collectAsStateWithLifecycle()?.value?.supported == true
             val chosenGroup = answeringGroup(state.paired, state.models.chatsEngine == "paid", state.models.power == Power.ClaudeOnly)
             order.forEach { (key, _) ->
-                JumpChip(names.getValue(key), Modifier.weight(1f).fillMaxHeight(), chosen = key == chosenGroup, available = key != "phone" || canRunHere) {
+                // Nothing is shown as chosen while the PC's choice has never been read.
+                JumpChip(names.getValue(key), Modifier.weight(1f).fillMaxHeight(), chosen = key == chosenGroup && (!state.paired || m.chatsEngineKnown), available = key != "phone" || canRunHere) {
                     val y = tops[key] ?: return@JumpChip
                     scope.launch { if (reduce) scroll.scrollTo(y) else scroll.animateScrollTo(y) }
                 }

@@ -63,6 +63,11 @@ class Vault(
         val person: String? = null,
         /** Which waiting messages and replies (by id) the person typed into a message box. */
         val typed: Set<String> = emptySet(),
+        /**
+         * Who answers chats on the PC when last read there: "free", "paid", "" (the PC offers no choice), or
+         * null (never read). Shown at start, before the PC is reached, so a default is never shown as chosen.
+         */
+        val chatsEngine: String? = null,
     )
 
     /**
@@ -122,6 +127,7 @@ class Vault(
             pcTalks = o.optBoolean("pc_talks"),
             person = o.optString("person").ifEmpty { null },
             typed = o.optJSONArray("typed")?.let { a -> (0 until a.length()).map { a.getString(it) }.toSet() } ?: emptySet(),
+            chatsEngine = if (o.has("chats_engine")) o.optString("chats_engine") else null,
         )
     }
 
@@ -149,6 +155,7 @@ class Vault(
             .put("person", d.person ?: "")
             // Only ids still waiting are kept.
             .put("typed", JSONArray(d.typed.filter { id -> d.outbox.any { it.first == id } || d.replies.any { it.first == id } }))
+            .apply { d.chatsEngine?.let { put("chats_engine", it) } }
         lastSaveOk = runCatching { writeLock.withLock { SafeFile.write(file, codec.seal(o.toString())) } }.isSuccess
     }
 

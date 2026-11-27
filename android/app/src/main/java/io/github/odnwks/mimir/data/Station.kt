@@ -793,6 +793,8 @@ data class Models(
     val projectEngine: String? = null,
     /** Whether any model on the PC can look at this person's pictures (null: not known yet, or an older PC). Kept here so a change redraws the attach menu. */
     val seesPictures: Boolean? = null,
+    /** False only when who answers chats on the PC has never been read on this phone: nothing is shown as chosen then. */
+    val chatsEngineKnown: Boolean = true,
 ) {
     val selectedName: String get() = (claude + local).firstOrNull { it.id == selected }?.name ?: selected
 }

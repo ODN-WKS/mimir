@@ -298,6 +298,10 @@ class Engine(
         pendingDeletes += saved.pendingDeletes
         synced = saved.synced
         if (store.unreadable) _state.update { it.copy(problem = "Your earlier chats couldn't be read. They are kept safe in a separate file on this phone. Ask for help before clearing the app's data.") }
+        // Words left in a box that no kept chat owns can never be opened again: a Whisper's (an older
+        // version kept those), or a new chat's that was never sent. They go now, from the file too.
+        // Only when the chats were read: otherwise which drafts belong to a chat can't be told.
+        else if (drafts.keepOnly(chats.mapTo(HashSet()) { it.id })) flushDrafts()
         tidy()
         tidyVoice()
     }
@@ -810,7 +814,7 @@ class Engine(
         val pos = c.turns.indexOfFirst { it.id == turnId && it.user }
         if (t.isEmpty() || pos < 0 || s0.writing || !canEdit(c, pos)) return null
         if (!canSend()) {
-            if (s0.testing == null) _state.update { it.copy(problem = "Nothing can answer right now, so this can't be edited yet. Try again when your PC is back.") }
+            if (s0.testing == null) _state.update { it.copy(problem = if (pcChoiceUnread()) "Your PC is getting ready. Try again in a moment." else "Nothing can answer right now, so this can't be edited yet. Try again when your PC is back.") }
             return null
         }
         val removed = c.turns.drop(pos)
@@ -901,7 +905,7 @@ class Engine(
 
     private fun canSend(): Boolean {
         val s = _state.value
-        if (s.writing || !(s.ready || pcAnswers() || onlineAnswers())) return false
+        if (s.writing || !(s.ready || pcAnswers() || onlineAnswers()) || pcChoiceUnread()) return false
         if (s.testing != null) {
             _state.update { it.copy(problem = "A model test is running: cancel it in Settings › Who answers, or wait a moment.") }
             return false
@@ -928,6 +932,8 @@ class Engine(
         if ((t.isEmpty() && files.isEmpty() && pictures.isEmpty()) || s0.writing) return false
         // Messages already waiting go first: a new one lines up behind them, so the order never changes.
         if (s0.chat.queued.isNotEmpty() && !s0.whisper) { enqueue(Turn(true, t, files, pictures, id = newId(), at = now(), typed = typed)); drainQueue(); return true }
+        // The PC is there but its choice of who answers isn't read yet: the message waits a moment, then goes by itself.
+        if (pcChoiceUnread()) { enqueue(Turn(true, t, files, pictures, id = newId(), at = now(), typed = typed)); return true }
         if (s0.ready || pcAnswers() || onlineAnswers()) return send(t, files, pictures, typed = typed)
         // Paired and the PC is the answerer: with nothing to answer it now (the PC away, this phone with no model),
         // the message stays in the chat, marked "Sends when your PC is back", and goes by itself, in order, once.
@@ -942,7 +948,7 @@ class Engine(
     fun answerIfWaiting() {
         refreshStatus()
         val s = _state.value
-        if ((s.ready || pcAnswers() || onlineAnswers()) && !s.writing && s.chat.turns.lastOrNull()?.user == true) resendLast(typed = null)
+        if ((s.ready || pcAnswers() || onlineAnswers()) && !pcChoiceUnread() && !s.writing && s.chat.turns.lastOrNull()?.user == true) resendLast(typed = null)
     }
 
     // ---------- Messages waiting for the PC ----------
@@ -1051,7 +1057,7 @@ class Engine(
         val s0 = _state.value
         val toPc = pcAnswers()
         val viaOnline = onlineAnswers()
-        if ((t.isEmpty() && files.isEmpty() && pictures.isEmpty()) || s0.writing || !(s0.ready || toPc || viaOnline)) return false
+        if ((t.isEmpty() && files.isEmpty() && pictures.isEmpty()) || s0.writing || !(s0.ready || toPc || viaOnline) || pcChoiceUnread()) return false
         if (s0.testing != null) {
             _state.update { it.copy(problem = "A model test is running: cancel it in Settings › Who answers, or wait a moment.") }
             return false
@@ -1960,6 +1966,15 @@ class Engine(
     }
 
     // ---------- One history (Stage 1, 2.5) ----------
+
+    /**
+     * The PC answers, but which of its answerers it uses for chats (its own model or Online) hasn't been read
+     * since the app started: a message waits for it, so it never goes to an answerer the person didn't pick.
+     */
+    private fun pcChoiceUnread(): Boolean = pcAnswers() && pc?.choiceRead() == false
+
+    /** The PC's choice of who answers is read: what waited for it goes now. */
+    fun pcChoiceRead() = recoverThenAnswer()
 
     /** The link to the PC is up again: catch up on what changed while apart, then send what's waiting here. */
     fun linkUp() {

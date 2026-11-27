@@ -445,7 +445,9 @@ class LinkStation(
                     // (never sent to the PC) and the new person's history is asked for from the start.
                     if (ev.person.isNotEmpty() && ev.person != data.person) {
                         val earlier = data.person
-                        data = data.copy(person = ev.person); saveData()
+                        // The earlier person's choice of who answers isn't this one's: it is read again.
+                        data = data.copy(person = ev.person, chatsEngine = null); saveData()
+                        synchronized(lock) { pcModels = null }
                         if (personChanged(earlier, ev.person)) io.github.odnwks.mimir.standalone.Engine.made()?.newPerson()
                     }
                 }
@@ -549,6 +551,9 @@ class LinkStation(
     private fun talkers() = synchronized(lock) { talking.values.toList() }
 
     override fun canTalk(): Boolean = synchronized(lock) { connected && readyAt > 0 && data.pcId != null } && Wire.TALK in pcFeatures
+
+    /** A PC with a choice of who answers chats ("engines") has said which, since the app started. */
+    override fun choiceRead(): Boolean = Wire.ENGINES !in pcFeatures || synchronized(lock) { pcModels != null }
 
     override fun canSeePictures(): Boolean = canTalk() && Wire.CHAT_PICTURES in pcFeatures && synchronized(lock) { pcModels?.seesPictures == true }
 
@@ -849,7 +854,8 @@ class LinkStation(
 
     private fun forget(why: String) {
         synchronized(lock) {
-            data = data.copy(pcId = null, pcName = null, outbox = emptyList(), newTasks = emptyList(), replies = emptyList(), answers = emptyList(), recordings = emptyList(), past = "[]", chatAt = 0)
+            data = data.copy(pcId = null, pcName = null, outbox = emptyList(), newTasks = emptyList(), replies = emptyList(), answers = emptyList(), recordings = emptyList(), past = "[]", chatAt = 0, chatsEngine = null)
+            pcModels = null
             past.clear(); pastShown = emptyList()
             recordDir?.listFiles()?.forEach { it.delete() }
             attachments.dropAllExcept(emptySet(), ageMs = 0)
@@ -1646,7 +1652,14 @@ class LinkStation(
     private fun refreshModels() {
         call(Wire.models()) { ok, _ ->
             val m = Wire.modelList(ok) ?: return@call
-            val before = synchronized(lock) { pcModels.also { pcModels = m } }
+            val before = synchronized(lock) {
+                // Kept on the phone so the next start shows the person's choice at once ("" : the PC offers none).
+                val seen = m.chatsEngine.orEmpty()
+                if (data.chatsEngine != seen) { data = data.copy(chatsEngine = seen); saveData() }
+                pcModels.also { pcModels = m }
+            }
+            // The first read since the app started: a message that waited for it goes now.
+            if (before == null) io.github.odnwks.mimir.standalone.Engine.made()?.pcChoiceRead()
             // The owner took Online away from this person while it was chosen: say so once.
             if (onlineWithdrawn(before?.chatsEngine, m.chatsEngine, isOwner())) onOnlineWithdrawn?.invoke(ONLINE_WITHDRAWN)
             m.standalone?.let { list -> onStandaloneModels?.invoke(list) }
@@ -1850,7 +1863,7 @@ class LinkStation(
             usage = if (p != null) Mapping.usage(p, now) else base.usage,
             pairWords = pairWords,
             pairing = pairing,
-            models = Mapping.models(pcModels, chosenModel),
+            models = Mapping.models(pcModels, chosenModel, data.chatsEngine),
             incognito = inc?.let { t ->
                 val es = entries[t.id].orEmpty()
                 IncognitoTask(
