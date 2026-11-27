@@ -1098,6 +1098,7 @@ fn p35_a_later_messages_forecast_reaches_claude_with_the_message() {
             ground_rules: None,
             task: None,
             chat_only: true,
+            typed: false,
         })
         .unwrap();
         assert!(
@@ -1143,6 +1144,7 @@ fn p35_a_later_messages_forecast_reaches_the_pcs_model() {
             ground_rules: None,
             task: None,
             chat_only: true,
+            typed: false,
         })
         .unwrap();
         assert!(
