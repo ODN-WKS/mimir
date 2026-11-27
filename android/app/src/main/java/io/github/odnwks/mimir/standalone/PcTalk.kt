@@ -92,6 +92,8 @@ data class TalkRequest(
     val task: String?,
     /** "Just chat" was picked: the PC answers it as a chat even if it names a project. */
     val chatOnly: Boolean = false,
+    /** The person typed the new message into a message box. */
+    val typed: Boolean = false,
 )
 
 /** What the PC does with a message (called on the link's thread). */

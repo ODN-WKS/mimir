@@ -228,7 +228,7 @@ fun StandaloneScreen(engine: Engine, nav: Navigator) {
                 if (s.writing) {
                     StopControl(engine::stop, shape = StopShape.Round, size = SMALL_BUTTON, fill = Palette.RedBorder, description = "Stop the reply")
                 } else {
-                    RoundButton(Glyphs.Send, "Send", { if (engine.send(draft)) draft = "" }, filled = draft.isNotBlank())
+                    RoundButton(Glyphs.Send, "Send", { if (engine.send(draft, typed = true)) draft = "" }, filled = draft.isNotBlank())
                 }
             }
         }

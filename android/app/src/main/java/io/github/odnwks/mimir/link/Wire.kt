@@ -62,8 +62,9 @@ object Wire {
      */
     fun talk(
         chatId: String, turnId: String, turns: List<LChatTurn>, lookup: String? = null, sources: List<LChatSource> = emptyList(),
-        effort: String? = null, rules: String? = null, task: String? = null, chatOnly: Boolean = false,
+        effort: String? = null, rules: String? = null, task: String? = null, chatOnly: Boolean = false, typed: Boolean = false,
     ): String = obj("Talk") {
+        typed(typed)
         put("chat_id", chatId); put("turn_id", turnId); put("turns", JSONArray(turns.map { it.json() }))
         put("lookup", lookup ?: JSONObject.NULL); put("sources", JSONArray(sources.map { it.json() }))
         put("effort", effort ?: JSONObject.NULL); put("ground_rules", rules ?: JSONObject.NULL); put("task", task ?: JSONObject.NULL)
@@ -200,8 +201,9 @@ object Wire {
     /** A task from the phone always asks first. A message id makes sending it again harmless. */
     fun newTask(
         project: String, text: String, msgId: String? = null, model: String? = null, plan: Boolean = false, rules: String? = null,
-        pictures: List<LPicture> = emptyList(), files: List<LFile> = emptyList(), effort: String? = null,
+        pictures: List<LPicture> = emptyList(), files: List<LFile> = emptyList(), effort: String? = null, typed: Boolean = false,
     ): String = obj("NewTask") {
+        typed(typed)
         put("project", project); put("text", text); put("pictures", pictureArray(pictures)); put("mode", if (plan) "Plan" else "Ask")
         files(files)
         put("model", model ?: JSONObject.NULL); put("effort", effort ?: JSONObject.NULL); put("separate_copy", false)
@@ -209,11 +211,18 @@ object Wire {
         rules(rules)
     }
 
+    /**
+     * The person typed these words into a message box: the PC tells Claude Code so. Left out when false
+     * (everything a button or Mímir writes), so the call is the one an older PC knows.
+     */
+    private fun JSONObject.typed(typed: Boolean) { if (typed) put("typed", true) }
+
     /** The phone's ground rules, which the PC uses for that task instead of its own (left out when off). */
     private fun JSONObject.rules(rules: String?) { if (rules != null) put("ground_rules", rules) }
 
     /** The pictures (all kept for the task) and files ("task_files") that go with a task's message; empty lists leave the call as it was. */
-    fun send(task: String, text: String, msgId: String? = null, pictures: List<LPicture> = emptyList(), files: List<LFile> = emptyList()): String = obj("Send") {
+    fun send(task: String, text: String, msgId: String? = null, pictures: List<LPicture> = emptyList(), files: List<LFile> = emptyList(), typed: Boolean = false): String = obj("Send") {
+        typed(typed)
         put("task", task); put("text", text); put("pictures", pictureArray(pictures)); files(files); put("msg_id", msgId ?: JSONObject.NULL)
     }
 
@@ -223,7 +232,7 @@ object Wire {
     }
 
     /** A general-chat message (a PC without "talk"): the PC files it (status, idea, request, Inbox); the reply is a [Filed]. */
-    fun chat(msgId: String, text: String, rules: String? = null): String = obj("Chat") { put("msg_id", msgId); put("text", text); rules(rules) }
+    fun chat(msgId: String, text: String, rules: String? = null, typed: Boolean = false): String = obj("Chat") { put("msg_id", msgId); put("text", text); rules(rules); typed(typed) }
 
     /** An answer to a needs-you item: a plain one (`"Allow"`, `"Works"`, ...), a choice or text. */
     fun answerItem(askId: String, answer: ItemAnswer): String = obj("AnswerItem") {
@@ -287,7 +296,8 @@ object Wire {
     fun continueOnClaude(task: String): String = obj("ContinueOnClaude") { put("task", task) }
     fun startFresh(task: String): String = obj("StartFresh") { put("task", task) }
     /** An Incognito task always asks first, on a free model. */
-    fun newIncognito(project: String, text: String, model: String, rules: String? = null): String = obj("NewIncognito") {
+    fun newIncognito(project: String, text: String, model: String, rules: String? = null, typed: Boolean = false): String = obj("NewIncognito") {
+        typed(typed)
         put("project", project); put("text", text); put("model", model); put("mode", "Ask")
         rules(rules)
     }

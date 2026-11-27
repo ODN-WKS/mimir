@@ -597,6 +597,7 @@ fn write_the_examples() {
         Call::Sync { since: 12 },
         Call::Projects,
         Call::NewTask {
+            typed: false,
             ground_rules: None,
             project: "/home/me/p".into(),
             text: "Fix it".into(),
@@ -609,6 +610,7 @@ fn write_the_examples() {
             msg_id: Some("m-1".into()),
         },
         Call::Send {
+            typed: false,
             task: "t".into(),
             text: "And this".into(),
             pictures: vec![],
@@ -617,6 +619,7 @@ fn write_the_examples() {
         },
         Call::Stop { task: "t".into() },
         Call::Chat {
+            typed: false,
             ground_rules: None,
             msg_id: "m-3".into(),
             text: "Recipes: idea - a dark mode switch".into(),
@@ -685,6 +688,7 @@ fn write_the_examples() {
         Call::ContinueOnClaude { task: "t".into() },
         Call::StartFresh { task: "t".into() },
         Call::NewIncognito {
+            typed: false,
             ground_rules: None,
             project: "/home/me/p".into(),
             text: "Read the tax letter".into(),
@@ -711,6 +715,7 @@ fn write_the_examples() {
             url: "https://api.open-meteo.com/v1/forecast?latitude=39.73&longitude=-121.84".into(),
         },
         Call::Talk {
+            typed: false,
             chat_id: "c-1".into(),
             turn_id: "t-1".into(),
             turns: vec![turn(
@@ -729,6 +734,7 @@ fn write_the_examples() {
             chat_only: false,
         },
         Call::Talk {
+            typed: false,
             chat_id: "c-1".into(),
             turn_id: "t-3".into(),
             turns: vec![turn("t-3", true, "And when was it released?", None, 1, 0)],
@@ -746,6 +752,7 @@ fn write_the_examples() {
             chat_only: false,
         },
         Call::Talk {
+            typed: false,
             chat_id: "c-1".into(),
             turn_id: "t-4".into(),
             turns: vec![turn(
@@ -764,6 +771,7 @@ fn write_the_examples() {
             chat_only: true,
         },
         Call::Talk {
+            typed: false,
             chat_id: "c-1".into(),
             turn_id: "t-5".into(),
             turns: vec![{
@@ -782,6 +790,7 @@ fn write_the_examples() {
             chat_only: true,
         },
         Call::Talk {
+            typed: false,
             chat_id: "c-1".into(),
             turn_id: "t-6".into(),
             turns: vec![{
@@ -858,6 +867,7 @@ fn write_the_examples() {
     // so the phone's older call list stays as it was.
     let with_files: Vec<String> = [
         Call::NewTask {
+            typed: false,
             ground_rules: None,
             project: "/home/me/p".into(),
             text: "Use these".into(),
@@ -877,6 +887,7 @@ fn write_the_examples() {
             msg_id: Some("m-4".into()),
         },
         Call::Send {
+            typed: false,
             task: "t".into(),
             text: "See the picture and the file".into(),
             pictures: vec![Picture {

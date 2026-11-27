@@ -176,6 +176,7 @@ fn the_automatic_panel_opens_for_a_task_started_from_the_phone() {
     assert!(!shows(&h, "THIS PC"), "{}", screen_text(&h));
     phone
         .call(Call::NewTask {
+            typed: false,
             files: vec![],
             ground_rules: None,
             project: home.project.display().to_string(),

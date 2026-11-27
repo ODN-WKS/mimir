@@ -534,7 +534,7 @@ class LinkStation(
             synchronized(lock) { if (talking.containsKey(answer)) { talking.remove(answer)?.done(null, "timeout") } }
             deadline.shutdown()
         }, 1, java.util.concurrent.TimeUnit.SECONDS)
-        val sent = call(Wire.talk(request.chatId, request.turnId, request.turns, request.lookup, request.sources, request.effort, request.rules, request.task, request.chatOnly && canChatOnly())) { ok, err ->
+        val sent = call(Wire.talk(request.chatId, request.turnId, request.turns, request.lookup, request.sources, request.effort, request.rules, request.task, request.chatOnly && canChatOnly(), request.typed)) { ok, err ->
             deadline.shutdownNow()
             // A link that went away is not the PC's answer: the finished answer is picked up after the reconnect (lost()/back()).
             if (err == WENT_AWAY) return@call
@@ -723,9 +723,10 @@ class LinkStation(
         val waiting = synchronized(lock) { data.outbox.takeIf { connected } } ?: return
         for ((id, text) in waiting) {
             // It leaves the outbox only when the PC has answered; a link that went away leaves it there.
-            val sent = delivery.start(id, { cb -> call(Wire.chat(id, text, GroundRules.current), cb) }) { ok, err ->
+            val sent = delivery.start(id, { cb -> call(Wire.chat(id, text, GroundRules.current, id in data.typed), cb) }) { ok, err ->
                 synchronized(lock) {
-                    data = data.copy(outbox = data.outbox.filterNot { it.first == id }); saveData()
+                    // A message the PC refused is tried again as a resend: no longer marked as typed.
+                    data = data.copy(outbox = data.outbox.filterNot { it.first == id }, typed = data.typed - id); saveData()
                     // The PC said no: the line says so (with Try again and Delete) instead of waiting for ever.
                     if (err != null) {
                         val i = chat.indexOfFirst { it.id == id }
@@ -848,10 +849,10 @@ class LinkStation(
         }, "mimir-pair").start()
     }
 
-    override fun send(text: String) {
+    override fun send(text: String, typed: Boolean) {
         val id = "m-${UUID.randomUUID()}"
         val now = synchronized(lock) {
-            data = data.copy(outbox = data.outbox + (id to text))
+            data = data.copy(outbox = data.outbox + (id to text), typed = if (typed) data.typed + id else data.typed)
             saveData()
             chat += ChatEntry.Mine(id, text, Filing(FilingKind.Waiting, ""))
             connected
@@ -1044,21 +1045,23 @@ class LinkStation(
      * A reply inside a task. It is kept on this phone first, so a reply typed while the PC is away
      * waits and goes out (once: the id makes a resend harmless) as soon as the link is back.
      */
-    override fun reply(taskId: String, text: String, pictures: List<io.github.odnwks.mimir.standalone.TurnPicture>, files: List<io.github.odnwks.mimir.standalone.TurnFile>): Boolean {
+    override fun reply(taskId: String, text: String, pictures: List<io.github.odnwks.mimir.standalone.TurnPicture>, files: List<io.github.odnwks.mimir.standalone.TurnFile>, typed: Boolean): Boolean {
+        // Files or pictures alone are nothing typed.
+        val mine = typed && text.isNotBlank()
         val held = PendingAttachments.held(pictures, files)
         if (text.isBlank() && held.isEmpty) return false
         val id = "s-${UUID.randomUUID()}"
         io.github.odnwks.mimir.alerts.OutsideTasks.mine(taskId)
         // A Whisper's words are never kept on the phone to wait: sent now, or not at all (PHD-11).
         if (!Expiry.mayWait(synchronized(lock) { tasks[taskId] })) {
-            val sent = synchronized(lock) { connected } && call(Wire.send(taskId, text, id, held.pictures, held.files)) { _, err -> if (err != null) note(err) }
+            val sent = synchronized(lock) { connected } && call(Wire.send(taskId, text, id, held.pictures, held.files, mine)) { _, err -> if (err != null) note(err) }
             if (!sent) note("Your PC is away: this Whisper can't wait. Send it again when your PC is back.")
             return sent
         }
         // Pictures and files wait on this phone with the words; if they can't be kept, the message isn't taken (the box keeps them).
         if (!attachments.keep(id, held)) { note("The pictures or files couldn't be saved on this phone. Free up some space, then send again."); return false }
         val now = synchronized(lock) {
-            data = data.copy(replies = data.replies + Triple(id, taskId, text))
+            data = data.copy(replies = data.replies + Triple(id, taskId, text), typed = if (mine) data.typed + id else data.typed)
             saveData()
             connected
         }
@@ -1068,9 +1071,9 @@ class LinkStation(
     }
 
     /** [reply] with the picture and file work (base64, sealing, the disk) off the main thread; [done] says whether it was taken, and the box keeps its content until then. */
-    override fun replyAsync(taskId: String, text: String, pictures: List<io.github.odnwks.mimir.standalone.TurnPicture>, files: List<io.github.odnwks.mimir.standalone.TurnFile>, done: (Boolean) -> Unit) {
-        if (pictures.isEmpty() && files.isEmpty()) return done(reply(taskId, text, pictures, files))
-        Thread({ done(reply(taskId, text, pictures, files)) }, "mimir-reply-keep").start()
+    override fun replyAsync(taskId: String, text: String, pictures: List<io.github.odnwks.mimir.standalone.TurnPicture>, files: List<io.github.odnwks.mimir.standalone.TurnFile>, typed: Boolean, done: (Boolean) -> Unit) {
+        if (pictures.isEmpty() && files.isEmpty()) return done(reply(taskId, text, pictures, files, typed))
+        Thread({ done(reply(taskId, text, pictures, files, typed)) }, "mimir-reply-keep").start()
     }
 
     override fun retryReply(replyId: String) {
@@ -1095,7 +1098,7 @@ class LinkStation(
      */
     override fun editTaskMessage(taskId: String, messageId: String, text: String, done: (String?) -> Unit) {
         if (text.isBlank()) return done("Write something first.")
-        reply(taskId, text)
+        reply(taskId, text, typed = true)
         done(null)
     }
 
@@ -1113,12 +1116,16 @@ class LinkStation(
                 publish()
                 continue
             }
-            val sent = delivery.start(id, { cb -> call(Wire.send(task, text, id, held.pictures, held.files), cb) }) { _, err ->
+            val sent = delivery.start(id, { cb -> call(Wire.send(task, text, id, held.pictures, held.files, id in data.typed), cb) }) { _, err ->
                 synchronized(lock) {
                     if (err == null) {
                         data = data.copy(replies = data.replies.filterNot { it.first == id }); saveData()
                         gotItAt[task] = System.currentTimeMillis()
-                    } else failedReplies[id] = err
+                    } else {
+                        // "Try again" on a refused reply is a resend: no longer marked as typed.
+                        failedReplies[id] = err
+                        data = data.copy(typed = data.typed - id); saveData()
+                    }
                 }
                 // A refusal keeps the words and the pictures, to try again or remove.
                 if (err == null) attachments.drop(id) else note(err)
@@ -1293,6 +1300,7 @@ class LinkStation(
     override fun startTask(
         text: String, project: String, incognito: Boolean, plan: Boolean, model: String?,
         pictures: List<io.github.odnwks.mimir.standalone.TurnPicture>, files: List<io.github.odnwks.mimir.standalone.TurnFile>, effort: String?,
+        typed: Boolean,
     ): String {
         startWhy = ""
         // Nothing to do: no empty task is made on the PC.
@@ -1307,7 +1315,7 @@ class LinkStation(
                 note(startWhy)
                 return ""
             }
-            if (!call(Wire.newIncognito(path, text, free, GroundRules.current)) { _, err -> if (err != null) note(err) }) {
+            if (!call(Wire.newIncognito(path, text, free, GroundRules.current, typed)) { _, err -> if (err != null) note(err) }) {
                 startWhy = "Your PC is away: this Whisper can't wait. Start it again when your PC is back."
                 note(startWhy)
                 return ""
@@ -1328,7 +1336,7 @@ class LinkStation(
             return ""
         }
         val now = synchronized(lock) {
-            data = data.copy(newTasks = data.newTasks + WaitingTask(pending, path, text, model ?: "auto", plan, GroundRules.current, effort = effort.takeIf { canSetReplyOptions() || it == null }))
+            data = data.copy(newTasks = data.newTasks + WaitingTask(pending, path, text, model ?: "auto", plan, GroundRules.current, effort = effort.takeIf { canSetReplyOptions() || it == null }, typed = typed))
             saveData()
             connected
         }
@@ -1341,10 +1349,11 @@ class LinkStation(
     override fun startTaskAsync(
         text: String, project: String, incognito: Boolean, plan: Boolean, model: String?,
         pictures: List<io.github.odnwks.mimir.standalone.TurnPicture>, files: List<io.github.odnwks.mimir.standalone.TurnFile>, effort: String?,
+        typed: Boolean,
         done: (String) -> Unit,
     ) {
-        if (pictures.isEmpty() && files.isEmpty()) return done(startTask(text, project, incognito, plan, model, pictures, files, effort))
-        Thread({ done(startTask(text, project, incognito, plan, model, pictures, files, effort)) }, "mimir-newtask-keep").start()
+        if (pictures.isEmpty() && files.isEmpty()) return done(startTask(text, project, incognito, plan, model, pictures, files, effort, typed))
+        Thread({ done(startTask(text, project, incognito, plan, model, pictures, files, effort, typed)) }, "mimir-newtask-keep").start()
     }
 
     /** Starts the new tasks waiting on this phone, oldest first, each once (never one that failed or was cancelled meanwhile). */
@@ -1360,7 +1369,7 @@ class LinkStation(
                     data = data.copy(newTasks = data.newTasks.map { if (it.id == w.id) it.copy(failed = UNREADABLE_PICTURES) else it }); saveData()
                     return@synchronized null
                 }
-                delivery.start(w.id, { cb -> call(Wire.newTask(w.project, w.text, w.id, w.model, w.plan, w.rules, held.pictures, held.files, w.effort), cb) }) { ok, err ->
+                delivery.start(w.id, { cb -> call(Wire.newTask(w.project, w.text, w.id, w.model, w.plan, w.rules, held.pictures, held.files, w.effort, w.typed), cb) }) { ok, err ->
                     synchronized(lock) {
                         if (err == null) {
                             attachments.drop(w.id)
@@ -1371,7 +1380,7 @@ class LinkStation(
                             (ok as? String)?.takeIf { it.isNotEmpty() }?.let { gotItAt[it] = System.currentTimeMillis() }
                         } else {
                             // The PC said no: the task stays, with its words, to try again or remove.
-                            data = data.copy(newTasks = data.newTasks.map { if (it.id == w.id) it.copy(failed = err) else it })
+                            data = data.copy(newTasks = data.newTasks.map { if (it.id == w.id) it.copy(failed = err, typed = false) else it })
                         }
                         saveData()
                     }

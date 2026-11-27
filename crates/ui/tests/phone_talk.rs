@@ -259,6 +259,7 @@ fn user(id: &str, text: &str) -> ChatTurn {
 
 fn talk(chat: &str, id: &str, turns: Vec<ChatTurn>, rules: Option<&str>) -> Call {
     Call::Talk {
+        typed: false,
         chat_id: chat.into(),
         turn_id: id.into(),
         turns,
@@ -661,6 +662,7 @@ fn p6_the_truth_says_working_then_done_everywhere() {
         .call(
             &p,
             Call::NewTask {
+                typed: false,
                 files: vec![],
                 ground_rules: None,
                 project: project.clone(),
@@ -735,6 +737,7 @@ fn a_task_started_from_the_phone_says_from_phone_in_the_truth() {
     let (p, mut seen) = paired(&mut st, &["talk", "chat_sync", "truth"]);
     let project = home.project.display().to_string();
     let new_task = |text: &str| Call::NewTask {
+        typed: false,
         files: vec![],
         ground_rules: None,
         project: project.clone(),
@@ -789,6 +792,7 @@ fn a_task_for_a_project_folder_that_is_gone_is_refused_plainly() {
     let r = seen.call(
         &p,
         Call::NewTask {
+            typed: false,
             files: vec![],
             ground_rules: None,
             project,

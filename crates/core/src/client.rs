@@ -219,6 +219,9 @@ pub struct Station {
     pub tasks: Vec<TaskView>,
     pub weekly: Option<WeeklyUse>,
     pub five_hour: Option<WeeklyUse>,
+    /// The next message sent was typed by a person into one of the window's boxes.
+    /// Taken by that one send; the window sets it, nothing else.
+    pub next_typed: bool,
     /// When they were last refreshed (unix seconds).
     pub usage_at: Option<i64>,
     /// Plain-word problems to show until dismissed.
@@ -294,6 +297,7 @@ impl Station {
             tasks: vec![],
             weekly: None,
             five_hour: None,
+            next_typed: false,
             usage_at: None,
             problems: vec![],
             from_service: HashSet::new(),
@@ -1121,6 +1125,7 @@ impl Station {
         pictures: Vec<mimir_proto::Picture>,
         effort: Option<&str>,
     ) -> Result<String, String> {
+        let typed = std::mem::take(&mut self.next_typed);
         if self.reconnecting() {
             return Err(NOT_SENT.into());
         }
@@ -1174,6 +1179,7 @@ impl Station {
             // A message that names a project starts a task there (the PC
             // decides, as for the phone's chat); the chat then shows a card.
             chat_only: false,
+            typed,
         });
         // The link broke as it was written: nothing was sent.
         if self.reconnecting() {
@@ -1308,6 +1314,7 @@ impl Station {
             ground_rules: None,
             task: None,
             chat_only: false,
+            typed: false,
         });
         self.chat_calls.insert(
             id,
@@ -1323,6 +1330,7 @@ impl Station {
     /// the phones), and the PC answers again from there. The cut turns are
     /// kept for [`undo_edit`](Self::undo_edit).
     pub fn edit_chat(&mut self, chat: &str, turn: &str, text: &str) -> Result<(), String> {
+        let typed = std::mem::take(&mut self.next_typed);
         let text = text.trim();
         if self.reconnecting() {
             return Err(NOT_SENT.into());
@@ -1409,6 +1417,7 @@ impl Station {
             ground_rules: None,
             task: None,
             chat_only: false,
+            typed,
         });
         self.chat_calls.insert(
             id,
@@ -1515,7 +1524,9 @@ impl Station {
         effort: Option<String>,
         separate_copy: bool,
     ) -> Result<String, String> {
+        let typed = std::mem::take(&mut self.next_typed);
         let v = self.call_wait(Call::NewTask {
+            typed,
             ground_rules: None,
             project: project.to_string(),
             text: text.to_string(),
@@ -1533,7 +1544,9 @@ impl Station {
     }
 
     pub fn send_with(&mut self, id: &str, text: &str, pictures: &[Picture]) {
+        let typed = std::mem::take(&mut self.next_typed);
         self.call(Call::Send {
+            typed,
             task: id.into(),
             text: text.into(),
             pictures: pictures.to_vec(),
@@ -1543,7 +1556,9 @@ impl Station {
     }
 
     pub fn queue(&mut self, id: &str, text: &str, files: Vec<PathBuf>) {
+        let typed = std::mem::take(&mut self.next_typed);
         self.call(Call::Queue {
+            typed,
             task: id.into(),
             text: text.into(),
             files,

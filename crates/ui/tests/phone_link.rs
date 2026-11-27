@@ -313,6 +313,7 @@ fn phone_sends_a_message_sees_the_reply_and_answers_allow_and_dont_allow() {
     };
     let id = p
         .call(Call::NewTask {
+            typed: false,
             files: vec![],
             ground_rules: None,
             project: project.clone(),
@@ -334,6 +335,7 @@ fn phone_sends_a_message_sees_the_reply_and_answers_allow_and_dont_allow() {
         let sent = Instant::now();
         let id = p
             .call(Call::NewTask {
+                typed: false,
                 files: vec![],
                 ground_rules: None,
                 project: project.clone(),
@@ -441,6 +443,7 @@ fn phone_sees_the_reply_while_it_is_written() {
     hello(&p, &mut seen);
     let id = p
         .call(Call::NewTask {
+            typed: false,
             files: vec![],
             ground_rules: None,
             project: home.project.display().to_string(),
@@ -737,6 +740,7 @@ fn a_phone_request_brings_its_own_ground_rules() {
     for (rules, n) in [(Some("Phone rules: be short."), 1), (None, 2)] {
         let id = p
             .call(Call::NewTask {
+                typed: false,
                 files: vec![],
                 ground_rules: rules.map(str::to_string),
                 project: project.clone(),

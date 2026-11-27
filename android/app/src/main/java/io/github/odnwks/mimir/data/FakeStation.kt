@@ -16,7 +16,7 @@ class FakeStation(initial: StationState = ExampleData.awake()) : Station {
     private var nextId = 1
     private fun newId(prefix: String) = "$prefix-new-${nextId++}"
 
-    override fun send(text: String) {
+    override fun send(text: String, typed: Boolean) {
         val clean = text.trim()
         if (clean.isEmpty()) return
         flow.update { s ->
@@ -121,7 +121,7 @@ class FakeStation(initial: StationState = ExampleData.awake()) : Station {
         flow.update { s -> s.copy(tasks = s.tasks.map { if (it.id == taskId) it.copy(effort = effort.orEmpty()) else it }) }
     }
 
-    override fun reply(taskId: String, text: String, pictures: List<io.github.odnwks.mimir.standalone.TurnPicture>, files: List<io.github.odnwks.mimir.standalone.TurnFile>): Boolean {
+    override fun reply(taskId: String, text: String, pictures: List<io.github.odnwks.mimir.standalone.TurnPicture>, files: List<io.github.odnwks.mimir.standalone.TurnFile>, typed: Boolean): Boolean {
         val clean = text.trim()
         if (clean.isEmpty() && pictures.isEmpty() && files.isEmpty()) return false
         if (pictures.isNotEmpty() || files.isNotEmpty()) repliedWith += Triple(taskId, pictures.size, files.map { it.name })
@@ -265,6 +265,7 @@ class FakeStation(initial: StationState = ExampleData.awake()) : Station {
     override fun startTask(
         text: String, project: String, incognito: Boolean, plan: Boolean, model: String?,
         pictures: List<io.github.odnwks.mimir.standalone.TurnPicture>, files: List<io.github.odnwks.mimir.standalone.TurnFile>, effort: String?,
+        typed: Boolean,
     ): String {
         if (pictures.isNotEmpty() || files.isNotEmpty() || effort != null) startedWith += listOf(text, pictures.size, files.map { it.name }, effort)
         startedOptions += model to effort

@@ -2,7 +2,7 @@
 //! methods and draws `tasks`; nothing here draws.
 
 use crate::approvals::{self, Answer, Listener, Pending};
-use crate::events::{Event, Picture, user_message_with};
+use crate::events::{Event, Picture, user_line, user_message_with};
 use crate::process::{Launch, Output, Session};
 use crate::store::Store;
 use crate::task::{Mode, Status, Task, WeeklyUse};
@@ -185,6 +185,9 @@ pub struct Runner {
     /// (task id, the input line, since when, where the owner's message
     /// it carries sits in the task), never by waiting.
     resend: Vec<(String, String, Instant, Option<usize>)>,
+    /// The next message sent was typed by a person into a message box. Taken by
+    /// that one message; whoever sets it clears it again after the call.
+    pub next_typed: bool,
     /// Tasks told to stop or pause: when their Claude Code is ended if it
     /// has not left by itself (it may ignore the interrupt).
     kill_after: Vec<(String, Instant)>,
@@ -335,6 +338,7 @@ impl Runner {
             usage_at: None,
             usage_poller: None,
             resend: vec![],
+            next_typed: false,
             kill_after: vec![],
             problems,
             notices: vec![],
@@ -637,6 +641,8 @@ impl Runner {
     /// `show`: the message is added to the conversation as the person's own
     /// words (not for a Continue that has to hand the request over again).
     fn send_inner(&mut self, id: &str, text: &str, pictures: &[Picture], show: bool) {
+        // Taken first, so it can never reach another message.
+        let typed = std::mem::take(&mut self.next_typed);
         let Some(i) = self.index(id) else { return };
         // The person carries on here: the task is theirs from now on.
         if self.tasks[i].task.outside {
@@ -732,6 +738,8 @@ impl Runner {
         }
         self.tasks[i].task.plan_doc = None;
         self.tasks[i].dirty = true;
+        // A line Mímir adds its own words to is not marked as typed.
+        let typed = typed && show && self.tasks[i].task.undo_told.is_none();
         // After an undo, Claude hears about it with this message.
         let text_owned;
         let text = match self.tasks[i].task.undo_told.take() {
@@ -748,9 +756,9 @@ impl Runner {
                     self.tasks[i].task.brief_pending = false;
                     user_message_with(&format!("{b}\n\nNow the owner says:\n{text}"), pictures)
                 }
-                _ => user_message_with(text, pictures),
+                _ => user_line(text, pictures, typed),
             },
-            false => user_message_with(text, pictures),
+            false => user_line(text, pictures, typed),
         };
         if let Some(s) = self.tasks[i].session.as_mut()
             && s.send_line(&line).is_ok()

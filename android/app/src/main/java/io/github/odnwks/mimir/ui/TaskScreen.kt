@@ -456,7 +456,7 @@ fun TaskScreen(taskId: String, state: StationState, station: Station, nav: Navig
                             // The pictures are saved off the main thread; the box keeps its content until they are.
                             if (!sendingReply) {
                                 sendingReply = true
-                                station.replyAsync(task.id, draft.trim(), attach.pictures.toList(), attach.files.toList()) { taken ->
+                                station.replyAsync(task.id, draft.trim(), attach.pictures.toList(), attach.files.toList(), typed = true) { taken ->
                                     sendingReply = false
                                     if (taken) { draft = ""; attach.clear(); answeredQ = task.question?.itemId ?: answeredQ }
                                 }

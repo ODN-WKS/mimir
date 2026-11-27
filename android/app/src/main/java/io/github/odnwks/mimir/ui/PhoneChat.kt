@@ -143,21 +143,23 @@ fun PhoneChat(
     // A Whisper on the PC waits for its first words here; they start it there and the Whisper's own screen opens.
     var pcWhisper by rememberSaveable { mutableStateOf(false) }
     val pcFree = pcWhisperFree ?: (link?.state?.collectAsStateWithLifecycle()?.value?.models?.local?.isNotEmpty() == true)
-    val pcStart = startPcWhisper ?: remember(link) { link?.let { l -> { text: String -> l.startTask(text, "", incognito = true).isNotEmpty() } } }
-    val pcWhisperGo = { text: String ->
+    val pcStart: ((String, Boolean) -> Boolean)? = startPcWhisper?.let { f -> { text: String, _: Boolean -> f(text) } }
+        ?: remember(link) { link?.let { l -> { text: String, typed: Boolean -> l.startTask(text, "", incognito = true, typed = typed).isNotEmpty() } } }
+    val pcWhisperGo = { text: String, typed: Boolean ->
         if (text.isNotBlank()) {
-            if (pcStart?.invoke(text) == true) { draft = ""; pcWhisper = false; nav.open(Screen.IncognitoTask) }
+            if (pcStart?.invoke(text, typed) == true) { draft = ""; pcWhisper = false; nav.open(Screen.IncognitoTask) }
             else attachNote = "Your PC couldn't start the Whisper just now. Check that it is connected and try again."
         }
     }
-    val send = { text: String ->
-        if (pcWhisper) pcWhisperGo(text)
+    // [typed]: from the message box, not a starter.
+    val send = { text: String, typed: Boolean ->
+        if (pcWhisper) pcWhisperGo(text, typed)
         else if (!waiting && (text.isNotBlank() || files.isNotEmpty() || pictures.isNotEmpty())) {
             // Pictures the answerer can't see stay in the box with a note; they are never dropped quietly.
             val held = picturesHeldNote(sight, pictures.size)
             if (held != null) attachNote = held
             // The box clears only when the message was taken; refused, it stays to try again.
-            else if (engine.ask(text, files.toList(), pictures.toList())) { draft = ""; files.clear(); pictures.clear(); markChatted() }
+            else if (engine.ask(text, files.toList(), pictures.toList(), typed)) { draft = ""; files.clear(); pictures.clear(); markChatted() }
         }
     }
     val scope = androidx.compose.runtime.rememberCoroutineScope()
@@ -467,7 +469,7 @@ fun PhoneChat(
             StarterRow(
                 startersFor(first, paired && owner, unheard, last?.title, last?.id, last?.at ?: 0),
                 { st -> if (startup.takeSwallowedTap()) return@StarterRow else when (val a = st.action) {
-                    is StarterAction.Send -> send(a.text)
+                    is StarterAction.Send -> send(a.text, false)
                     StarterAction.OpenUpdates -> nav.selectTab(Tab.Updates)
                     is StarterAction.OpenChat -> engine.open(a.id)
                 } },
@@ -525,7 +527,7 @@ fun PhoneChat(
         androidx.compose.runtime.SideEffect { nav.chatChoices = io.github.odnwks.mimir.nav.ModelEffortChoices(choices.models, choices.notes, choices.more, efforts) }
         androidx.compose.runtime.DisposableEffect(Unit) { onDispose { nav.chatChoices = null } }
         NoKeyboardLearning(s.whisper || pcWhisper) {
-        MimirComposer(draft, { draft = it; if (it.isNotBlank()) engine.prepare() }, waiting, s.writing, voice, onSend = { send(draft) }, onStop = engine::stop, focusTick = focusTick, focusOk = !s.whisper && !pcWhisper && !endAsk && !whoOpen && !needsMimir && nav.sheet == null && !nav.menuOpen,
+        MimirComposer(draft, { draft = it; if (it.isNotBlank()) engine.prepare() }, waiting, s.writing, voice, onSend = { send(draft, true) }, onStop = engine::stop, focusTick = focusTick, focusOk = !s.whisper && !pcWhisper && !endAsk && !whoOpen && !needsMimir && nav.sheet == null && !nav.menuOpen,
             whisper = s.whisper || pcWhisper, waitHint = !paired, modifier = Modifier.startupBottom(startup, on = showHome && first).padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 10.dp),
             hasFiles = files.isNotEmpty() || pictures.isNotEmpty(),
             above = { attach.Chips() },

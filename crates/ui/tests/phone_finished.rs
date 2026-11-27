@@ -162,6 +162,7 @@ fn n4a_one_finished_for_the_owner_none_for_others_or_a_whisper() {
 
     let id = st
         .call_wait(Call::NewTask {
+            typed: false,
             ground_rules: None,
             project: home.project.display().to_string(),
             text: "Tidy up notes.txt.".into(),
@@ -208,6 +209,7 @@ fn n4a_one_finished_for_the_owner_none_for_others_or_a_whisper() {
     // A Whisper task ends without a trace: no event, not in the list.
     let w = st
         .call_wait(Call::NewIncognito {
+            typed: false,
             ground_rules: None,
             project: home.project.display().to_string(),
             text: "Tidy up notes.txt.".into(),
@@ -240,6 +242,7 @@ fn n4a_one_finished_for_the_owner_none_for_others_or_a_whisper() {
 fn start(st: &mut mimir_core::client::Station, home: &TestHome) -> String {
     let id = st
         .call_wait(Call::NewTask {
+            typed: false,
             ground_rules: None,
             project: home.project.display().to_string(),
             text: "Do the thing.".into(),

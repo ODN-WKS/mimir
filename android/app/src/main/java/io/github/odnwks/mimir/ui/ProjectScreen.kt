@@ -129,6 +129,7 @@ fun ProjectScreen(name: String, state: StationState, station: Station, nav: Navi
                         pictures = attach.pictures.toList(), files = attach.files.toList(),
                         // An old PC takes no effort: none is sent (its note says so).
                         effort = choice.effort.ifEmpty { null }.takeIf { canOptions },
+                        typed = true,
                     ) { id ->
                         starting = false
                         if (id.isEmpty()) problem = station.startProblem().ifEmpty { "The task couldn't start." } + " Your words are kept here."

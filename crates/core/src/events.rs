@@ -297,13 +297,10 @@ pub fn parse_line(line: &str) -> Vec<Event> {
     }
 }
 
-/// The JSON line that sends the owner's message to Claude Code's stdin.
+/// The JSON line that sends a message to Claude Code's stdin. Not marked as typed:
+/// see [`user_line`].
 pub fn user_message(text: &str) -> String {
-    serde_json::json!({
-        "type": "user",
-        "message": { "role": "user", "content": text }
-    })
-    .to_string()
+    user_line(text, &[], false)
 }
 
 pub use mimir_proto::Picture;
@@ -363,27 +360,39 @@ pub fn base64(bytes: &[u8]) -> String {
     out
 }
 
-/// A message with pictures: content blocks, pictures first (checked
-/// against Claude Code 2.1.325).
+/// [`user_line`] for words nobody typed.
 pub fn user_message_with(text: &str, pictures: &[Picture]) -> String {
-    if pictures.is_empty() {
-        return user_message(text);
-    }
-    let mut content: Vec<Value> = pictures
-        .iter()
-        .map(|p| {
-            serde_json::json!({
-                "type": "image",
-                "source": { "type": "base64", "media_type": p.media_type, "data": p.base64 }
+    user_line(text, pictures, false)
+}
+
+/// The input line for a message. With pictures: content blocks, pictures first
+/// (checked against Claude Code 2.1.325). `typed`: a person typed these words
+/// into a message box, and Claude Code is told (`origin` human, as its SDK asks
+/// of apps that forward typed words). Everything else carries no `origin`.
+pub fn user_line(text: &str, pictures: &[Picture], typed: bool) -> String {
+    let content: Value = if pictures.is_empty() {
+        text.into()
+    } else {
+        let mut blocks: Vec<Value> = pictures
+            .iter()
+            .map(|p| {
+                serde_json::json!({
+                    "type": "image",
+                    "source": { "type": "base64", "media_type": p.media_type, "data": p.base64 }
+                })
             })
-        })
-        .collect();
-    content.push(serde_json::json!({ "type": "text", "text": text }));
-    serde_json::json!({
+            .collect();
+        blocks.push(serde_json::json!({ "type": "text", "text": text }));
+        blocks.into()
+    };
+    let mut line = serde_json::json!({
         "type": "user",
         "message": { "role": "user", "content": content }
-    })
-    .to_string()
+    });
+    if typed {
+        line["origin"] = serde_json::json!({ "kind": "human" });
+    }
+    line.to_string()
 }
 
 #[cfg(test)]
@@ -433,6 +442,35 @@ mod tests {
         let v: Value = serde_json::from_str(&user_message("hi")).unwrap();
         assert_eq!(v["type"], "user");
         assert_eq!(v["message"]["content"], "hi");
+    }
+
+    /// The exact input lines: only typed words carry `origin`.
+    #[test]
+    fn only_a_typed_line_carries_origin() {
+        assert_eq!(
+            user_line("hi", &[], true),
+            r#"{"message":{"content":"hi","role":"user"},"origin":{"kind":"human"},"type":"user"}"#
+        );
+        assert_eq!(
+            user_line("hi", &[], false),
+            r#"{"message":{"content":"hi","role":"user"},"type":"user"}"#
+        );
+        assert_eq!(user_message("hi"), user_line("hi", &[], false));
+        let p = [Picture {
+            media_type: "image/png".into(),
+            base64: "AAAA".into(),
+        }];
+        let blocks = r#"[{"source":{"data":"AAAA","media_type":"image/png","type":"base64"},"type":"image"},{"text":"hi","type":"text"}]"#;
+        assert_eq!(
+            user_line("hi", &p, true),
+            format!(
+                r#"{{"message":{{"content":{blocks},"role":"user"}},"origin":{{"kind":"human"}},"type":"user"}}"#
+            )
+        );
+        assert_eq!(
+            user_message_with("hi", &p),
+            format!(r#"{{"message":{{"content":{blocks},"role":"user"}},"type":"user"}}"#)
+        );
     }
 
     #[test]

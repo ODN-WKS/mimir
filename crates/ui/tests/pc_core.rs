@@ -67,6 +67,7 @@ fn the_service_answers_at_once_while_the_pcs_model_wakes() {
     let t0 = Instant::now();
     let waiting = std::thread::spawn(move || {
         let r = slow.call_wait(Call::NewIncognito {
+            typed: false,
             ground_rules: None,
             project: String::new(),
             text: "Hi".into(),
@@ -107,6 +108,7 @@ fn a_whisper_task_refuses_read_aloud() {
     let mut st = home.service();
     let id = st
         .call_wait(Call::NewIncognito {
+            typed: false,
             ground_rules: None,
             project: home.project.display().to_string(),
             text: "Tidy up notes.txt.".into(),
@@ -232,6 +234,7 @@ fn a_stop_cancels_a_message_still_waiting_for_the_pcs_model() {
     let mut st = home.service();
     let id = st
         .call_wait(Call::NewTask {
+            typed: false,
             files: vec![],
             project: home.project.display().to_string(),
             text: "Hello".into(),
@@ -260,6 +263,7 @@ fn a_stop_cancels_a_message_still_waiting_for_the_pcs_model() {
     let task = id.clone();
     let waiting = std::thread::spawn(move || {
         st.call_wait(Call::Send {
+            typed: false,
             files: vec![],
             task,
             text: "and one more thing".into(),
@@ -291,6 +295,7 @@ fn the_developer_log_tells_what_happened() {
     // A task.
     let id = st
         .call_wait(Call::NewTask {
+            typed: false,
             files: vec![],
             project: home.project.display().to_string(),
             text: "Hello".into(),

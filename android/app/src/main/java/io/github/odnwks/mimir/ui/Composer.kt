@@ -236,11 +236,12 @@ fun ComposeTo.chipWords(): String = listOfNotNull(
 fun sendFromChat(
     text: String, state: StationState, station: Station, nav: Navigator, engine: io.github.odnwks.mimir.standalone.Engine? = null,
     pictures: List<io.github.odnwks.mimir.standalone.TurnPicture> = emptyList(), files: List<io.github.odnwks.mimir.standalone.TurnFile> = emptyList(),
+    typed: Boolean = false,
 ): Boolean {
     val to = nav.composeTo
-    if (to.auto && state.paired && answerEveryday(text, state, station, nav, engine)) return true
-    if (to.auto) { station.send(text); return true }
-    val id = station.startTask(text.trim(), to.project.ifEmpty { state.newTaskProject }, to.whisper, to.plan, to.model.ifEmpty { null }, pictures, files, to.effort.ifEmpty { null })
+    if (to.auto && state.paired && answerEveryday(text, state, station, nav, engine, typed)) return true
+    if (to.auto) { station.send(text, typed); return true }
+    val id = station.startTask(text.trim(), to.project.ifEmpty { state.newTaskProject }, to.whisper, to.plan, to.model.ifEmpty { null }, pictures, files, to.effort.ifEmpty { null }, typed)
     if (id.isEmpty()) return false
     nav.composeTo = ComposeTo()
     if (id == FakeStation.INCOGNITO) nav.open(Screen.IncognitoTask) else nav.open(Screen.Task(id))
@@ -253,7 +254,7 @@ fun sendFromChat(
  * this phone (with its lookups), or else as a general chat in the PC's ${io.github.odnwks.mimir.online.Everyday.GENERAL}
  * project. Only clear project work goes to the PC to be filed. Returns false when it isn't one.
  */
-fun answerEveryday(text: String, state: StationState, station: Station, nav: Navigator, engine: io.github.odnwks.mimir.standalone.Engine?): Boolean {
+fun answerEveryday(text: String, state: StationState, station: Station, nav: Navigator, engine: io.github.odnwks.mimir.standalone.Engine?, typed: Boolean = false): Boolean {
     val words = text.trim()
     val route = io.github.odnwks.mimir.online.Everyday.route(words, state.pickable) ?: return false
     val online = io.github.odnwks.mimir.online.Online.allowed(io.github.odnwks.mimir.online.ChatMode.Normal)
@@ -268,13 +269,13 @@ fun answerEveryday(text: String, state: StationState, station: Station, nav: Nav
     if (local != null && local.ready && !local.writing && !local.whisper && local.testing == null) {
         // A chat left a while ago isn't continued: a fresh one starts.
         if (local.chat.turns.isNotEmpty() && System.currentTimeMillis() - local.chat.at > EVERYDAY_SAME_CHAT_MS) engine.newChat()
-        engine.send(words)
+        engine.send(words, typed = typed)
         nav.open(io.github.odnwks.mimir.nav.Screen.Standalone)
         return true
     }
     val general = state.pickable.firstOrNull { it.equals(io.github.odnwks.mimir.online.Everyday.GENERAL, ignoreCase = true) }
     if (general != null && state.pc.online) {
-        val id = station.startTask(words, general, incognito = false)
+        val id = station.startTask(words, general, incognito = false, typed = typed)
         if (id.isEmpty()) return false
         nav.open(io.github.odnwks.mimir.nav.Screen.Task(id))
         return true

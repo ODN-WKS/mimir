@@ -99,6 +99,7 @@ fn has(bytes: &[u8], needle: &[u8]) -> bool {
 
 fn new_task(home: &TestHome, text: &str, pictures: Vec<Picture>, files: Vec<SentFile>) -> Call {
     Call::NewTask {
+        typed: false,
         project: home.project.display().to_string(),
         text: text.into(),
         pictures,
@@ -129,6 +130,7 @@ fn a_task_message_with_a_picture_and_a_file_reaches_claude_and_goes_with_the_tas
     let mut st = home.service();
     let id = st
         .call_wait(Call::NewTask {
+            typed: false,
             project: home.project.display().to_string(),
             text: "See these".into(),
             pictures: vec![Picture {
@@ -185,6 +187,7 @@ fn a_task_message_with_a_picture_and_a_file_reaches_claude_and_goes_with_the_tas
         == id
         && v.busy())));
     st.call_wait(Call::Send {
+        typed: false,
         task: id.clone(),
         text: "And this one".into(),
         pictures: vec![],
@@ -227,6 +230,7 @@ fn a_task_message_with_a_picture_and_a_file_reaches_claude_and_goes_with_the_tas
         base64: b64(b"hi"),
     };
     let r = st.call_wait(Call::Send {
+        typed: false,
         task: id.clone(),
         text: "Too many".into(),
         pictures: vec![],
@@ -355,6 +359,7 @@ fn a_message_that_fails_leaves_no_half_written_files() {
         .unwrap();
     let id = id.as_str().unwrap().to_string();
     let r = st.call_wait(Call::Send {
+        typed: false,
         task: id.clone(),
         text: "Two files".into(),
         pictures: vec![],
@@ -547,6 +552,7 @@ fn m1b_7_queued_files_of_the_persons_own_reach_an_online_model_only_as_cleaned_c
     std::fs::write(&pdf, pdf_with_author()).unwrap();
     std::fs::write(&odd, b"abc").unwrap();
     st.call_wait(Call::Queue {
+        typed: false,
         task: id.clone(),
         text: "Read these".into(),
         files: vec![pdf.clone(), odd.clone()],

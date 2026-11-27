@@ -231,6 +231,7 @@ struct TalkArgs {
     ground_rules: Option<String>,
     task: Option<String>,
     chat_only: bool,
+    typed: bool,
 }
 
 /// The features this PC offers in its Welcome (a subset of
@@ -1324,6 +1325,7 @@ impl Service {
                 effort,
                 separate_copy,
                 ground_rules,
+                typed,
                 ..
             } => {
                 // A project whose folder is gone can't take a task: refused
@@ -1374,6 +1376,8 @@ impl Service {
                     on_free = Some(f.name.clone());
                     model = Some(f.id);
                 }
+                // Files alone, with no words, are nothing typed.
+                self.runner.next_typed = typed && !text.trim().is_empty();
                 let id = if separate_copy {
                     let made = self.runner.new_task_in_copy(
                         Path::new(&project),
@@ -1385,6 +1389,7 @@ impl Service {
                         effort,
                     );
                     self.runner.next_rules = None;
+                    self.runner.next_typed = false;
                     made?
                 } else {
                     let made = self.runner.new_task_attached(
@@ -1395,6 +1400,7 @@ impl Service {
                         model,
                         effort,
                     );
+                    self.runner.next_typed = false;
                     if made.is_err() {
                         self.runner.next_rules = None;
                     }
@@ -1445,12 +1451,16 @@ impl Service {
                 text,
                 pictures,
                 files,
+                typed,
                 ..
             } => {
                 if let Some(why) = self.task(&task).and_then(blocked_elsewhere) {
                     return Err(why);
                 }
-                self.runner.send_attached(&task, &text, &pictures, &files)?;
+                self.runner.next_typed = typed && !text.trim().is_empty();
+                let sent = self.runner.send_attached(&task, &text, &pictures, &files);
+                self.runner.next_typed = false;
+                sent?;
                 // Carrying on after a sure filing: the "Filed under" line has
                 // done its work.
                 if self
@@ -1465,8 +1475,15 @@ impl Service {
                 self.runner.set_placed(&task, None, None);
                 ok
             }
-            Call::Queue { task, text, files } => {
+            Call::Queue {
+                task,
+                text,
+                files,
+                typed,
+            } => {
                 let q = self.queued.entry(task).or_default();
+                // Joined parts count as typed only if every one was.
+                q.typed = typed && !text.trim().is_empty() && (q.text.is_empty() || q.typed);
                 if !q.text.is_empty() {
                     q.text.push('\n');
                 }
@@ -1484,8 +1501,7 @@ impl Service {
                     return Err(why);
                 }
                 if let Some(q) = self.queued.remove(&task) {
-                    let (text, pictures) = with_files(&q.text, &q.files);
-                    self.runner.send_with(&task, &text, &pictures);
+                    self.send_queued_message(&task, &q);
                 }
                 ok
             }
@@ -1807,6 +1823,7 @@ impl Service {
                 ground_rules,
                 task,
                 chat_only,
+                typed,
             } => {
                 let person = self.person_of(client);
                 // Another person's message is never filed as work on the
@@ -1823,6 +1840,7 @@ impl Service {
                     effort,
                     ground_rules,
                     task,
+                    typed,
                 });
                 serde_json::to_value(f).map_err(|e| e.to_string())
             }
@@ -1930,6 +1948,7 @@ impl Service {
                 msg_id,
                 text,
                 ground_rules,
+                typed,
             } => {
                 self.runner.next_rules = settings::without_old_default(ground_rules);
                 let by = if self.clients.get(&client).is_some_and(|c| c.phone.is_some()) {
@@ -1938,7 +1957,7 @@ impl Service {
                     "window"
                 };
                 let _ = by;
-                let f = self.chat(&msg_id, &text);
+                let f = self.chat(&msg_id, &text, typed);
                 self.runner.next_rules = None;
                 let f = f?;
                 serde_json::to_value(f).map_err(|e| e.to_string())
@@ -2302,13 +2321,16 @@ impl Service {
                 model,
                 mode,
                 ground_rules,
+                typed,
             } => {
                 // YOLO is never offered in Whisper.
                 crate::yolo::phone_may(true, mode == mimir_proto::Mode::NoAsk)?;
                 self.runner.next_rules = settings::without_old_default(ground_rules);
+                self.runner.next_typed = typed;
                 let made = self
                     .runner
                     .new_incognito(Path::new(&project), &text, &model, mode);
+                self.runner.next_typed = false;
                 self.runner.next_rules = None;
                 let id = made?;
                 crate::log::write("incognito", "started", "");
@@ -2820,7 +2842,7 @@ impl Service {
     /// (an older app): the strict router (a project only when named on
     /// purpose), a follow-up to the task it just started, else a task in
     /// the chats folder, never General.
-    fn chat(&mut self, msg_id: &str, text: &str) -> Result<Filed, String> {
+    fn chat(&mut self, msg_id: &str, text: &str, typed: bool) -> Result<Filed, String> {
         use crate::route::{How, Kind};
         let now = crate::needs::now();
         let r = crate::route::strict(text, &self.project_words());
@@ -2860,7 +2882,7 @@ impl Service {
             }
             _ => match same {
                 Some((project, Some(t))) => {
-                    self.runner.send(&t, &r.text);
+                    self.send_words(&t, &r.text, typed);
                     self.touched.insert(t.clone());
                     Filed::SameTask { project, task: t }
                 }
@@ -2873,7 +2895,9 @@ impl Service {
                             dir.display().to_string()
                         }
                     };
+                    self.runner.next_typed = typed;
                     let t = self.new_task_ask(&p, &r.text);
+                    self.runner.next_typed = false;
                     if r.how == How::Keywords {
                         self.file_placed(&t, &p, Placed::Sure, None);
                     }
@@ -4149,7 +4173,7 @@ impl Service {
                 if let (Some(t), Some(q)) = (&open, &open_project)
                     && crate::paths::same(p, q)
                 {
-                    self.runner.send(t, &r.text);
+                    self.send_words(t, &r.text, a.typed);
                     self.touched.insert(t.clone());
                     return Filed::SameTask {
                         project: p.clone(),
@@ -4157,7 +4181,9 @@ impl Service {
                     };
                 }
                 self.runner.next_rules = rules;
+                self.runner.next_typed = a.typed;
                 let t = self.new_task_ask(p, &r.text);
+                self.runner.next_typed = false;
                 self.runner.next_rules = None;
                 if r.how == How::Keywords {
                     self.file_placed(&t, p, Placed::Sure, None);
@@ -4170,7 +4196,7 @@ impl Service {
             }
             (_, None) => {
                 if let (Some(t), Some(q)) = (&open, &open_project) {
-                    self.runner.send(t, &text);
+                    self.send_words(t, &text, a.typed);
                     self.touched.insert(t.clone());
                     return Filed::SameTask {
                         project: q.clone(),
@@ -4888,6 +4914,20 @@ impl Service {
         }
     }
 
+    fn send_queued_message(&mut self, task: &str, q: &QueuedMessage) {
+        let (text, pictures) = with_files(&q.text, &q.files);
+        self.runner.next_typed = q.typed;
+        self.runner.send_with(task, &text, &pictures);
+        self.runner.next_typed = false;
+    }
+
+    /// A message to a task, marked as typed when the person typed it.
+    fn send_words(&mut self, task: &str, text: &str, typed: bool) {
+        self.runner.next_typed = typed;
+        self.runner.send(task, text);
+        self.runner.next_typed = false;
+    }
+
     /// Sends messages that waited for Claude to be done.
     fn send_waiting(&mut self) {
         let ids: Vec<String> = self.queued.keys().cloned().collect();
@@ -4905,8 +4945,7 @@ impl Service {
             if now == Waiting::Send
                 && let Some(q) = self.queued.remove(&id)
             {
-                let (text, pictures) = with_files(&q.text, &q.files);
-                self.runner.send_with(&id, &text, &pictures);
+                self.send_queued_message(&id, &q);
                 self.touched.insert(id);
             }
         }

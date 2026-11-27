@@ -755,14 +755,17 @@ class Engine(
      * The last message got no answer (the app was closed mid-reply, or the reply failed):
      * it is asked again.
      */
-    fun retry() {
+    fun retry() = resendLast(typed = false)
+
+    /** [typed] stays only for a message that was waiting and never answered. */
+    private fun resendLast(typed: Boolean?) {
         val s0 = _state.value
         val last = s0.chat.turns.lastOrNull() ?: return
         if (s0.writing || !last.user) return
         // The message is taken out of the chat only when it can really be sent again (PHE-02).
         if (!canSend()) return
         _state.update { it.copy(chat = it.chat.copy(turns = it.chat.turns.dropLast(1))) }
-        send(last.text, last.files, last.pictures, last.id, last.at, last.version)
+        send(last.text, last.files, last.pictures, last.id, last.at, last.version, typed ?: last.typed)
     }
 
     /**
@@ -807,7 +810,7 @@ class Engine(
         // The new answer takes the version above the tombstone's.
         retryFloor[answerId] = (cuts.firstOrNull { it.id == answerId }?.version ?: 2) + 1
         _state.update { it.copy(chat = c.copy(turns = c.turns.take(pos), cuts = c.cuts.filter { k -> cuts.none { n -> n.id == k.id } } + cuts), stoppedChat = null) }
-        if (!send(t, orig.files, orig.pictures, orig.id, orig.at, orig.version + 1)) {
+        if (!send(t, orig.files, orig.pictures, orig.id, orig.at, orig.version + 1, typed = true)) {
             _state.update { it.copy(chat = before.chat) }
             retryFloor.remove(answerId)
             return null
@@ -880,18 +883,18 @@ class Engine(
      * the model is ready.
      */
     /** True when the message was taken (sent, or kept to wait): only then does the box clear (PHE-02). */
-    fun ask(text: String, files: List<TurnFile> = emptyList(), pictures: List<TurnPicture> = emptyList()): Boolean {
+    fun ask(text: String, files: List<TurnFile> = emptyList(), pictures: List<TurnPicture> = emptyList(), typed: Boolean = false): Boolean {
         val t = text.trim()
         val s0 = _state.value
         if ((t.isEmpty() && files.isEmpty() && pictures.isEmpty()) || s0.writing) return false
         // Messages already waiting go first: a new one lines up behind them, so the order never changes.
-        if (s0.chat.queued.isNotEmpty() && !s0.whisper) { enqueue(Turn(true, t, files, pictures, id = newId(), at = now())); drainQueue(); return true }
-        if (s0.ready || pcAnswers() || onlineAnswers()) return send(t, files, pictures)
+        if (s0.chat.queued.isNotEmpty() && !s0.whisper) { enqueue(Turn(true, t, files, pictures, id = newId(), at = now(), typed = typed)); drainQueue(); return true }
+        if (s0.ready || pcAnswers() || onlineAnswers()) return send(t, files, pictures, typed = typed)
         // Paired and the PC is the answerer: with nothing to answer it now (the PC away, this phone with no model),
         // the message stays in the chat, marked "Sends when your PC is back", and goes by itself, in order, once.
-        if (pc != null && !s0.whisper && (s0.usePc || !s0.supported)) { enqueue(Turn(true, t, files, pictures, id = newId(), at = now())); return true }
+        if (pc != null && !s0.whisper && (s0.usePc || !s0.supported)) { enqueue(Turn(true, t, files, pictures, id = newId(), at = now(), typed = typed)); return true }
         if (waiting || (!s0.supported && pc == null)) return false
-        _state.update { it.copy(chat = it.chat.copy(turns = it.chat.turns + Turn(true, t, files, pictures, id = newId(), at = now()), model = it.model, at = now()), problem = null) }
+        _state.update { it.copy(chat = it.chat.copy(turns = it.chat.turns + Turn(true, t, files, pictures, id = newId(), at = now(), typed = typed), model = it.model, at = now()), problem = null) }
         persist()
         return true
     }
@@ -900,7 +903,7 @@ class Engine(
     fun answerIfWaiting() {
         refreshStatus()
         val s = _state.value
-        if ((s.ready || pcAnswers() || onlineAnswers()) && !s.writing && s.chat.turns.lastOrNull()?.user == true) retry()
+        if ((s.ready || pcAnswers() || onlineAnswers()) && !s.writing && s.chat.turns.lastOrNull()?.user == true) resendLast(typed = null)
     }
 
     // ---------- Messages waiting for the PC ----------
@@ -943,7 +946,7 @@ class Engine(
             if (!canSend() || _state.value.chat.turns.lastOrNull()?.user == true) return
             _state.update { it.copy(chat = it.chat.copy(queued = it.chat.queued.drop(1))) }
             // It is dated when it goes (same id), so its answer never lands before the answers of the ones sent earlier.
-            if (!send(first.text, first.files, first.pictures, first.id, maxOf(first.at, now()), first.version)) {
+            if (!send(first.text, first.files, first.pictures, first.id, maxOf(first.at, now()), first.version, first.typed)) {
                 _state.update { it.copy(chat = it.chat.copy(queued = listOf(first) + it.chat.queued)) }
             }
         }
@@ -1001,7 +1004,7 @@ class Engine(
     val waiting: Boolean get() = _state.value.let { !it.ready && !it.writing && it.chat.turns.lastOrNull()?.user == true }
 
     /** True when the message was taken and a reply is being written. */
-    fun send(text: String, files: List<TurnFile> = emptyList(), pictures: List<TurnPicture> = emptyList(), id: String = "", at: Long = 0L, version: Int = 1): Boolean {
+    fun send(text: String, files: List<TurnFile> = emptyList(), pictures: List<TurnPicture> = emptyList(), id: String = "", at: Long = 0L, version: Int = 1, typed: Boolean = false): Boolean {
         val t = text.trim()
         val s0 = _state.value
         val toPc = pcAnswers()
@@ -1015,7 +1018,7 @@ class Engine(
         // The same words sent again after a failed answer are that message again (same id): never a second copy.
         val failed = s0.chat.turns.lastOrNull()?.takeIf { id.isEmpty() && it.user && it.text.trim() == t && it.files == files && it.pictures == pictures }
         // A message sent again (it waited for the PC) keeps the time it was typed, so its answer never sorts before it.
-        val turn = if (failed != null) failed.copy(at = failed.at) else Turn(true, t, files, pictures, id = id.ifEmpty { newId() }, at = if (at > 0) at else now(), version = version)
+        val turn = if (failed != null) failed.copy(at = failed.at, typed = typed) else Turn(true, t, files, pictures, id = id.ifEmpty { newId() }, at = if (at > 0) at else now(), version = version, typed = typed)
         _state.update { it.copy(chat = it.chat.copy(turns = (if (failed != null) it.chat.turns.dropLast(1) else it.chat.turns) + turn, model = model.id, at = now()), writing = true, partial = "", problem = null, speed = null, askPlace = false, askSearch = null, stoppedChat = null) }
         persist()
         pcWhy = null
@@ -2196,6 +2199,7 @@ class Engine(
             sources.map { io.github.odnwks.mimir.link.LChatSource(it.site, it.url, it.words, it.results, it.via) },
             s.effort.wire, Prompt.rulesForPc(io.github.odnwks.mimir.data.GroundRules.current, s.chat.rules), if (chatOnly.get()) null else inTask(),
             chatOnly = chatOnly.getAndSet(false),
+            typed = asked.typed && asked.text.isNotBlank(),
         )
         _state.update { it.copy(onPc = true, partial = "", thinking = false, pcWaiting = false, pcLine = null) }
         if (!link.talk(request, listener)) return false

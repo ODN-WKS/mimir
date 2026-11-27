@@ -21,6 +21,7 @@ fn a_send_without_pictures_or_files_still_reads() {
 #[test]
 fn pictures_and_files_survive_the_trip_and_are_left_out_when_empty() {
     let c = Call::Send {
+        typed: false,
         task: "t".into(),
         text: "look".into(),
         pictures: vec![Picture {
@@ -38,6 +39,7 @@ fn pictures_and_files_survive_the_trip_and_are_left_out_when_empty() {
     assert!(s.contains("\"files\""));
     assert_eq!(serde_json::from_str::<Call>(&s).unwrap(), c);
     let none = Call::Send {
+        typed: false,
         task: "t".into(),
         text: "look".into(),
         pictures: vec![],

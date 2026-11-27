@@ -13,7 +13,8 @@ interface Station {
     val state: StateFlow<StationState>
 
     /** A message from the general chat; the PC files it in the right project. */
-    fun send(text: String)
+    /** [typed]: the person typed [text] into a message box; false for a button's words. */
+    fun send(text: String, typed: Boolean = false)
     /**
      * An everyday message answered on this phone (the weather from Open-Meteo), not sent to the
      * PC: it shows as sent, with [working] in the answer's place until [answer] (run off the main
@@ -40,11 +41,11 @@ interface Station {
      * False when it was not taken (nothing to send, or the pictures and files couldn't be kept): the box keeps what was in it.
      */
     /** [reply] with the heavy work off the main thread: [done] says whether it was taken (the box keeps its content until then). */
-    fun replyAsync(taskId: String, text: String, pictures: List<io.github.odnwks.mimir.standalone.TurnPicture> = emptyList(), files: List<io.github.odnwks.mimir.standalone.TurnFile> = emptyList(), done: (Boolean) -> Unit) { done(reply(taskId, text, pictures, files)) }
+    fun replyAsync(taskId: String, text: String, pictures: List<io.github.odnwks.mimir.standalone.TurnPicture> = emptyList(), files: List<io.github.odnwks.mimir.standalone.TurnFile> = emptyList(), typed: Boolean = false, done: (Boolean) -> Unit) { done(reply(taskId, text, pictures, files, typed)) }
     /** A reply the PC refused (or whose pictures can't be read back) stays with its words: send it again, or remove it. */
     fun retryReply(replyId: String) {}
     fun removeReply(replyId: String) {}
-    fun reply(taskId: String, text: String, pictures: List<io.github.odnwks.mimir.standalone.TurnPicture> = emptyList(), files: List<io.github.odnwks.mimir.standalone.TurnFile> = emptyList()): Boolean
+    fun reply(taskId: String, text: String, pictures: List<io.github.odnwks.mimir.standalone.TurnPicture> = emptyList(), files: List<io.github.odnwks.mimir.standalone.TurnFile> = emptyList(), typed: Boolean = false): Boolean
     /** This PC takes pictures and files on a task's message ("task_files"); an older one doesn't, and the box offers none. */
     fun canAttachToTasks(): Boolean = false
     /** This PC lets a phone set a task's model and effort with a message ("task_reply_options"). */
@@ -52,7 +53,7 @@ interface Station {
     /** The effort for this task from now on (null: its usual one); the PC takes it with the next message. */
     fun setTaskEffort(taskId: String, effort: String?) {}
     /** [done] gets null when it went out, or the plain reason it did not (nothing was sent then). Edit one of the owner's own messages in a task: the task goes back to that message and carries on with [text]. */
-    fun editTaskMessage(taskId: String, messageId: String, text: String, done: (String?) -> Unit = {}) { reply(taskId, text); done(null) }
+    fun editTaskMessage(taskId: String, messageId: String, text: String, done: (String?) -> Unit = {}) { reply(taskId, text, typed = true); done(null) }
     /** Takes back a new task that is still waiting on this phone (nothing is sent). */
     fun cancelWaitingTask(taskId: String) {}
     /** Sends a new task that the PC didn't start once more. */
@@ -104,14 +105,16 @@ interface Station {
     fun startTask(
         text: String, project: String, incognito: Boolean, plan: Boolean = false, model: String? = null,
         pictures: List<io.github.odnwks.mimir.standalone.TurnPicture> = emptyList(), files: List<io.github.odnwks.mimir.standalone.TurnFile> = emptyList(), effort: String? = null,
+        typed: Boolean = false,
     ): String
 
     /** [startTask] with the heavy work off the main thread: [done] gets the id ("" if it didn't start). */
     fun startTaskAsync(
         text: String, project: String, incognito: Boolean, plan: Boolean = false, model: String? = null,
         pictures: List<io.github.odnwks.mimir.standalone.TurnPicture> = emptyList(), files: List<io.github.odnwks.mimir.standalone.TurnFile> = emptyList(), effort: String? = null,
+        typed: Boolean = false,
         done: (String) -> Unit,
-    ) { done(startTask(text, project, incognito, plan, model, pictures, files, effort)) }
+    ) { done(startTask(text, project, incognito, plan, model, pictures, files, effort, typed)) }
 
     /**
      * Makes a project folder on the PC (or picks it if it's already there). [done] gets the

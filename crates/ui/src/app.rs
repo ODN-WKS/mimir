@@ -178,6 +178,8 @@ pub enum Action {
     /// "End and delete history" for an Incognito task.
     EndIncognito(String),
     Send(String, String, Vec<PathBuf>),
+    /// [`Action::Send`] for words the person typed into a message box.
+    SendTyped(String, String, Vec<PathBuf>),
     Pause(String),
     Stop(String),
     Continue(String),
@@ -894,6 +896,7 @@ impl App {
                     let pending = self.chat_pics.remove(&key).unwrap_or_default();
                     let pictures: Vec<Picture> = pending.iter().map(|p| p.pic.clone()).collect();
                     let effort = self.new_effort.clone();
+                    r.next_typed = true;
                     match r.send_chat(chat.as_deref(), &text, pictures, effort.as_deref()) {
                         Ok(id) => {
                             self.pics_note = None;
@@ -938,6 +941,7 @@ impl App {
                 Action::EditChat(chat, turn, text) => {
                     self.edit_turn = None;
                     self.scroll_down = SCROLL_FRAMES;
+                    r.next_typed = true;
                     match r.edit_chat(&chat, &turn, &text) {
                         Ok(()) if r.can_undo_edit(&chat) => {
                             self.edit_undo = Some((
@@ -1018,6 +1022,8 @@ impl App {
                     }
                 }
                 Action::Queue(id, text, files) => {
+                    // The stand-in words for files sent alone are not typed.
+                    r.next_typed = text != crate::view_task::FILES_ONLY;
                     r.queue(&id, &text, files);
                     self.draft.clear();
                     self.attachments.clear();
@@ -1154,7 +1160,9 @@ impl App {
                     effort,
                     separate,
                 } => {
+                    let typed = !text.trim().is_empty();
                     let (text, pictures) = with_files(&text, &files);
+                    r.next_typed = typed;
                     let id = match r
                         .new_task(&project, &text, &pictures, mode, model, effort, separate)
                     {
@@ -1189,9 +1197,16 @@ impl App {
                     self.new_project_by_hand = false;
                     self.settings.add_project(Path::new(&project));
                 }
-                Action::Send(id, text, files) => {
+                action @ (Action::Send(..) | Action::SendTyped(..)) => {
+                    let typed = matches!(action, Action::SendTyped(..));
+                    let (Action::Send(id, text, files) | Action::SendTyped(id, text, files)) =
+                        action
+                    else {
+                        unreachable!()
+                    };
                     self.scroll_down = SCROLL_FRAMES;
                     let (text, pictures) = with_files(&text, &files);
+                    r.next_typed = typed;
                     r.send_with(&id, &text, &pictures);
                     self.draft.clear();
                     self.attachments.clear();
@@ -1212,6 +1227,7 @@ impl App {
                     mode,
                 } => match r.call_wait(mimir_core::proto::Call::NewIncognito {
                     ground_rules: None,
+                    typed: !text.trim().is_empty(),
                     project,
                     text,
                     model,

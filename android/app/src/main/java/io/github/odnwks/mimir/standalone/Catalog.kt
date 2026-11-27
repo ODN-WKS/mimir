@@ -247,6 +247,8 @@ data class Turn(
     val switchNote: String? = null,
     /** How hard an answer was worked on ("low", "medium" or "high"; null: not known). Kept on this phone only. */
     val effort: String? = null,
+    /** The owner's own message, typed into a message box (kept while it waits; the PC is told). */
+    val typed: Boolean = false,
 ) {
     /** As the PC keeps it: pictures and files reduced to words, as the phone's model reads them. */
     fun wire(pcSees: Boolean = false, withPictures: Boolean = false, withFiles: Boolean = false) = io.github.odnwks.mimir.link.LChatTurn(

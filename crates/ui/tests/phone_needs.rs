@@ -185,6 +185,7 @@ fn new_task(
         .call(
             p,
             Call::NewTask {
+                typed: false,
                 files: vec![],
                 ground_rules: None,
                 project: project.into(),
@@ -316,6 +317,7 @@ fn p4_always_allow_this_file_holds_on_the_next_turn() {
     seen.call(
         &p,
         Call::Send {
+            typed: false,
             files: vec![],
             task: task.clone(),
             text: "And again.".into(),
@@ -386,6 +388,7 @@ fn p4b_the_phone_sees_what_it_always_allowed_and_can_take_it_back() {
     seen.call(
         &p,
         Call::Send {
+            typed: false,
             files: vec![],
             task: task.clone(),
             text: "And again.".into(),
@@ -427,6 +430,7 @@ fn p6_a_message_sent_again_after_a_restart_is_done_once() {
     let a = seen.call(
         &p,
         Call::Chat {
+            typed: false,
             ground_rules: None,
             msg_id: "c-once".into(),
             text: "Station: idea - a tidy button".into(),
@@ -435,6 +439,7 @@ fn p6_a_message_sent_again_after_a_restart_is_done_once() {
     let b = seen.call(
         &p,
         Call::Chat {
+            typed: false,
             ground_rules: None,
             msg_id: "c-once".into(),
             text: "Station: idea - a tidy button".into(),
@@ -538,6 +543,7 @@ fn p2_chat_files_ideas_requests_and_the_inbox() {
         seen.call(
             &p,
             Call::Chat {
+                typed: false,
                 ground_rules: None,
                 msg_id: "c1".into(),
                 text: "Recipes: idea - a dark mode switch".into(),
@@ -581,6 +587,7 @@ fn p2_chat_files_ideas_requests_and_the_inbox() {
         seen.call(
             &p,
             Call::Chat {
+                typed: false,
                 ground_rules: None,
                 msg_id: "c2".into(),
                 text: "@Station tidy the notes".into(),
@@ -603,6 +610,7 @@ fn p2_chat_files_ideas_requests_and_the_inbox() {
         seen.call(
             &p,
             Call::Chat {
+                typed: false,
                 ground_rules: None,
                 msg_id: "c3".into(),
                 text: "and the readme".into(),
@@ -620,6 +628,7 @@ fn p2_chat_files_ideas_requests_and_the_inbox() {
         seen.call(
             &p,
             Call::Chat {
+                typed: false,
                 ground_rules: None,
                 msg_id: "c4".into(),
                 text: "What's the status?".into(),
@@ -644,6 +653,7 @@ fn p2_chat_files_ideas_requests_and_the_inbox() {
         seen.call(
             &p,
             Call::Chat {
+                typed: false,
                 ground_rules: None,
                 msg_id: "c5".into(),
                 text: "Idea: something about speed".into(),
@@ -682,6 +692,7 @@ fn p2_an_everyday_chat_goes_to_the_chats_folder_not_random() {
             seen.call(
                 &p,
                 Call::Chat {
+                    typed: false,
                     ground_rules: None,
                     msg_id: format!("u{i}"),
                     text: text.to_string(),
@@ -721,6 +732,7 @@ fn p2_move_restarts_the_task_in_the_new_project_with_the_brief() {
         seen.call(
             &p,
             Call::Chat {
+                typed: false,
                 ground_rules: None,
                 msg_id: "m1".into(),
                 text: "Station: Run this Bash command: touch a.txt".into(),
@@ -881,6 +893,7 @@ fn p2_a_phone_moves_a_task_only_to_a_listed_project_and_it_asks_first_there() {
     let recipe = other_project(&home);
     let task = st
         .call_wait(Call::NewTask {
+            typed: false,
             files: vec![],
             project: project.clone(),
             text: "Tidy up notes.txt.".into(),
@@ -946,6 +959,7 @@ fn n3_a_phone_starts_a_task_only_in_a_listed_project() {
     let mut st = home.service();
     let (p, mut seen, _) = paired(&mut st, None);
     let new = |project: String| Call::NewTask {
+        typed: false,
         files: vec![],
         project,
         text: "Tidy up notes.txt.".into(),
@@ -982,6 +996,7 @@ fn yolo_from_a_phone_only_when_the_pc_allows_it() {
     let mut st = home.service();
     let task = st
         .call_wait(Call::NewTask {
+            typed: false,
             files: vec![],
             project: home.project.display().to_string(),
             text: "Tidy up notes.txt.".into(),
@@ -1187,6 +1202,7 @@ fn p2_one_clean_project_list_and_an_unlisted_git_project_gets_its_chat() {
         seen.call(
             &p,
             Call::Chat {
+                typed: false,
                 ground_rules: None,
                 msg_id: "hf1".into(),
                 // (The test home's own project is called "project".)

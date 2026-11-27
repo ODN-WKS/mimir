@@ -120,6 +120,7 @@ fn p9_incognito_task_is_never_saved_and_ends_without_a_trace() {
     let mut st = home.service();
     let id = st
         .call_wait(Call::NewIncognito {
+            typed: false,
             ground_rules: None,
             project: home.project.display().to_string(),
             text: "Tidy up notes.txt.".into(),
@@ -197,6 +198,7 @@ fn p9_incognito_task_is_never_saved_and_ends_without_a_trace() {
     );
     // Only free models.
     let r = st.call_wait(Call::NewIncognito {
+        typed: false,
         ground_rules: None,
         project: home.project.display().to_string(),
         text: "Hi".into(),

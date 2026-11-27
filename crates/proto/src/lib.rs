@@ -335,6 +335,9 @@ pub struct GitInfo {
 pub struct QueuedMessage {
     pub text: String,
     pub files: Vec<std::path::PathBuf>,
+    /// Every part was typed (see `Call::Send`'s `typed`). The service's own: never sent.
+    #[serde(skip)]
+    pub typed: bool,
 }
 
 /// The protocol number `Hello` and `Welcome` carry.
@@ -1359,6 +1362,10 @@ pub enum Call {
         /// The phone's ground rules, used for this task instead of the PC's.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         ground_rules: Option<String>,
+        /// The person typed these words into a message box (phone or PC window): Claude
+        /// Code is told so (`origin` human). False for everything else, and left out then.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        typed: bool,
     },
     Send {
         task: String,
@@ -1370,6 +1377,10 @@ pub enum Call {
         files: Vec<SentFile>,
         #[serde(default)]
         msg_id: Option<String>,
+        /// The person typed these words into a message box (phone or PC window): Claude
+        /// Code is told so (`origin` human). False for everything else, and left out then.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        typed: bool,
     },
     /// A message from the phone's general chat: the service files it (a
     /// status question, an idea, a request) in the right project. The
@@ -1380,6 +1391,10 @@ pub enum Call {
         /// The phone's ground rules, for a task the message starts.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         ground_rules: Option<String>,
+        /// The person typed these words into a message box (phone or PC window): Claude
+        /// Code is told so (`origin` human). False for everything else, and left out then.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        typed: bool,
     },
     /// A general-chat message for the PC to answer ("talk"). `turns` is
     /// the conversation for the model, the new message (`turn_id`) last;
@@ -1407,6 +1422,10 @@ pub enum Call {
         /// project (and never sent to the task the chat was in).
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         chat_only: bool,
+        /// The person typed these words into a message box (phone or PC window): Claude
+        /// Code is told so (`origin` human). False for everything else, and left out then.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        typed: bool,
     },
     /// Settings › Models "What answers" ("engines"): chats "free" or
     /// "paid", project work "free" or "claude" (None: unchanged). The reply
@@ -1599,6 +1618,10 @@ pub enum Call {
         /// The phone's ground rules, used instead of the PC's.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         ground_rules: Option<String>,
+        /// The person typed these words into a message box (phone or PC window): Claude
+        /// Code is told so (`origin` human). False for everything else, and left out then.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        typed: bool,
     },
     /// "End and delete history": ends the Incognito task and everything of it.
     EndIncognito {
@@ -1622,6 +1645,10 @@ pub enum Call {
         task: String,
         text: String,
         files: Vec<std::path::PathBuf>,
+        /// The person typed these words into a message box (phone or PC window): Claude
+        /// Code is told so (`origin` human). False for everything else, and left out then.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        typed: bool,
     },
     /// Takes the waiting message back; the reply carries it.
     Unqueue {

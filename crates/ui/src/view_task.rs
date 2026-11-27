@@ -491,7 +491,7 @@ impl App {
                             }
                         });
                     }
-                    if let Some(mimir_core::proto::QueuedMessage { text, files }) = &l.queued {
+                    if let Some(mimir_core::proto::QueuedMessage { text, files, .. }) = &l.queued {
                         let hold = match crate::extras::waiting_now(
                             t.status,
                             !l.asks.is_empty(),
@@ -614,13 +614,16 @@ impl App {
                     if (enter || out.send || later)
                         && (!draft.trim().is_empty() || !attachments.is_empty())
                     {
-                        let text = if draft.trim().is_empty() {
-                            "(See the attached files.)".to_string()
-                        } else {
+                        let typed = !draft.trim().is_empty();
+                        let text = if typed {
                             draft.clone()
+                        } else {
+                            FILES_ONLY.to_string()
                         };
                         actions.push(if later {
                             Action::Queue(id.clone(), text, attachments.clone())
+                        } else if typed {
+                            Action::SendTyped(id.clone(), text, attachments.clone())
                         } else {
                             Action::Send(id.clone(), text, attachments.clone())
                         });
@@ -826,6 +829,9 @@ impl App {
     }
 }
 
+/// Sent in place of words when files go alone: Mímir's words, so never marked as typed.
+pub(crate) const FILES_ONLY: &str = "(See the attached files.)";
+
 /// "Claude wants to …": what Claude asks to do, with the lines an edit
 /// would change, and the answers. Allow is a click or Ctrl+Enter, Don't
 /// allow a click or Ctrl+D; a bare Enter, a letter or Esc does nothing here.
@@ -958,7 +964,7 @@ fn ok_bar(
                         && !text.is_empty()
                     {
                         actions.push(Action::Answer(id.to_string(), Answer::No));
-                        actions.push(Action::Send(id.to_string(), text, vec![]));
+                        actions.push(Action::SendTyped(id.to_string(), text, vec![]));
                         close = true;
                     } else if ui.add(theme::quiet("Back")).clicked() {
                         close = true;

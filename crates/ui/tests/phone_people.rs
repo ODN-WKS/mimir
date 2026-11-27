@@ -262,6 +262,7 @@ impl Phone {
     fn talk(&mut self, chat: &str, id: &str, text: &str, chat_only: bool) -> Filed {
         serde_json::from_value(
             self.call(Call::Talk {
+                typed: false,
                 chat_id: chat.into(),
                 turn_id: id.into(),
                 turns: vec![user(id, text)],
@@ -557,6 +558,7 @@ fn sec10_another_person_cannot_start_tasks_or_read_the_owners_work() {
     let mut ana = paired_as(&mut st, Some("Ana"));
     let project = home.project.display().to_string();
     let new_task = |project: &str| Call::NewTask {
+        typed: false,
         files: vec![],
         project: project.into(),
         text: "Tidy the notes".into(),
@@ -572,6 +574,7 @@ fn sec10_another_person_cannot_start_tasks_or_read_the_owners_work() {
     assert!(r.is_err(), "Ana started a task: {r:?}");
     for call in [
         Call::Send {
+            typed: false,
             files: vec![],
             task: "x".into(),
             text: "hi".into(),
@@ -588,6 +591,7 @@ fn sec10_another_person_cannot_start_tasks_or_read_the_owners_work() {
             name: "update.ogg".into(),
         },
         Call::NewIncognito {
+            typed: false,
             project: project.clone(),
             text: "x".into(),
             model: "ollama:x".into(),
@@ -1071,6 +1075,7 @@ fn r30_pictures_reach_the_model_and_are_never_another_persons() {
     };
     let ask = |who: &mut Phone, id: &str, turns: Vec<ChatTurn>| {
         who.call(Call::Talk {
+            typed: false,
             chat_id: "c-pic".into(),
             turn_id: id.into(),
             turns,
@@ -1453,6 +1458,7 @@ fn d1_files_are_read_on_the_pc_and_are_never_another_persons() {
     let ask = |who: &mut Phone, id: &str, turns: Vec<ChatTurn>| -> Filed {
         let f = who
             .call(Call::Talk {
+                typed: false,
                 chat_id: "c-file".into(),
                 turn_id: id.into(),
                 turns,
@@ -1637,6 +1643,7 @@ fn picture_talk(who: &mut Phone, id: &str) -> Filed {
     }];
     serde_json::from_value(
         who.call(Call::Talk {
+            typed: false,
             chat_id: "c-sw".into(),
             turn_id: id.into(),
             turns: vec![t],

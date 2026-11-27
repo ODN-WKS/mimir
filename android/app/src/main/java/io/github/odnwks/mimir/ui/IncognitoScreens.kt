@@ -113,7 +113,7 @@ fun IncognitoTaskScreen(state: StationState, station: Station, nav: Navigator) {
         ) {
             MessageBox(draft, { draft = it }, "Reply to this Whisper task", "Reply", Modifier.weight(1f), background = Palette.WhisperPanel)
             if (task.id.isNotEmpty()) RoundButton(Glyphs.Send, "Send reply", {
-                if (draft.isNotBlank()) station.reply(task.id, draft)
+                if (draft.isNotBlank()) station.reply(task.id, draft, typed = true)
                 draft = ""
             }, filled = draft.isNotBlank(), fill = Palette.WhisperButton, surface = Palette.Card)
         }
