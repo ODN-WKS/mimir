@@ -298,8 +298,10 @@ class LinkStation(
 
     /** The session didn't answer after a network change: the link loop drops it and connects again. */
     @Volatile private var dropNow = false
-    /** The drop is this phone's own (a link that looked open but carried nothing), not a lost network. */
-    @Volatile private var redoing = false
+    /** The drop is this phone's own (a link that looked open but carried nothing), not a lost network. Under [lock]. */
+    private var redoing = false
+    /** This phone redid the link and it isn't made again yet: a try that fails says the PC is away (P40). */
+    @Volatile private var redoPending = false
 
     /**
      * A link that looks open but doesn't carry a chat message (P40: after a quiet spell on the emulator
@@ -307,12 +309,27 @@ class LinkStation(
      * made again at once. Answers being waited for are asked after once it's back, never failed here.
      */
     private fun redoLink(why: String) {
-        if (!synchronized(lock) { connected }) return
+        // Checked and marked in one step with the loop's own drop, so a link lost meanwhile is never taken for this one.
+        synchronized(lock) {
+            if (!connected) return
+            reconnect.soon()
+            redoing = true
+            dropNow = true
+        }
         LinkLog.i("$why: connecting again")
-        synchronized(lock) { reconnect.soon() }
-        redoing = true
-        dropNow = true
         wakeLoop()
+    }
+
+    /**
+     * A chat message not taken within [TALK_TAKEN_MS]: the link is redone only when it carries nothing. Anything
+     * heard from the PC since the message went out, or an answer to a quick check within [PROBE_WAIT_MS], means
+     * the PC is only slow, and the link with every call still waiting on it is kept (P40).
+     */
+    private fun redoIfSilent(answer: String, since: Long) {
+        if (lastSeenAt >= since) return
+        val heard = java.util.concurrent.CountDownLatch(1)
+        if (call(Wire.projects()) { _, _ -> heard.countDown() }) heard.await(PROBE_WAIT_MS, java.util.concurrent.TimeUnit.MILLISECONDS)
+        if (lastSeenAt < since && synchronized(lock) { talking.containsKey(answer) }) redoLink("a chat message wasn't taken") // lint:log-only
     }
 
     private fun probe() {
@@ -348,15 +365,17 @@ class LinkStation(
                     LinkLog.i("session ended: ${withLink("") { api.endedBecause(it) }.ifEmpty { "no reason given" }}")
                     lastSeenAt = System.currentTimeMillis()
                     failedOnce = true
-                    synchronized(lock) { connected = false; readyAt = 0; data = data.copy(seenAt = lastSeenAt); saveData() }
+                    val ours = synchronized(lock) {
+                        connected = false; readyAt = 0; data = data.copy(seenAt = lastSeenAt); saveData()
+                        redoing.also { redoing = false }
+                    }
                     // PHD-03: every call still waiting for a reply is finished now (none waits for ever). A talk
                     // answer is not: it is kept and told lost(), so it resumes after the reconnect (back()), or the
                     // owner taps Answer on this phone.
                     replies.failAll()
                     // A link this phone redid is back within a moment: the answer is asked after then, with no
                     // "away" line; a lost one says so.
-                    val ours = redoing
-                    redoing = false
+                    redoPending = ours
                     talkers().forEach { if (ours) it.nudge() else it.lost() }
                     // PHD-06: clear the "Claude is working on N tasks" notification within 5 s
                     // of detecting the PC is offline (not on the main thread, so this is safe).
@@ -381,10 +400,13 @@ class LinkStation(
                 if (why.isNotEmpty()) {
                     LinkLog.i("connect failed after ${System.currentTimeMillis() - lastTry} ms: $why")
                     synchronized(lock) { reconnect.failed() }
+                    // The link this phone redid can't be made again: the PC is away, said now (P40).
+                    if (redoPending) { redoPending = false; talkers().forEach { it.lost() } }
                     if (!failedOnce) { failedOnce = true; publish() }
                     continue
                 }
                 LinkLog.i("connected after ${System.currentTimeMillis() - lastTry} ms")
+                redoPending = false
                 // A call made between the old session ending and this one starting was registered against the old session.
                 replies.failAll()
                 synchronized(lock) { connected = true; reconnect.connected() }
@@ -554,14 +576,16 @@ class LinkStation(
         val answer = "${request.turnId}.a"
         synchronized(lock) { talking[answer] = listener }
         // PHD-03: the PC takes a message at once (its reply to the call, not the answer itself). None within
-        // [TALK_TAKEN_MS] on a link that looks open means the link carries nothing: it is redone, and the
-        // message is asked after once it's back (P40), instead of failing it.
+        // [TALK_TAKEN_MS], on a link that carries nothing else either, means the link is dead though it looks
+        // open: it is redone, and the message is asked after once it's back (P40), instead of failing it.
+        val sentAt = System.currentTimeMillis()
         val deadline = java.util.concurrent.Executors.newSingleThreadScheduledExecutor()
         deadline.schedule({
-            if (synchronized(lock) { talking.containsKey(answer) }) redoLink("a chat message wasn't taken") // lint:log-only
+            // The reply arriving meanwhile ends the wait (shutdownNow): nothing is redone then.
+            try { if (synchronized(lock) { talking.containsKey(answer) }) redoIfSilent(answer, sentAt) } catch (_: InterruptedException) {}
             deadline.shutdown()
         }, TALK_TAKEN_MS, java.util.concurrent.TimeUnit.MILLISECONDS)
-        val sent = call(Wire.talk(request.chatId, request.turnId, request.turns, request.lookup, request.sources, request.effort, request.rules, request.task, request.chatOnly && canChatOnly(), request.typed)) { ok, err ->
+        val sent = call(Wire.talk(request.chatId, request.turnId, request.turns, request.lookup, request.sources, request.effort, request.rules, request.task, request.chatOnly && canChatOnly(), request.typed, request.again && talksOnce())) { ok, err ->
             deadline.shutdownNow()
             // A link that went away is not the PC's answer: the finished answer is picked up after the reconnect (lost()/back()).
             if (err == WENT_AWAY) return@call
@@ -602,6 +626,8 @@ class LinkStation(
     override fun projectNamed(text: String): String? = ProjectNamed.of(text, synchronized(lock) { projects.map { it.first } })
 
     override fun canChatOnly(): Boolean = Wire.CHAT_ONLY in pcFeatures
+
+    override fun talksOnce(): Boolean = Wire.TALK_ONCE in pcFeatures
 
     override fun dropTask(id: String) = archiveTask(id)
 

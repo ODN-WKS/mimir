@@ -79,6 +79,13 @@ interface PcTalk {
     /** The PC can be told to answer a message as a chat ("Just chat"). */
     fun canChatOnly(): Boolean = false
 
+    /**
+     * "talk_once": this PC never does a message twice. Sent again ([TalkRequest.again]) it gives the first
+     * reply back, and it says it doesn't know a message only when it never took it. An older PC can't
+     * say: a message is never sent to it again (P40).
+     */
+    fun talksOnce(): Boolean = false
+
     /** The task started by mistake ("Just chat") is archived on the PC. */
     fun dropTask(id: String) {}
 }
@@ -97,6 +104,8 @@ data class TalkRequest(
     val chatOnly: Boolean = false,
     /** The person typed the new message into a message box. */
     val typed: Boolean = false,
+    /** The same message sent again because its first reply never came ("talk_once"). */
+    val again: Boolean = false,
 )
 
 /** What the PC does with a message (called on the link's thread). */

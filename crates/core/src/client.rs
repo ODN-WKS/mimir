@@ -1168,6 +1168,7 @@ impl Station {
         self.partials.remove(&chat_id);
         self.asking.insert(chat_id.clone());
         let id = self.send(Call::Talk {
+            again: false,
             chat_id: chat_id.clone(),
             turn_id: user_id.clone(),
             turns,
@@ -1305,6 +1306,7 @@ impl Station {
         self.partials.remove(chat);
         self.asking.insert(chat.to_string());
         let id = self.send(Call::Talk {
+            again: false,
             chat_id: chat.to_string(),
             turn_id: user_id,
             turns,
@@ -1408,6 +1410,7 @@ impl Station {
         });
         let user_id = turn.to_string();
         let id = self.send(Call::Talk {
+            again: false,
             chat_id: chat.to_string(),
             turn_id: user_id,
             turns,

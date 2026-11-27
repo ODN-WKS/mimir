@@ -720,6 +720,7 @@ fn write_the_examples() {
             url: "https://api.open-meteo.com/v1/forecast?latitude=39.73&longitude=-121.84".into(),
         },
         Call::Talk {
+            again: false,
             typed: false,
             chat_id: "c-1".into(),
             turn_id: "t-1".into(),
@@ -739,6 +740,7 @@ fn write_the_examples() {
             chat_only: false,
         },
         Call::Talk {
+            again: false,
             typed: false,
             chat_id: "c-1".into(),
             turn_id: "t-3".into(),
@@ -757,6 +759,7 @@ fn write_the_examples() {
             chat_only: false,
         },
         Call::Talk {
+            again: false,
             typed: false,
             chat_id: "c-1".into(),
             turn_id: "t-4".into(),
@@ -776,6 +779,7 @@ fn write_the_examples() {
             chat_only: true,
         },
         Call::Talk {
+            again: false,
             typed: false,
             chat_id: "c-1".into(),
             turn_id: "t-5".into(),
@@ -795,6 +799,7 @@ fn write_the_examples() {
             chat_only: true,
         },
         Call::Talk {
+            again: false,
             typed: false,
             chat_id: "c-1".into(),
             turn_id: "t-6".into(),

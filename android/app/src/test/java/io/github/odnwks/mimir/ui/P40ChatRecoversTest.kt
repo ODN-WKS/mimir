@@ -50,6 +50,7 @@ class P40ChatRecoversTest {
         val e = engine()
         var tries = 0
         pc.state = LTalkState.Unknown
+        pc.takesOnce = true
         pc.answer = { r, l ->
             tries++
             // The first one is lost on a link that carried nothing; the link is redone and the PC never had it.
@@ -65,6 +66,7 @@ class P40ChatRecoversTest {
     @Test fun neverSentTwiceMore() {
         val e = engine()
         pc.state = LTalkState.Unknown
+        pc.takesOnce = true
         pc.answer = { _, l -> l.nudge(); l.back() }
         e.ask("Name three kinds of pears")
         waitUntil("the card is up") { !e.state.value.writing && e.state.value.problem != null }

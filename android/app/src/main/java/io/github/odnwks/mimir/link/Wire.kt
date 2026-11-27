@@ -33,6 +33,8 @@ object Wire {
     const val PC_SESSIONS = "pc_sessions"
     /** The PC takes "answer this as a chat, not a project" (Talk.chat_only; Stage 1, 2.3). */
     const val CHAT_ONLY = "chat_only"
+    /** The PC never does a chat message twice: one sent again (Talk.again) gets its first reply back (P40). */
+    const val TALK_ONCE = "talk_once"
     /** The PC has Settings › Who answers' two lines: what answers chats, and what does project work (SetEngines). */
     const val ENGINES = "engines"
     /** The PC lets chats pick the Claude model ([setChatModel]) and says which model answered. */
@@ -65,6 +67,7 @@ object Wire {
     fun talk(
         chatId: String, turnId: String, turns: List<LChatTurn>, lookup: String? = null, sources: List<LChatSource> = emptyList(),
         effort: String? = null, rules: String? = null, task: String? = null, chatOnly: Boolean = false, typed: Boolean = false,
+        again: Boolean = false,
     ): String = obj("Talk") {
         typed(typed)
         put("chat_id", chatId); put("turn_id", turnId); put("turns", JSONArray(turns.map { it.json() }))
@@ -72,6 +75,8 @@ object Wire {
         put("effort", effort ?: JSONObject.NULL); put("ground_rules", rules ?: JSONObject.NULL); put("task", task ?: JSONObject.NULL)
         // "Just chat": answered as a chat even though it names a project.
         if (chatOnly) put("chat_only", true)
+        // Sent again because the first reply never came: a PC that took it gives that reply back (P40).
+        if (again) put("again", true)
     }
 
     fun talkStop(chatId: String, turnId: String): String = obj("TalkStop") { put("chat_id", chatId); put("turn_id", turnId) }

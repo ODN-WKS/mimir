@@ -88,6 +88,7 @@ fn a_new_task_and_replies_are_marked_only_when_typed() {
 
     // A follow-up typed in the chat, filed into the open task.
     st.call(Call::Talk {
+        again: false,
         chat_id: "c1".into(),
         turn_id: "m1".into(),
         turns: vec![ChatTurn {

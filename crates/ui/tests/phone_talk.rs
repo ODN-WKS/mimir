@@ -259,6 +259,7 @@ fn user(id: &str, text: &str) -> ChatTurn {
 
 fn talk(chat: &str, id: &str, turns: Vec<ChatTurn>, rules: Option<&str>) -> Call {
     Call::Talk {
+        again: false,
         typed: false,
         chat_id: chat.into(),
         turn_id: id.into(),
@@ -967,4 +968,148 @@ fn p09_item25_a_chat_waits_for_the_sleeping_model_program_and_is_answered_by_it(
         1,
         "the PC's model got the chat once"
     );
+}
+
+/// The same message, sent again because its first reply never came back.
+fn again(chat: &str, id: &str, turns: Vec<ChatTurn>) -> Call {
+    let mut c = talk(chat, id, turns, None);
+    if let Call::Talk { again, .. } = &mut c {
+        *again = true;
+    }
+    c
+}
+
+fn turn_state(seen: &mut Seen, p: &Client, chat: &str, id: &str) -> TalkState {
+    serde_json::from_value(
+        seen.call(
+            p,
+            Call::TalkTurn {
+                chat_id: chat.into(),
+                turn_id: id.into(),
+            },
+        )
+        .unwrap(),
+    )
+    .unwrap()
+}
+
+/// P40 fix 1: a message the PC took as project work (a task, an idea) and
+/// sent again because its reply was lost on the way is never done twice: the
+/// phone gets the first reply back. A status reply is found by its turn, so
+/// it isn't sent again at all.
+#[test]
+fn p40_a_message_taken_as_work_and_sent_again_is_done_once() {
+    let Some(home) = home() else { return };
+    let _ = fake_ollama(&["Sure."]);
+    picked(&home);
+    home.play("run-1.jsonl", "live.jsonl");
+    let mut st = home.service();
+    let (p, mut seen) = paired(&mut st, &["talk", "chat_sync", "talk_once"]);
+    assert!(
+        seen.features.iter().any(|f| f == "talk_once"),
+        "{:?}",
+        seen.features
+    );
+    let recipe = home.root.join("Recipe-Box").display().to_string();
+    let ask = || vec![user("w1", "In Recipe Box, what version is it?")];
+    let first = talked(&mut seen, &p, talk("c1", "w1", ask(), None));
+    assert!(matches!(first, Filed::NewTask { .. }), "{first:?}");
+    let second = talked(&mut seen, &p, again("c1", "w1", ask()));
+    assert_eq!(first, second, "not the first reply");
+    assert!(service_until(&mut st, |s| s.tasks.len() == 1));
+    std::thread::sleep(Duration::from_millis(500));
+    st.poll();
+    assert_eq!(st.tasks.len(), 1, "a second task was started");
+    assert_eq!(home.conversations().len(), 1, "{:?}", home.conversations());
+    // An idea, the same way.
+    let idea = || vec![user("w2", "Recipes: idea - a dark mode switch")];
+    let first = talked(&mut seen, &p, talk("c1", "w2", idea(), None));
+    let Filed::Idea { .. } = first else {
+        panic!("not an idea: {first:?}")
+    };
+    let second = talked(&mut seen, &p, again("c1", "w2", idea()));
+    assert_eq!(first, second);
+    let ideas = seen.call(&p, Call::Ideas { project: recipe }).unwrap();
+    assert_eq!(ideas.as_array().map(Vec::len), Some(1), "{ideas}");
+    // A status question: its reply is found by its turn.
+    let f = talked(
+        &mut seen,
+        &p,
+        talk("c1", "w3", vec![user("w3", "What's the status?")], None),
+    );
+    let Filed::Status { reply } = f else {
+        panic!("not a status reply: {f:?}")
+    };
+    let st3 = turn_state(&mut seen, &p, "c1", "w3");
+    assert!(
+        matches!(&st3, TalkState::Done { turn } if turn.text == reply.join(" ")),
+        "{st3:?}"
+    );
+    // A message the PC never took is taken when it comes again.
+    let f = talked(
+        &mut seen,
+        &p,
+        again("c1", "w4", vec![user("w4", "Give me a random number")]),
+    );
+    assert!(matches!(f, Filed::Talk { .. }), "{f:?}");
+}
+
+/// P40 fix 1, after the PC restarted: a task message sent again is still
+/// done once, and a finished answer is still found by its turn (so it isn't
+/// answered again, with the model's time).
+#[test]
+fn p40_after_a_restart_nothing_is_done_twice() {
+    let Some(home) = home() else { return };
+    let asked = fake_ollama(&["Oslo."]);
+    picked(&home);
+    home.play("run-1.jsonl", "live.jsonl");
+    let mut st = home.service();
+    let (p, mut seen) = paired(&mut st, &["talk", "chat_sync", "talk_once"]);
+    let f = talked(
+        &mut seen,
+        &p,
+        talk(
+            "c1",
+            "r1",
+            vec![user("r1", "What's the capital of Norway?")],
+            None,
+        ),
+    );
+    assert!(matches!(f, Filed::Talk { .. }), "{f:?}");
+    assert!(seen.until(&p, |s| s.done.contains_key("r1.a")), "no answer");
+    let ask = || vec![user("r2", "In Recipe Box, what version is it?")];
+    let first = talked(&mut seen, &p, talk("c1", "r2", ask(), None));
+    assert!(matches!(first, Filed::NewTask { .. }), "{first:?}");
+    assert!(service_until(&mut st, |s| s.tasks.len() == 1));
+    home.stop_service();
+    let mut st = home.service();
+    let (_, pc) = phone(&mut st);
+    let info = st.call_wait(Call::LinkInfo).unwrap();
+    for a in info["bound"].as_array().unwrap() {
+        let a: std::net::SocketAddr = a.as_str().unwrap().parse().unwrap();
+        p.add_hint(std::net::SocketAddr::new([127, 0, 0, 1].into(), a.port()));
+    }
+    p.connect(&pc).expect("no reconnect");
+    seen.ready = false;
+    p.call(Call::Hello {
+        proto: mimir_core::proto::PROTO,
+        app_version: "test".into(),
+        client_name: "Fake phone".into(),
+        env: vec![],
+        features: vec!["talk".into(), "chat_sync".into(), "talk_once".into()],
+    })
+    .unwrap();
+    assert!(seen.until(&p, |s| s.ready), "no snapshot after Hello");
+    let st1 = turn_state(&mut seen, &p, "c1", "r1");
+    assert!(
+        matches!(&st1, TalkState::Done { turn } if turn.text == "Oslo."),
+        "{st1:?}"
+    );
+    let second = talked(&mut seen, &p, again("c1", "r2", ask()));
+    assert_eq!(first, second, "not the first reply");
+    std::thread::sleep(Duration::from_millis(500));
+    assert!(service_until(&mut st, |s| !s.tasks.is_empty()));
+    st.poll();
+    assert_eq!(st.tasks.len(), 1, "a second task was started");
+    assert_eq!(asked.lock().unwrap().len(), 1, "answered twice");
 }

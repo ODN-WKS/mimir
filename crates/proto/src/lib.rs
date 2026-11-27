@@ -368,7 +368,9 @@ pub const PROTO: u32 = 2;
 /// "task_reply_options" (a phone may send `Call::SetModel` and
 /// `Call::SetEffort` for a task, just before its next `Call::Send`) and
 /// "fresh_start" (`Call::StartFresh { same_chat: true }`: the same chat
-/// carries on in a new Claude session from the hand-off).
+/// carries on in a new Claude session from the hand-off) and "talk_once"
+/// (`Call::Talk`'s `again`: a message sent again is never acted on twice, and
+/// `TalkTurn` says `Unknown` only for a message the PC never took).
 /// A client lists the
 /// ones it knows in `Hello`, and only gets the new events when it does.
 pub const FEATURES: &[&str] = &[
@@ -390,6 +392,7 @@ pub const FEATURES: &[&str] = &[
     "pc_sessions",
     "task_reply_options",
     "fresh_start",
+    "talk_once",
 ];
 
 /// Where a PC session is at.
@@ -1437,6 +1440,12 @@ pub enum Call {
         /// Code is told so (`origin` human). False for everything else, and left out then.
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         typed: bool,
+        /// "talk_once": the same message sent again because its first reply
+        /// never came. A PC that already took it as a task, a follow-up or an
+        /// idea gives the first reply back and does nothing again. False (left
+        /// out) for every first send, Try again and an edit.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        again: bool,
     },
     /// Settings › Models "What answers" ("engines"): chats "free" or
     /// "paid", project work "free" or "claude" (None: unchanged). The reply

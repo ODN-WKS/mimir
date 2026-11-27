@@ -262,6 +262,7 @@ impl Phone {
     fn talk(&mut self, chat: &str, id: &str, text: &str, chat_only: bool) -> Filed {
         serde_json::from_value(
             self.call(Call::Talk {
+                again: false,
                 typed: false,
                 chat_id: chat.into(),
                 turn_id: id.into(),
@@ -1089,6 +1090,7 @@ fn p35_a_later_messages_forecast_reaches_claude_with_the_message() {
     };
     for (id, town) in [("t1", "Fernhollow"), ("t2", "Pebble Ford")] {
         mine.call(Call::Talk {
+            again: false,
             chat_id: "c-p35".into(),
             turn_id: id.into(),
             turns: vec![user(id, &format!("what is the weather in {town}"))],
@@ -1135,6 +1137,7 @@ fn p35_a_later_messages_forecast_reaches_the_pcs_model() {
     let mut mine = paired_as(&mut st, None);
     for (id, town) in [("t1", "Fernhollow"), ("t2", "Pebble Ford")] {
         mine.call(Call::Talk {
+            again: false,
             chat_id: "c-p35".into(),
             turn_id: id.into(),
             turns: vec![user(id, &format!("what is the weather in {town}"))],
@@ -1178,6 +1181,7 @@ fn p38_the_pcs_model_is_told_a_chat_runs_nothing_and_offers_project_work() {
     let mut ana = paired_as(&mut st, Some("Ana"));
     let say = |ph: &mut Phone, chat: &str, id: &str, words: &str| -> Filed {
         let f = ph.call(Call::Talk {
+            again: false,
             typed: false,
             chat_id: chat.into(),
             turn_id: id.into(),
@@ -1303,6 +1307,7 @@ fn r30_pictures_reach_the_model_and_are_never_another_persons() {
     };
     let ask = |who: &mut Phone, id: &str, turns: Vec<ChatTurn>| {
         who.call(Call::Talk {
+            again: false,
             typed: false,
             chat_id: "c-pic".into(),
             turn_id: id.into(),
@@ -1686,6 +1691,7 @@ fn d1_files_are_read_on_the_pc_and_are_never_another_persons() {
     let ask = |who: &mut Phone, id: &str, turns: Vec<ChatTurn>| -> Filed {
         let f = who
             .call(Call::Talk {
+                again: false,
                 typed: false,
                 chat_id: "c-file".into(),
                 turn_id: id.into(),
@@ -1871,6 +1877,7 @@ fn picture_talk(who: &mut Phone, id: &str) -> Filed {
     }];
     serde_json::from_value(
         who.call(Call::Talk {
+            again: false,
             typed: false,
             chat_id: "c-sw".into(),
             turn_id: id.into(),

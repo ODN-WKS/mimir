@@ -2227,6 +2227,8 @@ class Engine(
         var lastHeard = wall()
         var askedAt = 0L
         // A message the PC never got (it went out on a link that carried nothing) is sent once more, never twice (P40).
+        // Only a PC that never does a message twice ("talk_once") is sent it again: an older one says it doesn't know
+        // a message it took as project work, and would start the task again.
         var sends = 1
         fun finish(turn: Turn) {
             // Another model answered because the usual one can't see pictures: what the PC sees may have changed, so ask again.
@@ -2331,9 +2333,9 @@ class Engine(
                             _state.update { it.copy(partial = Thought.split(st.text).second) }
                         }
                         io.github.odnwks.mimir.link.LTalkState.Unknown -> if (m.sent == sends) {
-                            if (sends > 1 || !link.canTalk()) return false
+                            if (sends > 1 || !link.canTalk() || !link.talksOnce()) return false
                             sends++
-                            if (!link.talk(request, listener)) return false
+                            if (!link.talk(request.copy(again = true), listener)) return false
                             askedAt = 0
                             _state.update { it.copy(pcWaiting = false) }
                         }

@@ -40,6 +40,8 @@ class LinkStationQueueTest {
         @Volatile var connects = 0
         /** The PC can't be reached for a new session. */
         @Volatile var refuseConnect = false
+        /** The session looks open but carries nothing: no call is answered. */
+        @Volatile var silent = false
         private val seq = AtomicLong(100)
         private val held = listOf("{\"Chat\"", "{\"Send\"", "{\"Talk\"", "{\"Answer", "{\"NewTask\"", "{\"Listen\"")
         override fun start(key: ByteArray, relays: Boolean) = 1L
@@ -54,7 +56,7 @@ class LinkStationQueueTest {
             calls += id to json
             val why = refuseStop
             if (why != null && json.startsWith("{\"Stop\"")) { refuse(id, why); return id }
-            if (held.none { json.startsWith(it) }) reply(id, "{}")
+            if (!silent && held.none { json.startsWith(it) }) reply(id, "{}")
             return id
         }
         override fun nextEvent(handle: Long, timeoutMs: Long): String? = events.poll(minOf(timeoutMs, 50), TimeUnit.MILLISECONDS)
@@ -146,14 +148,58 @@ class LinkStationQueueTest {
         }
         // The link stays "up" but the PC never answers the message: no failure, the link is made again.
         link.refuseConnect = true
+        link.silent = true
         assertTrue(st.talk(TalkRequest("c1", "t1", emptyList(), null, emptyList(), null, null, null), listener))
-        assertTrue("not shown as connected once the link carried nothing", until(6_000) { !st.state.value.pc.online })
+        assertTrue("not shown as connected once the link carried nothing", until(9_000) { !st.state.value.pc.online })
         link.refuseConnect = false
+        link.silent = false
         assertTrue("the link was made again", until(8_000) { link.connects >= 2 })
         assertFalse("no failure was given for the message", synchronized(log) { log.any { it.startsWith("done") || it.startsWith("filed") } })
         link.ready()
         assertTrue("the answer is looked for again once the link is back", until { synchronized(log) { log.contains("back") } })
         assertTrue("connected again", until { st.state.value.pc.online })
+        st.close()
+    }
+
+    private class Log : TalkListener {
+        val seen = java.util.Collections.synchronizedList(ArrayList<String>())
+        override fun filed(f: io.github.odnwks.mimir.link.Filed?, err: String?) { seen += "filed:$err" }
+        override fun piece(text: String, thinking: Boolean) {}
+        override fun done(turn: io.github.odnwks.mimir.link.LChatTurn?, err: String?) { seen += "done:$err" }
+        override fun lost() { seen += "lost" }
+        override fun back() { seen += "back" }
+        override fun nudge() { seen += "nudge" }
+        fun has(s: String) = synchronized(seen) { seen.contains(s) }
+    }
+
+    // P40 fix 2: a "taken" reply slower than 2 s on a link that still carries the PC's answers redid the
+    // link, and every call still waiting (task replies, recordings, lookups) failed with it.
+    @Test fun aSlowTakenReplyOnALinkThatStillCarriesKeepsTheLinkAndItsCalls() {
+        val link = FakeLink(); val st = paired(link)
+        assertTrue(until { st.state.value.pc.online })
+        val log = Log()
+        assertTrue(st.talk(TalkRequest("c1", "t1", emptyList(), null, emptyList(), null, null, null), log))
+        Thread.sleep(LinkStation.TALK_TAKEN_MS + io.github.odnwks.mimir.data.LinkStation.PROBE_WAIT_MS + 1_500)
+        assertEquals("the link was kept", 1, link.connects)
+        assertTrue("still shown as connected", st.state.value.pc.online)
+        assertFalse("the waiting answer wasn't disturbed", synchronized(log.seen) { log.seen.any { it == "nudge" || it == "lost" || it.startsWith("done") || it.startsWith("filed") } })
+        // The slow reply still lands.
+        val talk = link.callsOf("{\"Talk\"").single()
+        link.reply(talk.first, """{"Talk":{"answer":"t1.a","ran":"pc","model_words":"Your PC"}}""")
+        assertTrue("the reply is taken", until { synchronized(log.seen) { log.seen.contains("filed:null") } })
+        st.close()
+    }
+
+    // P40 finding 4: a link this phone redid that can't be made again is a PC that's away: said at once,
+    // not after 30 s of silence.
+    @Test fun aRedoneLinkThatCantBeMadeAgainSaysThePcIsAway() {
+        val link = FakeLink(); val st = paired(link)
+        assertTrue(until { st.state.value.pc.online })
+        val log = Log()
+        link.silent = true
+        link.refuseConnect = true
+        assertTrue(st.talk(TalkRequest("c1", "t1", emptyList(), null, emptyList(), null, null, null), log))
+        assertTrue("told the PC is away once the link can't be made again", until(12_000) { log.has("lost") })
         st.close()
     }
 

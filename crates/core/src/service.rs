@@ -234,6 +234,29 @@ struct TalkArgs {
     typed: bool,
 }
 
+/// Where a chat message's reply is kept in the message ids ("talk_once").
+fn talk_key(person: &str, chat_id: &str, turn_id: &str) -> String {
+    format!("talk\u{1f}{person}\u{1f}{chat_id}\u{1f}{turn_id}")
+}
+
+/// A chat message taken as project work (a task, a follow-up, an idea, the
+/// Inbox): what is kept of it to give back when it comes again. A chat the
+/// PC answers or a status reply is found through `TalkTurn` instead (the
+/// answer is in the chat store), and one left to the phone was not taken.
+fn taken_as_work(r: &Result<serde_json::Value, String>) -> bool {
+    matches!(
+        r.as_ref()
+            .ok()
+            .and_then(|v| serde_json::from_value::<Filed>(v.clone()).ok()),
+        Some(
+            Filed::NewTask { .. }
+                | Filed::SameTask { .. }
+                | Filed::Idea { .. }
+                | Filed::Inbox { .. }
+        )
+    )
+}
+
 /// The features this PC offers in its Welcome (a subset of
 /// `mimir_proto::FEATURES` that grows as each part is in place).
 const OFFERED: &[&str] = &[
@@ -255,6 +278,7 @@ const OFFERED: &[&str] = &[
     "pc_sessions",
     "task_reply_options",
     "fresh_start",
+    "talk_once",
 ];
 
 /// The effort levels Claude Code's `--effort` takes.
@@ -1148,9 +1172,32 @@ impl Service {
         {
             return first;
         }
+        // A chat message is remembered under its turn whatever it was filed
+        // as ("talk_once"): sent again because its first reply never came, it
+        // gets that reply and nothing is done twice (a second task, the words
+        // typed into a task twice, a second idea).
+        let talk = match &call {
+            Call::Talk {
+                chat_id,
+                turn_id,
+                again,
+                ..
+            } => Some((talk_key(&self.person_of(client), chat_id, turn_id), *again)),
+            _ => None,
+        };
+        if let Some((key, true)) = &talk
+            && let Some(first) = self.msg_ids.get(key)
+        {
+            return first;
+        }
         let r = self.call_once(client, call);
         if let Some(id) = &msg_id {
             self.msg_ids.put(id, &r);
+        }
+        if let Some((key, _)) = &talk
+            && taken_as_work(&r)
+        {
+            self.msg_ids.put(key, &r);
         }
         r
     }
@@ -1838,6 +1885,7 @@ impl Service {
                 task,
                 chat_only,
                 typed,
+                again: _,
             } => {
                 let person = self.person_of(client);
                 // Another person's message is never filed as work on the
@@ -1866,13 +1914,22 @@ impl Service {
                 }
                 ok
             }
-            Call::TalkTurn { turn_id, .. } => {
+            Call::TalkTurn { chat_id, turn_id } => {
                 let answer = crate::talk::answer_id(&turn_id);
-                let state = if self.answer_is_of(&answer, &self.person_of(client)) {
+                let person = self.person_of(client);
+                let mut state = if self.answer_is_of(&answer, &person) {
                     self.talk.state(&answer)
                 } else {
                     mimir_proto::TalkState::Unknown
                 };
+                // No longer kept here (finished long ago, or the PC restarted):
+                // a finished answer, or a status reply, is still in the chat
+                // store. Then the message is not sent again ("talk_once").
+                if state == mimir_proto::TalkState::Unknown
+                    && let Some(turn) = self.kept_answer(&person, &chat_id, &answer)
+                {
+                    state = mimir_proto::TalkState::Done { turn };
+                }
                 serde_json::to_value(state).map_err(|e| e.to_string())
             }
             Call::ChatPut {
@@ -4759,6 +4816,22 @@ impl Service {
     fn may_go_online(&self, person: &str) -> bool {
         person == crate::people::OWNER
             || self.link.as_ref().is_some_and(|l| l.may_go_online(person))
+    }
+
+    /// A person's finished answer `answer` in their chat `chat_id`, as the
+    /// chat store keeps it (None when the store is locked).
+    fn kept_answer(
+        &mut self,
+        person: &str,
+        chat_id: &str,
+        answer: &str,
+    ) -> Option<mimir_proto::ChatTurn> {
+        self.chats()
+            .get_for(person, chat_id)?
+            .turns
+            .iter()
+            .find(|t| t.id == answer && !t.user && !t.gone)
+            .cloned()
     }
 
     /// Whether a recent chat answer is this person's.
