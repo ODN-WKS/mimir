@@ -20,7 +20,7 @@ object Wire {
      * The PC sends the new events (talk pieces, chat changes, the truth) only to a phone that lists
      * them; the phone sends the new calls only to a PC whose Welcome lists them.
      */
-    val FEATURES = listOf("search", "lookup", TALK, CHAT_SYNC, TRUTH, MODELS_CHANGED, FINISHED_EVENTS, PC_SESSIONS, TASK_FILES, TASK_REPLY_OPTIONS)
+    val FEATURES = listOf("search", "lookup", TALK, CHAT_SYNC, TRUTH, MODELS_CHANGED, FINISHED_EVENTS, PC_SESSIONS, TASK_FILES, TASK_REPLY_OPTIONS, FRESH_START)
     const val TALK = "talk"
     const val CHAT_SYNC = "chat_sync"
     /** The PC understands a cut-away turn ([LChatTurn.gone]); an older one would keep it as an empty message. */
@@ -45,6 +45,8 @@ object Wire {
     const val TASK_FILES = "task_files"
     /** A phone may set a task's model and effort ([setModel], [setEffort]) just before its next message. */
     const val TASK_REPLY_OPTIONS = "task_reply_options"
+    /** The same chat carries on in a new Claude session from the hand-off ([freshStart]). */
+    const val FRESH_START = "fresh_start"
 
     fun hello(appVersion: String, phoneName: String, @Suppress("UNUSED_PARAMETER") pushToken: String? = null, features: List<String> = FEATURES): String = obj("Hello") {
         put("proto", PROTO); put("app_version", appVersion); put("client_name", phoneName)
@@ -295,6 +297,8 @@ object Wire {
     fun stopAllowing(task: String, file: String): String = obj("StopAllowing") { put("task", task); put("file", file) }
     fun continueOnClaude(task: String): String = obj("ContinueOnClaude") { put("task", task) }
     fun startFresh(task: String): String = obj("StartFresh") { put("task", task) }
+    /** "Fresh start": only to a PC that lists [FRESH_START]; an older one would make a new task. */
+    fun freshStart(task: String): String = obj("StartFresh") { put("task", task); put("same_chat", true) }
     /** An Incognito task always asks first, on a free model. */
     fun newIncognito(project: String, text: String, model: String, rules: String? = null, typed: Boolean = false): String = obj("NewIncognito") {
         typed(typed)

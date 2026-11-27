@@ -127,6 +127,10 @@ interface Station {
     fun continueOnClaude(taskId: String)
     /** "Start fresh with a summary" on a long conversation: a new task from a short summary; the old one stays. */
     fun startFresh(taskId: String, done: (newTaskId: String?) -> Unit)
+    /** This PC can carry a task's chat on in a new session ("fresh_start"); an older one can't. */
+    fun canFreshStart(): Boolean = false
+    /** "Fresh start" in a task's menu: [done] gets null when the PC took it, else why not, in plain words. */
+    fun freshStart(taskId: String, done: (String?) -> Unit = {}) {}
     fun setSwitchToFree(on: Boolean)
     /** The PC's weekly look for a better model for this phone ("Worth switching?"), on or off. */
     fun setWeeklyCheck(on: Boolean)
@@ -504,6 +508,8 @@ data class Task(
     val elsewhereIn: String = "",
     /** The effort chosen on this phone for the task's next messages (the PC's word, e.g. "high"); "" when its usual one. */
     val effort: String = "",
+    /** A chat, not a project's task: it has no hand-off to start fresh from. */
+    val fromChats: Boolean = false,
 ) {
     /** A mode that does things without asking, in words for its chip; null when it asks first. */
     val riskyMode: String? get() = when (mode) {

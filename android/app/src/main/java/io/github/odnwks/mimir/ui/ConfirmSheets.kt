@@ -201,6 +201,16 @@ private fun SheetContent(sheet: Sheet, state: StationState, station: Station, na
             } else MenuRow(Glyphs.Close, "Delete…", Palette.Red) { nav.openSheet(Sheet.DeleteTask(id)) }
             // Stop is for work that runs: the Stop button is on the task itself while it does.
             if (task != null && task.showsStop && !task.stopPending && (!elsewhere || state.pcSessions == null)) MenuRow(Glyphs.Stop, "Stop this task…", Palette.Red) { nav.openSheet(Sheet.StopTask(id)) }
+            // The same chat, a new session from the hand-off. Not for a Whisper, a chat or a task still on this phone.
+            // Last, so that Stop and the rows above it stay where they were, on the first screen of the menu.
+            if (!elsewhere && task != null && station.canFreshStart() && !task.whisper && !task.fromChats && !task.waitingToStart) MenuRow(Glyphs.NewDocument, FRESH_START, note = FRESH_START_ABOUT) {
+                val working = task.showsStop
+                station.freshStart(id) { why ->
+                    val say = why ?: FRESH_START_LATER.takeIf { working }
+                    if (say != null) android.os.Handler(android.os.Looper.getMainLooper()).post { standIn(say) }
+                }
+                nav.closeSheet()
+            }
             if (!elsewhere) PrivacyLine("Your PC does this task. This phone and your PC talk privately.")
         }
         is Sheet.ChatOptions -> Menu(sheet.title(state)) {
@@ -388,6 +398,9 @@ private fun SheetContent(sheet: Sheet, state: StationState, station: Station, na
 }
 
 /** The chat menu's rows, word for word. */
+const val FRESH_START = "Fresh start"
+const val FRESH_START_ABOUT = "Starts a new session in this chat from the hand-off. Saves usage on long chats."
+const val FRESH_START_LATER = "It starts fresh when this answer is done."
 const val CHAT_RENAME = "Rename"
 const val CHAT_COPY = "Copy the whole chat"
 const val CHAT_RULES = "Rules for this chat"

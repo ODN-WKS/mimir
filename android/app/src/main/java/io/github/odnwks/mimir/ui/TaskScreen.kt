@@ -291,7 +291,8 @@ fun TaskScreen(taskId: String, state: StationState, station: Station, nav: Navig
                     }
                 }
                 messages.forEach { m ->
-                    if (m.note) Text(
+                    if (m.note && isFreshStartNote(m.text)) FreshStartDivider(m.text)
+                    else if (m.note) Text(
                         if (m.atMs == null) androidx.compose.ui.text.AnnotatedString(m.text) else androidx.compose.ui.text.buildAnnotatedString {
                             append(m.text)
                             withStyle(androidx.compose.ui.text.SpanStyle(color = Palette.TextDim.copy(alpha = 0.75f))) { append(" · " + messageTime(m.atMs)) }

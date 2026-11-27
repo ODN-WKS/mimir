@@ -1519,6 +1519,14 @@ class LinkStation(
             }) { note("Your PC is away: try again when it's back."); done(null) }
     }
 
+    override fun canFreshStart(): Boolean = Wire.FRESH_START in pcFeatures
+
+    override fun freshStart(taskId: String, done: (String?) -> Unit) {
+        // Never to an older PC: it would read this as "make a new task".
+        if (!canFreshStart()) return done("Update Mímir on your PC to start fresh.")
+        if (!call(Wire.freshStart(taskId)) { _, err -> done(err) }) done("Your PC is away: try again when it's back.")
+    }
+
     override fun setWeeklyCheck(on: Boolean) {
         if (!call(Wire.setWeeklyCheck(on)) { _, err -> if (err != null) note(err); refreshModels() }) note("Your PC is away: try again when it's back.")
     }
@@ -1893,6 +1901,7 @@ class LinkStation(
             whisper = t.incognito,
             stopPending = t.id in pendingStops,
             elsewhereIn = t.elsewhereIn,
+            fromChats = isChatsFolder(t.project),
         )
     }
 
@@ -2091,3 +2100,6 @@ fun shortTitle(line: String, max: Int = 40): String {
     val at = cut.lastIndexOf(' ')
     return (if (at >= max / 2) cut.take(at) else line.take(max)).trimEnd(' ', ',', ';', ':', '.') + "…"
 }
+
+/** The PC's folder for chats (crates/core's `in_chats_folder`). */
+internal fun isChatsFolder(path: String): Boolean = path.trimEnd('/').endsWith("mimir/chats")

@@ -295,6 +295,15 @@ class FakeStation(initial: StationState = ExampleData.awake()) : Station {
     override fun startFresh(taskId: String, done: (String?) -> Unit) { done(null) }
     override fun selectModel(modelId: String) = flow.update { it.copy(models = it.models.copy(selected = modelId)) }
     override fun setSwitchToFree(on: Boolean) = flow.update { it.copy(models = it.models.copy(switchToFree = on)) }
+    /** For checks: the stand-in PC knows "Fresh start", what was asked, and its reason for refusing. */
+    var freshOk = true
+    val freshStarts = mutableListOf<String>()
+    var freshRefusal: String? = null
+    override fun canFreshStart() = freshOk
+    override fun freshStart(taskId: String, done: (String?) -> Unit) {
+        freshStarts += taskId
+        done(freshRefusal)
+    }
     override fun setWeeklyCheck(on: Boolean) = flow.update { it.copy(models = it.models.copy(weeklyCheck = on)) }
     override fun setEngines(chats: String?, project: String?) = flow.update {
         it.copy(models = it.models.copy(chatsEngine = chats ?: it.models.chatsEngine, projectEngine = project ?: it.models.projectEngine))
