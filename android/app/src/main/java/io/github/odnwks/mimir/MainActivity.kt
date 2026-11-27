@@ -236,9 +236,14 @@ class MainActivity : FragmentActivity() {
         // Leaving (not turning): the lock screen is laid over the app so Recents never shows a chat.
         val on = !check && io.github.odnwks.mimir.ui.AppLock.on(this)
         if (on && !isChangingConfigurations) io.github.odnwks.mimir.ui.AppLock.cover(true)
-        if (Build.VERSION.SDK_INT >= 33) setRecentsScreenshotEnabled(!on)
+        // With the keyboard up, the phone's saved picture would hold the keyboard too: coming back, it showed that
+        // picture for a moment and then the screen without it (a flash and a jump). No picture is kept then.
+        if (Build.VERSION.SDK_INT >= 33) setRecentsScreenshotEnabled(keepLeavingPicture(on, keyboardUp()))
         super.onPause()
     }
+
+    private fun keyboardUp(): Boolean = androidx.core.view.ViewCompat.getRootWindowInsets(window.decorView)
+        ?.isVisible(androidx.core.view.WindowInsetsCompat.Type.ime()) == true
 
     override fun onStop() {
         super.onStop()
@@ -266,3 +271,6 @@ class MainActivity : FragmentActivity() {
 }
 
 private fun secure(context: Context): Boolean = Stations.secure(context)
+
+/** Whether the phone may keep a picture of the app as it leaves: never with "Lock Mímir" on, nor with the keyboard up. */
+internal fun keepLeavingPicture(lockOn: Boolean, keyboardUp: Boolean): Boolean = !lockOn && !keyboardUp

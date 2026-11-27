@@ -3,6 +3,8 @@
     <!-- Dark from the first frame, so opening the app never flashes white. -->
     <style name="Theme.Mimir" parent="android:Theme.Material.NoActionBar">
         <item name="android:windowBackground">@color/ground</item>
+        <!-- The plain card the phone draws on the way back when it keeps no picture of the app (grey without this). -->
+        <item name="android:colorBackground">@color/ground</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
     </style>
