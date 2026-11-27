@@ -227,11 +227,11 @@ object OnlineModels {
     // ---------- Chatting ----------
 
     /** The words the model is told first. The owner's ground rules (Settings) go on after them. */
-    fun system(rules: String? = io.github.odnwks.mimir.data.GroundRules.current): String =
+    fun system(rules: String? = io.github.odnwks.mimir.data.GroundRules.current, projects: Boolean = false): String =
         "You are Mímir, answering through an online model. " +
             (rules ?: "Answer exactly what is asked, clearly and directly. Use short paragraphs.") +
             " You can't browse the web yourself; the app may add fetched information to a message, marked as such: use it and say where it came from. " +
-            io.github.odnwks.mimir.standalone.Prompt.NO_ACTIONS
+            io.github.odnwks.mimir.standalone.Prompt.noActions(projects)
 
     /**
      * Asks [setup]'s model for a reply to [messages] (role and words, the chat so far), passing the

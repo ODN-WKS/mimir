@@ -314,14 +314,24 @@ data class TurnFile(
 object Prompt {
     /**
      * Told to every model a phone chat asks itself (P38: a chat claimed it had run and stopped a
-     * benchmark): a chat only writes, and project work is started by the person.
+     * benchmark): a chat only writes. Without project work (no PC paired, or not its owner) this is
+     * all; [noActions] gives the other.
      */
     const val NO_ACTIONS = "This is a chat: you can only write replies. You cannot run, start, stop, test, change or " + // lint:log-only
+        "delete anything on this phone or on a PC. Never say or imply that you did, are doing or will do such a thing, " +
+        "and never make up its result. A request to stop is such a thing: never answer \"Stopped\", say you can't stop " +
+        "anything from this chat. When asked to do such a thing, say only that you can't from this chat. " +
+        "Add no warnings or lecture."
+
+    /** The same where project work exists ([PcTalk.projectWork]): it is offered, and the person starts it. */
+    private const val NO_ACTIONS_OFFER = "This is a chat: you can only write replies. You cannot run, start, stop, test, change or " + // lint:log-only
         "delete anything on this phone or on a PC. Never say or imply that you did, are doing or will do such a thing, " +
         "and never make up its result. A request to stop is such a thing: never answer \"Stopped\", say you can't stop " +
         "anything from this chat and that a task is stopped with its Stop button. You don't know their project names: " +
         "never make one up. When asked to do such a thing, say in one or two sentences that you can't from this chat, and offer it as project work: a task in one of their projects on their PC, which they start " +
         "themselves. Replying yes in this chat starts nothing. Add no warnings or lecture."
+
+    fun noActions(projects: Boolean): String = if (projects) NO_ACTIONS_OFFER else NO_ACTIONS
 
     const val SYSTEM = "You are Mímir, a private AI running on this phone, offline. " +
         "Answer exactly what is asked, clearly and directly, in the subject's own terms. Don't add other views, " +
@@ -397,9 +407,10 @@ object Prompt {
         ((ground?.let { listOf(it) } ?: emptyList()) + listOfNotNull(chatRules.trim().takeIf { it.isNotEmpty() }?.let { "Rules for this chat only:\n$it" }, NO_GUESS)).joinToString("\n\n")
 
     /** The instructions: with ground rules, where it runs and the rules; with them off, the built-in ones. [chatRules] are this chat's own, told after them. */
-    fun system(rules: String? = io.github.odnwks.mimir.data.GroundRules.current, online: Boolean = false, chatRules: String = "", ask: String? = null): String {
-        val where = if (online && ask != null) "$ONLINE $ask" else ONLINE
-        val base = if (rules == null) (if (online) "$where$ANSWER" else SYSTEM) else "${if (online) where else PLACE}\n\n$rules"
+    fun system(rules: String? = io.github.odnwks.mimir.data.GroundRules.current, online: Boolean = false, chatRules: String = "", ask: String? = null, projects: Boolean = false): String {
+        fun own(text: String) = text.replace(NO_ACTIONS, noActions(projects))
+        val where = own(ONLINE).let { if (online && ask != null) "$it $ask" else it }
+        val base = if (rules == null) (if (online) "$where$ANSWER" else own(SYSTEM)) else "${if (online) where else own(PLACE)}\n\n$rules"
         return base + chatTail(chatRules)
     }
 
@@ -426,8 +437,10 @@ object Prompt {
         chatRules: String = "",
         /** With [online]: today's date and the model's way to ask for a lookup ([askSearch]); null leaves it out. */
         ask: String? = if (online) askSearch(System.currentTimeMillis()) else null,
+        /** The person has project work on a paired PC ([PcTalk.projectWork]). */
+        projects: Boolean = false,
     ): String = buildString {
-        val sys = if (brief) system(rules, online, chatRules, ask) + BRIEF else system(rules, online, chatRules, ask)
+        val sys = system(rules, online, chatRules, ask, projects) + if (brief) BRIEF else ""
         val last = turns.lastIndex
         fun said(i: Int, t: Turn) = t.forModel(sees) + if (i == last && t.user && fetched != null) fetched else earlier[t.id].takeIf { t.user && t.id.isNotEmpty() }.orEmpty()
         when (format) {

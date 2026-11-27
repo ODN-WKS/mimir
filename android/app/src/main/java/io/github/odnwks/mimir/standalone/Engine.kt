@@ -200,6 +200,9 @@ class Engine(
     /** Chats whose put is on its way. */
     private val sending = java.util.Collections.synchronizedSet(HashSet<String>())
 
+    /** Whether a chat may offer project work: only where it exists ([PcTalk.projectWork]). */
+    private fun projectWork(): Boolean = pc?.projectWork() == true
+
     /** Whether the next message goes to the PC: paired and connected, "Your PC" chosen, not a Whisper. */
     // A phone that can't run a model always uses the PC ("This phone only" isn't offered there).
     fun pcAnswers(): Boolean = _state.value.let { (it.usePc || !it.supported) && it.usePcOnce && !it.whisper } && pc?.canTalk() == true && !onlineAnswers()
@@ -1578,7 +1581,7 @@ class Engine(
             val earlier = synchronized(fetchedFor) { HashMap(fetchedFor) }
             val online = io.github.odnwks.mimir.online.Online.allowed(mode())
             val r = runCatching {
-                runner.warm(Prompt.build(model.format, st.chat.turns + Turn(true, ""), brief = st.effort == Effort.Quick, online = online, earlier = earlier, head = true, chatRules = st.chat.rules, ask = askLine(model, mode())))
+                runner.warm(Prompt.build(model.format, st.chat.turns + Turn(true, ""), brief = st.effort == Effort.Quick, online = online, earlier = earlier, head = true, chatRules = st.chat.rules, ask = askLine(model, mode()), projects = projectWork()))
             }.getOrDefault("")
             if (!st.whisper) Log.i(TAG, "ready ahead:$timing read=${runCatching { JSONObject(r).optInt("new_prompt_tokens") }.getOrDefault(-1)}tok total=${(System.nanoTime() - t0) / 1_000_000}ms")
             lastReplyAt = now()
@@ -1645,7 +1648,7 @@ class Engine(
         fun prompt(think: Boolean, fetched: String?) = Prompt.build(
             model.format, turns, think, brief = effort == Effort.Quick, sees = sees, online = online,
             fetched = fetched, earlier = earlier,
-            chatRules = _state.value.chat.rules, ask = ask,
+            chatRules = _state.value.chat.rules, ask = ask, projects = projectWork(),
         )
         fun pictures() = if (sees) Prompt.pictures(turns).map { it.jpeg } else emptyList()
 
@@ -1745,7 +1748,7 @@ class Engine(
             val w0 = ms()
             _state.update { if (it.chat.id != chatId || it.looking != null) it else it.copy(reading = true) }
             val warm = runCatching {
-                runner.warm(Prompt.build(model.format, turns, brief = effort == Effort.Quick, online = online, earlier = earlier, head = true, chatRules = _state.value.chat.rules, ask = ask))
+                runner.warm(Prompt.build(model.format, turns, brief = effort == Effort.Quick, online = online, earlier = earlier, head = true, chatRules = _state.value.chat.rules, ask = ask, projects = projectWork()))
             }.getOrDefault("")
             timing.append(" warm=").append(ms() - w0).append("ms")
             runCatching { JSONObject(warm).optInt("new_prompt_tokens", -1) }.getOrNull()?.takeIf { it >= 0 }?.let { timing.append("/").append(it).append("tok") }
@@ -2113,7 +2116,7 @@ class Engine(
         } else null
         val earlier = synchronized(fetchedFor) { HashMap(fetchedFor) }
         val last = s.chat.turns.lastIndex
-        val system = io.github.odnwks.mimir.online.OnlineModels.system() + Prompt.chatTail(s.chat.rules) + if (s.effort == Effort.Quick) Prompt.BRIEF else ""
+        val system = io.github.odnwks.mimir.online.OnlineModels.system(projects = projectWork()) + Prompt.chatTail(s.chat.rules) + if (s.effort == Effort.Quick) Prompt.BRIEF else ""
         val messages = listOf("system" to system) + s.chat.turns.mapIndexed { i, t ->
             (if (t.user) "user" else "assistant") to (t.forModel() + if (t.user && i == last) fetched.orEmpty() else if (t.user) earlier[t.id].orEmpty() else "")
         }

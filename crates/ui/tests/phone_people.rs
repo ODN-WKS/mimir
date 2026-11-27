@@ -1178,6 +1178,7 @@ fn p38_the_pcs_model_is_told_a_chat_runs_nothing_and_offers_project_work() {
     let mut ana = paired_as(&mut st, Some("Ana"));
     let say = |ph: &mut Phone, chat: &str, id: &str, words: &str| -> Filed {
         let f = ph.call(Call::Talk {
+            typed: false,
             chat_id: chat.into(),
             turn_id: id.into(),
             turns: vec![user(id, words)],

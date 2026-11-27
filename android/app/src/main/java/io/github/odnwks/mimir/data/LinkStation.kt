@@ -225,6 +225,8 @@ class LinkStation(
     /** Online was taken away from this phone's person while chosen: the one line to say once. */
     @Volatile var onOnlineWithdrawn: ((String) -> Unit)? = null
 
+    override fun projectWork(): Boolean = paired && isOwner()
+
     /** This phone belongs to the PC's owner (an older PC does not say, and has only the owner). */
     private fun isOwner(): Boolean = synchronized(lock) { data.person.isNullOrEmpty() || data.person == OWNER_PERSON }
     init {
