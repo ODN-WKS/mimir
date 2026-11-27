@@ -324,15 +324,15 @@ class LinkStation(
 
     /**
      * A chat message not taken within [TALK_TAKEN_MS]: the link is redone only when this phone's calls don't get
-     * through. An answer to any call since the message went out, or to a quick check within [PROBE_WAIT_MS],
-     * means the PC is only slow, and the link with every call still waiting on it is kept (P40). The PC's own
-     * events prove nothing here: a link can carry them while the phone's calls are stuck (P46 walk, problem 1).
+     * through. A quick check is always sent, and only its own answer within [PROBE_WAIT_MS] counts: it went out
+     * after the message, so it proves the link carries calls now, and the PC is only slow (P40). Neither the PC's
+     * own events nor a late answer to a call sent before the message prove that: a link can carry them while the
+     * phone's calls are stuck (P46 walk, problem 1).
      */
-    private fun redoIfSilent(answer: String, since: Long) {
-        if (lastReplyAt >= since) return
+    private fun redoIfSilent(answer: String) {
         val heard = java.util.concurrent.CountDownLatch(1)
-        if (call(Wire.projects()) { _, _ -> heard.countDown() }) heard.await(PROBE_WAIT_MS, java.util.concurrent.TimeUnit.MILLISECONDS)
-        if (lastReplyAt < since && synchronized(lock) { talking.containsKey(answer) }) redoLink("a chat message wasn't taken") // lint:log-only
+        if (call(Wire.projects()) { _, _ -> heard.countDown() } && heard.await(PROBE_WAIT_MS, java.util.concurrent.TimeUnit.MILLISECONDS)) return
+        if (synchronized(lock) { talking.containsKey(answer) }) redoLink("a chat message wasn't taken") // lint:log-only
     }
 
     private fun probe() {
@@ -527,7 +527,6 @@ class LinkStation(
                     after = { fetchAudio() }
                 }
                 is Ev.Reply -> {
-                    lastReplyAt = System.currentTimeMillis()
                     replies.answered(ev.callId)?.let { cb -> after = { cb(ev.ok, ev.err) } }
                 }
                 is Ev.TestNotice, is Ev.TestNoticeOff -> {}
@@ -597,11 +596,10 @@ class LinkStation(
         // PHD-03: the PC takes a message at once (its reply to the call, not the answer itself). None within
         // [TALK_TAKEN_MS], on a link that carries nothing else either, means the link is dead though it looks
         // open: it is redone, and the message is asked after once it's back (P40), instead of failing it.
-        val sentAt = System.currentTimeMillis()
         val deadline = java.util.concurrent.Executors.newSingleThreadScheduledExecutor()
         deadline.schedule({
             // The reply arriving meanwhile ends the wait (shutdownNow): nothing is redone then.
-            try { if (synchronized(lock) { talking.containsKey(answer) }) redoIfSilent(answer, sentAt) } catch (_: InterruptedException) {}
+            try { if (synchronized(lock) { talking.containsKey(answer) }) redoIfSilent(answer) } catch (_: InterruptedException) {}
             deadline.shutdown()
         }, TALK_TAKEN_MS, java.util.concurrent.TimeUnit.MILLISECONDS)
         val sent = call(Wire.talk(request.chatId, request.turnId, request.turns, request.lookup, request.sources, request.effort, request.rules, request.task, request.chatOnly && canChatOnly(), request.typed, request.again && talksOnce())) { ok, err ->
@@ -2083,8 +2081,6 @@ class LinkStation(
 
     /** When the PC was last reached (kept, so "as of" is true after the app closes too). */
     @Volatile private var lastSeenAt = data.seenAt
-    /** When the PC last answered one of this phone's calls: the proof that the phone's calls get through. */
-    @Volatile private var lastReplyAt = 0L
     /** A try to reach the PC failed since the app started (until then it's still being reached). */
     @Volatile private var failedOnce = false
 
