@@ -387,7 +387,7 @@ private fun SheetContent(sheet: Sheet, state: StationState, station: Station, na
             "End and forget", Look.Danger, { station.endIncognito(); nav.resetTo(Screen.Chat) },
             "Keep going", { nav.closeSheet() },
         )
-        is Sheet.ProjectPicker -> ProjectPicker(sheet.current, state, station, nav, sheet.newProject, sheet.back, sheet.open, sheet.justChat)
+        is Sheet.ProjectPicker -> ProjectPicker(sheet.current, state, station, nav, sheet.newProject, sheet.back, sheet.open, sheet.justChat, sheet.whisper)
         Sheet.WhereTo -> WhereToSheet(state, nav, canEffort = station.canSetReplyOptions())
         Sheet.Unpair -> Ask(
             sheet.title(state),

@@ -134,11 +134,12 @@ enum class WhisperPlace { Phone, Pc }
 enum class WhisperStart { Pc, Phone, NeedsModel, Nowhere }
 
 /**
- * Paired with a free model on the PC, the PC (it is never kept anywhere); this phone's own when the PC is away and the
- * phone can answer; when only the phone can, the one-time download is offered; otherwise there's nowhere to start one.
+ * Paired with a free model on the PC and a project for it to run in, the PC (it is never kept anywhere); this phone's own
+ * when the PC is away or has no project and the phone can answer; when neither can answer yet, the PC, which says what
+ * it needs; when only the phone could, the one-time download is offered; otherwise there's nowhere to start one.
  */
-fun whisperStartFor(paired: Boolean, pcFree: Boolean, pcOnline: Boolean, phoneReady: Boolean, phoneSupported: Boolean): WhisperStart = when {
-    paired && pcFree && (pcOnline || !phoneReady) -> WhisperStart.Pc
+fun whisperStartFor(paired: Boolean, pcFree: Boolean, pcOnline: Boolean, phoneReady: Boolean, phoneSupported: Boolean, pcProjects: Boolean = true): WhisperStart = when {
+    paired && pcFree && (!phoneReady || (pcOnline && pcProjects)) -> WhisperStart.Pc
     phoneReady -> WhisperStart.Phone
     phoneSupported -> WhisperStart.NeedsModel
     else -> WhisperStart.Nowhere

@@ -53,7 +53,7 @@ private const val SEARCH_FROM = 7
  * project…", which makes the folder on the PC. Not paired, it says so, with a Pair button.
  */
 @Composable
-fun ProjectPicker(current: String, state: StationState, station: Station, nav: Navigator, newProject: Boolean = false, back: io.github.odnwks.mimir.nav.Sheet? = null, open: Boolean = false, justChat: Boolean = false) {
+fun ProjectPicker(current: String, state: StationState, station: Station, nav: Navigator, newProject: Boolean = false, back: io.github.odnwks.mimir.nav.Sheet? = null, open: Boolean = false, justChat: Boolean = false, whisper: Boolean = false) {
     val standIn = LocalStandIn.current
     var query by rememberSaveable { mutableStateOf("") }
     // Moving a task: the project it is in is not a place to move to.
@@ -66,6 +66,8 @@ fun ProjectPicker(current: String, state: StationState, station: Station, nav: N
         when {
             back == io.github.odnwks.mimir.nav.Sheet.WhereTo -> { nav.composeTo = nav.composeTo.copy(project = p); nav.openSheet(back) }
             open -> { nav.closeSheet(); nav.open(Screen.Project(p)) }
+            // For a Whisper: the project only gives it a place; the shared pick would move the next task opened.
+            whisper -> nav.closeSheet()
             else -> { nav.pickedProject = p; nav.closeSheet() }
         }
     }

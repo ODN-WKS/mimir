@@ -131,7 +131,8 @@ sealed interface Sheet {
      * "Where should this go?"), opens the project's page ([open]), or goes to the screen that
      * asked (a task being moved).
      */
-    data class ProjectPicker(val current: String, val newProject: Boolean = false, val back: Sheet? = null, val open: Boolean = false, val justChat: Boolean = false) : Sheet
+    /** [whisper]: made from a Whisper's "Make a project", which only gives the Whisper a place: nothing is picked. */
+    data class ProjectPicker(val current: String, val newProject: Boolean = false, val back: Sheet? = null, val open: Boolean = false, val justChat: Boolean = false, val whisper: Boolean = false) : Sheet
     /** The composer's "Where should this go?": Auto or a project, and options for this one task. */
     data object WhereTo : Sheet
     /**

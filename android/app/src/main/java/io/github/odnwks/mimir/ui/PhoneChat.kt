@@ -90,7 +90,9 @@ fun PhoneChat(
     val onlineOn = io.github.odnwks.mimir.online.OnlineModels.state.collectAsStateWithLifecycle().value.answering != null
     if (!s.supported && !paired && !onlineOn) return CantRunHere(nav)
     val model = Catalog.byId(s.model)
-    var draft by rememberSaveable { mutableStateOf("") }
+    // A Whisper's words are never put in the screen state Android keeps; an ordinary chat's box is.
+    val inWhisper = remember { BooleanArray(1) }
+    var draft by rememberSaveable(stateSaver = remember { androidx.compose.runtime.saveable.Saver<String, String>({ if (inWhisper[0]) "" else it }, { it }) }) { mutableStateOf("") }
     // New chat, Ask Claude and opening the app on a brand-new empty chat put the cursor in the box and bring the
     // keyboard up (Settings can turn it off). An existing chat opens without it, so it can be read.
     // It starts at 0 so returning to the tab or turning the phone never rings it.
@@ -132,6 +134,11 @@ fun PhoneChat(
     var attachFix by attach::fix
     // A Whisper on the PC waits for its first words here; they start it there and the Whisper's own screen opens.
     var pcWhisper by rememberSaveable { mutableStateOf(false) }
+    // When it opened, as counted by the app leaving: leaving with "End Whispers when I leave the app" on ends it (P42 F3).
+    var pcWhisperSince by rememberSaveable { mutableStateOf(0) }
+    val whispersLeft by engine.whispersLeft.collectAsStateWithLifecycle()
+    LaunchedEffect(whispersLeft, pcWhisper) { if (pcWhisper && whispersLeft != pcWhisperSince) pcWhisper = false }
+    inWhisper[0] = s.whisper || pcWhisper
     // Each chat keeps its own box, held by the engine (outside this screen): Settings or History in between loses nothing.
     val drafts = engine.drafts
     var boxChat by remember { mutableStateOf<String?>(null) }
@@ -144,7 +151,7 @@ fun PhoneChat(
     }
     // Keep what is in the box for this chat as it changes (not before the chat's own draft is in the box).
     LaunchedEffect(draft, files.size, pictures.size, boxChat, s.chat.id) {
-        if (boxChat == s.chat.id && !pcWhisper) drafts.put(s.chat.id, io.github.odnwks.mimir.standalone.Draft(draft, files.toList(), pictures.toList()))
+        if (boxChat == s.chat.id && !pcWhisper && !s.whisper) drafts.put(s.chat.id, io.github.odnwks.mimir.standalone.Draft(draft, files.toList(), pictures.toList()))
     }
     androidx.compose.runtime.DisposableEffect(Unit) { onDispose { engine.flushDrafts() } }
     val sight = sightFor(pcSight, pcReady, model.id in s.sees, model.vision?.let { model.chipName })
@@ -204,10 +211,10 @@ fun PhoneChat(
     }
     // New chat is asked for by the person, however it was reached: its keyboard comes (0.09 item 23).
     val newChat = { if (startOn(true)) { nav.keyboard.release(); focusTick++ }; Unit }
-    // Where a Whisper starts: on the PC when paired with a free model there, else on this phone (the PC when the phone can't).
+    // Where a Whisper starts: on the PC when paired with a free model and a project there, else on this phone (the PC when the phone can't).
     val whisperHere = {
-        when (whisperStartFor(paired, pcFree, pcOnline, s.ready, s.supported)) {
-            WhisperStart.Pc -> pcWhisper = true
+        when (whisperStartFor(paired, pcFree, pcOnline, s.ready, s.supported, pcProjects)) {
+            WhisperStart.Pc -> { pcWhisperSince = engine.whispersLeft.value; pcWhisper = true }
             WhisperStart.Phone -> engine.startWhisper()
             WhisperStart.NeedsModel -> needsMimir = true
             WhisperStart.Nowhere -> attachNote = WHISPER_NOWHERE
@@ -270,8 +277,6 @@ fun PhoneChat(
         var changing by rememberSaveable { mutableStateOf<String?>(null) }
         LaunchedEffect(nav.pickedProject) {
             val p = nav.pickedProject ?: return@LaunchedEffect
-            // A project made from a Whisper's "Make a project" only gives the Whisper a place: nothing moves.
-            if (pcWhisper && changing == null) { nav.pickedProject = null; return@LaunchedEffect }
             val t = changing ?: return@LaunchedEffect
             nav.pickedProject = null; changing = null
             if (p == JUST_CHAT) engine.justChat() else onMoveTask(t, p)
@@ -361,7 +366,7 @@ fun PhoneChat(
             // A Whisper on the PC starts empty: the open chat stays behind it, none of it shown or sent (QA16 Q20).
             if (pcWhisper) {
                 pcWhisperBlock?.let { why -> item(key = "pc-whisper-block") {
-                    WhisperCantStart(why, onMakeProject = if (why == WHISPER_NEEDS_PROJECT) ({ nav.openSheet(io.github.odnwks.mimir.nav.Sheet.ProjectPicker("", newProject = true)) }) else null)
+                    WhisperCantStart(why, onMakeProject = if (why == WHISPER_NEEDS_PROJECT) ({ nav.openSheet(io.github.odnwks.mimir.nav.Sheet.ProjectPicker("", newProject = true, whisper = true)) }) else null)
                 } }
                 item(key = "pc-whisper") { WhisperCard(false, paired) }
                 return@LazyColumn

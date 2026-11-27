@@ -632,6 +632,8 @@ class Engine(
         if (_state.value.writing) stop()
         if (_state.value.web) io.github.odnwks.mimir.online.TorLink.stop()
         forgetWhisperLookups(_state.value.chat)
+        // Nothing of its box stays either (it is never kept, this is in case).
+        drafts.remove(_state.value.chat.id)
         _state.update { it.copy(chat = LocalChat(newId(), it.model, emptyList()), whisper = false, web = false, torSlow = false, partial = "", speed = null, problem = null, askPlace = false, askSearch = null, looking = null, lookupFailed = false, whisperEnded = told) }
         persist()
     }
@@ -654,8 +656,12 @@ class Engine(
      * ([endOnLeave]), an open Whisper is ended and forgotten.
      */
     fun appLeft(endOnLeave: Boolean, rotating: Boolean) {
-        if (endOnLeave && !rotating) endWhisper()
+        if (endOnLeave && !rotating) { endWhisper(); _whispersLeft.update { it + 1 } }
     }
+
+    private val _whispersLeft = MutableStateFlow(0)
+    /** Counts the times the app left with "End Whispers when I leave the app" on: a Whisper on the PC still waiting for its first words ends too. */
+    val whispersLeft: StateFlow<Int> = _whispersLeft.asStateFlow()
 
     /** Names a chat, the open one by default (blank: back to the topic from its first message). */
     fun rename(name: String, id: String = _state.value.chat.id) {
