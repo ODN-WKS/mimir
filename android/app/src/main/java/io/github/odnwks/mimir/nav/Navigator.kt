@@ -229,10 +229,13 @@ class Navigator(start: Screen = Screen.Chat) {
     var taskAsk: String? by mutableStateOf(null)
     /** Tasks deleted a moment ago: hidden from the lists while Undo still shows, then gone from the PC. */
     val hiddenTasks = mutableStateListOf<String>()
-    /** Words typed and not yet sent in a task's reply box or a project's box: kept here, as Back closes those screens. */
+    /** Words typed and not yet sent in a task's reply box, a project's box or the phone-model chat's: kept here, in memory only, as Back closes those screens. */
     private val drafts = mutableStateMapOf<String, String>()
     fun taskDraft(taskId: String) = BoxDraft(drafts, "task-$taskId")
     fun projectDraft(name: String) = BoxDraft(drafts, "project-$name")
+    fun chatDraft(chatId: String, whisper: Boolean) = BoxDraft(drafts, if (whisper) "whisper-$chatId" else "chat-$chatId")
+    /** A Whisper's words go when it ends: only those of the Whisper open now ([chatId]; null: none) are kept. */
+    fun keepOnlyWhisper(chatId: String?) { drafts.keys.removeAll { it.startsWith("whisper-") && it != "whisper-$chatId" } }
     /** What the phone chat's sheet asked of the open chat (rename, delete, Whisper), for the chat to do. */
     var chatAsk: ChatRequest? by mutableStateOf(null)
 

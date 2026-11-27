@@ -66,7 +66,7 @@ import io.github.odnwks.mimir.ui.theme.motionSpec
 fun StandaloneScreen(engine: Engine, nav: Navigator) {
     val s by engine.state.collectAsStateWithLifecycle()
     val model = Catalog.byId(s.model)
-    var draft by rememberSaveable { mutableStateOf("") }
+    var draft by nav.chatDraft(s.chat.id, s.whisper)
     var deleted by androidx.compose.runtime.remember { mutableStateOf<io.github.odnwks.mimir.standalone.Deleted?>(null) }
     var asking by androidx.compose.runtime.remember { mutableStateOf<io.github.odnwks.mimir.standalone.LocalChat?>(null) }
     var renaming by rememberSaveable(s.chat.id) { mutableStateOf(false) }

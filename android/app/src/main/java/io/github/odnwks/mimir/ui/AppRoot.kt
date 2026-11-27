@@ -88,6 +88,8 @@ import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.union
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 
 /** The whole app: the current screen, the bottom bar, the sheets, and short stand-in notes. */
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
@@ -202,6 +204,8 @@ fun AppRoot(station: Station, nav: Navigator, chatDraft: String = "", standalone
             val given = LocalPhoneEngine.current
             val engine = remember(given, standalone, state.paired) { given ?: if (keepsChatsHere(standalone, state.paired)) Engine.get(ctx) else null }
             val local = engine?.state?.collectAsStateWithLifecycle()?.value
+            // A Whisper that ends by any way takes its unsent words with it, whichever screen shows.
+            LaunchedEffect(engine) { engine?.state?.map { s -> s.chat.id.takeIf { s.whisper } }?.distinctUntilChanged()?.collect(nav::keepOnlyWhisper) }
             val fold = remember { MenuFold(ctx.getSharedPreferences(MenuFold.PREFS, 0)) }
             val menu: @Composable (Modifier) -> Unit = { m -> SideMenu(state, local, station, engine, nav, fold, m, close = closeMenu) }
             val body: @Composable () -> Unit = {
