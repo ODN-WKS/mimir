@@ -87,6 +87,9 @@ pub enum Event {
     BackgroundStarted(String),
     /// That background work ended (Claude Code is told, and may answer on).
     BackgroundEnded(String),
+    /// Anthropic refused the key Claude Code sent (Claude Code tries again
+    /// for minutes before it gives up, so this comes long before the end).
+    KeyRefused,
     /// Anything we do not use. Kept so it can be logged.
     Unknown(String),
 }
@@ -170,6 +173,11 @@ pub fn parse_line(line: &str) -> Vec<Event> {
                 tool_use_id: s(&v, "tool_use_id"),
                 tool_name: s(&v, "tool_name"),
             }],
+            // As Claude Code 2.1.332 reports a refused key (recorded on
+            // this PC): `error_status` 401, `error` "authentication_failed".
+            Some("api_retry") if v.get("error_status").and_then(Value::as_u64) == Some(401) => {
+                vec![Event::KeyRefused]
+            }
             _ => unknown(),
         },
         "assistant" if !from_helper => {
@@ -403,6 +411,19 @@ mod tests {
     fn junk_and_new_types_are_ignored() {
         assert!(parse_line("").is_empty());
         assert!(matches!(parse_line("not json")[0], Event::Unknown(_)));
+        // P26: a refused key is told apart from other retries.
+        assert_eq!(
+            parse_line(
+                r#"{"type":"system","subtype":"api_retry","error":"authentication_failed","attempt":3,"max_retries":10,"error_status":401}"#
+            ),
+            vec![Event::KeyRefused]
+        );
+        assert!(matches!(
+            parse_line(
+                r#"{"type":"system","subtype":"api_retry","error":"overloaded","error_status":529}"#
+            )[0],
+            Event::Unknown(_)
+        ));
         assert!(matches!(
             parse_line(r#"{"type":"brand_new_thing","x":1}"#)[0],
             Event::Unknown(_)

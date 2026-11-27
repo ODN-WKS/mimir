@@ -766,6 +766,11 @@ pub struct TaskHeader {
     /// Claude's limit ran out during this task (and when it is back).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ran_out: Option<RanOut>,
+    /// Its latest run was on the owner's Anthropic API credits (the plan
+    /// ran out). Only sent when true; absent from older PCs, and older
+    /// phones pass over it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub via_api: bool,
     /// A chat started with no project that Mímir filed itself.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub placed: Option<Placed>,
@@ -1576,13 +1581,20 @@ pub enum Call {
     },
     /// The models to offer: the reply is `{"free": [FreeModel…], "free_model",
     /// "switch_to_free" (the owner's "When online use runs out, use your PC's
-    /// model"), "ollama": "" or why free models can't run now}`.
+    /// model"), "api_credits" and "api_key_saved" (the owner's "Use my API
+    /// credits when my plan runs out", and whether the PC holds a key),
+    /// "ollama": "" or why free models can't run now}`.
     Models,
     /// "When online use runs out, use your PC's model" (`switch_to_free`,
     /// the PC's `free_when_out`; owner only) and the free model it uses.
     SetFreeChoice {
         switch_to_free: Option<bool>,
         free_model: Option<String>,
+        /// "Use my API credits when my plan runs out" (owner only; the key
+        /// itself is pasted on the PC and never travels). Absent from older
+        /// phones, and older PCs pass over it.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        api_credits: Option<bool>,
     },
     /// "Continue on Claude" when a free model ran out of room, or "Use Claude
     /// instead": a new task on Auto in the same project, from a summary of

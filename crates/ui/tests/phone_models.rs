@@ -180,6 +180,7 @@ fn p8_models_list_free_ones_with_the_refusals_note() {
     );
     st.call_wait(Call::SetFreeChoice {
         switch_to_free: Some(true),
+        api_credits: None,
         free_model: None,
     })
     .unwrap();
@@ -189,6 +190,7 @@ fn p8_models_list_free_ones_with_the_refusals_note() {
     assert_eq!(v["switch_to_free"], true);
     let r = st.call_wait(Call::SetFreeChoice {
         switch_to_free: None,
+        api_credits: None,
         free_model: Some("claude-opus-5-5".into()),
     });
     assert!(r.is_err_and(|e| e.starts_with("refused")));

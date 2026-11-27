@@ -195,11 +195,14 @@ struct Seen {
     done: HashMap<String, Result<ChatTurn, String>>,
     models_changed: usize,
     ready: bool,
+    /// Everything this phone was sent, as text (P26 looks for the key).
+    all: String,
 }
 
 impl Seen {
     fn take(&mut self, p: &Client) {
         while let Some(m) = p.next_event(Duration::from_millis(20)) {
+            self.all.push_str(&format!("{:?}\n", m.event));
             match m.event {
                 Event::Ready => self.ready = true,
                 Event::Reply { call_id, result } => {
@@ -244,6 +247,7 @@ impl Seen {
 fn set_switch(on: bool) -> Call {
     Call::SetFreeChoice {
         switch_to_free: Some(on),
+        api_credits: None,
         free_model: None,
     }
 }
@@ -254,6 +258,7 @@ fn saved(home: &TestHome) -> serde_json::Value {
 
 fn chat(id: &str, text: &str) -> Call {
     Call::Talk {
+        typed: false,
         chat_id: "c1".into(),
         turn_id: id.into(),
         turns: vec![ChatTurn {
@@ -896,4 +901,461 @@ fn p23_at_99_percent_with_the_switch_off_work_stays_online() {
 #[test]
 fn p23_at_100_percent_with_the_switch_off_work_stays_online() {
     week_case(1.0, false, false);
+}
+
+// P26: "Use my API credits when my plan runs out". When the plan's online
+// use runs out, the owner's API credits come first (the switch on and a key
+// saved), then the PC's model, then stop. The key lives only in the PC's
+// password store (a stand-in here); Claude Code gets it from Mímir's
+// helper, named in its `--settings`.
+
+/// A made-up key: never a real one.
+const KEY: &str = "sk-ant-test-XXXX";
+
+/// A stand-in password store in this home (never the desktop's): it keeps
+/// the secret in a file in its folder. `key`: already saved.
+fn fake_store(home: &TestHome, key: Option<&str>) -> std::path::PathBuf {
+    use std::os::unix::fs::PermissionsExt;
+    let d = home.root.join("fake-store");
+    std::fs::create_dir_all(&d).unwrap();
+    let prog = d.join("secret-tool");
+    std::fs::write(
+        &prog,
+        format!(
+            "#!/bin/sh\ncase \"$1\" in\n\
+             store) cat > '{d}/secret' ;;\n\
+             lookup) cat '{d}/secret' 2>/dev/null || exit 1 ;;\n\
+             clear) rm -f '{d}/secret' ;;\nesac\n",
+            d = d.display()
+        ),
+    )
+    .unwrap();
+    std::fs::set_permissions(&prog, std::fs::Permissions::from_mode(0o755)).unwrap();
+    if let Some(k) = key {
+        std::fs::write(d.join("secret"), k).unwrap();
+    }
+    set_env("MIMIR_SECRET_TOOL", &prog);
+    d
+}
+
+/// Every file in the home, but the stand-in store, that holds the key:
+/// settings, logs, the developer log, tasks, chats, Claude Code's files.
+fn files_with_key(home: &TestHome) -> Vec<String> {
+    let store = home.root.join("fake-store");
+    let mut found = vec![];
+    let mut todo = vec![home.root.clone()];
+    while let Some(d) = todo.pop() {
+        let Ok(list) = std::fs::read_dir(&d) else {
+            continue;
+        };
+        for e in list.flatten() {
+            let p = e.path();
+            let Ok(kind) = e.file_type() else { continue };
+            if p.starts_with(&store) {
+                continue;
+            }
+            if kind.is_dir() {
+                todo.push(p);
+            } else if kind.is_file()
+                && std::fs::read(&p)
+                    .is_ok_and(|b| b.windows(KEY.len()).any(|w| w == KEY.as_bytes()))
+            {
+                found.push(p.display().to_string());
+            }
+        }
+    }
+    found
+}
+
+/// The key helper a run of Claude was given in its `--settings`.
+fn key_helper(run: &[String]) -> Option<String> {
+    let i = run.iter().position(|a| a == "--settings")?;
+    let v: serde_json::Value = serde_json::from_str(run.get(i + 1)?).ok()?;
+    v["apiKeyHelper"].as_str().map(str::to_string)
+}
+
+/// A stand-in for Anthropic that accepts every key ("Check key").
+fn fake_anthropic() {
+    let l = TcpListener::bind("127.0.0.1:0").unwrap();
+    set_env(
+        "MIMIR_ANTHROPIC",
+        format!("http://{}", l.local_addr().unwrap()),
+    );
+    std::thread::spawn(move || {
+        for c in l.incoming().flatten() {
+            let mut r = BufReader::new(c.try_clone().unwrap());
+            loop {
+                let mut line = String::new();
+                if r.read_line(&mut line).unwrap_or(0) == 0 || line.trim().is_empty() {
+                    break;
+                }
+            }
+            let mut w = c;
+            let _ =
+                w.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}");
+        }
+    });
+}
+
+/// Must hold 1: the plan runs out with the switch on and a key saved. The
+/// running task carries on on the API credits, a new task and an online
+/// chat start on them; each run names Mímir's key helper (never the key),
+/// each is labelled, and the helper gives Claude Code the key from the
+/// store. Nothing written holds the key.
+#[test]
+fn p26_plan_out_switch_on_and_a_key_saved_work_runs_on_the_api_credits() {
+    let Some(home) = home(serde_json::json!({
+        "project_engine": "claude",
+        "chats_engine": "paid",
+        "api_credits": true,
+        "api_key_hint": "XXXX",
+    })) else {
+        return;
+    };
+    fake_store(&home, Some(KEY));
+    fake_ollama();
+    play_limit(&home, "run-1.jsonl");
+    home.play("resume.jsonl", "live.jsonl");
+    home.play("run-2.jsonl", "live.jsonl");
+    home.play("run-3.jsonl", "live.jsonl");
+    let mut st = home.service();
+    let (p, mut seen) = paired(&mut st, None);
+
+    // The running task hits the plan's limit and carries on on the credits.
+    let first = new_task(&mut st, &home, "Tidy up notes.txt.");
+    assert!(
+        service_until(&mut st, |s| home.conversations().len() == 2
+            && task(s, &first).is_some_and(|v| !v.busy() && v.task.via_api)),
+        "the task didn't carry on on the API credits: {:?}",
+        notes(&st, &first)
+    );
+    let runs = home.conversations();
+    assert_eq!(
+        key_helper(&runs[0]),
+        None,
+        "the plan's run had the key helper"
+    );
+    let helper = key_helper(&runs[1]).expect("the carry-on didn't name the key helper");
+    assert!(helper.ends_with(" api-key"), "{helper}");
+    assert!(!runs[1].iter().any(|a| a.contains(FREE)), "{:?}", runs[1]);
+    assert_eq!(
+        notes(&st, &first)
+            .iter()
+            .filter(|n| *n == mimir_core::runner::API_CREDITS_NOTE)
+            .count(),
+        1,
+        "{:?}",
+        notes(&st, &first)
+    );
+
+    // A new task starts on the credits, labelled.
+    let second = new_task(&mut st, &home, "What does this project do?");
+    assert!(service_until(&mut st, |s| home.conversations().len() == 3
+        && task(s, &second).is_some_and(|v| !v.busy())));
+    let t = &task(&st, &second).unwrap().task;
+    assert!(t.via_api, "the new task isn't labelled API credits");
+    assert!(
+        !mimir_core::models::is_free(t.model.as_deref()),
+        "{:?}",
+        t.model
+    );
+    assert!(key_helper(&home.conversations()[2]).is_some());
+
+    // An online chat answers on the credits, labelled.
+    let f: Filed = serde_json::from_value(seen.call(&p, chat("t1", "Hello")).unwrap()).unwrap();
+    let Filed::Talk {
+        ran, model_words, ..
+    } = &f
+    else {
+        panic!("not answered: {f:?}")
+    };
+    assert_eq!(*ran, mimir_core::proto::Ran::Paid, "{f:?}");
+    assert_eq!(model_words, "Claude · API credits");
+    assert!(seen.until(&p, |s| s.done.contains_key("t1.a")));
+    assert!(seen.done["t1.a"].is_ok(), "{:?}", seen.done["t1.a"]);
+    assert_eq!(home.conversations().len(), 4);
+    assert!(
+        key_helper(&home.conversations()[3]).is_some(),
+        "the chat had no key helper"
+    );
+
+    // The helper Claude Code runs gives it the key from the store.
+    let out = std::process::Command::new(station_program())
+        .arg("api-key")
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), KEY);
+
+    // Must hold 4: no file, no argument, nothing sent to the phone holds it.
+    assert!(
+        home.claude_runs()
+            .iter()
+            .flatten()
+            .all(|a| !a.contains(KEY)),
+        "the key was in Claude's arguments"
+    );
+    seen.take(&p);
+    assert!(!seen.all.contains(KEY), "the phone was sent the key");
+    assert_eq!(files_with_key(&home), Vec::<String>::new());
+}
+
+/// Must hold 2: the switch off, or no key saved: the plan runs out and the
+/// work goes to the PC's model as before, with no key helper anywhere.
+fn credits_unused(extra: serde_json::Value) {
+    let mut v = serde_json::json!({"project_engine": "claude"});
+    for (k, x) in extra.as_object().unwrap() {
+        v[k] = x.clone();
+    }
+    let Some(home) = home(v) else {
+        return;
+    };
+    fake_store(&home, Some(KEY));
+    fake_ollama();
+    play_limit(&home, "run-1.jsonl");
+    home.play("run-2.jsonl", "live.jsonl");
+    home.play("run-3.jsonl", "live.jsonl");
+    let mut st = home.service();
+    let first = new_task(&mut st, &home, "Tidy up notes.txt.");
+    assert!(service_until(&mut st, |s| home.conversations().len() == 2
+        && task(s, &first).is_some_and(|v| !v.busy())));
+    assert!(home.conversations()[1].iter().any(|a| a.contains(FREE)));
+    let second = new_task(&mut st, &home, "What does this project do?");
+    assert!(service_until(&mut st, |s| task(s, &second).is_some_and(|v| !v.busy())));
+    assert_eq!(
+        task(&st, &second).unwrap().task.model.as_deref(),
+        Some(format!("ollama:{FREE}").as_str())
+    );
+    for (i, run) in home.conversations().iter().enumerate() {
+        assert_eq!(key_helper(run), None, "run {i} had the key helper");
+    }
+    assert!(!task(&st, &first).unwrap().task.via_api);
+    assert!(!task(&st, &second).unwrap().task.via_api);
+}
+
+#[test]
+fn p26_switch_off_the_plan_runs_out_and_work_goes_to_the_pcs_model() {
+    credits_unused(serde_json::json!({"api_credits": false, "api_key_hint": "XXXX"}));
+}
+
+#[test]
+fn p26_no_key_saved_the_plan_runs_out_and_work_goes_to_the_pcs_model() {
+    credits_unused(serde_json::json!({"api_credits": true}));
+}
+
+/// Must hold 3: on the credits, Anthropic says they ran out. The task says
+/// so once and carries on on the PC's model; the next task starts there
+/// and says why in one line.
+#[test]
+fn p26_out_of_credits_the_next_task_goes_to_the_pcs_model() {
+    let Some(home) = home(serde_json::json!({
+        "project_engine": "claude",
+        "api_credits": true,
+        "api_key_hint": "XXXX",
+    })) else {
+        return;
+    };
+    fake_store(&home, Some(KEY));
+    fake_ollama();
+    play_limit(&home, "run-1.jsonl");
+    home.play("resume.jsonl", "credits-out.jsonl");
+    home.play("run-2.jsonl", "live.jsonl");
+    home.play("run-3.jsonl", "live.jsonl");
+    let mut st = home.service();
+    let first = new_task(&mut st, &home, "Tidy up notes.txt.");
+    let said = mimir_core::api_key::Fail::NoCredits.sentence();
+    assert!(
+        service_until(&mut st, |s| home.conversations().len() == 3
+            && notes(s, &first).iter().any(|n| n == said)
+            && task(s, &first).is_some_and(|v| !v.busy())),
+        "{:?} {:?}",
+        notes(&st, &first),
+        home.conversations().len()
+    );
+    let runs = home.conversations();
+    assert!(key_helper(&runs[1]).is_some(), "the credits weren't tried");
+    assert!(runs[2].iter().any(|a| a.contains(FREE)), "{:?}", runs[2]);
+    assert_eq!(key_helper(&runs[2]), None);
+    assert_eq!(
+        notes(&st, &first).iter().filter(|n| *n == said).count(),
+        1,
+        "{:?}",
+        notes(&st, &first)
+    );
+
+    let second = new_task(&mut st, &home, "What does this project do?");
+    assert!(service_until(&mut st, |s| task(s, &second).is_some_and(|v| !v.busy())));
+    assert_eq!(
+        task(&st, &second).unwrap().task.model.as_deref(),
+        Some(format!("ollama:{FREE}").as_str())
+    );
+    let why: Vec<String> = notes(&st, &second)
+        .into_iter()
+        .filter(|n| n.contains("your API credits ran out"))
+        .collect();
+    assert_eq!(why.len(), 1, "{:?}", notes(&st, &second));
+    assert!(
+        why[0].contains("because the online limit ran out and your API credits ran out"),
+        "{}",
+        why[0]
+    );
+    assert_eq!(key_helper(home.conversations().last().unwrap()), None);
+}
+
+/// Must hold 6 (the PC's half): a phone reads the switch and whether a key
+/// is saved, and the owner's phone changes it; it can't turn it on before a
+/// key is pasted on the PC, someone else's phone can't change it, and the
+/// field older phones send still works. The key never reaches a phone.
+#[test]
+fn p26_the_phone_reads_and_changes_the_switch_and_never_gets_the_key() {
+    let Some(home) = home(serde_json::json!({"project_engine": "claude"})) else {
+        return;
+    };
+    let store = fake_store(&home, None);
+    fake_ollama();
+    let mut st = home.service();
+    let (a, mut seen) = paired(&mut st, None);
+    let models = seen.call(&a, Call::Models).unwrap();
+    assert_eq!(models["api_credits"], false);
+    assert_eq!(models["api_key_saved"], false);
+    let on = |on| Call::SetFreeChoice {
+        switch_to_free: None,
+        free_model: None,
+        api_credits: Some(on),
+    };
+    assert_eq!(
+        seen.call(&a, on(true)),
+        Err(mimir_core::api_key::PASTE_ON_PC.to_string())
+    );
+
+    // The window saves a key (the store has it, Settings its last 4).
+    std::fs::write(store.join("secret"), KEY).unwrap();
+    let before = seen.models_changed;
+    let mut part = st.settings.clone();
+    part["api_credits"] = true.into();
+    part["api_key_hint"] = "XXXX".into();
+    st.set_settings(part);
+    assert!(
+        seen.until(&a, |s| s.models_changed > before),
+        "the phone wasn't told"
+    );
+    let models = seen.call(&a, Call::Models).unwrap();
+    assert_eq!(models["api_credits"], true);
+    assert_eq!(models["api_key_saved"], true);
+
+    // The owner's phone turns it off and on; the PC keeps it.
+    seen.call(&a, on(false)).unwrap();
+    assert_eq!(saved(&home)["api_credits"], false);
+    assert_eq!(seen.call(&a, Call::Models).unwrap()["api_credits"], false);
+    seen.call(&a, on(true)).unwrap();
+    assert_eq!(saved(&home)["api_credits"], true);
+    // An older phone's call has no `api_credits`: it leaves the switch be.
+    seen.call(&a, set_switch(false)).unwrap();
+    assert_eq!(saved(&home)["api_credits"], true);
+
+    // Someone else's phone can't change it, or see it.
+    let (c, mut c_seen) = paired(&mut st, Some("Ana"));
+    assert!(c_seen.call(&c, on(false)).is_err());
+    assert_eq!(c_seen.call(&c, Call::Models).unwrap()["api_credits"], false);
+    assert_eq!(saved(&home)["api_credits"], true);
+
+    seen.take(&a);
+    c_seen.take(&c);
+    assert!(!seen.all.contains(KEY) && !c_seen.all.contains(KEY));
+    assert_eq!(files_with_key(&home), Vec::<String>::new());
+}
+
+/// A checkbox in the PC window: (found, on, can be changed).
+fn window_box(
+    h: &egui_kittest::Harness<'static, station_ui::App>,
+    label: &str,
+) -> (bool, bool, bool) {
+    match h.query_by_label(label) {
+        Some(n) => {
+            let a = n.accesskit_node();
+            (
+                true,
+                a.toggled() == Some(eframe::egui::accesskit::Toggled::True),
+                !a.is_disabled(),
+            )
+        }
+        None => (false, false, false),
+    }
+}
+
+/// The PC window (Settings › Models › Who answers): the switch is off and
+/// can't be changed until a key is saved; the pasted key goes to the store
+/// only, its last 4 characters show, "Check key" says "Key works", and
+/// "Remove key" takes it out and turns the switch off.
+#[test]
+fn p26_the_window_saves_checks_and_removes_the_key() {
+    use eframe::egui::accesskit::Role;
+    use station_ui::labels as l;
+    let Some(home) = home(serde_json::json!({"project_engine": "claude"})) else {
+        return;
+    };
+    let store = fake_store(&home, None);
+    fake_ollama();
+    fake_anthropic();
+    home.play("run-1.jsonl", "near-limit.jsonl");
+    let mut h = home.open();
+    open_who_answers(&mut h);
+    assert!(
+        wait_for(&mut h, |h| window_box(h, l::API_CREDITS)
+            == (true, false, false)),
+        "{:?}\n{}",
+        window_box(&h, l::API_CREDITS),
+        screen_text(&h)
+    );
+    assert!(shows(&h, l::API_CREDITS_ABOUT));
+
+    // Paste and save.
+    let field = || {
+        h.query_all_by_role(Role::PasswordInput)
+            .next()
+            .unwrap_or_else(|| panic!("no key field\n{}", screen_text(&h)))
+    };
+    field().click();
+    h.step();
+    let field = h.query_all_by_role(Role::PasswordInput).next().unwrap();
+    field.type_text(KEY);
+    h.step();
+    click(&mut h, l::SAVE_KEY);
+    assert!(
+        wait_for(&mut h, |h| shows(h, &l::key_saved("XXXX"))),
+        "{}",
+        screen_text(&h)
+    );
+    assert!(wait_for(&mut h, |_| saved(&home)["api_key_hint"] == "XXXX"
+        && saved(&home)["api_credits"] == true));
+    assert!(wait_for(&mut h, |h| window_box(h, l::API_CREDITS)
+        == (true, true, true)));
+    assert_eq!(std::fs::read_to_string(store.join("secret")).unwrap(), KEY);
+    assert!(!shows(&h, KEY), "the key is on screen");
+    assert_eq!(files_with_key(&home), Vec::<String>::new());
+
+    // Check key.
+    click(&mut h, l::CHECK_KEY);
+    assert!(
+        wait_for(&mut h, |h| shows(h, mimir_core::api_key::KEY_WORKS)),
+        "{}",
+        screen_text(&h)
+    );
+
+    // Remove key.
+    click(&mut h, l::REMOVE_KEY);
+    assert!(wait_for(&mut h, |_| saved(&home)["api_credits"] == false
+        && saved(&home)["api_key_hint"].is_null()));
+    assert!(
+        !store.join("secret").exists(),
+        "the store still has the key"
+    );
+    assert!(wait_for(&mut h, |h| window_box(h, l::API_CREDITS)
+        == (true, false, false)));
+    assert!(
+        shows(&h, l::PASTE_KEY)
+            || has_label(&h, l::PASTE_KEY)
+            || h.query_all_by_role(Role::PasswordInput).next().is_some()
+    );
+    close(h);
 }

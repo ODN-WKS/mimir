@@ -1,6 +1,7 @@
 //! Everything Mímir does that is not drawing the window: running
 //! Claude Code, reading what it says, keeping tasks on disk.
 
+pub mod api_key;
 pub mod approvals;
 pub mod approve;
 pub mod audio;

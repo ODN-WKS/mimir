@@ -112,6 +112,15 @@ pub struct Settings {
     /// limit.
     #[serde(default)]
     pub free_when_out: Option<bool>,
+    /// "Use my API credits when my plan runs out" (None: off). It counts
+    /// only while a key is saved (`api_key_hint`): see `api_credits_on`.
+    #[serde(default)]
+    pub api_credits: Option<bool>,
+    /// The last 4 characters of the saved Anthropic key, written down when
+    /// it was pasted, so Settings can show which key is saved. The key
+    /// itself is only in the PC's password store (`api_key`), never here.
+    #[serde(default)]
+    pub api_key_hint: Option<String>,
     /// Before Stage 1: the free model tasks fell back to (read once).
     #[serde(default, skip_serializing)]
     pub free_model: Option<String>,
@@ -175,6 +184,20 @@ pub enum Power {
     Backup,
     ClaudeOnly,
     FreeOnly,
+}
+
+/// Who does online work right now (`Settings::lane`), in the order they
+/// are tried when the plan runs out.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Lane {
+    /// The owner's Anthropic plan, as usual.
+    Plan,
+    /// The owner's Anthropic API credits: the same Claude, billed per answer.
+    ApiCredits,
+    /// A model on this PC.
+    PcModel,
+    /// Nothing takes over: the work stops and says online is at its limit.
+    Stop,
 }
 
 /// The ground rules every task gets unless the owner changed them.
@@ -271,14 +294,39 @@ impl Settings {
         self.free_when_out != Some(false) && !self.ask_before_free
     }
 
+    /// "Use my API credits when my plan runs out": on, with a key saved.
+    pub fn api_credits_on(&self) -> bool {
+        self.api_credits == Some(true) && self.api_key_hint.is_some()
+    }
+
+    /// Who does work that isn't set to a model on the PC: the one place
+    /// that decides the order when the plan runs out. `plan_out`: online
+    /// use is out, or past 99% this week. `api_failed`: Anthropic refused
+    /// the key or its credits ran out, so the next one in line takes over.
+    /// The order: the plan; then the API credits (the switch on and a key
+    /// saved); then the PC's own model ("When online use runs out, use your
+    /// PC's model"); then stop with the plain message.
+    pub fn lane(&self, plan_out: bool, api_failed: bool) -> Lane {
+        if self.power() == Power::FreeOnly {
+            Lane::PcModel
+        } else if !plan_out {
+            Lane::Plan
+        } else if self.api_credits_on() && !api_failed {
+            Lane::ApiCredits
+        } else if self.free_when_out_on() {
+            Lane::PcModel
+        } else {
+            Lane::Stop
+        }
+    }
+
     /// A new project task on `model` is moved to the PC's own model: the
     /// project work setting is "your PC's model", or online use is out (or
-    /// past 99% this week: `claude_out` is either) and the switch "When
-    /// online use runs out, use your PC's model" is on.
+    /// past 99% this week: `claude_out` is either), the API credits don't
+    /// take it, and the switch "When online use runs out, use your PC's
+    /// model" is on. `lane` with the credits taken as working.
     pub fn moves_to_free(&self, model: Option<&str>, claude_out: bool) -> bool {
-        let power = self.power();
-        !crate::models::is_free(model)
-            && (power == Power::FreeOnly || (claude_out && self.free_when_out_on()))
+        !crate::models::is_free(model) && self.lane(claude_out, false) == Lane::PcModel
     }
 
     /// Where the words of a new project task go: online (Anthropic) or not.
@@ -962,5 +1010,92 @@ mod tests {
         let none = Settings::default();
         assert!(!none.task_shows_online(None, true, false, true));
         assert!(!none.task_shows_online(None, false, false, true));
+    }
+
+    fn online(api_credits: Option<bool>, hint: Option<&str>, free_when_out: bool) -> Settings {
+        Settings {
+            project_engine: Some("claude".into()),
+            api_credits,
+            api_key_hint: hint.map(str::to_string),
+            free_when_out: Some(free_when_out),
+            ..Default::default()
+        }
+    }
+
+    /// P26: every row of the order when the plan runs out: the plan, then
+    /// the API credits, then the PC's own model, then stop.
+    #[test]
+    fn p26_the_order_when_the_plan_runs_out() {
+        let key = Some("1234");
+        // The plan has room: always the plan, whatever else is set.
+        for s in [
+            online(Some(true), key, true),
+            online(Some(true), key, false),
+            online(None, None, true),
+            online(None, None, false),
+        ] {
+            assert_eq!(s.lane(false, false), Lane::Plan);
+            assert_eq!(s.lane(false, true), Lane::Plan);
+        }
+        // Out, the switch on and a key saved: the API credits, before the
+        // PC's model.
+        assert_eq!(
+            online(Some(true), key, true).lane(true, false),
+            Lane::ApiCredits
+        );
+        assert_eq!(
+            online(Some(true), key, false).lane(true, false),
+            Lane::ApiCredits
+        );
+        // Out, and the credits failed (out of credits, or the key refused):
+        // the PC's model when its switch is on, else stop.
+        assert_eq!(
+            online(Some(true), key, true).lane(true, true),
+            Lane::PcModel
+        );
+        assert_eq!(online(Some(true), key, false).lane(true, true), Lane::Stop);
+        // Out, the credits switch off or never set: as before P26.
+        for off in [Some(false), None] {
+            assert_eq!(online(off, key, true).lane(true, false), Lane::PcModel);
+            assert_eq!(online(off, key, false).lane(true, false), Lane::Stop);
+        }
+        // Out, the switch on but no key saved: the switch does not count.
+        assert!(!online(Some(true), None, true).api_credits_on());
+        assert_eq!(
+            online(Some(true), None, true).lane(true, false),
+            Lane::PcModel
+        );
+        assert_eq!(
+            online(Some(true), None, false).lane(true, false),
+            Lane::Stop
+        );
+        // The older "ask first" still turns the PC's model off.
+        let mut ask = online(None, None, true);
+        ask.ask_before_free = true;
+        assert_eq!(ask.lane(true, false), Lane::Stop);
+        ask.api_credits = Some(true);
+        ask.api_key_hint = Some("1234".into());
+        assert_eq!(ask.lane(true, false), Lane::ApiCredits);
+        // Project work set to the PC's model never goes online.
+        let mut pc = online(Some(true), key, true);
+        pc.set_power(Power::FreeOnly);
+        for (out, failed) in [(false, false), (true, false), (true, true)] {
+            assert_eq!(pc.lane(out, failed), Lane::PcModel);
+        }
+    }
+
+    /// P26: the yes/no the older callers ask follows the same order: with
+    /// the API credits ready, a new task is not moved to the PC's model.
+    #[test]
+    fn p26_api_credits_come_before_the_pcs_model() {
+        let s = online(Some(true), Some("1234"), true);
+        assert!(!s.moves_to_free(None, true));
+        assert!(s.task_goes_online(None, true, true));
+        // The settings part the service keeps has the switch and the hint,
+        // and they come back from a saved file.
+        let part = service_part(&s);
+        assert_eq!(part["api_credits"], true);
+        assert_eq!(part["api_key_hint"], "1234");
+        assert!(with_part(&Settings::default(), &part).api_credits_on());
     }
 }

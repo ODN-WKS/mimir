@@ -244,10 +244,17 @@ pub struct Runner {
     pub slash_commands: Vec<String>,
     /// MCP servers from the latest Claude Code start: (name, status).
     pub mcp_servers: Vec<(String, String)>,
+    /// The plan ran out and the owner's API credits do the online work
+    /// (the service's, kept in step with `Settings::lane`): the next start
+    /// of an online task gets the key helper.
+    pub api_credits: bool,
     wake: Wake,
     clock: Instant,
     next_id: u32,
 }
+
+/// Said once in a task when it moves onto the owner's API credits.
+pub const API_CREDITS_NOTE: &str = "This runs on your API credits, because your plan's online use is out or almost out. Anthropic bills each answer.";
 
 /// How long a stopped task's Claude Code has to leave after the interrupt.
 /// How often an idle task's Claude Code is looked at for work it left
@@ -479,6 +486,7 @@ impl Runner {
             wake,
             clock: Instant::now(),
             next_id: 0,
+            api_credits: false,
         };
         crate::host::tidy_old();
         for (id, key, offset) in attach {
@@ -1200,6 +1208,11 @@ impl Runner {
         }
         let mut env = self.cfg.env.clone();
         let incognito = t.incognito;
+        // The plan ran out and the owner's API credits take over: Claude
+        // Code asks Mímir's helper for the key (its `apiKeyHelper`), so the
+        // key is in no argument and no environment. Never for Whisper,
+        // never for a model on this PC.
+        let via_api = self.api_credits && !incognito && !crate::models::is_free(t.model.as_deref());
         // When each free model was last used, so unused ones can go (never for
         // Incognito, which keeps nothing).
         if let (Some(name), false) = (free, incognito) {
@@ -1212,6 +1225,8 @@ impl Runner {
         }
         let settings = if incognito {
             crate::incognito::deny_web(&settings)
+        } else if via_api {
+            crate::api_key::with_helper(&settings, &self.cfg.hook_exe)
         } else {
             settings
         };
@@ -1238,6 +1253,15 @@ impl Runner {
             ground_rules: t.ground_rules.clone().or_else(|| self.ground_rules.clone()),
         };
         let w = self.wake.clone();
+        if self.tasks[i].task.via_api != via_api {
+            let t = &mut self.tasks[i].task;
+            t.via_api = via_api;
+            // Said once, when the task moves onto the credits.
+            if via_api {
+                t.add_note(API_CREDITS_NOTE);
+            }
+            self.tasks[i].dirty = true;
+        }
         Session::start(&launch, move || w())
     }
 
@@ -2055,6 +2079,32 @@ impl Runner {
             .iter_mut()
             .filter_map(|l| l.task.limit_hit.take().map(|r| (l.task.id.clone(), r)))
             .collect()
+    }
+
+    /// Anthropic turned down these tasks' runs on the API credits; each
+    /// is told once.
+    pub fn take_api_fails(&mut self) -> Vec<(String, crate::api_key::Fail)> {
+        self.tasks
+            .iter_mut()
+            .filter_map(|l| l.task.api_fail.take().map(|f| (l.task.id.clone(), f)))
+            .collect()
+    }
+
+    /// Ends the task's run, so its next one starts with the sign-in that
+    /// counts now (a run keeps the one it started with) in the same
+    /// conversation.
+    pub fn end_run(&mut self, id: &str) {
+        if let Some(i) = self.index(id)
+            && let Some(mut s) = self.tasks[i].take_run()
+        {
+            s.kill();
+        }
+    }
+
+    /// The `--settings` that names Mímir's key helper and nothing else (an
+    /// online chat on the API credits).
+    pub fn api_helper_settings(&self) -> String {
+        crate::api_key::with_helper("{}", &self.cfg.hook_exe)
     }
 
     /// Sets what Claude's limit running out means for a task.

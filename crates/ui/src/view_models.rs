@@ -50,6 +50,41 @@ pub(crate) fn forget_job_note() {
     }
 }
 
+/// Saving, checking or removing the Anthropic key, off the window's thread
+/// (the PC's password store can take a moment, or ask to be unlocked).
+#[derive(Clone, PartialEq, Debug)]
+enum KeyJob {
+    Working,
+    /// Saved; the last 4 characters to show.
+    Saved(String),
+    Removed,
+    /// "Key works", or the plain reason it didn't.
+    Said(String),
+}
+
+static KEY_JOB: Mutex<Option<KeyJob>> = Mutex::new(None);
+/// What is in "Paste key" until it is saved (never written anywhere).
+static PASTED: Mutex<String> = Mutex::new(String::new());
+
+fn key_job() -> Option<KeyJob> {
+    KEY_JOB.lock().ok()?.clone()
+}
+
+fn set_key_job(j: Option<KeyJob>) {
+    if let Ok(mut g) = KEY_JOB.lock() {
+        *g = j;
+    }
+}
+
+fn key_job_in_background(ctx: &egui::Context, work: impl FnOnce() -> KeyJob + Send + 'static) {
+    set_key_job(Some(KeyJob::Working));
+    let ctx = ctx.clone();
+    std::thread::spawn(move || {
+        set_key_job(Some(work()));
+        ctx.request_repaint();
+    });
+}
+
 fn busy() -> bool {
     matches!(job(), Some(Job::Adding(..) | Job::Removing(_)))
 }
@@ -170,6 +205,8 @@ pub fn power_words(s: &Settings) -> String {
     };
     let work = if s.project_free() {
         "project work on your PC"
+    } else if s.api_credits_on() {
+        "project work online (your API credits, then your PC's model, when it can't)"
     } else {
         "project work online (your PC's model when it can't)"
     };
@@ -394,7 +431,111 @@ impl App {
             } else {
                 crate::labels::FREE_WHEN_OUT_NO_MODEL
             }));
+            ui.add_space(4.0);
+            self.api_credits_part(ui);
         });
+    }
+
+    /// "Use my API credits when my plan runs out": the switch, the key
+    /// (pasted once, kept in the PC's password store; only its last 4
+    /// characters are shown), "Check key" and "Remove key".
+    fn api_credits_part(&mut self, ui: &mut egui::Ui) {
+        use crate::labels as l;
+        // A finished save or removal changes the settings here, on the
+        // window's thread.
+        match key_job() {
+            Some(KeyJob::Saved(hint)) => {
+                self.settings.api_key_hint = Some(hint);
+                self.settings.api_credits = Some(true);
+                self.settings_dirty = true;
+                set_key_job(None);
+            }
+            Some(KeyJob::Removed) => {
+                self.settings.api_key_hint = None;
+                self.settings.api_credits = Some(false);
+                self.settings_dirty = true;
+                set_key_job(None);
+            }
+            _ => {}
+        }
+        let hint = self.settings.api_key_hint.clone();
+        let mut on = self.settings.api_credits_on();
+        if ui
+            .add_enabled(hint.is_some(), egui::Checkbox::new(&mut on, l::API_CREDITS))
+            .changed()
+        {
+            self.settings.api_credits = Some(on);
+            self.settings_dirty = true;
+        }
+        ui.label(small(l::API_CREDITS_ABOUT));
+        let working = matches!(key_job(), Some(KeyJob::Working));
+        let ctx = ui.ctx().clone();
+        match &hint {
+            Some(h) => {
+                ui.horizontal_wrapped(|ui| {
+                    ui.label(small(l::key_saved(h)));
+                    if ui
+                        .add_enabled(!working, theme::quiet(l::CHECK_KEY))
+                        .clicked()
+                    {
+                        key_job_in_background(&ctx, || {
+                            KeyJob::Said(match mimir_core::api_key::check_saved() {
+                                Ok(w) => w.to_string(),
+                                Err(e) => e,
+                            })
+                        });
+                    }
+                    if ui
+                        .add_enabled(!working, theme::quiet(l::REMOVE_KEY))
+                        .clicked()
+                    {
+                        key_job_in_background(&ctx, || match mimir_core::api_key::remove() {
+                            Ok(()) => KeyJob::Removed,
+                            Err(e) => KeyJob::Said(e),
+                        });
+                    }
+                });
+            }
+            None => {
+                ui.label(small(l::API_CREDITS_NO_KEY));
+                ui.horizontal_wrapped(|ui| {
+                    let mut pasted = PASTED.lock().map(|g| g.clone()).unwrap_or_default();
+                    let edit = ui.add(
+                        egui::TextEdit::singleline(&mut pasted)
+                            .password(true)
+                            .hint_text(l::PASTE_KEY)
+                            .desired_width(220.0),
+                    );
+                    if edit.changed()
+                        && let Ok(mut g) = PASTED.lock()
+                    {
+                        g.clone_from(&pasted);
+                    }
+                    let ready = !working && !pasted.trim().is_empty();
+                    let go = ui.add_enabled(ready, theme::primary(l::SAVE_KEY)).clicked()
+                        || (ready
+                            && edit.lost_focus()
+                            && ui.input(|i| i.key_pressed(egui::Key::Enter)));
+                    if go && let Ok(key) = PASTED.lock().map(|mut g| std::mem::take(&mut *g)) {
+                        // Out of the field at once; only the store keeps it.
+                        key_job_in_background(&ctx, move || {
+                            match mimir_core::api_key::save(&key) {
+                                Ok(hint) => KeyJob::Saved(hint),
+                                Err(e) => KeyJob::Said(e),
+                            }
+                        });
+                    }
+                });
+            }
+        }
+        if let Some(KeyJob::Said(words)) = key_job() {
+            let color = if words == mimir_core::api_key::KEY_WORKS {
+                JADE
+            } else {
+                ORANGE
+            };
+            ui.label(RichText::new(words).small().color(color));
+        }
     }
 
     fn on_this_pc_card(&mut self, ui: &mut egui::Ui) {

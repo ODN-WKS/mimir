@@ -47,6 +47,7 @@ fn header() -> TaskHeader {
         })],
         queued: None,
         ran_out: None,
+        via_api: false,
         placed: None,
         placed_why: None,
         active_unix: None,
@@ -685,6 +686,7 @@ fn write_the_examples() {
         Call::Models,
         Call::SetFreeChoice {
             switch_to_free: Some(true),
+            api_credits: None,
             free_model: None,
         },
         Call::ContinueOnClaude { task: "t".into() },

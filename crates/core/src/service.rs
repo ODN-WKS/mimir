@@ -439,6 +439,11 @@ struct Service {
     model_waker: Option<(Instant, Arc<std::sync::atomic::AtomicBool>)>,
     /// Claude's usage limit is out until then (seconds since 1970).
     claude_out_until: Option<i64>,
+    /// Anthropic turned down work on the owner's API credits (out of
+    /// credits, or the key refused) since the plan ran out: the next in
+    /// line does the work. Forgotten when the plan is back, and when the
+    /// owner changes the key or the switch.
+    api_failed: Option<crate::api_key::Fail>,
     /// Tasks whose conversation goes on outside this service: task id →
     /// how far its transcript was read.
     outside_seen: HashMap<String, u64>,
@@ -611,6 +616,7 @@ impl Service {
             procs: (HashSet::new(), None),
             pc_sessions: (vec![], None),
             claude_out_until: None,
+            api_failed: None,
             queued: HashMap::new(),
             git: HashMap::new(),
             git_watch: None,
@@ -1178,6 +1184,7 @@ impl Service {
     /// A call, done once per message id: a phone that sends again after
     /// its link dropped gets the first reply.
     fn call(&mut self, client: u64, call: Call) -> Result<serde_json::Value, String> {
+        self.runner.api_credits = self.lane() == settings::Lane::ApiCredits;
         let msg_id = match &call {
             Call::NewTask { msg_id, .. } | Call::Send { msg_id, .. } => msg_id.clone(),
             Call::Chat { msg_id, .. } => Some(msg_id.clone()),
@@ -1460,7 +1467,7 @@ impl Service {
                 let out = self.online_low();
                 let power = self.settings.power();
                 let mut on_free = None;
-                if self.settings.moves_to_free(model.as_deref(), out.is_some())
+                if self.moves_to_free(model.as_deref())
                     && let Some(f) = self.free_choice()
                 {
                     on_free = Some(f.name.clone());
@@ -1509,7 +1516,7 @@ impl Service {
                                 false,
                             );
                             let name = crate::models::plain_name(&name);
-                            let why = if ran_out {
+                            let mut why = if ran_out {
                                 "the online limit ran out".to_string()
                             } else {
                                 format!(
@@ -1517,6 +1524,12 @@ impl Service {
                                     crate::usage::FREE_AT_PERCENT
                                 )
                             };
+                            // The API credits were next in line and failed.
+                            if let Some(f) =
+                                self.api_failed.filter(|_| self.settings.api_credits_on())
+                            {
+                                why = format!("{why} and {}", f.words());
+                            }
                             self.runner.note(
                                 &id,
                                 &format!(
@@ -1757,7 +1770,20 @@ impl Service {
                     self.settings.ground_rules_on,
                 );
                 let free_when_out = self.settings.free_when_out_on();
+                let api = (
+                    self.settings.api_credits,
+                    self.settings.api_key_hint.clone(),
+                );
                 self.settings = settings::with_part(&self.settings, &settings);
+                let api_changed = api
+                    != (
+                        self.settings.api_credits,
+                        self.settings.api_key_hint.clone(),
+                    );
+                if api_changed {
+                    // A new key, or the switch moved: the credits get a new try.
+                    self.api_failed = None;
+                }
                 if rules
                     != (
                         self.settings.ground_rules.clone(),
@@ -1775,8 +1801,8 @@ impl Service {
                 self.broadcast(Event::Settings {
                     settings: settings::service_part(&self.settings),
                 });
-                if free_when_out != self.settings.free_when_out_on() {
-                    // The phones show the switch as the PC has it.
+                if free_when_out != self.settings.free_when_out_on() || api_changed {
+                    // The phones show the switches as the PC has them.
                     self.broadcast_chat(crate::people::OWNER, Event::ModelsChanged);
                 }
                 ok
@@ -2204,6 +2230,10 @@ impl Service {
                     // "When online use runs out, use your PC's model" (the
                     // field older phones already read).
                     "switch_to_free": owner && self.settings.free_when_out_on(),
+                    // "Use my API credits when my plan runs out", and whether
+                    // a key is saved on the PC (the key never leaves the PC).
+                    "api_credits": owner && self.settings.api_credits_on(),
+                    "api_key_saved": owner && self.settings.api_key_hint.is_some(),
                     "ollama": if owner { why } else { String::new() },
                     "refusals_removed_note": crate::models::REFUSALS_REMOVED,
                     "fit_note": crate::models::FIT_NOTE,
@@ -2313,10 +2343,17 @@ impl Service {
             Call::SetFreeChoice {
                 switch_to_free,
                 free_model,
+                api_credits,
             } => {
                 // The owner's plan and the owner's PC: only the owner says.
-                if switch_to_free.is_some() && self.person_of(client) != crate::people::OWNER {
+                if (switch_to_free.is_some() || api_credits.is_some())
+                    && self.person_of(client) != crate::people::OWNER
+                {
                     return Err("refused: only the PC's owner changes this".into());
+                }
+                // The key is pasted on the PC, never sent from a phone.
+                if api_credits == Some(true) && self.settings.api_key_hint.is_none() {
+                    return Err(crate::api_key::PASTE_ON_PC.into());
                 }
                 if let Some(m) = &free_model
                     && !crate::models::is_free(Some(m))
@@ -2324,9 +2361,16 @@ impl Service {
                     return Err("refused: not a free model".into());
                 }
                 // "When online use runs out, use your PC's model".
-                let was = self.settings.free_when_out_on();
+                let was = (
+                    self.settings.free_when_out_on(),
+                    self.settings.api_credits_on(),
+                );
                 if let Some(on) = switch_to_free {
                     self.settings.free_when_out = Some(on);
+                }
+                if let Some(on) = api_credits {
+                    self.settings.api_credits = Some(on);
+                    self.api_failed = None;
                 }
                 if let Some(m) = free_model {
                     self.settings.free_model = Some(m);
@@ -2335,7 +2379,12 @@ impl Service {
                 self.broadcast(Event::Settings {
                     settings: settings::service_part(&self.settings),
                 });
-                if was != self.settings.free_when_out_on() {
+                if was
+                    != (
+                        self.settings.free_when_out_on(),
+                        self.settings.api_credits_on(),
+                    )
+                {
                     // The owner's other phones show it at once.
                     self.broadcast_chat(crate::people::OWNER, Event::ModelsChanged);
                 }
@@ -4550,9 +4599,18 @@ impl Service {
         // use runs out, use your PC's model" is on: the PC's model answers,
         // and says why.
         let free_when_out = self.settings.free_when_out_on();
+        // The owner's API credits come first (the owner's chats only: the
+        // credits are the owner's money), also for an answer that finds the
+        // plan out by itself.
+        let api_settings = (owner
+            && paid
+            && self.settings.lane(true, self.api_failed.is_some()) == settings::Lane::ApiCredits)
+            .then(|| self.runner.api_helper_settings());
+        let api_first = api_settings.is_some() && self.online_low().is_some();
         let mut limit_note = None;
         if paid
             && free_when_out
+            && !api_first
             && pick.is_some()
             && let Some((back_at, ran_out)) = self.online_low()
         {
@@ -4592,7 +4650,9 @@ impl Service {
         let system = crate::talk::system(rules.as_deref(), a.lookup.as_deref());
         let (think, max_tokens) = crate::talk::effort(a.effort.as_deref());
         let answer = crate::talk::answer_id(&a.turn_id);
-        let (mut ran, mut model_words) = if paid {
+        let (mut ran, mut model_words) = if paid && api_first {
+            (mimir_proto::Ran::Paid, crate::talk::api_credits_words())
+        } else if paid {
             (mimir_proto::Ran::Paid, "Online · paid".to_string())
         } else if let Some(words) = limit_note {
             (mimir_proto::Ran::Pc, words)
@@ -4785,6 +4845,8 @@ impl Service {
             switch_note,
             backups,
             free_when_out,
+            api_settings,
+            api_first,
         };
         // A chat counts as using the chat model, so nothing treats it as
         // unused.
@@ -5077,8 +5139,10 @@ impl Service {
         self.publish_truth();
         // A message the owner queued goes before any hand-off.
         self.runner.owner_waiting = self.queued.keys().cloned().collect();
+        self.runner.api_credits = self.lane() == settings::Lane::ApiCredits;
         self.runner.tick();
         self.claude_ran_out();
+        self.api_credits_failed();
         self.allow_by_rules();
         self.watch_checks();
         self.tidy_when_stopped();
@@ -5203,6 +5267,55 @@ impl Service {
         })
     }
 
+    /// Who does online work now: the plan, the owner's API credits, the
+    /// PC's model, or nobody (`Settings::lane` decides the order).
+    fn lane(&self) -> settings::Lane {
+        self.settings
+            .lane(self.online_low().is_some(), self.api_failed.is_some())
+    }
+
+    /// A new project task on `model` goes to the PC's own model.
+    fn moves_to_free(&self, model: Option<&str>) -> bool {
+        !crate::models::is_free(model) && self.lane() == settings::Lane::PcModel
+    }
+
+    /// Anthropic turned down work on the API credits (out of credits, or
+    /// the key refused): said once in the task, and the next in line (the
+    /// PC's model, if its switch is on) takes over from here on.
+    fn api_credits_failed(&mut self) {
+        if self.online_low().is_none() {
+            // The plan is back: the credits get a new try next time.
+            self.api_failed = None;
+        }
+        if let Some(f) = self.talk.take_api_fail() {
+            self.api_failed = Some(f);
+        }
+        for (id, fail) in self.runner.take_api_fails() {
+            self.api_failed = Some(fail);
+            self.runner.api_credits = false;
+            // A refused key is tried again for minutes: that run ends now.
+            self.runner.end_run(&id);
+            self.runner.note(&id, fail.sentence());
+            let Some(l) = self.task(&id) else { continue };
+            let claude_model = l.task.model.clone();
+            let back_at = self
+                .online_low()
+                .map_or_else(|| self.limit_reset(crate::needs::now()), |(t, _)| t);
+            if self.lane() != settings::Lane::PcModel
+                || self.continue_on_free(&id, back_at, claude_model).is_err()
+            {
+                self.runner.note(
+                    &id,
+                    &format!(
+                        "Online is back at {}; carry on then.",
+                        crate::models::clock(back_at)
+                    ),
+                );
+            }
+            self.touched.insert(id);
+        }
+    }
+
     fn free_choice(&self) -> Option<crate::models::FreeModel> {
         let list = crate::models::installed()
             .map(|n| crate::models::catalogue(&n))
@@ -5287,10 +5400,24 @@ impl Service {
             if l.task.incognito || crate::models::is_free(l.task.model.as_deref()) {
                 continue;
             }
+            let via_api = l.task.via_api;
             let claude_model = l.task.model.clone();
             let project = l.task.home_project().to_string();
             let title = l.task.title.clone();
             let when = crate::models::clock(back_at);
+            if via_api {
+                // A limit on the credits themselves: they are out too.
+                self.api_failed
+                    .get_or_insert(crate::api_key::Fail::NoCredits);
+            } else if self.lane() == settings::Lane::ApiCredits {
+                // The owner's API credits are next in line: the same
+                // conversation carries on with them, and says so.
+                self.runner.api_credits = true;
+                self.runner.end_run(&id);
+                self.runner.send_auto(&id, crate::order::LIMIT_CARRY_ON);
+                self.touched.insert(id);
+                continue;
+            }
             let free = self.free_choice();
             let said = match (self.settings.power(), free) {
                 // "When online use runs out, use your PC's model" is off: it
@@ -5363,9 +5490,7 @@ impl Service {
         match call {
             Call::NewIncognito { .. } => true,
             Call::NewTask { model, .. } => {
-                let out = self.online_low();
-                crate::models::is_free(model.as_deref())
-                    || self.settings.moves_to_free(model.as_deref(), out.is_some())
+                crate::models::is_free(model.as_deref()) || self.moves_to_free(model.as_deref())
             }
             Call::ContinueOnFree { .. } => true,
             Call::Send { task, .. } | Call::Continue { task } | Call::SendQueued { task } => {
@@ -5460,11 +5585,13 @@ impl Service {
                 && !l.task.incognito
                 && !crate::models::is_free(l.task.model.as_deref())
         });
+        // Not while the owner's API credits are next in line.
         let needed = wake_for_limit(
             self.settings.power(),
             !self.settings.free_when_out_on(),
             hit,
-        );
+        ) && self.settings.lane(true, self.api_failed.is_some())
+            != settings::Lane::ApiCredits;
         if !needed {
             return true;
         }
@@ -5996,6 +6123,7 @@ fn header(l: &runner::Live, queued: &HashMap<String, QueuedMessage>) -> TaskHead
         origin: t.origin.clone(),
         copy_branch: t.copy_branch.clone(),
         from_phone: t.from_phone.clone(),
+        via_api: t.via_api,
         session_id: t.session_id.clone(),
         held_sessions: t.left_sessions().cloned().collect(),
         status: t.status,

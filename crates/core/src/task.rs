@@ -103,6 +103,14 @@ pub struct Task {
     /// didn't say): the service decides what happens next.
     #[serde(skip)]
     pub limit_hit: Option<i64>,
+    /// Its latest run was started on the owner's Anthropic API credits
+    /// (the plan ran out): Claude Code got the key from Mímir's helper.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub via_api: bool,
+    /// Anthropic just turned down a run on the API credits (out of
+    /// credits, or the key refused): the service moves the work on.
+    #[serde(skip)]
+    pub api_fail: Option<crate::api_key::Fail>,
     /// Claude Code's session id, used with `--resume`.
     pub session_id: Option<String>,
     pub status: Status,
@@ -427,6 +435,8 @@ impl Task {
             copy_branch: None,
             ran_out: None,
             limit_hit: None,
+            via_api: false,
+            api_fail: None,
             phone_too: false,
             session_id: None,
             status: Status::Working,
@@ -496,6 +506,7 @@ impl Task {
         self.from_phone = h.from_phone.clone();
         self.copy_branch = h.copy_branch.clone();
         self.ran_out = h.ran_out.clone();
+        self.via_api = h.via_api;
         self.session_id = h.session_id.clone();
         // A client only needs to know they are held, never to delete them.
         self.kept_sessions = h.held_sessions.clone();
@@ -898,6 +909,13 @@ impl Task {
                 })
             }
             Event::Finished(f) => self.finished(f, now_ms),
+            // Only a run on the API credits: the plan's sign-in has its
+            // own words (`sign_in_words`).
+            Event::KeyRefused => {
+                if self.via_api {
+                    self.api_fail = Some(crate::api_key::Fail::BadKey);
+                }
+            }
             Event::Unknown(_)
             | Event::FiveHourUse { .. }
             | Event::BackgroundStarted(_)
@@ -1083,7 +1101,11 @@ impl Task {
                 // Claude's last message may already say it.
                 let said =
                     matches!(self.entries.last(), Some(Entry::Claude(t)) if t.trim() == why.trim());
-                if let Some(resets) = crate::models::claude_limit(&why) {
+                if let Some(fail) = crate::api_key::failure(&why).filter(|_| self.via_api) {
+                    // The service says why and moves the work on: see
+                    // Service::api_credits_tick.
+                    self.api_fail = Some(fail);
+                } else if let Some(resets) = crate::models::claude_limit(&why) {
                     // The service carries on (free model, or waits): see
                     // Service::claude_ran_out.
                     self.limit_hit = Some(resets);

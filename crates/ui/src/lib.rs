@@ -51,6 +51,8 @@ pub fn run() -> eframe::Result {
     let args: Vec<String> = std::env::args().skip(1).collect();
     match args.first().map(String::as_str) {
         Some("hook") => std::process::exit(mimir_core::approvals::run_hook(&args[1..])),
+        // Claude Code asks for the saved Anthropic key (its `apiKeyHelper`).
+        Some("api-key") => std::process::exit(mimir_core::api_key::print_main()),
         // Mímir's work, as its own process (systemd starts it).
         Some("service") => std::process::exit(mimir_core::service::run_main(VERSION.trim())),
         Some("ask") => std::process::exit(mimir_core::needs::ask_command(&args[1..])),

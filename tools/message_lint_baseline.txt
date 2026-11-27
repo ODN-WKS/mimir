@@ -14,3 +14,6 @@ claude-name	crates/ui/src/labels.rs	Your Anthropic plan's 7-day use could not be
 tech-word	android/app/src/main/java/io/github/odnwks/mimir/standalone/Engine.kt	%.0f tokens a second
 tech-word	crates/core/src/incognito.rs	no socket for loopback
 tech-word	crates/core/src/sockets.rs	no socket was handed over
+tech-word	crates/ui/src/labels.rs	Use my API credits when my plan runs out
+tech-word	crates/ui/src/labels.rs	Uses your Anthropic API credits; Anthropic bills each answer. Tried before your PC's model.
+tech-word	crates/ui/src/view_models.rs	project work online (your API credits, then your PC's model, when it can't)

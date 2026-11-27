@@ -95,6 +95,13 @@ pub struct Job {
     /// its limit, the PC's model answers instead. Off: the chat says online
     /// is at its limit.
     pub free_when_out: bool,
+    /// The owner's API credits may answer this when the plan is at its
+    /// limit: the `--settings` that names Mímir's key helper (Claude Code
+    /// asks the helper, so the key is in no argument and no environment).
+    /// None: never (the switch is off, no key, or not the owner's chat).
+    pub api_settings: Option<String>,
+    /// The plan is known to be out: the API credits answer from the start.
+    pub api_first: bool,
 }
 
 /// Under an answer the PC's model wrote because online is at its limit
@@ -113,6 +120,19 @@ pub fn near_limit_words() -> String {
         "Your PC · Online use passed {}% this week · Your PC answered instead",
         crate::usage::FREE_AT_PERCENT
     )
+}
+
+/// How work on the owner's Anthropic API credits is named (the owner's words).
+pub const API_CREDITS: &str = "API credits";
+
+/// Under an answer that runs on the API credits because the plan ran out.
+pub fn api_credits_words() -> String {
+    format!("Claude · {API_CREDITS}")
+}
+
+/// Under an answer the PC's model wrote because the API credits failed.
+pub fn api_failed_words(f: crate::api_key::Fail) -> String {
+    format!("Your PC · {} · Your PC answered instead", f.headline())
 }
 
 /// The failure a chat shows when online is at its limit and the switch is off.
@@ -274,6 +294,8 @@ struct State {
     ratio: HashMap<String, f32>,
     /// When the first word of the current answer came (for the log).
     first_word: Option<Instant>,
+    /// Anthropic turned down a chat on the API credits (the service asks).
+    api_failed: Option<crate::api_key::Fail>,
 }
 
 /// The engine: a thread that answers one request at a time.
@@ -386,6 +408,11 @@ impl Talk {
             .unwrap_or(TalkState::Unknown)
     }
 
+    /// Why Anthropic turned down a chat on the API credits, told once.
+    pub fn take_api_fail(&self) -> Option<crate::api_key::Fail> {
+        self.lock().api_failed.take()
+    }
+
     /// Whether an answer is being written or waits.
     pub fn answering(&self) -> bool {
         let s = self.lock();
@@ -440,12 +467,40 @@ impl Talk {
                 }
             };
             let began = Instant::now();
+            // The owner's API credits answer when the plan is known to be
+            // out, or once this answer finds it out.
+            let mut on_api = job.api_first && job.api_settings.is_some();
             let result = match &job.paid {
                 None => self.answer(&job),
-                Some(p) => match self.answer_paid(&job, p) {
+                Some(p) => match self.answer_paid(&job, p, on_api).or_else(|why| {
+                    let stopped = self.lock().stopped.contains(&job.answer_id);
+                    if on_api
+                        || stopped
+                        || job.api_settings.is_none()
+                        || crate::models::claude_limit(&why).is_none()
+                    {
+                        return Err(why);
+                    }
+                    on_api = true;
+                    if let Some(c) = &mut self.lock().current {
+                        c.1.clear();
+                    }
+                    self.answer_paid(&job, p, true)
+                }) {
                     Ok(t) => Ok((t, None)),
                     Err(_) if self.lock().stopped.contains(&job.answer_id) => {
                         Err("Stopped.".into())
+                    }
+                    // The credits failed and the PC's model isn't to take
+                    // over: the chat says why.
+                    Err(why)
+                        if on_api
+                            && !job.free_when_out
+                            && crate::api_key::failure(&why).is_some() =>
+                    {
+                        let f = crate::api_key::failure(&why);
+                        self.lock().api_failed = f;
+                        Err(f.map_or(why, |f| f.sentence().to_string()))
                     }
                     // The switch is off: at the limit, the chat says so.
                     Err(why)
@@ -468,6 +523,13 @@ impl Talk {
                         if let Some(at) = crate::models::claude_limit(&why) {
                             s.limit_said = true;
                             free.model_words = limit_words(at);
+                        }
+                        // The API credits ran out or the key was refused:
+                        // the PC's model answers and says why, and the
+                        // service moves later work on.
+                        if on_api && let Some(f) = crate::api_key::failure(&why) {
+                            s.api_failed = Some(f);
+                            free.model_words = api_failed_words(f);
                         }
                         if let Some(c) = &mut s.current {
                             c.1.clear();
@@ -587,7 +649,9 @@ impl Talk {
                 c.1.clear();
             }
             result = match &b.paid {
-                Some(p) => self.answer_paid(&next, p).map(|t| (t, None)),
+                Some(p) => self
+                    .answer_paid(&next, p, next.api_first)
+                    .map(|t| (t, None)),
                 None => self.answer(&next),
             };
             if result.is_ok() {
@@ -823,7 +887,8 @@ pub fn forget_sessions(dir: &std::path::Path, person: &str) {
 impl Talk {
     /// Answers through Claude Code: the chat's own conversation (resumed),
     /// or, when it's gone, the chat so far replayed as the first message.
-    fn answer_paid(&self, job: &Job, p: &Paid) -> Result<ChatTurn, String> {
+    /// `on_api`: on the owner's API credits (`Job::api_settings`), not the plan.
+    fn answer_paid(&self, job: &Job, p: &Paid, on_api: bool) -> Result<ChatTurn, String> {
         use std::io::{BufRead, Write};
         use std::process::{Command, Stdio};
         std::fs::create_dir_all(&p.dir).map_err(|e| e.to_string())?;
@@ -894,6 +959,15 @@ impl Talk {
         }
         if let Some(m) = &p.model {
             cmd.args(["--model", m]);
+        }
+        // On the owner's API credits: Claude Code asks Mímir's helper for
+        // the key (never an argument, never the environment). Only the
+        // owner's own chats: the credits are the owner's money.
+        let api = (on_api && job.person == crate::people::OWNER)
+            .then(|| job.api_settings.clone())
+            .flatten();
+        if let Some(s) = &api {
+            cmd.args(["--settings", s]);
         }
         let mut child = cmd
             .spawn()
@@ -967,6 +1041,17 @@ impl Talk {
                             whole = v["result"].as_str().unwrap_or("").to_string();
                         }
                     }
+                    // Anthropic refused the key: Claude Code would go on
+                    // trying for minutes, so the chat moves on now.
+                    Some("system")
+                        if api.is_some()
+                            && v["subtype"] == "api_retry"
+                            && v["error_status"] == 401 =>
+                    {
+                        error = Some("Invalid API key".to_string());
+                        let _ = child.kill();
+                        break;
+                    }
                     _ => {}
                 }
             }
@@ -997,7 +1082,11 @@ impl Talk {
         let mut turn = self.turn(job, &text);
         // The model that really answered, in plain words.
         if let Some(w) = model.as_deref().and_then(claude_words) {
-            turn.model_words = Some(format!("{w} · Online"));
+            turn.model_words = Some(if api.is_some() {
+                format!("{w} · {API_CREDITS}")
+            } else {
+                format!("{w} · Online")
+            });
         }
         Ok(turn)
     }
@@ -1207,6 +1296,8 @@ mod tests {
             switch_note: None,
             backups: vec![],
             free_when_out: true,
+            api_settings: None,
+            api_first: false,
         }
     }
 
