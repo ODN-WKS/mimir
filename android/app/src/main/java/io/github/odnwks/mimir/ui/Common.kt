@@ -630,10 +630,11 @@ fun MessageBox(
     val focus = androidx.compose.runtime.remember { androidx.compose.ui.focus.FocusRequester() }
     val ctx = androidx.compose.ui.platform.LocalContext.current
     val keys = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+    val hold = LocalKeyboardHold.current
     if (autoFocus) androidx.compose.runtime.LaunchedEffect(Unit) {
         // After a sheet has put the keyboard away as it opens.
         kotlinx.coroutines.delay(150)
-        if (keyboardAutoOn(ctx)) runCatching { focus.requestFocus(); keys?.show() }
+        if (hold?.held != true && keyboardAutoOn(ctx)) runCatching { focus.requestFocus(); keys?.show() }
     }
     // A box with words keeps the part being changed in view above the keyboard.
     val inView = androidx.compose.runtime.remember { androidx.compose.foundation.relocation.BringIntoViewRequester() }

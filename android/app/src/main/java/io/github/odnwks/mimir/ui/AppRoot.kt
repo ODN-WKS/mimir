@@ -152,7 +152,10 @@ fun AppRoot(station: Station, nav: Navigator, chatDraft: String = "", standalone
         if (undoable === u) { undoable = null; u.later() }
     }
     val offerUndo: (Undoable) -> Unit = { u -> undoable?.later(); undoable = u }
-    CompositionLocalProvider(LocalStandIn provides standIn, LocalTapTracker provides tracker, LocalStandaloneOk provides standaloneOk, LocalUndo provides offerUndo, LocalOpenPage provides { url: String -> nav.open(Screen.Browse(url)) }, LocalEyeStartup provides startup) {
+    CompositionLocalProvider(LocalStandIn provides standIn, LocalTapTracker provides tracker, LocalStandaloneOk provides standaloneOk, LocalUndo provides offerUndo, LocalOpenPage provides { url: String -> nav.open(Screen.Browse(url)) }, LocalEyeStartup provides startup, LocalKeyboardHold provides nav.keyboard) {
+        // Leaving (home, recents, another app): the box lets go, so coming back never brings the keyboard up.
+        val putKeyboardAway = rememberPutKeyboardAway(nav.keyboard)
+        androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_PAUSE) { putKeyboardAway() }
         Box(
             Modifier.fillMaxSize().background(Palette.Ground)
                 // Sideways, the system's buttons and the camera cut-out sit at the sides: nothing goes under them.
@@ -161,6 +164,7 @@ fun AppRoot(station: Station, nav: Navigator, chatDraft: String = "", standalone
                     // Remember where each touch starts (without taking it), so a tapped card can grow from there.
                     awaitEachGesture {
                         val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                        nav.keyboard.release() // the person is here and doing something
                         tracker.last = TapPoint(down.position.x / size.width, down.position.y / size.height)
                         startup.onTouch() // a touch anywhere skips the startup animation at once
                     }

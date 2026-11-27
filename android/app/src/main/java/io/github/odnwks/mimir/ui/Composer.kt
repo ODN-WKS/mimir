@@ -94,10 +94,13 @@ fun Composer(
     val focus = remember { FocusRequester() }
     // "Ask Claude" on the tablet's rail (or Ctrl+N) puts the cursor here.
     val ask = io.github.odnwks.mimir.ui.adaptive.LocalAskTick.current
-    LaunchedEffect(ask) { if (ask > 0) runCatching { focus.requestFocus() } }
-    // A reply box opens with the cursor in it (when Settings allows it).
+    val hold = LocalKeyboardHold.current
+    val putKeyboardAway = rememberPutKeyboardAway()
+    LaunchedEffect(ask) { if (ask > 0 && hold?.held != true) runCatching { focus.requestFocus() } }
+    // A reply box opens with the cursor in it (when Settings allows it), but not right after a Send
+    // or a return to the app.
     val keyCtx = androidx.compose.ui.platform.LocalContext.current
-    LaunchedEffect(Unit) { kotlinx.coroutines.delay(300); if (keyboardAutoOn(keyCtx)) runCatching { focus.requestFocus() } }
+    LaunchedEffect(Unit) { kotlinx.coroutines.delay(300); if (hold?.held != true && keyboardAutoOn(keyCtx)) runCatching { focus.requestFocus() } }
     Column(
         modifier.fillMaxWidth().testTag(COMPOSER_TAG).clip(shape).background(surface).border(1.dp, Palette.Outline, shape)
             .padding(start = 6.dp, end = 6.dp, bottom = 2.dp),
@@ -133,6 +136,7 @@ fun Composer(
             send = {
                 SendButton(sendable) {
                     haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
+                    putKeyboardAway()
                     onSend()
                 }
             },

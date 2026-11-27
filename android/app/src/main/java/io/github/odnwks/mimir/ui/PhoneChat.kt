@@ -183,7 +183,8 @@ fun PhoneChat(
             else -> { engine.newChat(); place(); true }
         }
     }
-    val newChat = { if (startOn(true)) focusTick++; Unit }
+    // New chat is asked for by the person, however it was reached: its keyboard comes (0.09 item 23).
+    val newChat = { if (startOn(true)) { nav.keyboard.release(); focusTick++ }; Unit }
     // Where a Whisper starts: on the PC when paired with a free model there, else on this phone (the PC when the phone can't).
     val whisperHere = {
         when (whisperStartFor(paired, pcFree, pcOnline, s.ready, s.supported)) {

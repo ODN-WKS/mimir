@@ -112,7 +112,9 @@ fun IncognitoTaskScreen(state: StationState, station: Station, nav: Navigator) {
             verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             MessageBox(draft, { draft = it }, "Reply to this Whisper task", "Reply", Modifier.weight(1f), background = Palette.WhisperPanel)
+            val putKeyboardAway = rememberPutKeyboardAway()
             if (task.id.isNotEmpty()) RoundButton(Glyphs.Send, "Send reply", {
+                putKeyboardAway()
                 if (draft.isNotBlank()) station.reply(task.id, draft, typed = true)
                 draft = ""
             }, filled = draft.isNotBlank(), fill = Palette.WhisperButton, surface = Palette.Card)

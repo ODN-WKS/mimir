@@ -99,11 +99,14 @@ fun MimirComposer(
         val ctx = androidx.compose.ui.platform.LocalContext.current
         val keys = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
         var risen by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(0) }
+        val hold = LocalKeyboardHold.current
+        val putKeyboardAway = rememberPutKeyboardAway()
         androidx.compose.runtime.LaunchedEffect(focusTick, focusOk) {
             if (focusTick > risen && focusOk && keyboardAutoOn(ctx)) {
                 risen = focusTick
                 androidx.compose.runtime.withFrameNanos { }
-                runCatching { focus.requestFocus(); keys?.show() }
+                // A rise still waiting when the app was left is dropped, not rung on the way back.
+                if (hold?.held != true) runCatching { focus.requestFocus(); keys?.show() }
             }
         }
         BasicTextField(
@@ -132,7 +135,7 @@ fun MimirComposer(
                     // What the mic hears goes into the box; in a Whisper it stays on this phone.
                     if (mic || voice.state == Speaking.Listening) MicButton(voice, "Talk instead of typing", filled = false, surface = androidx.compose.ui.graphics.Color.Transparent, size = SEND_SIZE, outline = false, onDenied = { micDenied = true })
                     if (writing) StopControl(onStop, shape = StopShape.Round, size = SEND_SIZE, fill = Palette.RedBorder, description = "Stop the reply")
-                    else SendButton(ready, fill = if (whisper) WhisperTint.Send else Palette.Blue, onSend = onSend)
+                    else SendButton(ready, fill = if (whisper) WhisperTint.Send else Palette.Blue, onSend = { putKeyboardAway(); onSend() })
                 }
             },
         )

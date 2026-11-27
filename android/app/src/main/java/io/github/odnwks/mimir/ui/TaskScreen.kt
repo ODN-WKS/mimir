@@ -153,6 +153,15 @@ fun TaskScreen(taskId: String, state: StationState, station: Station, nav: Navig
             if (!moving) { atBottom = scroll.value >= scroll.maxValue - atBottomPx; if (atBottom) unseen = false }
         }
     }
+    // The space above the reply box getting smaller (the keyboard still sliding, something docking
+    // there) must not leave the end half out of sight: at the bottom, it stays at the bottom.
+    LaunchedEffect(scroll, task.id) {
+        var before = 0
+        snapshotFlow { scroll.viewportSize }.collect { size ->
+            if (size < before && atBottom) scroll.scrollTo(scroll.maxValue)
+            before = size
+        }
+    }
     LaunchedEffect(task.messages.size, task.messages.lastOrNull()?.text?.length, task.question?.itemId, keyboard) {
         // Wait for the new part to be laid out, so the end is where it really is.
         androidx.compose.runtime.withFrameNanos { }

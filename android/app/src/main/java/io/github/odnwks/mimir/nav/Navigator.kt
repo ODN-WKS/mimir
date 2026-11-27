@@ -186,6 +186,19 @@ sealed interface Move {
     data object None : Move
 }
 
+/**
+ * Whether boxes must leave the keyboard alone: from a tapped Send, or the app leaving the screen,
+ * until the person touches the app (or asks for a new chat).
+ */
+class KeyboardHold {
+    var held = false
+        private set
+
+    fun hold() { held = true }
+
+    fun release() { held = false }
+}
+
 /** What the phone chat's topic sheet hands back to the open chat. */
 enum class ChatAsk { Rename, Delete, Whisper, StartWhisper, NewChat, StartWebWhisper, CopyChat, Rules, Sent }
 
@@ -257,6 +270,9 @@ class Navigator(start: Screen = Screen.Chat) {
     /** How the right pane last changed: true when something opened there (it slides in from the right). */
     var detailForward: Boolean by mutableStateOf(true)
         private set
+    /** Kept here, not by a screen: it holds while the app's lock takes the screens away. */
+    val keyboard = KeyboardHold()
+
     /** Goes up by one each time "Ask Claude" asks for the cursor in Chat's message box. */
     var askTick: Int by mutableIntStateOf(0)
         private set
@@ -280,6 +296,8 @@ class Navigator(start: Screen = Screen.Chat) {
 
     /** "Ask Claude": Chat, with the cursor in its message box. */
     fun ask() {
+        // Asking for the cursor is the person's own doing.
+        keyboard.release()
         if (current != Screen.Chat) selectTab(Tab.Chat)
         askTick++
     }
