@@ -135,7 +135,8 @@ fun AppRoot(station: Station, nav: Navigator, chatDraft: String = "", standalone
         seenKeys.addAll(liveKeys)
     }
 
-    BackHandler(enabled = nav.canGoBack) { nav.back() }
+    // A second Back before the screen has redrawn still lands here: it withdraws the menu just asked for.
+    BackHandler(enabled = nav.canGoBack) { if (nav.menuAsked) nav.menuAskTaken() else nav.back() }
     // The eye's startup animation: once per app start, only when the app opens on the home screen.
     val startup = rememberEyeStartup(opensOnHome = nav.stack.size == 1 && nav.current == Screen.Chat)
 
@@ -173,10 +174,25 @@ fun AppRoot(station: Station, nav: Navigator, chatDraft: String = "", standalone
             val drawer = androidx.compose.material3.rememberDrawerState(androidx.compose.material3.DrawerValue.Closed)
             LaunchedEffect(permanent) { if (permanent) drawer.snapTo(androidx.compose.material3.DrawerValue.Closed) }
             val openMenu: () -> Unit = { if (!permanent) scope.launch { drawer.open() } }
-            val closeMenu: () -> Unit = { if (drawer.isOpen) scope.launch { drawer.close() } }
-            DrawerBack(drawer, closeMenu)
+            val closeMenu: () -> Unit = {
+                nav.menuAskTaken()
+                if (drawer.currentValue != androidx.compose.material3.DrawerValue.Closed || drawer.targetValue != androidx.compose.material3.DrawerValue.Closed) scope.launch { drawer.close() }
+            }
+            DrawerBack(drawer, asked = { nav.menuAsked }, close = closeMenu)
+            // A screen opened from elsewhere (a tapped notification) is not left under an open menu. This
+            // stays above the effect below, so it still sees Back's own ask.
+            val top = nav.currentEntry.key to nav.detail.lastOrNull()?.key
+            val topBefore = remember { arrayOf(top) }
+            LaunchedEffect(top) {
+                if (topBefore[0] != top && !nav.menuAsked) closeMenu()
+                topBefore[0] = top
+            }
+            // Back from a screen: the menu slides open over Chat (a wide window shows it already).
+            LaunchedEffect(nav.menuAsked, permanent) {
+                if (nav.menuAsked) try { if (!permanent) drawer.open() } finally { nav.menuAskTaken() }
+            }
             // An open side menu has the keyboard put away, and no box takes it back meanwhile.
-            val menuUp = drawer.currentValue != androidx.compose.material3.DrawerValue.Closed || drawer.targetValue != androidx.compose.material3.DrawerValue.Closed
+            val menuUp = nav.menuAsked && !permanent || drawer.currentValue != androidx.compose.material3.DrawerValue.Closed || drawer.targetValue != androidx.compose.material3.DrawerValue.Closed
             val menuKeys = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
             val menuFocus = androidx.compose.ui.platform.LocalFocusManager.current
             androidx.compose.runtime.SideEffect { nav.menuOpen = menuUp }
@@ -495,10 +511,11 @@ private fun navShortcut(cut: Shortcut, nav: Navigator, paired: Boolean): Boolean
     return true
 }
 
-/** Back closes an open menu. The drawer's state is read here, so a change recomposes only this. */
+/** Back closes an open or opening menu. The drawer's state is read here, so a change recomposes only this. */
 @Composable
-private fun DrawerBack(drawer: androidx.compose.material3.DrawerState, close: () -> Unit) {
-    BackHandler(enabled = drawer.isOpen) { close() }
+private fun DrawerBack(drawer: androidx.compose.material3.DrawerState, asked: () -> Boolean, close: () -> Unit) {
+    val up = asked() || drawer.currentValue != androidx.compose.material3.DrawerValue.Closed || drawer.targetValue != androidx.compose.material3.DrawerValue.Closed
+    BackHandler(enabled = up) { close() }
 }
 
 /** The kept menu is invisible to TalkBack and tests while shut. The drawer's state is read here, not in the menu. */

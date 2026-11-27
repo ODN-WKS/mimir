@@ -2,6 +2,8 @@ package io.github.odnwks.mimir.ui
 
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.swipeLeft
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
@@ -180,7 +182,10 @@ class FindabilityTest {
         compose.waitForIdle()
         assertEquals(1.15f, station.state.value.player.speed, 0.001f)
         // Voice typing says what it is: Talk, voice typing (P12: in the chat's three dots, not in the box).
-        nav.back(); nav.back(); compose.waitForIdle()
+        nav.back(); compose.waitForIdle()
+        // P24: Back lands on Chat with the side menu open; it is swiped shut to reach the chat.
+        assertTrue(nav.menuOpen)
+        compose.onRoot().performTouchInput { swipeLeft() }; compose.waitForIdle()
         compose.onNodeWithContentDescription(CHAT_MENU).performClick(); compose.waitForIdle()
         compose.onNodeWithText("Talk (voice typing)").assertExists()
     }

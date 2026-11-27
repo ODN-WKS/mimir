@@ -200,7 +200,8 @@ data class Entry(val screen: Screen, val key: Int)
 
 /**
  * The back stack. Each section of the side menu starts its own stack. Back (the system's or a screen's
- * arrow) goes straight home to Chat, then leaves the app. A sheet sits above the stack and Back closes it first.
+ * arrow) goes straight to Chat with the side menu open; the next closes the menu, the one after leaves
+ * the app. A sheet sits above the stack and Back closes it first.
  */
 class Navigator(start: Screen = Screen.Chat) {
     private var nextKey = 0
@@ -212,6 +213,10 @@ class Navigator(start: Screen = Screen.Chat) {
         private set
     /** The side menu is open (set by the app root), so no box takes the keyboard meanwhile. */
     var menuOpen: Boolean by mutableStateOf(false)
+    /** Back has asked for the side menu over Chat; true until the app root has slid it open. */
+    var menuAsked: Boolean by mutableStateOf(false)
+        private set
+    fun menuAskTaken() { menuAsked = false }
     /** Where Chat's composer sends the next message (the "To:" chip). */
     var composeTo: ComposeTo by mutableStateOf(ComposeTo())
     /** What the open Mímir chat offers in its model and effort sheet (set by the chat while it shows). */
@@ -287,6 +292,7 @@ class Navigator(start: Screen = Screen.Chat) {
     /** Opens [screen] on top. With [from] (a tap point as fractions of the screen) it grows from there. */
     fun open(screen: Screen, from: TapPoint? = null) {
         sheet = null
+        menuAsked = false
         if (screen == current && detail.isEmpty()) return
         Tab.entries.firstOrNull { it.root == screen }?.let { selectTab(it); return }
         if (twoPanes && screen.opensOnRight(current)) {
@@ -315,6 +321,7 @@ class Navigator(start: Screen = Screen.Chat) {
     /** Clears the stack and shows [screen] (e.g. after pairing, straight to Chat). */
     fun resetTo(screen: Screen) {
         sheet = null
+        menuAsked = false
         lastMove = Move.Forward
         detail = emptyList()
         stack = listOf(Entry(screen, nextKey++))
@@ -323,6 +330,7 @@ class Navigator(start: Screen = Screen.Chat) {
     /** A bottom-bar section. Tapping the section already shown goes back to its first screen. */
     fun selectTab(tab: Tab) {
         sheet = null
+        menuAsked = false
         detail = emptyList()
         val old = selectedTab
         if (old == tab) {
@@ -342,9 +350,10 @@ class Navigator(start: Screen = Screen.Chat) {
     /**
      * System Back or a screen's back arrow. Returns false when the app should close.
      *
-     * The rule (owner, 2026-11-26): one Back from any screen goes home to Chat; nothing walks back
-     * through the screens seen before. An open sheet closes first, and on a tablet the right pane
-     * closes first; the next Back goes home. On Chat with nothing open, Back leaves the app.
+     * The rule (owner, 2026-11-26): one Back from any screen goes to Chat with the side menu open;
+     * nothing walks back through the screens seen before. An open sheet closes first, and on a tablet
+     * the right pane closes first; the next Back does that. An open menu is closed by the app root
+     * before this is reached. On Chat with nothing open, Back leaves the app.
      */
     fun back(): Boolean {
         if (sheet != null) { sheet = null; return true }
@@ -353,6 +362,7 @@ class Navigator(start: Screen = Screen.Chat) {
             val home = stack.first().takeIf { it.screen == Screen.Chat }
             lastMove = if (stack.size > 1) Move.Back else Move.ToTab(toRight = false)
             stack = listOf(home ?: Entry(Screen.Chat, nextKey++))
+            menuAsked = true
             return true
         }
         return false

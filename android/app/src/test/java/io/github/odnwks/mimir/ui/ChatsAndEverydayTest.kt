@@ -12,6 +12,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeLeft
 import androidx.compose.ui.test.swipeRight
 import io.github.odnwks.mimir.data.ChatEntry
 import io.github.odnwks.mimir.data.ExampleData
@@ -113,6 +114,9 @@ class ChatsAndEverydayTest {
         assertEquals("who wrote Hamlet?", engine.state.value.chat.turns.first().text)
         assertTrue(station.state.value.chat.isEmpty())
         nav.back(); compose.waitForIdle()
+        // P24: Back lands on Chat with the side menu open; it is swiped shut to type.
+        assertTrue(nav.menuOpen)
+        compose.onRoot().performTouchInput { swipeLeft() }; compose.waitForIdle()
         type("Fix the crash in Recipe box when it starts")
         assertEquals(FilingKind.NewTask, (station.state.value.chat.last() as ChatEntry.Mine).filing?.kind)
     }
