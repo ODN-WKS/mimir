@@ -529,6 +529,8 @@ object Wire {
             mode = h.optString("mode", "Ask"),
             activeUnix = h.optLong("active_unix"),
             youMs = h.optLong("you_ms"),
+            contextUsed = h.optLong("context_used"),
+            contextWindow = h.optLong("context_window"),
             liveElsewhere = h.optBoolean("live_elsewhere"),
             outside = if (h.has("outside")) h.optBoolean("outside") else null,
             long = h.optJSONObject("long")?.let { l ->
@@ -876,6 +878,9 @@ data class LinkTask(
     val running: Boolean = true,
     /** When the person last sent a message in it (ms since 1970); 0 from an older PC or with none. */
     val youMs: Long = 0,
+    /** Tokens of the model's context in use, and its size (0: not known, or an older PC). */
+    val contextUsed: Long = 0,
+    val contextWindow: Long = 0,
 )
 
 /** A task whose conversation has run long (core's one rule, sent by the PC). */

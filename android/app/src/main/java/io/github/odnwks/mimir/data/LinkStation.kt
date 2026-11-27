@@ -2049,6 +2049,8 @@ class LinkStation(
             fromChats = isChatsFolder(t.project),
             checklist = t.checklist,
             sinceUnix = truth?.tasks?.firstOrNull { it.id == t.id }?.since ?: 0,
+            contextUsed = t.contextUsed,
+            contextWindow = t.contextWindow,
         )
     }
 

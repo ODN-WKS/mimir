@@ -9,6 +9,9 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
+import androidx.compose.ui.platform.testTag
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -169,7 +172,7 @@ private fun SheetContent(sheet: Sheet, state: StationState, station: Station, na
             nav.closeSheet()
             station.moveTask(sheet.taskId, name) { m -> android.os.Handler(android.os.Looper.getMainLooper()).post { standIn(m) } }
         }
-        is Sheet.TaskOptions -> Menu(sheet.title(state)) {
+        is Sheet.TaskOptions -> Menu(sheet.title(state), top = { state.task(sheet.taskId)?.let { TaskContext(it) } }) {
             val task = state.task(sheet.taskId)
             val id = sheet.taskId
             // Going on in a terminal or the Claude app: it is not Mímir's task to steer, only to follow, rename or put away.
@@ -558,12 +561,41 @@ internal fun Handle() {
 }
 
 @Composable
-internal fun Menu(title: String, rows: @Composable ColumnScope.() -> Unit) {
+internal fun Menu(title: String, top: @Composable () -> Unit = {}, rows: @Composable ColumnScope.() -> Unit) {
     Column(Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, top = 10.dp, bottom = 12.dp)) {
         Box(Modifier.fillMaxWidth().padding(bottom = 8.dp), contentAlignment = Alignment.Center) { Handle() }
+        top()
         SectionTitle(title, Modifier.padding(start = 12.dp, end = 12.dp, top = 4.dp, bottom = 8.dp),
             style = Type.SheetTitle, maxLines = 2)
         rows()
+    }
+}
+
+const val CONTEXT_PROJECT_TAG = "context-project"
+const val CONTEXT_BAR_TAG = "context-bar"
+
+/** The PC's fresh-start limit (core's LONG_FROM): from here the context bar takes the warning colour. */
+private const val CONTEXT_LONG_FROM = 100_000L
+internal fun contextWarns(used: Long): Boolean = used >= CONTEXT_LONG_FROM
+
+/** "84,000 of 200,000 · 42%"; null when the window isn't known. */
+internal fun contextLine(used: Long, window: Long): String? =
+    if (window <= 0) null else String.format(java.util.Locale.US, "%,d of %,d · %d%%", used, window, used * 100 / window)
+
+/** The top of a task's menu (owner, 2026-11-27): its project, then how full its context is, as a number over a bar. */
+@Composable
+private fun TaskContext(task: io.github.odnwks.mimir.data.Task) {
+    val line = contextLine(task.contextUsed, task.contextWindow)
+    if (task.project.isBlank() && line == null) return
+    Column(Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = 4.dp, bottom = 12.dp).semantics(mergeDescendants = true) {}, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        if (task.project.isNotBlank()) Text(task.project, style = Type.BodyTight, color = Palette.BlueText, modifier = Modifier.testTag(CONTEXT_PROJECT_TAG))
+        if (line != null) {
+            Text(line, style = Type.Small.copy(fontFeatureSettings = "tnum"), color = Palette.TextDim)
+            val full = (task.contextUsed.toFloat() / task.contextWindow).coerceIn(0f, 1f)
+            Box(Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)).background(Palette.Track).testTag(CONTEXT_BAR_TAG)) {
+                Box(Modifier.fillMaxWidth(full).fillMaxHeight().background(if (contextWarns(task.contextUsed)) Palette.Amber else Palette.BlueText))
+            }
+        }
     }
 }
 

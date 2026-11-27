@@ -529,6 +529,9 @@ data class Task(
     val checklist: List<PlanStep> = emptyList(),
     /** When it went into its state, as the PC says (seconds since 1970; 0: not said). */
     val sinceUnix: Long = 0,
+    /** Tokens of the model's context in use, and its size (0: not known, or an older PC). */
+    val contextUsed: Long = 0,
+    val contextWindow: Long = 0,
 ) {
     /** A mode that does things without asking, in words for its chip; null when it asks first. */
     val riskyMode: String? get() = when (mode) {
