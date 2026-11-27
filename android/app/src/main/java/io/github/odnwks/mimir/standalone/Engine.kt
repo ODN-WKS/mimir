@@ -789,9 +789,11 @@ class Engine(
         val question = turns.getOrNull(turns.lastIndex - 1)?.takeIf { it.user } ?: return false
         if (s0.writing || s0.whisper || !canSend()) return false
         if (question.id.isNotEmpty()) retryFloor["${question.id}.a"] = answer.version + 1
+        replacing(s0.chat, answer.id, answer.at)
         _state.update { it.copy(chat = it.chat.copy(turns = it.chat.turns.dropLast(2))) }
         persist()
-        return send(question.text, question.files, question.pictures, question.id, question.at, question.version)
+        // Asked again with a higher version: a PC that keeps each message's reply never gives back the old one.
+        return send(question.text, question.files, question.pictures, question.id, question.at, question.version + 1)
     }
 
     /**
@@ -818,10 +820,12 @@ class Engine(
         val before = _state.value
         // The new answer takes the version above the tombstone's.
         retryFloor[answerId] = (cuts.firstOrNull { it.id == answerId }?.version ?: 2) + 1
+        replacing(c, answerId, removed.firstOrNull { it.id == answerId }?.at)
         _state.update { it.copy(chat = c.copy(turns = c.turns.take(pos), cuts = c.cuts.filter { k -> cuts.none { n -> n.id == k.id } } + cuts), stoppedChat = null) }
         if (!send(t, orig.files, orig.pictures, orig.id, orig.at, orig.version + 1, typed = true)) {
             _state.update { it.copy(chat = before.chat) }
             retryFloor.remove(answerId)
+            replaced.remove(answerId)
             return null
         }
         return Edited(c.id, removed)
@@ -833,6 +837,7 @@ class Engine(
     /** "Undo" after [editMessage]: the cut turns and the message's old words come back (an answer being written is stopped). */
     fun undoEdit(e: Edited) {
         if (_state.value.writing) stop()
+        e.removed.firstOrNull()?.let { replaced.remove("${it.id}.a") }
         _state.update { s ->
             if (s.chat.id != e.chatId) return@update s
             val c = s.chat
@@ -845,6 +850,22 @@ class Engine(
             s.copy(chat = c.copy(turns = ChatSync.inOrder(kept + back), cuts = c.cuts.filter { it.id !in ids }), stoppedChat = null)
         }
         persist()
+    }
+
+    /** The answer an edit or a Try again replaces: the PC's change numbers seen until then, and its time (if it had one). */
+    private class Replaced(val seq: Long, val at: Long?)
+    private val replaced = java.util.concurrent.ConcurrentHashMap<String, Replaced>()
+    private fun replacing(c: LocalChat, answerId: String, at: Long?) {
+        replaced[answerId] = Replaced(maxOf(lastSeq, c.turns.maxOfOrNull { it.seq } ?: 0L), at)
+    }
+    /**
+     * Whether an answer the PC says it has is from before the message was edited or asked again: the PC made it
+     * before this phone asked (a change number it had already seen) or it is the very answer that was replaced.
+     * Never shown as the answer to the new words (P40).
+     */
+    private fun older(t: io.github.odnwks.mimir.link.LChatTurn): Boolean {
+        val r = replaced[t.id.ifEmpty { return false }] ?: return false
+        return (t.seq in 1..r.seq) || (r.at != null && t.at == r.at)
     }
 
     /** An answer's version never goes below what a "Try again" asked for, so the new one replaces the old everywhere. */
@@ -1954,7 +1975,7 @@ class Engine(
                 val same = now.chat.id == chatId && !now.writing && now.chat.turns.lastOrNull()?.id == last.id
                 when {
                     !same -> {}
-                    st is io.github.odnwks.mimir.link.LTalkState.Done -> {
+                    st is io.github.odnwks.mimir.link.LTalkState.Done && !older(st.turn.let { a -> a.copy(id = a.id.ifEmpty { "${last.id}.a" }) }) -> {
                         _state.update { x -> x.copy(chat = x.chat.copy(turns = ChatSync.withAnswer(x.chat.turns, ChatSync.fromWire(st.turn).let { a -> a.copy(id = a.id.ifEmpty { "${last.id}.a" }, ran = a.ran ?: "pc") })), problem = null) }
                         persistQuietly()
                     }
@@ -2231,6 +2252,7 @@ class Engine(
         // a message it took as project work, and would start the task again.
         var sends = 1
         fun finish(turn: Turn) {
+            replaced.remove(answerId)
             // Another model answered because the usual one can't see pictures: what the PC sees may have changed, so ask again.
             if (turn.switchNote != null) link.refreshSight()
             // The PC has the message too (it came with the Talk): it isn't sent again by the sync.
@@ -2326,7 +2348,10 @@ class Engine(
                     FromPc.Back -> { askedAt = 1; _state.update { it.copy(pcWaiting = true) } }
                     // A network change: the PC is asked at once how its answer stands, without a "waiting" line.
                     FromPc.Nudge -> askedAt = 1
-                    is FromPc.State -> when (val st = m.st) {
+                    is FromPc.State -> when (val st = m.st?.let { x ->
+                        // An answer to the earlier words (the Talk of an edit or a Try again was lost): as if the PC never had it.
+                        if (x is io.github.odnwks.mimir.link.LTalkState.Done && older(x.turn.let { a -> a.copy(id = a.id.ifEmpty { answerId }) })) io.github.odnwks.mimir.link.LTalkState.Unknown else x
+                    }) {
                         is io.github.odnwks.mimir.link.LTalkState.Done -> { finish(fromPc(st.turn)); return true }
                         is io.github.odnwks.mimir.link.LTalkState.Answering -> {
                             out.setLength(0); out.append(st.text)

@@ -1113,3 +1113,71 @@ fn p40_after_a_restart_nothing_is_done_twice() {
     assert_eq!(st.tasks.len(), 1, "a second task was started");
     assert_eq!(asked.lock().unwrap().len(), 1, "answered twice");
 }
+
+/// P40 fix 2: an edited message keeps its turn but not its words. Sent again
+/// because its reply was lost, it is filed with its new words (never given
+/// the old reply back), and the old answer to its earlier words is never
+/// given as its answer.
+#[test]
+fn p40_an_edited_message_sent_again_is_filed_with_its_new_words() {
+    let Some(home) = home() else { return };
+    let asked = fake_ollama(&["Oslo."]);
+    picked(&home);
+    home.play("run-1.jsonl", "live.jsonl");
+    let mut st = home.service();
+    let (p, mut seen) = paired(&mut st, &["talk", "chat_sync", "talk_once"]);
+    let recipe = home.root.join("Recipe-Box").display().to_string();
+    let first = talked(
+        &mut seen,
+        &p,
+        talk(
+            "c1",
+            "e1",
+            vec![user("e1", "Recipes: idea - a dark mode switch")],
+            None,
+        ),
+    );
+    let Filed::Idea { .. } = first else {
+        panic!("not an idea: {first:?}")
+    };
+    // Edited (a higher version of the same turn), and its Talk lost: sent again.
+    let mut edited = user("e1", "Recipes: idea - a bigger print button");
+    edited.version = 2;
+    let second = talked(&mut seen, &p, again("c1", "e1", vec![edited.clone()]));
+    let Filed::Idea { .. } = second else {
+        panic!("not an idea: {second:?}")
+    };
+    assert_ne!(first, second, "the old reply came back for the edit");
+    let ideas = seen.call(&p, Call::Ideas { project: recipe }).unwrap();
+    assert!(
+        ideas.to_string().contains("bigger print button"),
+        "the edited words were never filed: {ideas}"
+    );
+    // The edit sent again once more: its own reply, nothing filed twice.
+    let third = talked(&mut seen, &p, again("c1", "e1", vec![edited]));
+    assert_eq!(second, third);
+    // A chat answer, then its message edited (the phone's copy reaches the PC,
+    // the edit's Talk never does): the old answer is not the edit's answer.
+    let f = talked(
+        &mut seen,
+        &p,
+        talk(
+            "c1",
+            "e2",
+            vec![user("e2", "What's the capital of Norway?")],
+            None,
+        ),
+    );
+    assert!(matches!(f, Filed::Talk { .. }), "{f:?}");
+    assert!(seen.until(&p, |s| s.done.contains_key("e2.a")), "no answer");
+    let mut edited = user("e2", "What's the capital of Sweden?");
+    edited.version = 2;
+    put(&p, &mut seen, "c1", vec![edited], false);
+    let st2 = turn_state(&mut seen, &p, "c1", "e2");
+    assert_eq!(
+        st2,
+        TalkState::Unknown,
+        "the old answer was given for the edit"
+    );
+    assert_eq!(asked.lock().unwrap().len(), 1);
+}

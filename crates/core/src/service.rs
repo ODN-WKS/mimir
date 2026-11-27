@@ -234,9 +234,12 @@ struct TalkArgs {
     typed: bool,
 }
 
-/// Where a chat message's reply is kept in the message ids ("talk_once").
-fn talk_key(person: &str, chat_id: &str, turn_id: &str) -> String {
-    format!("talk\u{1f}{person}\u{1f}{chat_id}\u{1f}{turn_id}")
+/// Where a chat message's reply is kept in the message ids ("talk_once"):
+/// by its turn and that turn's version, so an edited message (or one asked
+/// again with Try again, which raises its version) is never given the reply
+/// to its earlier words.
+fn talk_key(person: &str, chat_id: &str, turn_id: &str, version: u32) -> String {
+    format!("talk\u{1f}{person}\u{1f}{chat_id}\u{1f}{turn_id}\u{1f}{version}")
 }
 
 /// A chat message taken as project work (a task, a follow-up, an idea, the
@@ -513,6 +516,10 @@ struct Service {
     /// and its end go to that person's devices only, and no other person
     /// can stop it or ask how it stands.
     answer_person: HashMap<String, (String, Option<Instant>)>,
+    /// Each recent chat answer's message as it was when the PC was asked
+    /// (its change number in the chat store): an answer to words edited
+    /// since is never given as the answer to the new ones.
+    answer_asked: HashMap<String, u64>,
 }
 
 /// A chat message's files (the first few), cleaned of hidden details before
@@ -651,6 +658,7 @@ impl Service {
             summary_pending: HashSet::new(),
             people_book: crate::people::Book::load(),
             answer_person: HashMap::new(),
+            answer_asked: HashMap::new(),
         };
         // Incognito tasks don't survive the service: their folders go.
         crate::incognito::forget_all();
@@ -1180,9 +1188,17 @@ impl Service {
             Call::Talk {
                 chat_id,
                 turn_id,
+                turns,
                 again,
                 ..
-            } => Some((talk_key(&self.person_of(client), chat_id, turn_id), *again)),
+            } => {
+                let version = turns
+                    .iter()
+                    .find(|t| &t.id == turn_id && t.user)
+                    .map_or(1, |t| t.version);
+                let key = talk_key(&self.person_of(client), chat_id, turn_id, version);
+                Some((key, *again))
+            }
             _ => None,
         };
         if let Some((key, true)) = &talk
@@ -1922,11 +1938,19 @@ impl Service {
                 } else {
                     mimir_proto::TalkState::Unknown
                 };
+                // The message changed since the PC was asked (edited, or asked
+                // again with Try again): what it has is for the earlier words.
+                // (Asked while the store was locked: nothing to tell by.)
+                let asked = self.answer_asked.get(&answer).copied().unwrap_or(0);
+                if asked > 0 && self.message_seq(&person, &chat_id, &turn_id) > asked {
+                    state = mimir_proto::TalkState::Unknown;
+                }
                 // No longer kept here (finished long ago, or the PC restarted):
                 // a finished answer, or a status reply, is still in the chat
                 // store. Then the message is not sent again ("talk_once").
                 if state == mimir_proto::TalkState::Unknown
                     && let Some(turn) = self.kept_answer(&person, &chat_id, &answer)
+                    && turn.seq >= self.message_seq(&person, &chat_id, &turn_id)
                 {
                     state = mimir_proto::TalkState::Done { turn };
                 }
@@ -4725,6 +4749,8 @@ impl Service {
         }
         self.answer_person
             .insert(answer.clone(), (a.person.clone(), None));
+        let asked = self.message_seq(&a.person, &a.chat_id, &a.turn_id);
+        self.answer_asked.insert(answer.clone(), asked);
         match self.talk.submit(job) {
             Ok(waiting) => Filed::Talk {
                 answer,
@@ -4834,6 +4860,19 @@ impl Service {
             .cloned()
     }
 
+    /// The change number of the newest version of message `turn_id` the
+    /// chat store has (0 when it has none). An answer is always kept after
+    /// the words it answers, so an answer kept before them (a lower change
+    /// number) answered earlier words: the message was edited since, or
+    /// asked again with Try again.
+    fn message_seq(&mut self, person: &str, chat_id: &str, turn_id: &str) -> u64 {
+        let turn_id = turn_id.strip_suffix(".a").unwrap_or(turn_id);
+        self.chats()
+            .get_for(person, chat_id)
+            .and_then(|c| c.turns.iter().find(|t| t.id == turn_id && t.user))
+            .map_or(0, |q| q.seq)
+    }
+
     /// Whether a recent chat answer is this person's.
     fn answer_is_of(&self, answer: &str, person: &str) -> bool {
         self.answer_person
@@ -4856,6 +4895,7 @@ impl Service {
         for a in mine {
             self.talk.stop(&a);
             self.answer_person.remove(&a);
+            self.answer_asked.remove(&a);
         }
         self.chats().forget_person(person);
         self.people_book.forget(person);
@@ -4942,6 +4982,8 @@ impl Service {
         self.talk.expire();
         self.answer_person
             .retain(|_, (_, done)| done.is_none_or(|at| at.elapsed() < crate::talk::kept()));
+        let kept = &self.answer_person;
+        self.answer_asked.retain(|a, _| kept.contains_key(a));
         self.engine_tick();
         // A session's request goes once its hook stopped waiting (answered
         // on the PC, the session ended, or ten minutes passed).
