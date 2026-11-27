@@ -466,9 +466,9 @@ fun PhoneChat(
             }
         }
         if (showHome) {
-            val last = s.earlier.firstOrNull { it.topic != null }
+            val last = s.earlier.filter { it.topic != null }.maxByOrNull(io.github.odnwks.mimir.data.ListOrder::chat)
             StarterRow(
-                startersFor(first, paired && owner, unheard, last?.title, last?.id, last?.at ?: 0),
+                startersFor(first, paired && owner, unheard, last?.title, last?.id, last?.let(io.github.odnwks.mimir.data.ListOrder::chat) ?: 0),
                 { st -> if (startup.takeSwallowedTap()) return@StarterRow else when (val a = st.action) {
                     is StarterAction.Send -> send(a.text, false)
                     StarterAction.OpenUpdates -> nav.selectTab(Tab.Updates)

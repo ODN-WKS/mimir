@@ -692,6 +692,8 @@ impl App {
     /// with where a conversation goes and whether it's archived to change.
     fn tidy_window(&mut self, ctx: &egui::Context, actions: &mut Vec<Action>) {
         use mimir_core::proto::TidyKind;
+        let mut listed = self.projects();
+        listed.retain(|p| self.settings.projects.contains(p));
         let Some(rows) = self.tidying.as_mut() else {
             return;
         };
@@ -704,7 +706,7 @@ impl App {
         };
         // Where a conversation can go: listed projects, ones being added,
         // and General.
-        let mut targets: Vec<String> = settings.projects.clone();
+        let mut targets: Vec<String> = listed;
         for r in rows.iter() {
             for t in [&r.to].into_iter().flatten() {
                 if !targets.iter().any(|x| same(x, t)) {

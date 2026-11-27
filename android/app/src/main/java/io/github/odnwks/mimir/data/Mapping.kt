@@ -177,14 +177,16 @@ object Mapping {
 
     /**
      * The Status and Project screens: one [Project] per project on the status page, with its
-     * tasks and ideas, in the page's order (needs you first, then failing, then latest).
+     * tasks and ideas, both newest first by the person's last message ([ListOrder]).
      */
     fun projects(
         page: LStatus,
         tasks: Collection<LinkTask>,
         ideas: Map<String, List<String>>,
         nowSeconds: Long,
-    ): List<Project> = page.projects.map { p ->
+    ): List<Project> = page.projects.sortedByDescending { p ->
+        ListOrder.project(tasks.filter { it.project == p.path && !it.incognito }.map { it.youMs to it.createdUnix })
+    }.map { p ->
         val c = p.checks
         val st = state(p)
         val failing = c?.failing?.firstOrNull()?.second
@@ -200,7 +202,7 @@ object Mapping {
             if (p.tasksRunning > 0) append(". ${p.tasksRunning} running")
             if (p.needsYou > 0) append(". ${p.needsYou} waiting for you")
         }
-        val mine = tasks.filter { it.project == p.path }.sortedByDescending { maxOf(it.activeUnix, it.createdUnix) }
+        val mine = tasks.filter { it.project == p.path }.sortedByDescending { ListOrder.task(it.youMs, it.createdUnix) }
         Project(
             lastActivity = p.lastActivity?.let { at -> age((nowSeconds - at).coerceAtLeast(0)).let { if (it == "now") "now" else "$it ago" } }.orEmpty(),
             needsYou = p.needsYou,

@@ -226,7 +226,7 @@ const CLOSED_WHILE_WORKING: &str =
     "Mímir restarted while this task was working. Press Continue to carry on.";
 /// Why a working task can't move yet.
 pub const MOVE_WHEN_STOPPED: &str = "Move it when it stops.";
-const CONTINUE_TEXT: &str = "Please continue where you left off.";
+pub(crate) const CONTINUE_TEXT: &str = "Please continue where you left off.";
 
 impl Runner {
     pub fn new(cfg: Config, wake: Wake) -> std::io::Result<Self> {
@@ -246,6 +246,20 @@ impl Runner {
         let mut attach = vec![];
         for mut t in loaded {
             let mut dirty = false;
+            // A task saved before the person's last message was kept: read
+            // it from its history, once.
+            if t.you_ms.is_none() {
+                let transcript = t
+                    .session_id
+                    .as_deref()
+                    .filter(|_| crate::order::wants_transcript(&t))
+                    .and_then(|s| {
+                        let file = crate::sessions::session_file(Path::new(&t.project), s);
+                        std::fs::read_to_string(file).ok()
+                    });
+                crate::order::backfill(&mut t, transcript.as_deref());
+                dirty = t.you_ms.is_some();
+            }
             // Claude Code still runs in its host: carried on, not paused.
             if let Some((key, offset)) = t.host.clone() {
                 match crate::host::read_record(&key) {
@@ -467,6 +481,14 @@ impl Runner {
         });
         self.send_with(&id, text, &[]);
         id
+    }
+
+    /// A task made from another (carried on, moved): Mímir wrote its first
+    /// message, so it stands where the old one stood.
+    pub fn keep_place(&mut self, id: &str, you_ms: Option<i64>) {
+        if you_ms.is_some() {
+            self.edit(id, |t| t.you_ms = you_ms);
+        }
     }
 
     /// Starts a new task whose first message carries pictures and files

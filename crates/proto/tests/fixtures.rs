@@ -49,6 +49,7 @@ fn header() -> TaskHeader {
         placed: None,
         placed_why: None,
         active_unix: None,
+        you_ms: None,
         live_elsewhere: false,
         outside: false,
         elsewhere_in: None,

@@ -38,7 +38,8 @@ fn cf13_tasks_listed_by_project() {
             id.to_string(),
             title.to_string(),
             project.display().to_string(),
-            n as i64,
+            // alpha's are the newer ones, so alpha is listed first.
+            (made.len() - n) as i64,
         );
         t.entries = vec![Entry::You(title.to_string()), Entry::Claude("Done.".into())];
         t.status = Status::Done;
@@ -366,12 +367,13 @@ fn side_list_rows_are_one_line_and_older_tasks_fold() {
         "the other three aren't under \"Show 3 older\"\n{}",
         screen_text(&h)
     );
-    // The waiting task is the oldest, yet it is in view and first.
-    let waiting = top_of(&h, &row("Job number 1"));
+    // Newest first; the oldest one's state does not lift it (P34).
     let newest = top_of(&h, &row("Job number 8"));
+    let next = top_of(&h, &row("Job number 7"));
     assert!(
-        matches!((waiting, newest), (Some(w), Some(n)) if w < n),
-        "the task that needs you isn't first\n{}",
+        matches!((newest, next), (Some(n), Some(x)) if n < x)
+            && top_of(&h, &row("Job number 1")).is_none(),
+        "the tasks aren't newest first\n{}",
         screen_text(&h)
     );
     // One line each: 30 high, 32 from one row to the next.
@@ -381,7 +383,7 @@ fn side_list_rows_are_one_line_and_older_tasks_fold() {
             .map(|n| n.rect())
             .unwrap()
     };
-    let (first, second) = (rect(&h, "Job number 1"), rect(&h, "Job number 8"));
+    let (first, second) = (rect(&h, "Job number 8"), rect(&h, "Job number 7"));
     assert!(
         (first.height() - 30.0).abs() < 0.5 && (second.min.y - first.min.y - 32.0).abs() < 0.5,
         "rows aren't 30 high and 32 apart: {first:?} then {second:?}"

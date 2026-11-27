@@ -2,7 +2,7 @@
 //! Open a project folder.
 
 use crate::app::{Action, App, View};
-use crate::organize::{Organize, ProjectDrag, TaskDrag, project_tasks, same};
+use crate::organize::{Organize, project_tasks, same};
 use crate::places::{Settings, display_name, project_name};
 use crate::theme::{self, CARD, TEXT};
 use eframe::egui::{self, RichText, ScrollArea, TextEdit};
@@ -405,17 +405,6 @@ struct Side<'a> {
     chat_index: &'a std::collections::HashMap<String, String>,
 }
 
-/// A line across the sidebar where a dragged row will land.
-fn drop_line(ui: &egui::Ui, rect: egui::Rect, below: bool) {
-    let y = if below {
-        rect.bottom() + 2.0
-    } else {
-        rect.top() - 2.0
-    };
-    ui.painter()
-        .hline(rect.x_range(), y, egui::Stroke::new(2.0, GREEN));
-}
-
 impl Side<'_> {
     /// "Chats": the general chats, newest first, the same ones the phone
     /// shows. A folding section; its count is on the right.
@@ -443,8 +432,11 @@ impl Side<'_> {
             .collect();
         let mut rows: Vec<(i64, Result<&mimir_core::proto::ChatRecord, &TaskView>)> = chats
             .into_iter()
-            .map(|c| (c.at / 1000, Ok(c)))
-            .chain(pc.into_iter().map(|l| (last_change(&l.task), Err(l))))
+            .map(|c| (mimir_core::order::chat_key(c), Ok(c)))
+            .chain(
+                pc.into_iter()
+                    .map(|l| (mimir_core::order::task_key(&l.task), Err(l))),
+            )
             .collect();
         rows.sort_by_key(|r| std::cmp::Reverse(r.0));
         let searching = !self.needle.is_empty();
@@ -527,7 +519,8 @@ impl Side<'_> {
             let (note, color) = if answering {
                 (crate::labels::ANSWERING.to_string(), GREEN)
             } else {
-                (chat_when(c.at / 1000, now_ms / 1000), MUTED)
+                let at = mimir_core::order::chat_key(c) / 1000;
+                (chat_when(at, now_ms / 1000), MUTED)
             };
             let g = elided(ui, &note, 12.5, color, false, 90.0);
             let right = rect.right() - 8.0 - g.size().x;
@@ -614,9 +607,7 @@ impl Side<'_> {
             return;
         }
         for project in &shown {
-            if let Some(i) = self.projects.iter().position(|p| p == project) {
-                self.project(ui, i, project, actions);
-            }
+            self.project(ui, project, actions);
         }
     }
 
@@ -633,20 +624,14 @@ impl Side<'_> {
             .any(|l| !l.task.archived && matches(self.needle, l))
     }
 
-    /// One project: its header (fold, drag, +, right-click menu) and its
+    /// One project: its header (fold, +, right-click menu) and its
     /// tasks, one line each.
-    fn project(
-        &self,
-        ui: &mut egui::Ui,
-        index: usize,
-        project: &String,
-        actions: &mut Vec<Action>,
-    ) {
+    fn project(&self, ui: &mut egui::Ui, project: &String, actions: &mut Vec<Action>) {
         let org = |o: Organize| Action::Organize(o);
         let searching = !self.needle.is_empty();
         let all = project_tasks(self.r, self.settings, project);
         let pinned = &self.settings.pinned_tasks;
-        let mut tasks: Vec<&TaskView> = all
+        let tasks: Vec<&TaskView> = all
             .iter()
             .copied()
             .filter(|l| matches(self.needle, l))
@@ -654,8 +639,6 @@ impl Side<'_> {
         if searching && tasks.is_empty() {
             return;
         }
-        // Pinned, needs you, working, paused, then the rest as they were.
-        tasks.sort_by_key(|l| rank(l, pinned.contains(&l.task.id)));
         let folded = !searching && self.settings.collapsed_projects.contains(project);
         let waiting = all
             .iter()
@@ -664,12 +647,11 @@ impl Side<'_> {
         let name = display_name(self.settings, project);
         ui.add_space(2.0);
         let w = ui.available_width();
-        let (rect, head) =
-            ui.allocate_exact_size(egui::vec2(w, HEAD_H), egui::Sense::click_and_drag());
+        let (rect, head) = ui.allocate_exact_size(egui::vec2(w, HEAD_H), egui::Sense::click());
         let head = head
             .on_hover_cursor(egui::CursorIcon::PointingHand)
             .on_hover_text(format!(
-                "{project}\nClick to open or close. Drag to move it. Right-click for more."
+                "{project}\nClick to open or close. Right-click for more."
             ));
         head.widget_info(|| {
             egui::WidgetInfo::labeled(
@@ -793,22 +775,7 @@ impl Side<'_> {
         } else if head.clicked() && !all.is_empty() {
             actions.push(org(Organize::ToggleProject(project.clone())));
         }
-        if head.drag_started() {
-            egui::DragAndDrop::set_payload(ui.ctx(), ProjectDrag(project.clone()));
-        }
-        crate::menus::open(&head, |ui| self.project_menu(ui, index, project, actions));
-        // A dragged project dropped anywhere on this header lands here.
-        let over = ui.rect_contains_pointer(rect);
-        if over
-            && let Some(d) = egui::DragAndDrop::payload::<ProjectDrag>(ui.ctx())
-            && &d.0 != project
-        {
-            let from = self.projects.iter().position(|p| p == &d.0);
-            drop_line(ui, rect, from.is_some_and(|f| f < index));
-            if ui.input(|i| i.pointer.any_released()) {
-                actions.push(org(Organize::DropProject(d.0.clone(), project.clone())));
-            }
-        }
+        crate::menus::open(&head, |ui| self.project_menu(ui, project, actions));
         if open <= 0.0 || tasks.is_empty() {
             return;
         }
@@ -834,22 +801,13 @@ impl Side<'_> {
         let mut rows = |ui: &mut egui::Ui| {
             for (i, l) in shown.iter().enumerate() {
                 let is_pinned = pinned.contains(&l.task.id);
-                // Up and down stay among the pinned, or among the rest.
                 let at = tasks
                     .iter()
                     .position(|o| o.task.id == l.task.id)
                     .unwrap_or(i);
-                let peer = |j: Option<usize>| {
-                    j.and_then(|j| tasks.get(j))
-                        .is_some_and(|o| pinned.contains(&o.task.id) == is_pinned)
-                };
                 let place = Place {
-                    project,
                     index: at,
                     pinned: is_pinned,
-                    up: !searching && peer(at.checked_sub(1)),
-                    down: !searching && peer(Some(at + 1)),
-                    order: &tasks,
                 };
                 task_row(ui, l, self.selected, self.view, Some(place), false, actions);
             }
@@ -901,14 +859,8 @@ impl Side<'_> {
         }
     }
 
-    fn project_menu(
-        &self,
-        ui: &mut egui::Ui,
-        index: usize,
-        project: &String,
-        actions: &mut Vec<Action>,
-    ) {
-        use crate::menus::{danger, item, item_if, sep};
+    fn project_menu(&self, ui: &mut egui::Ui, project: &String, actions: &mut Vec<Action>) {
+        use crate::menus::{danger, item, sep};
         let org = |o: Organize| Action::Organize(o);
         if item(ui, "New task here", "") {
             actions.push(Action::NewTaskIn(project.clone()));
@@ -943,17 +895,6 @@ impl Side<'_> {
         if item(ui, crate::labels::MERGE_INTO, "") {
             actions.push(org(Organize::AskMerge(project.clone())));
         }
-        if item_if(ui, index > 0, "Move up", "Already first") {
-            actions.push(org(Organize::MoveProject(project.clone(), true)));
-        }
-        if item_if(
-            ui,
-            index + 1 < self.projects.len(),
-            "Move down",
-            "Already last",
-        ) {
-            actions.push(org(Organize::MoveProject(project.clone(), false)));
-        }
         sep(ui);
         // Takes it off the list only: its files stay, as the question says.
         if danger(ui, crate::labels::REMOVE_FROM_LIST, "") {
@@ -963,13 +904,9 @@ impl Side<'_> {
 }
 
 /// Where an open task sits in its project's list.
-struct Place<'a> {
-    project: &'a str,
+struct Place {
     index: usize,
     pinned: bool,
-    up: bool,
-    down: bool,
-    order: &'a [&'a TaskView],
 }
 
 /// Sizes of the side list (docs/designs/pc-window, boards 8 and 9), in
@@ -1332,8 +1269,9 @@ fn elided(
     ui.painter().layout_job(job)
 }
 
-/// Where a task sorts inside its folder: pinned, needs you, working,
-/// paused, then everything else.
+/// How much a task asks to be seen (it never orders the list): pinned,
+/// needs you, working, paused, then everything else. The first three stay
+/// out of "Show older"; the last are drawn quieter.
 fn rank(l: &TaskView, pinned: bool) -> u8 {
     use mimir_core::proto::TaskState;
     use mimir_core::task::Status;
@@ -1482,7 +1420,7 @@ fn task_menu(
     del: &str,
     actions: &mut Vec<Action>,
 ) {
-    use crate::menus::{danger, item, item_if, sep};
+    use crate::menus::{danger, item, sep};
     let t = &l.task;
     let org = |o: Organize| Action::Organize(o);
     if item(ui, "Open", "") {
@@ -1491,16 +1429,10 @@ fn task_menu(
     if item(ui, "Rename…", "") {
         actions.push(org(Organize::RenameTask(t.id.clone())));
     }
-    if let Some(p) = place {
-        if item(ui, if p.pinned { "Unpin" } else { "Pin to top" }, "") {
-            actions.push(org(Organize::PinTask(t.id.clone(), !p.pinned)));
-        }
-        if item_if(ui, p.up, "Move up", "Already first") {
-            actions.push(org(Organize::MoveTask(t.id.clone(), true)));
-        }
-        if item_if(ui, p.down, "Move down", "Already last") {
-            actions.push(org(Organize::MoveTask(t.id.clone(), false)));
-        }
+    if let Some(p) = place
+        && item(ui, if p.pinned { "Unpin" } else { "Pin to top" }, "")
+    {
+        actions.push(org(Organize::PinTask(t.id.clone(), !p.pinned)));
     }
     if item(ui, crate::labels::MOVE_TO, "") {
         actions.push(org(Organize::AskMove(t.id.clone())));
@@ -1536,21 +1468,13 @@ fn task_row(
     as_chat: bool,
     actions: &mut Vec<Action>,
 ) {
-    let org = |o: Organize| Action::Organize(o);
     let t = &l.task;
     let is_sel = selected == Some(&t.id) && view == View::Task;
     let pinned = place.as_ref().is_some_and(|p| p.pinned);
     let state = l.shown_state();
     let needs = state == mimir_core::proto::TaskState::NeedsYou;
     let w = ui.available_width();
-    let (rect, resp) = ui.allocate_exact_size(
-        egui::vec2(w, ROW_H),
-        if place.is_some() {
-            egui::Sense::click_and_drag()
-        } else {
-            egui::Sense::click()
-        },
-    );
+    let (rect, resp) = ui.allocate_exact_size(egui::vec2(w, ROW_H), egui::Sense::click());
     resp.widget_info(|| {
         egui::WidgetInfo::labeled(
             egui::accesskit::Role::Button,
@@ -1706,23 +1630,6 @@ fn task_row(
     };
     if resp.clicked() {
         actions.push(Action::Select(t.id.clone()));
-    }
-    if let Some(p) = &place {
-        if resp.drag_started() {
-            egui::DragAndDrop::set_payload(ui.ctx(), TaskDrag(t.id.clone(), p.project.to_string()));
-        }
-        // A dragged task of the same project dropped here takes this place.
-        if ui.rect_contains_pointer(resp.rect)
-            && let Some(d) = egui::DragAndDrop::payload::<TaskDrag>(ui.ctx())
-            && d.0 != t.id
-            && same(&d.1, p.project)
-        {
-            let from = p.order.iter().position(|o| o.task.id == d.0);
-            drop_line(ui, resp.rect, from.is_some_and(|f| f < p.index));
-            if ui.input(|i| i.pointer.any_released()) {
-                actions.push(org(Organize::DropTask(d.0.clone(), t.id.clone())));
-            }
-        }
     }
     crate::menus::open(&resp, |ui| {
         if as_chat {

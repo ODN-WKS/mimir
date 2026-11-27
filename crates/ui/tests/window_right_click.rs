@@ -490,8 +490,6 @@ fn a_task_and_a_project_in_the_left_menu_have_their_menus() {
             "Open",
             "Rename…",
             "Pin to top",
-            "Move up",
-            "Move down",
             labels::MOVE_TO,
             "Copy the whole chat",
             "Open its folder",

@@ -30,6 +30,7 @@ pub mod models;
 pub mod needs;
 pub mod notify;
 pub mod ollama;
+pub mod order;
 pub mod paths;
 pub mod pcsessions;
 pub mod pcstats;

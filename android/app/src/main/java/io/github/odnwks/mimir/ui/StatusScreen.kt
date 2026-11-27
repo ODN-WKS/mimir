@@ -319,6 +319,10 @@ fun Gauge(state: CheckState, fraction: Float, size: androidx.compose.ui.unit.Dp 
     }
 }
 
+/** All tasks' order: newest first by the person's last message, whatever each one's state. */
+fun allTasksOrder(tasks: List<io.github.odnwks.mimir.data.Task>): List<io.github.odnwks.mimir.data.Task> =
+    tasks.sortedByDescending { io.github.odnwks.mimir.data.ListOrder.task(it.youMs, it.createdUnix) }
+
 /**
  * All tasks (from Status or a magnifier): search over titles, projects and what was said, a
  * filter by state, and Archived, where each archived task can come back.
@@ -327,12 +331,8 @@ fun Gauge(state: CheckState, fraction: Float, size: androidx.compose.ui.unit.Dp 
 fun AllTasksScreen(state: StationState, station: io.github.odnwks.mimir.data.Station, nav: Navigator, archivedFirst: Boolean = false) {
     var query by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf("") }
     var only by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf(if (archivedFirst) "Archived" else "All") }
-    val order = listOf("Needs you", "Working", "Starting", "Live", "Paused", "Stopped unexpectedly", "Stopped")
     val archived = only == "Archived"
-    val sorted = (if (archived) state.archived else state.tasks).sortedWith(
-        compareBy<io.github.odnwks.mimir.data.Task> { order.indexOf(it.stateWords).let { i -> if (i < 0) order.size else i } }
-            .thenByDescending { maxOf(it.activeUnix, it.createdUnix) },
-    )
+    val sorted = allTasksOrder(if (archived) state.archived else state.tasks)
     val q = query.trim()
     val shown = sorted.filter {
         (archived || taskMatchesFilter(it.stateWords, only)) &&

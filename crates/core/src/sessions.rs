@@ -999,6 +999,20 @@ fn iso_unix(s: &str) -> Option<i64> {
     Some(days * 86_400 + hh * 3600 + mm * 60 + ss)
 }
 
+/// What the person typed on this transcript line, if they typed it.
+pub(crate) fn person_words(v: &Value) -> Option<String> {
+    match classify(v) {
+        Some(UserLine::Person(words)) => Some(words),
+        _ => None,
+    }
+}
+
+/// When a transcript line was written (ms since 1970).
+pub(crate) fn line_ms(v: &Value) -> Option<i64> {
+    let ms = crate::devlog::parse_iso(v.get("timestamp")?.as_str()?)?;
+    i64::try_from(ms).ok()
+}
+
 /// The first thing asked in a transcript.
 pub fn first_ask(path: &Path) -> Option<String> {
     head(path).map(|(_, f)| f).filter(|f| !f.trim().is_empty())
@@ -1014,7 +1028,12 @@ fn add_line(t: &mut Task, line: &str) {
     }
     match classify(&v) {
         Some(UserLine::Person(you)) => {
+            let before = t.you_ms;
             t.add_you(&you);
+            // Read from a file: sent when its line says, not now.
+            if !crate::order::own_words(&you) {
+                t.you_ms = before.max(line_ms(&v));
+            }
             return;
         }
         Some(UserLine::HelperFinished(name)) => {

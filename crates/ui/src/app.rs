@@ -720,7 +720,18 @@ impl App {
     /// open (not archived) task uses.
     pub(crate) fn projects(&self) -> Vec<String> {
         let tasks = self.station.as_ref().ok().map(|r| &r.tasks);
-        places::all_projects(&self.settings, tasks.into_iter().flatten().map(|l| &l.task))
+        let tasks: Vec<&mimir_core::task::Task> =
+            tasks.into_iter().flatten().map(|l| &l.task).collect();
+        let mut all = places::all_projects(&self.settings, tasks.iter().copied());
+        // Newest first by the person's last message in any of its tasks.
+        all.sort_by_cached_key(|p| {
+            let its = tasks
+                .iter()
+                .copied()
+                .filter(|t| !t.incognito && mimir_core::paths::same(t.home_project(), p));
+            std::cmp::Reverse(mimir_core::order::project_key(its))
+        });
+        all
     }
 
     /// Looks again for sessions started elsewhere, in the background, at

@@ -498,6 +498,7 @@ object Wire {
             plan = h.optString("mode") == "Plan",
             mode = h.optString("mode", "Ask"),
             activeUnix = h.optLong("active_unix"),
+            youMs = h.optLong("you_ms"),
             liveElsewhere = h.optBoolean("live_elsewhere"),
             outside = if (h.has("outside")) h.optBoolean("outside") else null,
             long = h.optJSONObject("long")?.let { l ->
@@ -830,6 +831,8 @@ data class LinkTask(
     val failed: Boolean = false,
     /** A Claude Code process of the task runs on the PC: something there can be stopped (true when an older PC doesn't say). */
     val running: Boolean = true,
+    /** When the person last sent a message in it (ms since 1970); 0 from an older PC or with none. */
+    val youMs: Long = 0,
 )
 
 /** A task whose conversation has run long (core's one rule, sent by the PC). */

@@ -312,7 +312,7 @@ LazyColumn(
         // Earlier chats sit on the chat screen itself, under a new chat (the list is upside down).
         if (s.whisper && s.chat.turns.isEmpty() && !s.writing) item(key = "whisper") { WhisperHello(s.web) }
         if (!s.whisper && s.chat.turns.isEmpty() && !s.writing && s.earlier.isNotEmpty()) {
-            items(s.earlier, key = { "earlier-${it.id}" }) { c -> ChatRow(c, { open(c.id) }, { onDelete(c.id) }, { onRename(it, c.id) }) }
+            items(s.earlier.sortedByDescending(io.github.odnwks.mimir.data.ListOrder::chat), key = { "earlier-${it.id}" }) { c -> ChatRow(c, { open(c.id) }, { onDelete(c.id) }, { onRename(it, c.id) }) }
             item(key = "earlier") { SectionTitle("Earlier chats", Modifier.padding(top = 8.dp)) }
         }
         if (s.chat.turns.isEmpty() && !s.writing) item(key = "empty") {

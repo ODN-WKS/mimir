@@ -8,16 +8,9 @@ use mimir_core::client::{Station, TaskView};
 
 /// What the sidebar asks for; applied after the frame like `Action`.
 pub enum Organize {
-    /// Move a project one place up (true) or down.
-    MoveProject(String, bool),
-    /// A project dragged onto another project: it takes that place.
-    DropProject(String, String),
     /// Fold or unfold a project's task list.
     ToggleProject(String),
     PinTask(String, bool),
-    MoveTask(String, bool),
-    /// A task dragged onto another task of the same project.
-    DropTask(String, String),
     /// Open the task with its name ready to change.
     RenameTask(String),
     /// Ask for a project's name in Mímir.
@@ -44,11 +37,6 @@ pub enum Organize {
     Add(Vec<String>),
 }
 
-/// Dragged in the sidebar: a project header.
-pub struct ProjectDrag(pub String);
-/// Dragged in the sidebar: a task row (id, project).
-pub struct TaskDrag(pub String, pub String);
-
 /// Whether two spellings name the same folder.
 pub use mimir_core::paths::same;
 
@@ -71,64 +59,18 @@ pub fn order_tasks(newest_first: &[String], order: &[String], pinned: &[String])
     first
 }
 
-/// Swaps `item` in `v` with its neighbour (above when `up`) among
-/// `visible`, the entries shown next to each other. False if it can't move.
-pub fn swap_with_neighbour(v: &mut [String], visible: &[String], item: &str, up: bool) -> bool {
-    let Some(i) = visible.iter().position(|x| x == item) else {
-        return false;
-    };
-    let j = if up {
-        match i.checked_sub(1) {
-            Some(j) => j,
-            None => return false,
-        }
-    } else if i + 1 < visible.len() {
-        i + 1
-    } else {
-        return false;
-    };
-    let (Some(a), Some(b)) = (
-        v.iter().position(|x| x == item),
-        v.iter().position(|x| *x == visible[j]),
-    ) else {
-        return false;
-    };
-    v.swap(a, b);
-    true
-}
-
-/// Moves `item` to where `target` is (after it when moving down, before
-/// it when moving up). False if either is missing.
-pub fn place_at(v: &mut Vec<String>, item: &str, target: &str) -> bool {
-    let (Some(from), Some(to)) = (
-        v.iter().position(|x| x == item),
-        v.iter().position(|x| x == target),
-    ) else {
-        return false;
-    };
-    if from == to {
-        return false;
-    }
-    let x = v.remove(from);
-    v.insert(to, x);
-    true
-}
-
-/// A project's tasks (not archived) in sidebar order.
+/// A project's tasks (not archived) in sidebar order: pinned first, then
+/// newest first by the person's last message.
 pub fn project_tasks<'a>(r: &'a Station, settings: &Settings, project: &str) -> Vec<&'a TaskView> {
-    let newest: Vec<&TaskView> = r
+    let mut newest: Vec<&TaskView> = r
         .tasks
         .iter()
         .rev()
         .filter(|l| same(l.task.home_project(), project) && !l.task.archived)
         .collect();
+    newest.sort_by_key(|l| std::cmp::Reverse(mimir_core::order::task_key(&l.task)));
     let ids: Vec<String> = newest.iter().map(|l| l.task.id.clone()).collect();
-    let order = settings
-        .task_order
-        .get(project)
-        .map(Vec::as_slice)
-        .unwrap_or(&[]);
-    order_tasks(&ids, order, &settings.pinned_tasks)
+    order_tasks(&ids, &[], &settings.pinned_tasks)
         .iter()
         .filter_map(|id| newest.iter().find(|l| &l.task.id == id).copied())
         .collect()
@@ -159,23 +101,6 @@ pub fn removal_blocked(tasks: &[(String, bool, bool, bool)], delete: bool) -> Op
 }
 
 impl App {
-    /// The project a task belongs to, spelled as the sidebar lists it.
-    fn project_of(&self, id: &str) -> Option<String> {
-        let r = self.station.as_ref().ok()?;
-        let home = r
-            .tasks
-            .iter()
-            .find(|l| l.task.id == id)?
-            .task
-            .home_project();
-        Some(
-            self.projects()
-                .into_iter()
-                .find(|p| same(p, home))
-                .unwrap_or_else(|| home.to_string()),
-        )
-    }
-
     /// A project's open task ids in sidebar order.
     fn task_ids(&self, project: &str) -> Vec<String> {
         self.station.as_ref().map_or(vec![], |r| {
@@ -247,19 +172,6 @@ impl App {
 
     pub(crate) fn organize(&mut self, o: Organize) {
         match o {
-            Organize::MoveProject(p, up) => {
-                let mut all = self.projects();
-                let shown = all.clone();
-                if swap_with_neighbour(&mut all, &shown, &p, up) {
-                    self.settings.projects = all;
-                }
-            }
-            Organize::DropProject(d, t) => {
-                let mut all = self.projects();
-                if place_at(&mut all, &d, &t) {
-                    self.settings.projects = all;
-                }
-            }
             Organize::ToggleProject(p) => {
                 let c = &mut self.settings.collapsed_projects;
                 if c.contains(&p) {
@@ -272,36 +184,6 @@ impl App {
                 self.settings.pinned_tasks.retain(|x| x != &id);
                 if yes {
                     self.settings.pinned_tasks.push(id);
-                }
-            }
-            Organize::MoveTask(id, up) => {
-                let Some(project) = self.project_of(&id) else {
-                    return;
-                };
-                let mut ids = self.task_ids(&project);
-                let pinned = &self.settings.pinned_tasks;
-                let is_pinned = pinned.contains(&id);
-                // Pinned tasks move among the pinned, the rest among the rest.
-                let shown: Vec<String> = ids
-                    .iter()
-                    .filter(|x| pinned.contains(x) == is_pinned)
-                    .cloned()
-                    .collect();
-                if swap_with_neighbour(&mut ids, &shown, &id, up) {
-                    self.settings.task_order.insert(project, ids);
-                }
-            }
-            Organize::DropTask(d, t) => {
-                let Some(project) = self.project_of(&d) else {
-                    return;
-                };
-                if self.project_of(&t).as_ref() != Some(&project) {
-                    return;
-                }
-                let mut ids = self.task_ids(&project);
-                // Pins are not changed by dragging: pinned tasks stay on top.
-                if place_at(&mut ids, &d, &t) {
-                    self.settings.task_order.insert(project, ids);
                 }
             }
             Organize::RenameTask(id) => {
@@ -484,33 +366,6 @@ mod tests {
             order_tasks(&newest, &order, &v(&["a", "d"])),
             v(&["d", "a", "e", "b", "c"])
         );
-    }
-
-    #[test]
-    fn swapping_skips_hidden_entries() {
-        let mut all = v(&["a", "b", "c", "d"]);
-        let shown = v(&["a", "c", "d"]);
-        assert!(swap_with_neighbour(&mut all, &shown, "c", true));
-        assert_eq!(all, v(&["c", "b", "a", "d"]));
-        assert!(!swap_with_neighbour(&mut all, &shown, "d", false));
-        assert!(!swap_with_neighbour(
-            &mut all,
-            &v(&["c", "a", "d"]),
-            "c",
-            true
-        ));
-        assert!(!swap_with_neighbour(&mut all, &shown, "zz", true));
-    }
-
-    #[test]
-    fn placing_takes_the_targets_spot() {
-        let mut x = v(&["a", "b", "c", "d"]);
-        assert!(place_at(&mut x, "a", "c"));
-        assert_eq!(x, v(&["b", "c", "a", "d"]));
-        assert!(place_at(&mut x, "d", "b"));
-        assert_eq!(x, v(&["d", "b", "c", "a"]));
-        assert!(!place_at(&mut x, "d", "d"));
-        assert!(!place_at(&mut x, "q", "d"));
     }
 
     #[test]

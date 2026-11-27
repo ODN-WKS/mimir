@@ -285,8 +285,8 @@ fun ChatsScreen(state: StationState, station: Station, engine: Engine?, nav: Nav
     val one = !state.paired || state.pcTalks
     val all = buildList {
         if (local != null) {
-            if (!local.whisper && local.chat.turns.isNotEmpty()) add(local.chat.let { Conversation("m-${it.id}", it.id, it.title, it.at, it.turns.size, it.turns.joinToString(" ") { t -> t.text }, mimir = true, open = true, ran = it.lastRan) })
-            local.earlier.forEach { c -> add(Conversation("m-${c.id}", c.id, c.title, c.at, c.turns.size, c.turns.joinToString(" ") { it.text }, mimir = true, open = false, ran = c.lastRan)) }
+            if (!local.whisper && local.chat.turns.isNotEmpty()) add(local.chat.let { Conversation("m-${it.id}", it.id, it.title, io.github.odnwks.mimir.data.ListOrder.chat(it), it.turns.size, it.turns.joinToString(" ") { t -> t.text }, mimir = true, open = true, ran = it.lastRan) })
+            local.earlier.forEach { c -> add(Conversation("m-${c.id}", c.id, c.title, io.github.odnwks.mimir.data.ListOrder.chat(c), c.turns.size, c.turns.joinToString(" ") { it.text }, mimir = true, open = false, ran = c.lastRan)) }
         }
         if (state.paired && !one) {
             val open = state.chat.filter { it is io.github.odnwks.mimir.data.ChatEntry.Mine || it is io.github.odnwks.mimir.data.ChatEntry.Reply }

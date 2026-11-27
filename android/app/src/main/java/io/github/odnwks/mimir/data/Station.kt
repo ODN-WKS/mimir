@@ -475,6 +475,8 @@ data class Task(
     val createdUnix: Long = 0,
     /** When its conversation last changed, wherever it went on (0: not known). */
     val activeUnix: Long = 0,
+    /** When the person last sent a message in it (ms since 1970; 0: none, or an older PC). Lists are ordered by it ([ListOrder]). */
+    val youMs: Long = 0,
     /**
      * Its conversation is going on in a terminal or the Claude app right now: replies go there.
      * A reply from here would start a second Claude on it, so there's no reply box.

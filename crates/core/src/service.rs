@@ -1927,7 +1927,8 @@ impl Service {
                 Ok(json!({"path": path, "name": crate::paths::project_name(&path), "made": made}))
             }
             Call::Projects => {
-                let all = self.pickable_projects();
+                let mut all = self.pickable_projects();
+                self.newest_first(&mut all, |p| p);
                 let names = crate::paths::list_names(&self.settings, &all);
                 let projects: Vec<Value> = all
                     .into_iter()
@@ -1939,7 +1940,7 @@ impl Service {
                     .tasks
                     .iter()
                     .filter(|l| Path::new(&l.task.project) != crate::paths::chats_dir())
-                    .max_by_key(|l| l.task.created_unix)
+                    .max_by_key(|l| crate::order::task_key(&l.task))
                     .map(|l| l.task.project.clone())
                     .or_else(|| self.settings.last_project.clone());
                 Ok(json!({"projects": projects, "last": last}))
@@ -2959,11 +2960,13 @@ impl Service {
         let old_title = t.title.clone();
         let (project, rules) = (t.project.clone(), t.ground_rules.clone());
         let mode = crate::long::fresh_mode(from_phone, t.mode);
+        let you_ms = t.you_ms;
         self.runner.next_rules = rules;
         self.runner.carried_on(task, note);
         let id =
             self.runner
                 .new_task_continued(Path::new(&project), &title, &text, brief, mode, model);
+        self.runner.keep_place(&id, you_ms);
         if did_work {
             self.runner.note(
                 &id,
@@ -3007,7 +3010,9 @@ impl Service {
             "{first}\n\n(This was first started in {from} by mistake. What happened there:\n{brief})"
         );
         self.runner.next_rules = rules;
+        let you_ms = self.task(task).and_then(|l| l.task.you_ms);
         let id = self.new_task_ask(project, &text);
+        self.runner.keep_place(&id, you_ms);
         self.runner.next_rules = None;
         let to = crate::paths::display_name(&self.settings, project);
         let note = if changed {
@@ -3582,6 +3587,20 @@ impl Service {
 
     // ---- status from facts ----
 
+    /// Puts projects in the order every list shows them: newest first by
+    /// the person's last message in any of their tasks.
+    fn newest_first<T>(&self, projects: &mut [T], path: impl Fn(&T) -> &str) {
+        projects.sort_by_cached_key(|p| {
+            let tasks = self
+                .runner
+                .tasks
+                .iter()
+                .map(|l| &l.task)
+                .filter(|t| !t.incognito && crate::paths::same(t.home_project(), path(p)));
+            std::cmp::Reverse(crate::order::project_key(tasks))
+        });
+    }
+
     /// The status page now. With `with_git`, git state too (a little slower).
     fn status_page(&self, with_git: bool) -> StatusPage {
         let items = self.needs_items();
@@ -3619,12 +3638,14 @@ impl Service {
             })
             .collect();
 
-        crate::facts::page(
+        let mut page = crate::facts::page(
             projects,
             self.runner.weekly.clone(),
             self.runner.five_hour.clone(),
             crate::needs::now(),
-        )
+        );
+        self.newest_first(&mut page.projects, |p| &p.project);
+        page
     }
 
     /// Reads the projects' run logs; a feature that goes from passing to
@@ -5243,11 +5264,7 @@ impl Service {
                 crate::models::clock(back_at)
             ),
         );
-        self.runner.send(
-            id,
-            "Claude's usage limit ran out partway through this task. Carry on from where it \
-             stopped.",
-        );
+        self.runner.send(id, crate::order::LIMIT_CARRY_ON);
         Ok(f.name)
     }
 
@@ -5427,6 +5444,8 @@ impl Service {
             .into_iter()
             .filter(|p| !crate::paths::same(p, &chats))
             .collect();
+        let mut list = list;
+        self.newest_first(&mut list, |p| p);
         let names = crate::paths::list_names(&self.settings, &list);
         let projects = list
             .into_iter()
@@ -5736,6 +5755,7 @@ fn header(l: &runner::Live, queued: &HashMap<String, QueuedMessage>) -> TaskHead
         placed: t.placed,
         placed_why: t.placement_note.as_deref().and_then(crate::placement::why),
         active_unix: t.active_unix,
+        you_ms: t.you_ms,
         live_elsewhere: t.live_elsewhere,
         outside: t.outside,
         elsewhere_in: elsewhere_in(t),

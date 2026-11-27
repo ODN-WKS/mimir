@@ -1,5 +1,6 @@
 package io.github.odnwks.mimir.ui
 
+import io.github.odnwks.mimir.data.ListOrder
 import io.github.odnwks.mimir.ui.theme.Type
 import android.content.SharedPreferences
 import androidx.compose.foundation.background
@@ -119,8 +120,8 @@ fun menuChats(state: StationState, local: LocalState?, now: Long): List<MenuChat
     val one = !state.paired || state.pcTalks
     return buildList {
         if (local != null) {
-            if (!local.whisper && local.chat.turns.isNotEmpty()) add(MenuChat("m-${local.chat.id}", local.chat.id, local.chat.title, local.chat.at, mimir = true, open = true))
-            local.earlier.forEach { add(MenuChat("m-${it.id}", it.id, it.title, it.at, mimir = true, open = false)) }
+            if (!local.whisper && local.chat.turns.isNotEmpty()) add(MenuChat("m-${local.chat.id}", local.chat.id, local.chat.title, ListOrder.chat(local.chat), mimir = true, open = true))
+            local.earlier.forEach { add(MenuChat("m-${it.id}", it.id, it.title, ListOrder.chat(it), mimir = true, open = false)) }
         }
         if (state.paired && !one) state.pastChats.forEach { add(MenuChat("p-${it.id}", it.id, it.title, it.at, mimir = false, open = false)) }
     }.sortedByDescending { if (it.open && it.at <= 0) now else it.at }

@@ -168,6 +168,8 @@ class LinkStation(
     private val chat = ArrayList<ChatEntry>()
     /** The chat as last kept in the vault (its hash), so it's saved only when it changed. */
     private var savedChat = 0
+    /** The person's last message in it when last kept: only a new one makes the chat newer. */
+    private var savedMine: String? = null
     /** What each sent chat message became on the PC, by message id. */
     private val filed = HashMap<String, Filed>()
     /** Earlier conversations of the chat, newest first (kept in the vault). */
@@ -248,6 +250,7 @@ class LinkStation(
             if (i >= 0) chat[i] = mine else if (past.none { it.log.contains(id) }) chat += mine
         }
         savedChat = chat.hashCode()
+        savedMine = lastMine()
         expireOld()
         publish()
         Thread({ loop() }, "mimir-link").apply { isDaemon = true }.start()
@@ -937,6 +940,8 @@ class LinkStation(
                 val i = chat.indexOfFirst { it.id == id }
                 if (i >= 0) chat[i] = ChatEntry.Mine(id, text, Filing(FilingKind.Waiting, ""))
             }
+            // Opening it is no message: it keeps its place.
+            data = data.copy(chatAt = pick.at); savedMine = lastMine()
             savePast()
         }
         publish()
@@ -1697,13 +1702,22 @@ class LinkStation(
     private fun name(path: String): String =
         projects.firstOrNull { it.first == path }?.second ?: path.trimEnd('/').substringAfterLast('/')
 
+    private fun lastMine(): String? = chat.lastOrNull { it is ChatEntry.Mine }?.id
+
     private fun publish() {
         val s = synchronized(lock) {
             // The chat is kept (its newest 200 entries) whenever it changed.
             val h = chat.hashCode()
             if (h != savedChat) {
                 savedChat = h
-                data = data.copy(chat = ChatLog.write(chat.takeLast(200), filed), chatAt = if (chat.isEmpty()) 0 else System.currentTimeMillis())
+                val mine = lastMine()
+                val at = when {
+                    chat.isEmpty() -> 0
+                    mine != savedMine || data.chatAt == 0L -> System.currentTimeMillis()
+                    else -> data.chatAt
+                }
+                savedMine = mine
+                data = data.copy(chat = ChatLog.write(chat.takeLast(200), filed), chatAt = at)
                 saveData()
             }
             build()
@@ -1723,8 +1737,9 @@ class LinkStation(
         val now = System.currentTimeMillis() / 1000
         // Something answered here waits to be sent; it no longer asks.
         val needs = Mapping.needs(Held.asking(items, data.answers) { it.askId }, ::name, now)
-        // The PC's rule: most recent activity first (a live conversation on top).
-        val all = tasks.values.filter { !it.incognito }.sortedByDescending { maxOf(it.activeUnix, it.createdUnix) }
+        // The PC's rule: newest first by the person's last message.
+        val all = tasks.values.filter { !it.incognito }.sortedByDescending { ListOrder.task(it.youMs, it.createdUnix) }
+        val projectKeys = all.groupBy { it.project }.mapValues { (_, l) -> ListOrder.project(l.map { it.youMs to it.createdUnix }) }
         val waitingTasks = data.newTasks.map { waitingTask(it) }
         val ts = waitingTasks + all.filter { !it.archived }.map { t -> task(t, needs) }
         val inc = tasks.values.firstOrNull { it.incognito }
@@ -1755,11 +1770,12 @@ class LinkStation(
             projects = run {
                 val listed = if (p != null) Mapping.projects(p, tasks.values, ideas, now) else emptyList()
                 val seen = (p?.projects?.map { it.path }.orEmpty()).toSet()
-                listed + projects.filterNot { it.first in seen }.map { (path, n) ->
-                    Project(n, path, CheckState.None, 0, 0, "", "", emptyList(), "", tasks.values.filter { it.project == path }.map {
+                val unlisted = projects.filterNot { it.first in seen }.map { (path, n) ->
+                    Project(n, path, CheckState.None, 0, 0, "", "", emptyList(), "", all.filter { it.project == path }.map {
                         ProjectTask(it.id, it.title, if (Mapping.working(it) && connected) "Working" else it.status, Chip.of(Mapping.working(it) && connected, it.status))
                     }, tasks.values.count { it.project == path && Mapping.working(it) && connected })
                 }
+                (listed + unlisted).sortedByDescending { projectKeys[it.about] ?: 0L }
             }.map { pr ->
                 // A task's state on its project page is the task's own words, not a second guess.
                 pr.copy(tasks = pr.tasks.map { pt -> ts.firstOrNull { it.id == pt.taskId && pt.chip != Chip.Waiting }?.let { Mapping.withTaskWords(pt, it.stateWords) } ?: pt })
@@ -1798,7 +1814,7 @@ class LinkStation(
             phones = if (data.pcId != null) listOf(Phone("this", phoneName(), "This phone", thisPhone = true)) else emptyList(),
             phoneOnline = network(),
             paired = data.pcId != null,
-            projectChoices = projects.map { it.second },
+            projectChoices = projects.sortedByDescending { projectKeys[it.first] ?: 0L }.map { it.second },
             lastProject = lastProject?.let { name(it) }.orEmpty(),
             startedTasks = HashMap(started),
             answersWaiting = if (connected) 0 else data.answers.size,
@@ -1862,6 +1878,7 @@ class LinkStation(
             running = t.running && connected,
             createdUnix = t.createdUnix,
             activeUnix = t.activeUnix,
+            youMs = t.youMs,
             liveElsewhere = t.liveElsewhere,
             long = t.long,
             sign = LiveSign(

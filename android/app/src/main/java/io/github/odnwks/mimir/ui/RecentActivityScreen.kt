@@ -127,7 +127,7 @@ fun recentActivity(state: StationState, local: LocalState?, now: Long): List<Rec
     }
     val tasks = state.tasks.filter { !it.whisper }.map { t ->
         val (right, tone) = taskRight(t)
-        val at = maxOf(t.activeUnix, t.createdUnix).let { if (it > 0) it * 1000 else now }
+        val at = io.github.odnwks.mimir.data.ListOrder.task(t.youMs, t.createdUnix).let { if (it > 0) it else now }
         RecentItem("task:${t.id}", t.title, t.project, firstWords(t), at, right, tone, task = t.id)
     }
     return (chats + tasks).sortedByDescending { it.at }

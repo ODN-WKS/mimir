@@ -766,6 +766,10 @@ pub struct TaskHeader {
     /// PC, the phone, claude.ai, a terminal); seconds since 1970.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub active_unix: Option<i64>,
+    /// When the person last sent a message in it (ms since 1970): lists are
+    /// ordered by it. Absent from an older PC, or with no message of theirs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub you_ms: Option<i64>,
     /// Its conversation is going on outside Mímir right now (a
     /// terminal, the Claude app): replies go there, not from here.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]

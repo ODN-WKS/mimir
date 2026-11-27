@@ -211,6 +211,10 @@ pub struct Task {
     /// PC, the phone, claude.ai, a terminal); seconds since 1970.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub active_unix: Option<i64>,
+    /// When the person last sent a message in it (ms since 1970): what
+    /// lists are ordered by ([`crate::order`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub you_ms: Option<i64>,
     /// Its Claude Code runs in a host (host.rs): the host's key, and how
     /// far its output was read when the task was saved. A restart carries
     /// on from there.
@@ -435,6 +439,7 @@ impl Task {
             placement_note: None,
             placed_why: None,
             active_unix: None,
+            you_ms: None,
             host: None,
             live_elsewhere: false,
             outside: false,
@@ -484,6 +489,7 @@ impl Task {
         self.placed = h.placed;
         self.placed_why = h.placed_why.clone();
         self.active_unix = h.active_unix;
+        self.you_ms = h.you_ms;
         self.live_elsewhere = h.live_elsewhere;
         self.outside = h.outside;
         self.elsewhere_in = h.elsewhere_in.clone();
@@ -536,7 +542,17 @@ impl Task {
         }
     }
 
+    /// A message of the person (or, by its words, one of Mímir's own).
     pub fn add_you(&mut self, text: &str) {
+        self.add_own(text);
+        if !crate::order::own_words(text) {
+            self.you_ms = Some(unix_ms());
+        }
+    }
+
+    /// Words sent in the person's place: shown as theirs, but they move the
+    /// task nowhere in a list.
+    pub fn add_own(&mut self, text: &str) {
         self.entries.push(Entry::You(text.to_string()));
         self.stamp(EntryMeta {
             at: Some(unix_ms()),
