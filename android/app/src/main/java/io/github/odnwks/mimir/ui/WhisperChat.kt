@@ -144,6 +144,26 @@ fun whisperStartFor(paired: Boolean, pcFree: Boolean, pcOnline: Boolean, phoneRe
     else -> WhisperStart.Nowhere
 }
 
+/** A Whisper on the PC that can't start: what would make it work (QA16 Q21). */
+const val WHISPER_PC_AWAY = "Your PC isn't connected, and a Whisper can't wait for it. Start one when your PC is back."
+const val WHISPER_PC_NO_MODEL = "A Whisper on your PC needs a model there. Add one on your PC, then start the Whisper."
+const val WHISPER_NEEDS_PROJECT = "A Whisper on your PC runs in one of your projects. Make a project first."
+const val WHISPER_MAKE_PROJECT = "Make a project"
+const val WHISPER_COULD_NOT_START = "Your PC couldn't start the Whisper just now. Check that it is connected and try again."
+
+/** In place of the box: why this Whisper can't start, and the one thing that would make it work. */
+@Composable
+fun WhisperCantStart(why: String, onMakeProject: (() -> Unit)?) {
+    Column(
+        Modifier.fillMaxWidth().clip(androidx.compose.foundation.shape.RoundedCornerShape(16.dp)).background(WhisperTint.Card)
+            .padding(14.dp).semantics { liveRegion = androidx.compose.ui.semantics.LiveRegionMode.Polite },
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Text(why, style = Type.BodyTight, color = Palette.WhisperBody)
+        if (onMakeProject != null) BigButton(WHISPER_MAKE_PROJECT, Look.Whisper, onMakeProject, Modifier.fillMaxWidth(), height = 48.dp)
+    }
+}
+
 const val WHISPER_NOWHERE = "A Whisper needs a model on your PC, or $AI_NAME on this phone. Neither is ready."
 const val WHISPER_WEB_PHONE_ONLY = "A Whisper with internet runs on this phone, and this phone can't run $AI_NAME."
 

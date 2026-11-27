@@ -162,6 +162,9 @@ private fun SheetContent(sheet: Sheet, state: StationState, station: Station, na
                 "Paused", "Stopped", "Stopped unexpectedly" -> MenuRow(Glyphs.Play, "Continue") { station.continueTask(id); nav.closeSheet() }
                 else -> {}
             }
+            // Stop is for work that runs: the Stop button is on the task itself while it does. Beside Pause,
+            // so it stays on the menu's first screen with Fresh start above Archive (QA16 Q22).
+            if (task != null && task.showsStop && !task.stopPending && (!elsewhere || state.pcSessions == null)) MenuRow(Glyphs.Stop, "Stop this task…", Palette.Red) { nav.openSheet(Sheet.StopTask(id)) }
             MenuRow(Glyphs.Steps, "Rename…") { nav.openSheet(Sheet.RenameTask(id)) }
             // Last seen working and the PC is away: Pause and Stop need it, and the menu says why they are missing.
             if (task?.stateWords == "Was working (PC away)") Row(Modifier.fillMaxWidth().heightIn(min = 52.dp).padding(horizontal = 12.dp).semantics(mergeDescendants = true) {},
@@ -188,6 +191,16 @@ private fun SheetContent(sheet: Sheet, state: StationState, station: Station, na
                 }
                 MenuRow(Glyphs.Shield, "Always allowed in this task…") { nav.openSheet(Sheet.AlwaysAllowed(id)) }
             }
+            // The same chat, a new session from the hand-off. Not for a Whisper, a chat or a task still on this phone.
+            // Above Archive and Delete (QA16 Q22), so it isn't the row under the red one.
+            if (!elsewhere && task != null && station.canFreshStart() && !task.whisper && !task.fromChats && !task.waitingToStart) MenuRow(Glyphs.NewDocument, FRESH_START, note = FRESH_START_ABOUT) {
+                val working = task.showsStop
+                station.freshStart(id) { why ->
+                    val say = why ?: FRESH_START_LATER.takeIf { working }
+                    if (say != null) android.os.Handler(android.os.Looper.getMainLooper()).post { standIn(say) }
+                }
+                nav.closeSheet()
+            }
             MenuRow(Glyphs.Folder, "Archive") {
                 station.archiveTask(id); nav.closeSheet(); nav.closeScreen()
                 undo(Undoable("Archived ${task?.title ?: "the task"}", undo = { station.unarchiveTask(id) }))
@@ -199,18 +212,6 @@ private fun SheetContent(sheet: Sheet, state: StationState, station: Station, na
                 Icon(Glyphs.Close, null, tint = Palette.TextDim, modifier = Modifier.size(22.dp))
                 Text("Delete (when it stops)", style = Type.BodyTight, color = Palette.TextDim, modifier = Modifier.weight(1f))
             } else MenuRow(Glyphs.Close, "Delete…", Palette.Red) { nav.openSheet(Sheet.DeleteTask(id)) }
-            // Stop is for work that runs: the Stop button is on the task itself while it does.
-            if (task != null && task.showsStop && !task.stopPending && (!elsewhere || state.pcSessions == null)) MenuRow(Glyphs.Stop, "Stop this task…", Palette.Red) { nav.openSheet(Sheet.StopTask(id)) }
-            // The same chat, a new session from the hand-off. Not for a Whisper, a chat or a task still on this phone.
-            // Last, so that Stop and the rows above it stay where they were, on the first screen of the menu.
-            if (!elsewhere && task != null && station.canFreshStart() && !task.whisper && !task.fromChats && !task.waitingToStart) MenuRow(Glyphs.NewDocument, FRESH_START, note = FRESH_START_ABOUT) {
-                val working = task.showsStop
-                station.freshStart(id) { why ->
-                    val say = why ?: FRESH_START_LATER.takeIf { working }
-                    if (say != null) android.os.Handler(android.os.Looper.getMainLooper()).post { standIn(say) }
-                }
-                nav.closeSheet()
-            }
             if (!elsewhere) PrivacyLine("Your PC does this task. This phone and your PC talk privately.")
         }
         is Sheet.ChatOptions -> Menu(sheet.title(state)) {

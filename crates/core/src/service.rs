@@ -254,6 +254,7 @@ const OFFERED: &[&str] = &[
     "finished_events",
     "pc_sessions",
     "task_reply_options",
+    "fresh_start",
 ];
 
 /// The effort levels Claude Code's `--effort` takes.
@@ -6542,6 +6543,27 @@ mod pc_name_tests {
             assert!(why.contains("xhigh") && !why.contains(bad) || bad.is_empty());
         }
         assert!(super::OFFERED.contains(&"task_reply_options"));
+    }
+
+    /// Every feature the phone checks in the PC's Welcome is one this PC
+    /// offers, so no phone row waits on a word the PC never says (QA16 Q22).
+    #[test]
+    fn the_pc_offers_every_feature_the_phone_checks() {
+        let wire =
+            include_str!("../../../android/app/src/main/java/io/github/odnwks/mimir/link/Wire.kt");
+        let mut checked: Vec<&str> = vec!["search", "lookup"];
+        for line in wire.lines() {
+            if let Some(rest) = line.trim().strip_prefix("const val ")
+                && let Some((_, value)) = rest.split_once(" = \"")
+            {
+                checked.push(value.trim_end_matches('"'));
+            }
+        }
+        assert!(checked.contains(&"fresh_start"), "{checked:?}");
+        for f in checked {
+            assert!(super::OFFERED.contains(&f), "the PC doesn't offer {f}");
+            assert!(mimir_proto::FEATURES.contains(&f), "proto doesn't list {f}");
+        }
     }
 
     #[test]

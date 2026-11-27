@@ -80,6 +80,8 @@ fun PhoneChat(
     /** Whether the PC has a free model for a Whisper (null: ask the link), and how to start one there with its first words (null: the link does). */
     pcWhisperFree: Boolean? = null,
     startPcWhisper: ((String) -> Boolean)? = null,
+    /** Whether the PC has a project for a Whisper to run in (null: ask the link). */
+    pcWhisperProjects: Boolean? = null,
 ) {
     if (engine == null) return CantRunHere(nav)
     val s by engine.state.collectAsStateWithLifecycle()
@@ -128,6 +130,8 @@ fun PhoneChat(
     val pictures = attach.pictures
     var attachNote by attach::note
     var attachFix by attach::fix
+    // A Whisper on the PC waits for its first words here; they start it there and the Whisper's own screen opens.
+    var pcWhisper by rememberSaveable { mutableStateOf(false) }
     // Each chat keeps its own box, held by the engine (outside this screen): Settings or History in between loses nothing.
     val drafts = engine.drafts
     var boxChat by remember { mutableStateOf<String?>(null) }
@@ -140,19 +144,30 @@ fun PhoneChat(
     }
     // Keep what is in the box for this chat as it changes (not before the chat's own draft is in the box).
     LaunchedEffect(draft, files.size, pictures.size, boxChat, s.chat.id) {
-        if (boxChat == s.chat.id) drafts.put(s.chat.id, io.github.odnwks.mimir.standalone.Draft(draft, files.toList(), pictures.toList()))
+        if (boxChat == s.chat.id && !pcWhisper) drafts.put(s.chat.id, io.github.odnwks.mimir.standalone.Draft(draft, files.toList(), pictures.toList()))
     }
     androidx.compose.runtime.DisposableEffect(Unit) { onDispose { engine.flushDrafts() } }
     val sight = sightFor(pcSight, pcReady, model.id in s.sees, model.vision?.let { model.chipName })
-    // A Whisper on the PC waits for its first words here; they start it there and the Whisper's own screen opens.
-    var pcWhisper by rememberSaveable { mutableStateOf(false) }
-    val pcFree = pcWhisperFree ?: (link?.state?.collectAsStateWithLifecycle()?.value?.models?.local?.isNotEmpty() == true)
+    // The Whisper's own box, in memory only: never the open chat's draft, never written anywhere (QA16 Q20).
+    var whisperDraft by remember { mutableStateOf("") }
+    LaunchedEffect(pcWhisper) { whisperDraft = "" }
+    val linkState = link?.state?.collectAsStateWithLifecycle()?.value
+    val pcFree = pcWhisperFree ?: (linkState?.models?.local?.isNotEmpty() == true)
+    // A Whisper on the PC runs in one of its projects; with none, or the PC away, it can't start (QA16 Q21).
+    val pcProjects = pcWhisperProjects ?: (startPcWhisper != null || linkState?.projects?.isNotEmpty() != false)
+    val pcWhisperBlock = when {
+        !pcWhisper -> null
+        !pcOnline -> WHISPER_PC_AWAY
+        !pcFree -> WHISPER_PC_NO_MODEL
+        !pcProjects -> WHISPER_NEEDS_PROJECT
+        else -> null
+    }
     val pcStart: ((String, Boolean) -> Boolean)? = startPcWhisper?.let { f -> { text: String, _: Boolean -> f(text) } }
         ?: remember(link) { link?.let { l -> { text: String, typed: Boolean -> l.startTask(text, "", incognito = true, typed = typed).isNotEmpty() } } }
     val pcWhisperGo = { text: String, typed: Boolean ->
         if (text.isNotBlank()) {
-            if (pcStart?.invoke(text, typed) == true) { draft = ""; pcWhisper = false; nav.open(Screen.IncognitoTask) }
-            else attachNote = "Your PC couldn't start the Whisper just now. Check that it is connected and try again."
+            if (pcStart?.invoke(text, typed) == true) { whisperDraft = ""; pcWhisper = false; nav.open(Screen.IncognitoTask) }
+            else attachNote = WHISPER_COULD_NOT_START
         }
     }
     // [typed]: from the message box, not a starter.
@@ -255,6 +270,8 @@ fun PhoneChat(
         var changing by rememberSaveable { mutableStateOf<String?>(null) }
         LaunchedEffect(nav.pickedProject) {
             val p = nav.pickedProject ?: return@LaunchedEffect
+            // A project made from a Whisper's "Make a project" only gives the Whisper a place: nothing moves.
+            if (pcWhisper && changing == null) { nav.pickedProject = null; return@LaunchedEffect }
             val t = changing ?: return@LaunchedEffect
             nav.pickedProject = null; changing = null
             if (p == JUST_CHAT) engine.justChat() else onMoveTask(t, p)
@@ -307,8 +324,8 @@ fun PhoneChat(
             onMore = if (!s.whisper && s.chat.turns.isNotEmpty()) ({ nav.openSheet(chatOptions(s, pcPrivate, if (onlineOn) io.github.odnwks.mimir.online.OnlineModels.answering()?.let { io.github.odnwks.mimir.online.OnlineModels.serviceOf(it).company } else null).copy(talk = io.github.odnwks.mimir.nav.TALK_MIMIR)) }) else null,
         )
         now.why?.let { why -> Text(why, style = Type.Small, color = Palette.TextDim, textAlign = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 2.dp).testTag("who-why").semantics { liveRegion = androidx.compose.ui.semantics.LiveRegionMode.Polite }) }
-        ChatLiveLine(s)
-        if (finding) FindBar(find, { find = it }, if (sought == null) 0 else s.chat.turns.count { found(it.text) } + s.chat.queued.count { found(it.text) }) { finding = false; find = "" }
+        if (!pcWhisper) ChatLiveLine(s)
+        if (finding && !pcWhisper) FindBar(find, { find = it }, if (sought == null) 0 else s.chat.turns.count { found(it.text) } + s.chat.queued.count { found(it.text) }) { finding = false; find = "" }
         WhisperHygiene(s.whisper || pcWhisper)
         WhisperEndedNote(s.whisperEnded, engine::dismissWhisperEnded)
         EndWhisperQuestion(endAsk, onCancel = { endAsk = false; endThen = null }) { endAsk = false; engine.endWhisper(); endThen?.invoke(); endThen = null }
@@ -341,6 +358,14 @@ fun PhoneChat(
             verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.Bottom),
         ) {
             // The list is upside down: the first items here sit at the bottom.
+            // A Whisper on the PC starts empty: the open chat stays behind it, none of it shown or sent (QA16 Q20).
+            if (pcWhisper) {
+                pcWhisperBlock?.let { why -> item(key = "pc-whisper-block") {
+                    WhisperCantStart(why, onMakeProject = if (why == WHISPER_NEEDS_PROJECT) ({ nav.openSheet(io.github.odnwks.mimir.nav.Sheet.ProjectPicker("", newProject = true)) }) else null)
+                } }
+                item(key = "pc-whisper") { WhisperCard(false, paired) }
+                return@LazyColumn
+            }
             // A message no one can answer now: said plainly, with the one thing to do.
             val stoppedHere = s.stoppedChat == s.chat.id
             // Messages waiting for the PC sit at the bottom, newest last: dim, with how they go and a way to take them back.
@@ -425,22 +450,19 @@ fun PhoneChat(
                     )
                 }
             }
-            if (pcWhisper) item(key = "pc-whisper") {
-                WhisperCard(false, paired)
-            }
             if (s.whisper) item(key = "whisper") {
                 WhisperCard(s.web, paired, if (s.chat.turns.isEmpty() && !s.writing) ({ w: Boolean -> engine.startWhisper(web = w) }) else null)
             }
         }
 }
         if (!showHome) NewLinesButton(lines)
-        s.note?.let { note ->
+        s.note?.takeIf { !pcWhisper }?.let { note ->
             Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(note, style = Type.Small, color = Palette.TextSoft, modifier = Modifier.weight(1f))
                 LinkText("Dismiss", engine::dismissNote)
             }
         }
-        s.problem?.takeIf { it != Engine.PC_COULD_NOT_ANSWER && (s.writing || s.chat.turns.lastOrNull()?.user != true) }?.let { Text(it, style = Type.Small, color = Palette.Red, modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp)) }
+        s.problem?.takeIf { !pcWhisper && it != Engine.PC_COULD_NOT_ANSWER && (s.writing || s.chat.turns.lastOrNull()?.user != true) }?.let { Text(it, style = Type.Small, color = Palette.Red, modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp)) }
         if (s.whisperChoice) Row(Modifier.padding(horizontal = 20.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             if (s.supported) SmallButton("Use This phone", { engine.stopOnlineFor(false) }, description = "Use this phone's model, not the online one")
             if (paired) SmallButton("Use your PC", { engine.stopOnlineFor(true) }, description = "Use your PC, not the online model")
@@ -453,10 +475,10 @@ fun PhoneChat(
         // The tabs' bar sits below (it keeps clear of the phone's own bar); the keyboard lifts the box.
         Column(Modifier.fillMaxWidth().imePadding()) {
         val voice = rememberVoiceInput(if (s.whisper || pcWhisper) null else link, whisper = s.whisper || pcWhisper, keep = { wav, secs -> engine.keepRecording(wav, secs) })
-        VoicePanel(voice, heard = { draft = withHeard(draft, it) }, Modifier.padding(top = 4.dp))
+        VoicePanel(voice, heard = { if (pcWhisper) whisperDraft = withHeard(whisperDraft, it) else draft = withHeard(draft, it) }, Modifier.padding(top = 4.dp))
         attach.Note()
         // While the chat is in a project (its last card's task isn't done), a follow-up goes there; ✕ leaves it.
-        val card = s.chat.projectCard?.takeIf { !s.whisper && it.task?.let(task)?.stateWords != "Done" }
+        val card = s.chat.projectCard?.takeIf { !s.whisper && !pcWhisper && it.task?.let(task)?.stateWords != "Done" }
         androidx.compose.animation.AnimatedVisibility(
             card != null,
             enter = androidx.compose.animation.expandVertically(motionSpec(Motion.NEEDS_YOU_BAR_MS)) + androidx.compose.animation.fadeIn(motionSpec(Motion.NEEDS_YOU_BAR_MS)),
@@ -531,12 +553,17 @@ fun PhoneChat(
         val shortWords = listOfNotNull(listOfNotNull(shortModel, s.effort.words).joinToString(" · ").takeIf { shortModel != null }, shortModel ?: s.effort.words)
         androidx.compose.runtime.SideEffect { nav.chatChoices = io.github.odnwks.mimir.nav.ModelEffortChoices(choices.models, choices.notes, choices.more, efforts) }
         androidx.compose.runtime.DisposableEffect(Unit) { onDispose { nav.chatChoices = null } }
-        NoKeyboardLearning(s.whisper || pcWhisper) {
-        MimirComposer(draft, { draft = it; if (it.isNotBlank()) engine.prepare() }, waiting, s.writing, voice, onSend = { send(draft, true) }, onStop = engine::stop, focusTick = focusTick, focusOk = !s.whisper && !pcWhisper && !endAsk && !whoOpen && !needsMimir && nav.sheet == null && !nav.menuOpen,
+        // A Whisper on the PC that can't start offers no box and no Send: its card says what would make it work.
+        if (pcWhisperBlock == null) NoKeyboardLearning(s.whisper || pcWhisper) {
+        MimirComposer(
+            if (pcWhisper) whisperDraft else draft,
+            { if (pcWhisper) whisperDraft = it else { draft = it; if (it.isNotBlank()) engine.prepare() } },
+            waiting && !pcWhisper, s.writing && !pcWhisper, voice, onSend = { send(if (pcWhisper) whisperDraft else draft, true) }, onStop = engine::stop, focusTick = focusTick, focusOk = !s.whisper && !pcWhisper && !endAsk && !whoOpen && !needsMimir && nav.sheet == null && !nav.menuOpen,
             whisper = s.whisper || pcWhisper, waitHint = !paired, modifier = Modifier.startupBottom(startup, on = showHome && first).padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 10.dp),
-            hasFiles = files.isNotEmpty() || pictures.isNotEmpty(),
-            above = { attach.Chips() },
-            attach = { attach.Button(sight, onModels = { nav.open(Screen.Models) }) },
+            // A Whisper on the PC takes words only: the open chat's pictures and files stay with that chat.
+            hasFiles = !pcWhisper && (files.isNotEmpty() || pictures.isNotEmpty()),
+            above = { if (!pcWhisper) attach.Chips() },
+            attach = { if (!pcWhisper) attach.Button(sight, onModels = { nav.open(Screen.Models) }) },
             // At large text or on a narrow phone, with the mic beside Send, there is less room: shorter whole words, never cut off.
             chip = { OptionsChip(chosenWords, "Model and effort: $chosenWords. Change", shorter = shortWords) { nav.openSheet(io.github.odnwks.mimir.nav.Sheet.ChatModel) } },
             // No three dots to hold voice typing (an empty chat, a Whisper): the mic stays in the box.
