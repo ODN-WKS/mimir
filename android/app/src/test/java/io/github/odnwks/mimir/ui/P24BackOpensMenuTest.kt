@@ -31,6 +31,7 @@ import org.robolectric.annotation.Config
  * P24 fix round 2 (owner, 2026-11-26: "If I swipe back or hit the back button, I should be led
  * directly to that main menu"). Back from any screen reaches Chat with the side menu open; the next
  * Back closes the menu; the one after that leaves the app.
+ * P43: from a task or a page inside Settings, Back first returns one step.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(qualifiers = "w390dp-h844dp-xhdpi")
@@ -69,14 +70,14 @@ class P24BackOpensMenuTest {
 
     @Test fun oneBackFromASubPageIsChatWithTheMenuOpen() {
         start()
-        open(Screen.Task(ExampleData.TASK_ALLOW), Screen.Settings, Screen.Notifications)
+        open(Screen.Task(ExampleData.TASK_ALLOW), Screen.Settings)
         systemBack()
         assertChatWithMenuOpen()
     }
 
     @Test fun theScreensOwnArrowOpensTheMenuToo() {
         start()
-        open(Screen.Settings, Screen.PrivacyCheck)
+        open(Screen.Project(ExampleData.awake().projects.first().name))
         compose.onAllNodesWithContentDescription("Back").onFirst().performClick()
         compose.waitForIdle()
         assertChatWithMenuOpen()
@@ -84,7 +85,7 @@ class P24BackOpensMenuTest {
 
     @Test fun theNextBackClosesTheMenuAndTheOneAfterLeaves() {
         start()
-        open(Screen.Task(ExampleData.TASK_ALLOW), Screen.Settings, Screen.Notifications)
+        open(Screen.Task(ExampleData.TASK_ALLOW), Screen.Settings)
         systemBack()
         assertChatWithMenuOpen()
         assertFalse(leavesTheApp())
@@ -124,12 +125,12 @@ class P24BackOpensMenuTest {
 
     @Test fun aSheetClosesAloneThenBackOpensTheMenu() {
         start()
-        open(Screen.Task(ExampleData.TASK_ALLOW))
+        open(Screen.Change(ExampleData.TASK_ALLOW))
         compose.runOnUiThread { nav.openSheet(Sheet.TaskOptions(ExampleData.TASK_ALLOW)) }
         compose.waitForIdle()
         systemBack()
         assertNull(nav.sheet)
-        assertEquals(Screen.Task(ExampleData.TASK_ALLOW), nav.current)
+        assertEquals(Screen.Change(ExampleData.TASK_ALLOW), nav.current)
         assertFalse(nav.menuOpen)
         systemBack()
         assertChatWithMenuOpen()

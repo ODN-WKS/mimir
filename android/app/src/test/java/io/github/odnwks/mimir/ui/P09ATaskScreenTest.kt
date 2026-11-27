@@ -41,14 +41,14 @@ class P09ATaskScreenTest {
         assertEquals("It is working.", result)
     }
 
-    // P24 (owner, 2026-11-26) replaced 0.09 item 5's two steps: one Back from a task is home.
-    @Test fun p09Item5BackFromATaskIsHomeInOneStep() {
+    // P43: one Back from a task is the project page it was opened from (P24 had made it home).
+    @Test fun p09Item5BackFromATaskIsItsProjectInOneStep() {
         val nav = Navigator()
         nav.open(Screen.Settings)
         nav.open(Screen.Project("p"))
         nav.open(Screen.Task("t"))
         assertTrue(nav.back())
-        assertEquals(Screen.Chat, nav.current)
+        assertEquals(Screen.Project("p"), nav.current)
     }
 
     @Test fun p09Item10StopModes() {

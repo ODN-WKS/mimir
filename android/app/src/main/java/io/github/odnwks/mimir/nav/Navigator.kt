@@ -223,12 +223,33 @@ class ChatRequest(val ask: ChatAsk)
 /** Where a finger touched, as fractions of the screen's width and height. */
 data class TapPoint(val x: Float, val y: Float)
 
-/** One screen on the back stack; [key] keeps two copies of the same screen apart. */
-data class Entry(val screen: Screen, val key: Int)
+/**
+ * One screen on the back stack; [key] keeps two copies of the same screen apart.
+ * [fromMenu]: opened by a row of the side menu, so Back from it is the menu again.
+ */
+data class Entry(val screen: Screen, val key: Int, val fromMenu: Boolean = false) {
+    /** Back returns one step from here, to where the person came from: a task, and Settings' own pages. */
+    val stepsBack: Boolean get() = !fromMenu && (screen is Screen.Task || screen.settingsPage)
+}
+
+private val Screen.taskPage: Boolean get() = this is Screen.Task || this is Screen.Change
+
+/** A page inside Settings (not the Settings list itself), a Help article included. */
+private val Screen.settingsPage: Boolean get() = when (this) {
+    Screen.General, Screen.Models, is Screen.ModelDetails, Screen.PhonePc, Screen.PcSettings, Screen.Notifications,
+    Screen.Storage, Screen.Voice, Screen.Voices, Screen.About, Screen.Help, is Screen.HelpAnswer, Screen.Labs,
+    Screen.GroundRules, Screen.PrivacyCheck -> true
+    else -> false
+}
+
+/** What is left after leaving the top page: a task takes with it any task (and change) it was opened from, in one press. */
+private fun List<Entry>.leavingTop(): List<Entry> =
+    if (last().screen is Screen.Task) dropLastWhile { it.screen.taskPage } else dropLast(1)
 
 /**
  * The back stack. Each section of the side menu starts its own stack. Back (the system's or a screen's
- * arrow) goes straight to Chat with the side menu open; the next closes the menu, the one after leaves
+ * arrow) from a task or a page inside Settings returns to where the person came from; from anywhere else
+ * it goes straight to Chat with the side menu open; the next closes the menu, the one after leaves
  * the app. A sheet sits above the stack and Back closes it first.
  */
 class Navigator(start: Screen = Screen.Chat) {
@@ -334,7 +355,12 @@ class Navigator(start: Screen = Screen.Chat) {
         get() = if (current == Screen.NeedsYou) null else Tab.entries.firstOrNull { it.root == stack.first().screen } ?: Tab.Chat
 
     /** Opens [screen] on top. With [from] (a tap point as fractions of the screen) it grows from there. */
-    fun open(screen: Screen, from: TapPoint? = null) {
+    fun open(screen: Screen, from: TapPoint? = null) = open(screen, from, fromMenu = false)
+
+    /** A row of the side menu opens [screen]: Back from it is the menu again (see [back]). */
+    fun openFromMenu(screen: Screen) = open(screen, null, fromMenu = true)
+
+    private fun open(screen: Screen, from: TapPoint?, fromMenu: Boolean) {
         sheet = null
         menuAsked = false
         if (screen == current && detail.isEmpty()) return
@@ -344,14 +370,16 @@ class Navigator(start: Screen = Screen.Chat) {
             detailForward = true
             // A task's change and the pages inside a settings section sit on top of what is on the right;
             // a task, a project, Needs you or a settings section replaces it.
+            // A task also keeps the project page or Needs you it was opened from, for Back.
             val inner = screen is Screen.Change || screen is Screen.HelpAnswer || screen == Screen.GroundRules ||
+                (screen is Screen.Task && detail.lastOrNull()?.screen.let { it is Screen.Project || it == Screen.NeedsYou }) ||
                 ((screen == Screen.About || screen == Screen.Labs) && detail.lastOrNull()?.screen == Screen.Help)
             detail = if (inner) detail + Entry(screen, nextKey++) else listOf(Entry(screen, nextKey++))
             return
         }
         detail = emptyList()
         lastMove = from?.let { Move.CardOpen(it.x.coerceIn(0f, 1f), it.y.coerceIn(0f, 1f)) } ?: Move.Forward
-        stack = stack + Entry(screen, nextKey++)
+        stack = stack + Entry(screen, nextKey++, fromMenu)
     }
 
     /** Swaps the top screen for [screen] (e.g. "No, they're different" turns Paired into Couldn't pair). */
@@ -394,14 +422,24 @@ class Navigator(start: Screen = Screen.Chat) {
     /**
      * System Back or a screen's back arrow. Returns false when the app should close.
      *
-     * The rule (owner, 2026-11-26): one Back from any screen goes to Chat with the side menu open;
-     * nothing walks back through the screens seen before. An open sheet closes first, and on a tablet
-     * the right pane closes first; the next Back does that. An open menu is closed by the app root
-     * before this is reached. On Chat with nothing open, Back leaves the app.
+     * An open sheet closes first. From a task or a page inside Settings, Back returns to where the
+     * person came from (a project page, Needs you, a chat, the Settings list, Help). From anywhere else
+     * (owner, 2026-11-26) one Back goes to Chat with the side menu open. On a tablet the right pane's
+     * own Back comes first. An open menu is closed by the app root before this is reached. On Chat
+     * with nothing open, Back leaves the app.
      */
     fun back(): Boolean {
         if (sheet != null) { sheet = null; return true }
-        if (detail.isNotEmpty()) { detailForward = false; detail = emptyList(); return true }
+        if (detail.isNotEmpty()) {
+            detailForward = false
+            detail = if (detail.last().stepsBack) detail.leavingTop() else emptyList()
+            return true
+        }
+        if (stack.size > 1 && stack.last().stepsBack) {
+            lastMove = Move.Back
+            stack = stack.leavingTop().ifEmpty { listOf(Entry(Screen.Chat, nextKey++)) }
+            return true
+        }
         if (stack.size > 1 || current != Screen.Chat) {
             val home = stack.first().takeIf { it.screen == Screen.Chat }
             lastMove = if (stack.size > 1) Move.Back else Move.ToTab(toRight = false)

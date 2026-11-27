@@ -34,6 +34,10 @@ import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.ui.semantics.heading
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.border
@@ -175,20 +179,25 @@ fun TaskScreen(taskId: String, state: StationState, station: Station, nav: Navig
     BoxWithConstraints(Modifier.fillMaxSize().background(Palette.Ground)) {
         val screenHeight = maxHeight
         Column(Modifier.fillMaxSize()) {
-            // The top keeps only the state, a small Stop while it works, and the three dots (owner, 2026-11-25):
-            // the title, Back (the phone's own back gesture) and Find (in the menu) give the chat their room.
+            // The top: Back, the task's name, then its project and state on one line, a small Stop while it
+            // works, and the three dots. Find is in the menu.
             Row(
-                Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp),
-                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
+                Modifier.fillMaxWidth().padding(start = 4.dp, end = 4.dp),
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 var more by rememberSaveable(task.id) { mutableStateOf(false) }
+                // In a tablet's right pane with nothing to go back to, the arrow is left out.
+                if (io.github.odnwks.mimir.ui.adaptive.LocalPaneBack.current) IconTarget(Glyphs.Back, "Back", { nav.back() })
+                else Spacer(Modifier.width(8.dp))
                 Column(
-                    Modifier.weight(1f).heightIn(min = 40.dp)
-                        .clickable(role = androidx.compose.ui.semantics.Role.Button, onClickLabel = if (more) "Hide the details" else "Show the task name and project") { more = !more }
+                    Modifier.weight(1f).heightIn(min = 48.dp)
+                        .clickable(role = androidx.compose.ui.semantics.Role.Button, onClickLabel = if (more) "Hide the details" else "Show more about this task") { more = !more }
                         .semantics(mergeDescendants = true) { liveRegion = androidx.compose.ui.semantics.LiveRegionMode.Polite },
                     verticalArrangement = Arrangement.Center,
                 ) {
+                    Text(task.title, style = Type.Label.copy(fontWeight = FontWeight.SemiBold), color = Palette.Text, maxLines = if (more) 4 else 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.semantics { heading() })
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        if (task.project.isNotBlank()) Text(task.project, style = Type.Small, color = Palette.BlueText, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 96.dp))
                         val (fg, bg) = stateColours(task.stateWords)
                         Tag(task.stateWords, fg, bg)
                         // A mode that doesn't ask first is always in sight.
@@ -200,7 +209,8 @@ fun TaskScreen(taskId: String, state: StationState, station: Station, nav: Navig
                             }
                         }
                     }
-                    if (more) Text(listOf(task.title, task.project, if (task.plan) "Plan first" else "", task.age).filter { it.isNotBlank() }.joinToString(" · "), style = Type.Small, color = Palette.TextDim, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
+                    val about = listOf(if (task.plan) "Plan first" else "", task.age).filter { it.isNotBlank() }.joinToString(" · ")
+                    if (more && about.isNotEmpty()) Text(about, style = Type.Small, color = Palette.TextDim, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
                 }
                 // Stop: small and round; its confirmation is a ring that unwinds (a followed session has its own Stop below).
                 if (task.showsStop && !task.stopPending && !(listsSessions && followed && !carried)) StopControl(

@@ -49,6 +49,12 @@ class P24KeepTypedTextTest {
         assertEquals(listOf(Screen.Chat), nav.stack.map { it.screen })
     }
 
+    /** P43: Back from a task is where it was opened from (here the project page); then home. */
+    private fun backOut() {
+        compose.runOnUiThread { compose.activity.onBackPressedDispatcher.onBackPressed() }
+        compose.waitForIdle()
+    }
+
     private fun type(box: String, words: String) {
         compose.onNodeWithContentDescription(box).performTextInput(words)
         compose.waitForIdle()
@@ -81,8 +87,8 @@ class P24KeepTypedTextTest {
         open(Screen.Task(task))
         // The task's own box is its own: the project's words don't show there.
         assertBox("Reply to this task", "")
-        backHome()
-        open(Screen.Project(project))
+        backOut()
+        assertEquals(Screen.Project(project), nav.current)
         assertBox("New task in $project", "water the beds")
     }
 
@@ -108,8 +114,8 @@ class P24KeepTypedTextTest {
         open(Screen.Project(project))
         assertBox("New task in $project", "water the beds")
         send()
-        backHome()
-        open(Screen.Project(project))
+        backOut()
+        assertEquals(Screen.Project(project), nav.current)
         assertBox("New task in $project", "")
     }
 }

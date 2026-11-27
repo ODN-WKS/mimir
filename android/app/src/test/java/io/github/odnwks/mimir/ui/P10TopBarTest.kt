@@ -25,8 +25,8 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 /**
- * The compact task top (owner, 2026-11-25): one short row with the state, a small round Stop while
- * work runs and the ⋯ menu; no task name; Find and voice typing in the menu.
+ * The compact task top (owner, 2026-11-25): one short row with a small round Stop while work runs and
+ * the ⋯ menu; Find and voice typing in the menu. P43 adds Back, the task's name and its project to it.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(qualifiers = "w390dp-h844dp-xhdpi")
@@ -45,18 +45,15 @@ class P10TopBarTest {
         compose.waitForIdle(); nav.open(Screen.Task(id)); compose.waitForIdle()
     }
 
-    private fun gone(text: String) = assertTrue("\"$text\" should not be on screen", compose.onAllNodesWithText(text).fetchSemanticsNodes().isEmpty())
     private fun dp(px: Float) = px / compose.density.density
     private fun working(t: Task) = t.copy(permission = null, question = null, stopped = false, busy = true, status = "Working")
     private fun done(t: Task) = t.copy(permission = null, question = null, busy = false, stopped = false, status = "Done", messages = listOf(TaskMessage("1", false, "go"), TaskMessage("2", true, "All saved.")))
 
-    @Test fun theTaskNameIsNotInTheTopRow() {
+    @Test fun theTaskNameAndBackAreInTheTopRow() {
         show(station { working(it).copy(title = longTitle) })
-        gone(longTitle)
-        // It is one tap away on the state.
-        compose.onAllNodes(androidx.compose.ui.test.SemanticsMatcher("shows the details") { it.config.getOrElseNullable(androidx.compose.ui.semantics.SemanticsActions.OnClick) { null }?.label == "Show the task name and project" })[0].performClick()
-        compose.waitForIdle()
-        compose.onNodeWithText(longTitle, substring = true).assertIsDisplayed()
+        compose.onNodeWithText(longTitle).assertIsDisplayed()
+        val back = compose.onNodeWithContentDescription("Back").fetchSemanticsNode().boundsInRoot
+        assertTrue("Back is at the left: ${dp(back.left)} dp", dp(back.left) <= 8f)
     }
 
     @Test fun aSmallRoundStopSitsInTheTopRowWhileWorking() {

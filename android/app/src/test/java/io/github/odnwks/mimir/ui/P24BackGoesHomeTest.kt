@@ -28,6 +28,7 @@ import org.robolectric.annotation.Config
  * P24, Back goes home (owner, 2026-11-26: "when I hit back from any screen it doesn't go back to the
  * homepage"). Home is Chat, the screen the app opens on. One Back from any screen goes there; a
  * sheet, the side menu or a tablet's right pane closes first; on Chat, Back leaves the app.
+ * P43: a task and the pages inside Settings are the exceptions; Back from them returns one step.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(qualifiers = "w390dp-h844dp-xhdpi")
@@ -61,7 +62,7 @@ class P24BackGoesHomeTest {
     // 1. Three screens in a row, then Back once: home.
     @Test fun threeScreensThenOneBackIsHome() {
         val n = Navigator()
-        n.open(Screen.Task("t")); n.open(Screen.Settings); n.open(Screen.Notifications)
+        n.open(Screen.Task("t")); n.open(Screen.Settings); n.open(Screen.Recent)
         assertTrue(n.back())
         assertEquals(listOf(Screen.Chat), n.stack.map { it.screen })
         assertFalse(n.canGoBack)
@@ -73,30 +74,32 @@ class P24BackGoesHomeTest {
 
     @Test fun theSystemBackFromThreeScreensIsHome() {
         start()
-        openAll(Screen.Task(ExampleData.TASK_ALLOW), Screen.Settings, Screen.Notifications)
+        openAll(Screen.Task(ExampleData.TASK_ALLOW), Screen.Settings, Screen.Recent)
         systemBack()
         atHome()
     }
 
-    // 2. The app's own Back arrow on any screen: home.
-    @Test fun everyBackArrowGoesHome() {
+    // 2. The app's own Back arrow: home, or one step from a Settings page (P43).
+    @Test fun everyBackArrowGoesHomeOrOneStepFromASettingsPage() {
         start()
         val project = station.state.value.projects.first().name
+        val home = listOf<Screen>(Screen.Chat)
+        val settings = listOf(Screen.Chat, Screen.Settings)
         val trails = listOf(
-            listOf(Screen.Task(ExampleData.TASK_ALLOW), Screen.Settings, Screen.Notifications),
-            listOf(Screen.Settings, Screen.PrivacyCheck),
-            listOf(Screen.Settings, Screen.General),
-            listOf(Screen.Project(project), Screen.Task(ExampleData.TASK_ALLOW), Screen.Change(ExampleData.TASK_ALLOW)),
-            listOf(Screen.Settings, Screen.Models, Screen.GroundRules),
-            listOf(Screen.Settings, Screen.PhonePc, Screen.Pair, Screen.PairError),
-            listOf(Screen.Settings, Screen.Project(project)),
+            listOf(Screen.Settings, Screen.Notifications) to settings,
+            listOf(Screen.Settings, Screen.PrivacyCheck) to settings,
+            listOf(Screen.Settings, Screen.General) to settings,
+            listOf(Screen.Project(project), Screen.Task(ExampleData.TASK_ALLOW), Screen.Change(ExampleData.TASK_ALLOW)) to home,
+            listOf(Screen.Settings, Screen.Models, Screen.GroundRules) to listOf(Screen.Chat, Screen.Settings, Screen.Models),
+            listOf(Screen.Settings, Screen.PhonePc, Screen.Pair, Screen.PairError) to home,
+            listOf(Screen.Settings, Screen.Project(project)) to home,
         )
-        for (trail in trails) {
+        for ((trail, left) in trails) {
             nav.resetTo(Screen.Chat); compose.waitForIdle()
             openAll(*trail.toTypedArray())
             compose.onAllNodesWithContentDescription("Back").onFirst().performClick()
             compose.waitForIdle()
-            assertEquals("Back arrow on ${trail.last()}", listOf(Screen.Chat), nav.stack.map { it.screen })
+            assertEquals("Back arrow on ${trail.last()}", left, nav.stack.map { it.screen })
         }
     }
 
@@ -147,6 +150,9 @@ class P24BackGoesHomeTest {
         // Settings with a section and a page inside it on the right.
         n.open(Screen.Settings); n.open(Screen.Help); n.open(Screen.About)
         assertEquals(listOf(Screen.Help, Screen.About), n.detail.map { it.screen })
+        // P43: one step inside Settings.
+        assertTrue(n.back())
+        assertEquals(listOf(Screen.Help), n.detail.map { it.screen })
         assertTrue(n.back())
         assertTrue(n.detail.isEmpty())
         assertTrue(n.back())

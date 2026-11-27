@@ -225,10 +225,10 @@ fun SideMenu(
                 val running = pcRunning(state)
                 MenuRow(MENU_PC, right = pcMenuRight(state), rightColor = if (running > 0) PcGreen else MenuColors.Dim) {
                     // A PC that lists its sessions has its own screen; an older one keeps the status page.
-                    go { if (!state.paired) nav.open(Screen.Pair) else if (state.pcSessions != null) nav.open(Screen.PhonePc) else nav.selectTab(Tab.Status) }
+                    go { if (!state.paired) nav.open(Screen.Pair) else if (state.pcSessions != null) nav.openFromMenu(Screen.PhonePc) else nav.selectTab(Tab.Status) }
                 }
             }
-            if (state.paired) item("usage") { MenuRow(MENU_USAGE, right = usageLeftShort(state.usage), dim = true, ellipsize = true, modifier = Modifier.testTag("menu-usage")) { go { nav.open(Screen.Models) } } }
+            if (state.paired) item("usage") { MenuRow(MENU_USAGE, right = usageLeftShort(state.usage), dim = true, ellipsize = true, modifier = Modifier.testTag("menu-usage")) { go { nav.openFromMenu(Screen.Models) } } }
             item("chats-head") {
                 Section(MENU_CHATS, if (shownChats.isEmpty()) "" else "${shownChats.size}", fold.chatsOpen, amber = false, fold::toggleChats)
             }

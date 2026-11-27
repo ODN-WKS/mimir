@@ -153,7 +153,8 @@ class F3HuntTest {
         val others = st.state.value.pickable.filter { it != here }
         if (others.isEmpty()) compose.onNodeWithText("No other project yet. Make one below.").assertIsDisplayed()
         else compose.onNodeWithText(others.first()).assertIsDisplayed()
-        gone(here)
+        // The only "here" left on screen is the task's own top row (P43), not a row of the sheet.
+        assertEquals(1, compose.onAllNodesWithText(here).fetchSemanticsNodes().size)
     }
 
     // T17: a new project's message never shows a file path

@@ -182,8 +182,10 @@ class FindabilityTest {
         compose.waitForIdle()
         assertEquals(1.15f, station.state.value.player.speed, 0.001f)
         // Voice typing says what it is: Talk, voice typing (P12: in the chat's three dots, not in the box).
+        // P43: Back from Voice is Settings; the next lands on Chat with the side menu open.
         nav.back(); compose.waitForIdle()
-        // P24: Back lands on Chat with the side menu open; it is swiped shut to reach the chat.
+        assertEquals(Screen.Settings, nav.current)
+        nav.back(); compose.waitForIdle()
         assertTrue(nav.menuOpen)
         compose.onRoot().performTouchInput { swipeLeft() }; compose.waitForIdle()
         compose.onNodeWithContentDescription(CHAT_MENU).performClick(); compose.waitForIdle()
@@ -235,11 +237,9 @@ class FindabilityTest {
         HELP_TOPICS.forEach { compose.onNodeWithText(it.question).assertExists() }
         tap("What if I lose this phone?")
         compose.onNodeWithText("You remove it at your PC: $AI_NAME \u203a Settings \u203a Phones.").assertIsDisplayed()
-        // P24: Back goes home, so Help and about is opened again for the next question.
+        // P43: Back from an article is Help and about.
         nav.back(); compose.waitForIdle()
-        assertEquals(Screen.Chat, nav.current)
-        settings()
-        tap("Help and about")
+        assertEquals(Screen.Help, nav.current)
         tap("What is a Whisper?")
         compose.onNodeWithText(whisperExplained(true), substring = true).assertIsDisplayed()
         // No "Lost a phone?" card anywhere, and nothing here removes a phone.
@@ -345,8 +345,8 @@ class FindabilityTest {
         compose.onNodeWithContentDescription("Task options").performClick()
         compose.waitForIdle()
         tap("Plan first, change nothing yet")
-        // The task name, project and Plan first are a tap away on the state, so the conversation stays clean.
-        compose.onAllNodes(androidx.compose.ui.test.SemanticsMatcher("shows the details") { it.config.getOrElseNullable(androidx.compose.ui.semantics.SemanticsActions.OnClick) { null }?.label == "Show the task name and project" })[0].performClick()
+        // Plan first is a tap away on the task's name, so the conversation stays clean.
+        compose.onAllNodes(androidx.compose.ui.test.SemanticsMatcher("shows the details") { it.config.getOrElseNullable(androidx.compose.ui.semantics.SemanticsActions.OnClick) { null }?.label == "Show more about this task" })[0].performClick()
         compose.waitForIdle()
         compose.onNodeWithText("Plan first", substring = true).assertExists()
         compose.onNodeWithContentDescription("Task options").performClick()
@@ -449,10 +449,10 @@ class FindabilityTest {
                 compose.waitForIdle()
                 assertEquals(Screen.GroundRules, nav.current)
             }
-            // P24 (owner, 2026-11-26): its Back arrow goes home, like every other screen's, no longer to Models.
+            // P43: its Back arrow returns one step, to the Settings search it was found in.
             compose.onNodeWithContentDescription("Back").performClick()
             compose.waitForIdle()
-            assertEquals(Screen.Chat, nav.current)
+            assertEquals(Screen.Settings, nav.current)
             // Also a row in Models, on by default with the default text, Reset after a change.
             nav.resetTo(Screen.Chat); nav.open(Screen.Settings); nav.open(Screen.Models); compose.waitForIdle()
             compose.onNodeWithText("Rules for every chat").performScrollTo().performClick()

@@ -54,16 +54,15 @@ class F2MovedItemsTest {
         start()
         row("Notifications")
         assertEquals(Screen.Notifications, nav.current)
-        // P24: Back goes home, so Settings is opened again for the next row.
+        // P43: Back from a settings page is the Settings list.
         nav.back(); compose.waitForIdle()
-        assertEquals(Screen.Chat, nav.current)
-        nav.open(Screen.Settings); compose.waitForIdle()
+        assertEquals(Screen.Settings, nav.current)
         row("Look and size")
         compose.onNodeWithText("ALERTS").assertDoesNotExist()
     }
 
     // P24 (owner, 2026-11-26): Back from Your PC goes home, no longer to Settings.
-    @Test fun yourPcRowOpensItsPageWithPairingHelpAndDisconnectAndBackGoesHome() {
+    @Test fun yourPcRowOpensItsPageWithPairingHelpAndDisconnectAndBackGoesToSettings() {
         start()
         row("Your PC")
         assertEquals(Screen.PhonePc, nav.current)
@@ -71,7 +70,7 @@ class F2MovedItemsTest {
         compose.onNodeWithText("Pair another phone").assertDoesNotExist()
         compose.onNodeWithText("Disconnect this phone").performScrollTo().assertIsDisplayed()
         nav.back(); compose.waitForIdle()
-        assertEquals(Screen.Chat, nav.current)
+        assertEquals(Screen.Settings, nav.current)
     }
 
     @Test fun privacyHoldsTheLookupSwitchesAndWhoAnswersDoesNot() {
