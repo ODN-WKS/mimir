@@ -170,7 +170,8 @@ fun OwnMessage(
 @Composable
 fun EditBox(value: String, onChange: (String) -> Unit, bubble: Color, onCancel: () -> Unit, onSend: () -> Unit, note: String? = null) {
     val focus = remember { androidx.compose.ui.focus.FocusRequester() }
-    LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+    val hold = LocalKeyboardHold.current
+    LaunchedEffect(Unit) { if (hold?.held != true) runCatching { focus.requestFocus() } }
     // QA2 #29: the box stays in view above the keyboard: when the keyboard opens or the text grows, scroll it in.
     val inView = remember { androidx.compose.foundation.relocation.BringIntoViewRequester() }
     val keyboard = androidx.compose.foundation.layout.WindowInsets.ime.getBottom(androidx.compose.ui.platform.LocalDensity.current)

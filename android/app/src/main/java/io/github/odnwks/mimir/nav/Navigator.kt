@@ -188,7 +188,7 @@ sealed interface Move {
 }
 
 /**
- * Whether boxes must leave the keyboard alone: from the app's start, a tapped Send, or the app leaving
+ * Whether boxes must leave the keyboard alone: from the app's start, a tapped Send, a step Back, or the app leaving
  * the screen, until the person touches the app (or asks for a new chat).
  */
 class KeyboardHold {
@@ -427,9 +427,12 @@ class Navigator(start: Screen = Screen.Chat) {
      * (owner, 2026-11-26) one Back goes to Chat with the side menu open. On a tablet the right pane's
      * own Back comes first. An open menu is closed by the app root before this is reached. On Chat
      * with nothing open, Back leaves the app.
+     *
+     * A screen arrived at by Back never takes the cursor: the keyboard is held until the next touch.
      */
     fun back(): Boolean {
         if (sheet != null) { sheet = null; return true }
+        if (canGoBack) keyboard.hold()
         if (detail.isNotEmpty()) {
             detailForward = false
             detail = if (detail.last().stepsBack) detail.leavingTop() else emptyList()
@@ -458,6 +461,7 @@ class Navigator(start: Screen = Screen.Chat) {
      */
     fun closeScreen(): Boolean {
         if (sheet != null) { sheet = null; return true }
+        if (canGoBack) keyboard.hold()
         if (detail.isNotEmpty()) { detailForward = false; detail = detail.dropLast(1); return true }
         if (stack.size > 1) {
             lastMove = Move.Back
