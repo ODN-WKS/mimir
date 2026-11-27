@@ -70,6 +70,10 @@ fun MimirComposer(
     attach: @Composable () -> Unit = {},
     /** The model and effort chip in the centre of the row. */
     chip: @Composable () -> Unit = {},
+    /** The skill bubble beside the chip, and the room its shortest words need ([ReplyRow]). */
+    skill: (@Composable () -> Unit)? = null,
+    skillNeeds: Int = 0,
+    chipNeeds: Int = 0,
 ) {
     val ready = (value.isNotBlank() || hasFiles) && !waiting
     val shape = RoundedCornerShape(22.dp)
@@ -127,6 +131,9 @@ fun MimirComposer(
         ReplyRow(
             plus = attach,
             chip = chip,
+            skill = skill,
+            skillNeeds = skillNeeds,
+            chipNeeds = chipNeeds,
             send = {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     // What the mic hears goes into the box; in a Whisper it stays on this phone.

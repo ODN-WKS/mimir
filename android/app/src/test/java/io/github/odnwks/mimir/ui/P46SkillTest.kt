@@ -120,7 +120,11 @@ class P46SkillTest {
             chip.assertIsDisplayed()
             val m = model.fetchSemanticsNode().boundsInRoot
             val c = chip.fetchSemanticsNode().boundsInRoot
-            assertTrue("$skill overlaps: $m $c", m.right <= c.left)
+            // Beside it; a picked name too long for the room left takes its own line above, never over it.
+            val beside = m.right <= c.left && kotlin.math.abs(m.center.y - c.center.y) <= 2f
+            if (skill == null) assertTrue("beside: $m $c", beside) else assertTrue("$skill overlaps: $m $c", beside || c.bottom <= m.top + 1f)
+            println("P46 ${skill ?: "none"} beside=$beside")
+            assertFalse("$skill: skill words are cut", cut(compose.onNodeWithTag(SKILL_CHIP_TAG, useUnmergedTree = true).fetchSemanticsNode()))
             with(compose.density) { assertTrue("$skill off screen: $c", c.right <= 384.dp.toPx() && c.width >= 40.dp.toPx()) }
             assertFalse("$skill: model words are cut", cut(model.fetchSemanticsNode()))
         }

@@ -646,12 +646,10 @@ fun PhoneChat(
             above = { if (!pcWhisper) attach.Chips() },
             attach = { if (!pcWhisper) attach.Button(sight, onModels = { nav.open(Screen.Models) }) },
             // At large text or on a narrow phone, with the mic beside Send, there is less room: shorter whole words, never cut off.
-            chip = {
-                ChipPair(
-                    model = { OptionsChip(chosenWords, "Model and effort: $chosenWords. Change", shorter = shortWords) { nav.openSheet(io.github.odnwks.mimir.nav.Sheet.ChatModel) } },
-                    skill = { SkillChip(nav.skill) { nav.openSheet(io.github.odnwks.mimir.nav.Sheet.ChatSkill) } },
-                )
-            },
+            chip = { OptionsChip(chosenWords, "Model and effort: $chosenWords. Change", shorter = shortWords) { nav.openSheet(io.github.odnwks.mimir.nav.Sheet.ChatModel) } },
+            skill = { SkillChip(nav.skill) { nav.openSheet(io.github.odnwks.mimir.nav.Sheet.ChatSkill) } },
+            skillNeeds = skillChipNeeds(nav.skill),
+            chipNeeds = optionsChipNeeds(chosenWords, shortWords),
         )
         }
         if (showHome && first && !paired && !connectHidden) ConnectHint({ nav.open(Screen.Pair) }, { connectHidden = true; prefs.edit().putBoolean(CONNECT_HIDDEN, true).apply() })

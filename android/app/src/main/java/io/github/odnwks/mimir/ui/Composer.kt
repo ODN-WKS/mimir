@@ -149,10 +149,41 @@ fun Composer(
 /**
  * The reply box's one row under the words (owner, 2026-11-25), the same on every screen: [plus]
  * on the left, [chip] in the centre, [send] on the right, close to the box's bottom edge.
+ * [skill] (the Mímir chat's skill bubble) sits right beside [chip] while there is room for its
+ * [skillNeeds] pixels and the [chipNeeds] that keep the chip's words; on a narrow phone or at large
+ * text it takes its own line above, so [chip] loses nothing.
  */
 @Composable
-fun ReplyRow(plus: @Composable () -> Unit, chip: @Composable () -> Unit, send: @Composable () -> Unit) {
-    Row(Modifier.fillMaxWidth().heightIn(min = 40.dp).testTag(REPLY_ROW_TAG), verticalAlignment = Alignment.CenterVertically) {
+fun ReplyRow(
+    plus: @Composable () -> Unit, chip: @Composable () -> Unit, send: @Composable () -> Unit,
+    skill: (@Composable () -> Unit)? = null, skillNeeds: Int = 0, chipNeeds: Int = 0,
+) {
+    if (skill != null) androidx.compose.ui.layout.Layout(
+        listOf({ Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) { plus() } }, chip,
+            { Box(Modifier.widthIn(min = 40.dp).padding(end = 4.dp), contentAlignment = Alignment.CenterEnd) { send() } }, skill),
+        Modifier.fillMaxWidth().testTag(REPLY_ROW_TAG),
+    ) { (plusM, chipM, sendM, skillM), constraints ->
+        val loose = constraints.copy(minWidth = 0, minHeight = 0)
+        val left = plusM.first().measure(loose)
+        val right = sendM.first().measure(loose)
+        val room = (constraints.maxWidth - left.width - right.width).coerceAtLeast(0)
+        val gap = 6.dp.roundToPx()
+        val beside = room - gap - skillNeeds >= chipNeeds
+        val model = chipM.firstOrNull()?.measure(loose.copy(maxWidth = if (beside) room - gap - skillNeeds else room))
+        val bubble = skillM.first().measure(loose.copy(maxWidth = if (beside) room - gap - (model?.width ?: 0) else constraints.maxWidth))
+        val row = maxOf(40.dp.roundToPx(), left.height, right.height, model?.height ?: 0)
+        val top = if (beside) 0 else bubble.height
+        layout(constraints.maxWidth, top + row) {
+            fun mid(h: Int) = top + (row - h) / 2
+            left.placeRelative(0, mid(left.height))
+            right.placeRelative(constraints.maxWidth - right.width, mid(right.height))
+            val pair = (model?.width ?: 0) + if (beside) gap + bubble.width else 0
+            val x = left.width + (room - pair) / 2
+            model?.placeRelative(x, mid(model.height))
+            if (beside) bubble.placeRelative(x + pair - bubble.width, mid(bubble.height))
+            else bubble.placeRelative((constraints.maxWidth - bubble.width) / 2, 0)
+        }
+    } else Row(Modifier.fillMaxWidth().heightIn(min = 40.dp).testTag(REPLY_ROW_TAG), verticalAlignment = Alignment.CenterVertically) {
         // 48 dp: the + is touched at 48 dp or more.
         Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) { plus() }
         Box(Modifier.weight(1f), contentAlignment = Alignment.Center) { chip() }
@@ -192,6 +223,14 @@ fun OptionsChip(words: String, description: String, shorter: List<String> = empt
             ?: forms.last().let { it to !fits(it, false) }
         OptionsChipBody(shown.first, description, shown.second, onClick)
     }
+}
+
+/** The least width at which [OptionsChip] still shows its shortest words that keep the effort (compact). */
+@Composable
+fun optionsChipNeeds(words: String, shorter: List<String>): Int {
+    val least = if (shorter.size > 1) shorter[shorter.size - 2] else words
+    val text = androidx.compose.ui.text.rememberTextMeasurer().measure(least, chipStyle(true), maxLines = 1).size.width
+    return text + with(androidx.compose.ui.platform.LocalDensity.current) { 16.dp.roundToPx() }
 }
 
 /** The chip's words: bold small type, 12 sp when compact. */

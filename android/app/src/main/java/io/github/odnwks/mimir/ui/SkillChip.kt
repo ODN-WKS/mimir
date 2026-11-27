@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -42,19 +41,13 @@ const val SKILL_ROW_TAG = "skill-row"
 const val SKILL_SHEET_TITLE = "Skill for this message"
 const val SKILL_FOOT = "No skill needed for weather, quick facts or general knowledge: $AI_NAME handles those right away."
 
-/** The room always left for the skill bubble, so it is never pushed out of the row. */
-private val SKILL_ROOM = 56.dp
+private val chipWords get() = Type.Small.copy(fontWeight = FontWeight.Bold)
 
-/** The Model · Effort bubble and the skill bubble side by side: the first gets its room first, so it stays whole. */
+/** The width the bubble needs for its shortest whole words. */
 @Composable
-fun ChipPair(model: @Composable () -> Unit, skill: @Composable () -> Unit) {
-    BoxWithConstraints {
-        val room = maxWidth
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            Box(Modifier.widthIn(max = (room - SKILL_ROOM - 6.dp).coerceAtLeast(0.dp))) { model() }
-            Box(Modifier.weight(1f, fill = false)) { skill() }
-        }
-    }
+fun skillChipNeeds(skill: Skill?): Int {
+    val words = rememberTextMeasurer().measure(skill?.short ?: "Skill", chipWords, maxLines = 1).size.width
+    return words + with(LocalDensity.current) { 18.dp.roundToPx() }
 }
 
 /** "Skill", or the picked skill's name, highlighted; the longest form that fits. */
@@ -62,7 +55,7 @@ fun ChipPair(model: @Composable () -> Unit, skill: @Composable () -> Unit) {
 fun SkillChip(skill: Skill?, onClick: () -> Unit) {
     BoxWithConstraints {
         val measurer = rememberTextMeasurer()
-        val style = Type.Small.copy(fontWeight = FontWeight.Bold)
+        val style = chipWords
         val padding = with(LocalDensity.current) { 18.dp.roundToPx() }
         val forms = if (skill == null) listOf("Skill") else listOf("Skill: ${skill.title}", skill.title, skill.short)
         val words = forms.firstOrNull { measurer.measure(it, style, maxLines = 1).size.width <= constraints.maxWidth - padding } ?: forms.last()
