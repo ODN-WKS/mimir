@@ -96,6 +96,8 @@ import kotlinx.coroutines.flow.map
 @Composable
 fun AppRoot(station: Station, nav: Navigator, chatDraft: String = "", standaloneOk: Boolean = true) {
     val stationState by station.state.collectAsStateWithLifecycle()
+    // Opening the app: no box takes the cursor until the person touches it (set before any box is drawn).
+    remember(nav) { nav.keyboard.appStarted() }
     // A task being deleted (Undo still showing) is out of every list at once, not only the project page.
     val hidden = nav.hiddenTasks.toList()
     val state = remember(stationState, hidden) { stationState.without(hidden) }

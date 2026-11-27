@@ -187,16 +187,30 @@ sealed interface Move {
 }
 
 /**
- * Whether boxes must leave the keyboard alone: from a tapped Send, or the app leaving the screen,
- * until the person touches the app (or asks for a new chat).
+ * Whether boxes must leave the keyboard alone: from the app's start, a tapped Send, or the app leaving
+ * the screen, until the person touches the app (or asks for a new chat).
  */
 class KeyboardHold {
     var held = false
         private set
+    private var started = false
+    /** Held only because the app has just started: nothing has been sent, left or touched yet. */
+    private var fromStart = false
 
-    fun hold() { held = true }
+    /** The app's first screen (once: the lock and a rebuilt screen don't start it again). */
+    fun appStarted() {
+        if (started) return
+        started = true
+        held = true
+        fromStart = true
+    }
 
-    fun release() { held = false }
+    /** A brand-new empty chat shown as the app opens may still take the cursor: there is nothing to read. */
+    fun emptyChatAtStart() { if (fromStart) release() }
+
+    fun hold() { held = true; fromStart = false }
+
+    fun release() { held = false; fromStart = false }
 }
 
 /** What the phone chat's topic sheet hands back to the open chat. */
@@ -276,6 +290,14 @@ class Navigator(start: Screen = Screen.Chat) {
     /** Goes up by one each time "Ask Claude" asks for the cursor in Chat's message box. */
     var askTick: Int by mutableIntStateOf(0)
         private set
+
+    private var askTaken = 0
+    /** True once for each "Ask Claude" the one chat has not answered yet. */
+    fun takeAsk(): Boolean = (askTick > askTaken).also { askTaken = askTick }
+
+    private var firstChatSeen = false
+    /** True once: for the first chat shown since the app started. */
+    fun takeFirstChat(): Boolean = (!firstChatSeen).also { firstChatSeen = true }
 
     /**
      * The window gained or lost room for two panes (the tablet turned, or a split screen changed).

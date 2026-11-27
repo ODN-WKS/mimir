@@ -77,6 +77,8 @@ fun ChatScreen(state: StationState, station: Station, nav: Navigator, initialDra
     val phoneCanRun = phone?.supported == true
     val places = whisperPlaces(phone = phoneCanRun && phone?.ready == true && !phone.writing, pc = state.models.local.isNotEmpty())
     val to = nav.composeTo
+    // A brand-new empty chat shown as the app opens takes the cursor; one with messages never does.
+    androidx.compose.runtime.remember { if (nav.takeFirstChat() && state.chat.isEmpty()) nav.keyboard.emptyChatAtStart() }
     var whereAsk by androidx.compose.runtime.remember { mutableStateOf(false) }
     var needsAsk by androidx.compose.runtime.remember { mutableStateOf(false) }
     var whoOpen by androidx.compose.runtime.remember { mutableStateOf(false) }

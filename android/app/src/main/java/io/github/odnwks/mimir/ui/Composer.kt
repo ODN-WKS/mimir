@@ -97,10 +97,11 @@ fun Composer(
     val hold = LocalKeyboardHold.current
     val putKeyboardAway = rememberPutKeyboardAway()
     LaunchedEffect(ask) { if (ask > 0 && hold?.held != true) runCatching { focus.requestFocus() } }
-    // A reply box opens with the cursor in it (when Settings allows it), but not right after a Send
-    // or a return to the app.
+    // A reply box opens with the cursor in it (when Settings allows it), but not as the app opens, right
+    // after a Send or on a return to the app. A box built then stays without it, whatever is touched next.
     val keyCtx = androidx.compose.ui.platform.LocalContext.current
-    LaunchedEffect(Unit) { kotlinx.coroutines.delay(300); if (hold?.held != true && keyboardAutoOn(keyCtx)) runCatching { focus.requestFocus() } }
+    val builtHeld = remember { hold?.held == true }
+    LaunchedEffect(Unit) { kotlinx.coroutines.delay(300); if (!builtHeld && hold?.held != true && keyboardAutoOn(keyCtx)) runCatching { focus.requestFocus() } }
     Column(
         modifier.fillMaxWidth().testTag(COMPOSER_TAG).clip(shape).background(surface).border(1.dp, Palette.Outline, shape)
             .padding(start = 6.dp, end = 6.dp, bottom = 2.dp),

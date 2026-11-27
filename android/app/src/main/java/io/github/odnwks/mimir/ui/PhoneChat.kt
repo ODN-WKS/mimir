@@ -65,9 +65,6 @@ import androidx.compose.ui.semantics.liveRegion
  * [pcOnline]) and this phone answers otherwise; a small mark under each answer says where it ran.
  */
 @OptIn(ExperimentalLayoutApi::class)
-/** The first rise of the chat after the app starts opens the keyboard once. */
-private object ColdFocus { @Volatile var done = false }
-
 @Composable
 fun PhoneChat(
     engine: Engine?, nav: Navigator, paired: Boolean = false, pcOnline: Boolean = false, pcName: String = "Your PC", menuWaiting: Int = 0,
@@ -92,10 +89,17 @@ fun PhoneChat(
     if (!s.supported && !paired && !onlineOn) return CantRunHere(nav)
     val model = Catalog.byId(s.model)
     var draft by rememberSaveable { mutableStateOf("") }
-    // New chat and opening the app put the cursor in the box and bring the keyboard up (Settings can turn it off).
-    // It starts at 0 so returning to the tab or turning the phone never rings it; only a new chat does, and the first rise after the app starts.
+    // New chat, Ask Claude and opening the app on a brand-new empty chat put the cursor in the box and bring the
+    // keyboard up (Settings can turn it off). An existing chat opens without it, so it can be read.
+    // It starts at 0 so returning to the tab or turning the phone never rings it.
     var focusTick by remember { mutableStateOf(0) }
-    LaunchedEffect(Unit) { if (!ColdFocus.done) { ColdFocus.done = true; focusTick++ } }
+    LaunchedEffect(Unit) {
+        if (nav.takeFirstChat() && engine.state.value.chat.let { it.turns.isEmpty() && it.queued.isEmpty() }) {
+            nav.keyboard.emptyChatAtStart()
+            focusTick++
+        }
+    }
+    LaunchedEffect(nav.askTick) { if (nav.takeAsk()) focusTick++ }
     // The PC answers pings: a message is never "waiting" then, so Send stays on and no stale red line shows (QA2 #7, #15, #19).
     val pcReady = paired && pcOnline && (s.usePc || !s.supported) && !s.whisper
     val waiting = !s.ready && !pcReady && !s.writing && s.chat.turns.lastOrNull()?.user == true && s.stoppedChat != s.chat.id
