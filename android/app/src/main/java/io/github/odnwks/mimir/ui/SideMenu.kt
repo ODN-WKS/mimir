@@ -240,10 +240,14 @@ fun SideMenu(
                         onLongClick = {
                             go {
                                 openIt()
+                                // A phone chat that did open: its menu counts what it sent, and offers Find, as the "⋯" menu does.
+                                val opened = engine?.state?.value?.chat?.takeIf { c.mimir && it.id == c.id }
                                 nav.openSheet(io.github.odnwks.mimir.nav.Sheet.ChatOptions(
                                     topic = c.title.ifBlank { null }, canRename = c.mimir, whisper = false, canWhisper = false,
                                     pc = state.paired && one && (local?.usePc == true || local?.supported == false) && io.github.odnwks.mimir.online.OnlineModels.answering() == null,
                                     online = io.github.odnwks.mimir.online.OnlineModels.answering()?.let { io.github.odnwks.mimir.online.OnlineModels.serviceOf(it).company },
+                                    sentToPc = opened?.sentToPc ?: -1,
+                                    lookups = opened?.turns?.sumOf { it.sources.size } ?: 0,
                                 ))
                             }
                         },

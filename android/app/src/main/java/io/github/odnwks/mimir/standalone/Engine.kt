@@ -1902,7 +1902,7 @@ class Engine(
             it.copy(chat = it.chat.copy(turns = it.chat.turns + Turn(
                 false, reply, sources = sources, id = asked?.id?.let { a -> "$a.a" }.orEmpty(), at = now(), ran = "phone",
                 modelWords = "${model.name.substringBefore(',').trim()} · This phone",
-                effort = _state.value.effort.wire,
+                effort = effort.wire,
                 // Answered here after the PC was asked: this one replaces the PC's (2.2).
                 version = if (asked != null && asked.id in askedPc) 2 else 1,
             ).let(::floored)), partial = "", reading = false)

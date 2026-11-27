@@ -255,7 +255,8 @@ private fun Conversation(
     /** Find: only the messages with these words show (null: all). */
     words: String? = null,
 ) {
-    val list = rememberLazyListState()
+    // Each chat has its own place in the list: another chat opens at its newest.
+    val list = androidx.compose.runtime.key(s.chat.id) { rememberLazyListState() }
     val focus = LocalFocusManager.current
     val lines = rememberNewLines(list, s.chat.id, s.chat.turns.size to s.writing, if (s.writing) s.partial.length else 0, s.chat.turns.count { it.user })
     Column(modifier) {
@@ -350,13 +351,16 @@ private object WritingSince {
         if (of != message) { of = message; secs = System.currentTimeMillis() / 1000 }
         return secs
     }
+    /** Nothing is being written: the next attempt, even at the same message, counts from its own start. */
+    fun clear() { of = "" }
 }
 
 /** The task chat's live line, for a chat: what it is doing now and how long it has been at it. */
 @Composable
 internal fun ChatLiveLine(s: LocalState) {
+    if (!s.writing) { WritingSince.clear(); return }
     // A PC that dropped says so where the answer will be: said once.
-    if (!s.writing || (s.onPc && s.pcWaiting)) return
+    if (s.onPc && s.pcWaiting) return
     val asked = s.chat.turns.lastOrNull { it.user }
     val doing = if (s.partial.isNotEmpty() && s.looking == null && !s.loading && !s.thinking) "Writing…" else writingWords(s)
     val since = WritingSince.of("${s.chat.id}/${asked?.id}/${asked?.at}")

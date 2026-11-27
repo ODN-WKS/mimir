@@ -314,7 +314,8 @@ fun PhoneChat(
         LaunchedEffect(Unit) { if (!showHome) startup.skip() }
         LaunchedEffect(draft) { if (draft.isNotEmpty()) startup.skip() }
         if (showHome && !first) NeedsYouPill(needsYou, pillDismissedFor, { pillDismissedFor = it }, { nav.open(Screen.NeedsYou) })
-        val list = rememberLazyListState()
+        // Each chat has its own place in the list: another chat opens at its newest.
+        val list = androidx.compose.runtime.key(s.chat.id) { rememberLazyListState() }
         val focus = LocalFocusManager.current
         // Every line that can come in under the messages, so a new one is followed or waits behind "New lines".
         val lines = rememberNewLines(
