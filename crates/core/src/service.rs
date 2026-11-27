@@ -1176,14 +1176,31 @@ impl Service {
                     .into(),
             );
         }
+        let left: Vec<String> = l.task.left_sessions().cloned().collect();
         self.queued.remove(task);
         if delete {
             self.runner.delete(task);
         } else {
             self.runner.remove(task);
+            self.hide_left_sessions(left);
         }
         crate::needs::remove_rules(&self.store_dir, task);
         Ok(serde_json::Value::Null)
+    }
+
+    /// What a removed task had left behind with fresh starts stays off the
+    /// list of sessions from elsewhere.
+    fn hide_left_sessions(&mut self, left: Vec<String>) {
+        let before = self.settings.hidden_sessions.len();
+        for s in left {
+            if self.runner.holder(&s).is_none() && !self.settings.hidden_sessions.contains(&s) {
+                self.settings.hidden_sessions.push(s);
+            }
+        }
+        if self.settings.hidden_sessions.len() != before {
+            self.settings.save();
+            self.refresh_pc_sessions(true);
+        }
     }
 
     /// YOLO goes back to "Ask me first" after 5 hours of work or 24 hours
@@ -1617,12 +1634,13 @@ impl Service {
             Call::ImportPast { project, session } => {
                 let s: crate::sessions::PastSession =
                     serde_json::from_value(session).map_err(|e| e.to_string())?;
+                let held = self.runner.holder(&s.id).is_some();
                 let id = self
                     .runner
                     .open_past(Path::new(&project), &s)
                     .map_err(|e| format!("That session could not be opened: {e}"))?;
-                // The project's saved defaults apply.
-                if let Some(d) = self.settings.defaults.get(&project).cloned() {
+                // The project's saved defaults apply to a newly made task only.
+                if !held && let Some(d) = self.settings.defaults.get(&project).cloned() {
                     self.runner.set_mode(&id, d.mode);
                     self.runner.set_model(&id, d.model);
                     self.runner.set_effort(&id, d.effort);
@@ -5730,6 +5748,7 @@ fn header(l: &runner::Live, queued: &HashMap<String, QueuedMessage>) -> TaskHead
         copy_branch: t.copy_branch.clone(),
         from_phone: t.from_phone.clone(),
         session_id: t.session_id.clone(),
+        held_sessions: t.left_sessions().cloned().collect(),
         status: t.status,
         mode: t.mode,
         model: t.model.clone(),

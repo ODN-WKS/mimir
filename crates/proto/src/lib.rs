@@ -726,6 +726,10 @@ pub struct TaskHeader {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub from_phone: Option<String>,
     pub session_id: Option<String>,
+    /// Sessions the task left behind with a fresh start: they are its own,
+    /// never listed as sessions from elsewhere.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub held_sessions: Vec<String>,
     pub status: Status,
     pub mode: Mode,
     pub model: Option<String>,

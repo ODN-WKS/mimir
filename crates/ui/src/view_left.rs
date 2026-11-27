@@ -193,11 +193,7 @@ impl App {
                     let elsewhere: Vec<&OtherSession> = others
                         .iter()
                         .filter(|o| !settings.hidden_sessions.contains(&o.session.id))
-                        .filter(|o| {
-                            !r.tasks.iter().any(|l| {
-                                l.task.session_id.as_deref() == Some(o.session.id.as_str())
-                            })
-                        })
+                        .filter(|o| !r.tasks.iter().any(|l| l.task.holds(&o.session.id)))
                         .filter(|o| {
                             needle.is_empty()
                                 || o.session.first.to_lowercase().contains(&needle)

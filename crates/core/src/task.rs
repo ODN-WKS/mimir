@@ -491,6 +491,8 @@ impl Task {
         self.copy_branch = h.copy_branch.clone();
         self.ran_out = h.ran_out.clone();
         self.session_id = h.session_id.clone();
+        // A client only needs to know they are held, never to delete them.
+        self.kept_sessions = h.held_sessions.clone();
         self.status = h.status;
         self.mode = h.mode;
         self.model = h.model.clone();
@@ -826,9 +828,12 @@ impl Task {
     /// This task's session, now or before a fresh start: it is never listed
     /// as its own, opened as a second task or deleted by another task.
     pub fn holds(&self, session: &str) -> bool {
-        self.session_id.as_deref() == Some(session)
-            || self.past_sessions.iter().any(|s| s == session)
-            || self.kept_sessions.iter().any(|s| s == session)
+        self.session_id.as_deref() == Some(session) || self.left_sessions().any(|s| s == session)
+    }
+
+    /// The sessions fresh starts left behind.
+    pub fn left_sessions(&self) -> impl Iterator<Item = &String> {
+        self.past_sessions.iter().chain(&self.kept_sessions)
     }
 
     /// Applies one event. `now_ms` is a clock in milliseconds used to time

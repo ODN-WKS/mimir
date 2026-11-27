@@ -130,17 +130,23 @@ impl App {
         let Some(l) = r.tasks.iter().find(|l| l.task.id == id) else {
             return false;
         };
-        let session = l.task.session_id.clone();
+        let sessions: Vec<String> = l
+            .task
+            .session_id
+            .iter()
+            .chain(l.task.left_sessions())
+            .cloned()
+            .collect();
         if let Err(e) = r.remove(id) {
             r.problem(&e);
             return false;
         }
         // Its conversation stays in Claude Code's history; it is not
         // offered again under "On this PC".
-        if let Some(sid) = session
-            && !self.settings.hidden_sessions.contains(&sid)
-        {
-            self.settings.hidden_sessions.push(sid);
+        for sid in sessions {
+            if !self.settings.hidden_sessions.contains(&sid) {
+                self.settings.hidden_sessions.push(sid);
+            }
         }
         self.settings.pinned_tasks.retain(|x| x != id);
         for v in self.settings.task_order.values_mut() {

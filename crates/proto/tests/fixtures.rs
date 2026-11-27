@@ -16,6 +16,7 @@ fn header() -> TaskHeader {
         from_phone: None,
         copy_branch: None,
         session_id: Some("s".into()),
+        held_sessions: vec![],
         status: Status::NeedsYou,
         mode: Mode::Ask,
         model: Some("auto".into()),
