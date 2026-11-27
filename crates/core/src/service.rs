@@ -4454,6 +4454,11 @@ impl Service {
                     prefs.rules()
                 }
             });
+        let rules = if owner {
+            rules
+        } else {
+            Some(crate::talk::without_project_work(rules.as_deref()))
+        };
         let system = crate::talk::system(rules.as_deref(), a.lookup.as_deref());
         let (think, max_tokens) = crate::talk::effort(a.effort.as_deref());
         let answer = crate::talk::answer_id(&a.turn_id);

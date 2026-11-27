@@ -1164,6 +1164,119 @@ fn p35_a_later_messages_forecast_reaches_the_pcs_model() {
     );
 }
 
+/// P38 (owner-found): a chat cannot run anything, and the PC's model is told
+/// so: no claim of an action, and an offer of project work whose way in really
+/// starts a task. Another person has no project work, so gets no offer.
+#[test]
+fn p38_the_pcs_model_is_told_a_chat_runs_nothing_and_offers_project_work() {
+    let Some(home) = home() else { return };
+    let asked = fake_ollama(&["I can't from this chat."]);
+    picked(&home);
+    home.play("run-1.jsonl", "live.jsonl");
+    let mut st = home.service();
+    let mut mine = paired_as(&mut st, None);
+    let mut ana = paired_as(&mut st, Some("Ana"));
+    let say = |ph: &mut Phone, chat: &str, id: &str, words: &str| -> Filed {
+        let f = ph.call(Call::Talk {
+            chat_id: chat.into(),
+            turn_id: id.into(),
+            turns: vec![user(id, words)],
+            lookup: None,
+            sources: vec![],
+            effort: None,
+            ground_rules: None,
+            task: None,
+            chat_only: false,
+        });
+        serde_json::from_value(f.unwrap()).unwrap()
+    };
+    for (id, words) in [
+        ("t1", "run a 5 minute benchmark stressing my entire PC"),
+        ("t2", "stop whatever you're doing"),
+    ] {
+        let f = say(&mut mine, "c-p38", id, words);
+        assert!(matches!(f, Filed::Talk { .. }), "{words}: {f:?}");
+        assert!(
+            mine.seen
+                .until(&mine.p, |s| s.done.contains_key(&format!("{id}.a"))),
+            "no answer"
+        );
+    }
+    say(&mut ana, "c-ana", "a1", "delete my old files");
+    assert!(
+        ana.seen.until(&ana.p, |s| s.done.contains_key("a1.a")),
+        "no answer for Ana"
+    );
+    let all = asked.lock().unwrap().clone();
+    let told = |words: &str| -> String {
+        all.iter()
+            .find(|v| {
+                v["messages"]
+                    .as_array()
+                    .is_some_and(|m| m.iter().any(|m| m["content"] == words))
+            })
+            .and_then(|v| v["messages"][0]["content"].as_str())
+            .unwrap_or_else(|| panic!("{words} was never sent: {all:?}"))
+            .to_string()
+    };
+    for words in [
+        "run a 5 minute benchmark stressing my entire PC",
+        "stop whatever you're doing",
+        "delete my old files",
+    ] {
+        let s = told(words);
+        assert!(s.contains("You cannot run, start, stop"), "{s}");
+        assert!(s.contains("never make up its result"), "{s}");
+        assert!(s.contains("never answer \"Stopped\""), "{s}");
+        assert!(s.contains("never make one up"), "{s}");
+    }
+    let s = told("stop whatever you're doing");
+    assert!(s.contains("offer it as project work"), "{s}");
+    assert!(s.contains("\"In <project name>, \""), "{s}");
+    assert!(
+        s.contains("Replying yes in this chat starts nothing"),
+        "{s}"
+    );
+    let s = told("delete my old files");
+    assert!(s.contains("has no project work"), "{s}");
+    // The way in the offer names: it starts a task in that project.
+    let name = home.project.file_name().unwrap().to_string_lossy();
+    let f = say(
+        &mut mine,
+        "c-p38",
+        "t3",
+        &format!("In {name}, run a 5 minute benchmark"),
+    );
+    assert!(matches!(f, Filed::NewTask { .. }), "{f:?}");
+}
+
+/// P38: Claude answering a chat (no tools) is told the same.
+#[test]
+fn p38_claude_in_a_chat_is_told_it_runs_nothing_and_offers_project_work() {
+    let Some(home) = home() else { return };
+    let _ = fake_ollama(&["Free answer."]);
+    picked(&home);
+    let mut s: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(home.settings_path()).unwrap()).unwrap();
+    s["chats_engine"] = "paid".into();
+    std::fs::write(home.settings_path(), s.to_string()).unwrap();
+    home.play("run-1.jsonl", "live.jsonl");
+    let mut st = home.service();
+    let mut mine = paired_as(&mut st, None);
+    mine.talk("c-p38", "t1", "stop whatever you're doing", false);
+    assert!(
+        mine.seen.until(&mine.p, |s| s.done.contains_key("t1.a")),
+        "no answer"
+    );
+    let runs = home.conversations();
+    let at = runs[0].iter().position(|a| a == "--system-prompt").unwrap();
+    let s = &runs[0][at..].join("\n");
+    assert!(s.contains("You cannot run, start, stop"), "{s}");
+    assert!(s.contains("never make up its result"), "{s}");
+    assert!(s.contains("offer it as project work"), "{s}");
+    assert!(!s.contains("private AI"), "{s}");
+}
+
 /// R30: a picture sent with a chat message reaches the PC's model; the next
 /// message sends it again as words plus the picture of the last two user
 /// messages; another person with the same chat and message ids gets none of it.

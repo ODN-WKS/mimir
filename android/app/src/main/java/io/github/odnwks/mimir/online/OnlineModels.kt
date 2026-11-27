@@ -230,7 +230,8 @@ object OnlineModels {
     fun system(rules: String? = io.github.odnwks.mimir.data.GroundRules.current): String =
         "You are Mímir, answering through an online model. " +
             (rules ?: "Answer exactly what is asked, clearly and directly. Use short paragraphs.") +
-            " You can't browse the web yourself; the app may add fetched information to a message, marked as such: use it and say where it came from."
+            " You can't browse the web yourself; the app may add fetched information to a message, marked as such: use it and say where it came from. " +
+            io.github.odnwks.mimir.standalone.Prompt.NO_ACTIONS
 
     /**
      * Asks [setup]'s model for a reply to [messages] (role and words, the chat so far), passing the

@@ -35,7 +35,20 @@ const ROOM: f32 = 0.75;
 
 /// Where it runs, first in every chat's instructions (the same order as the
 /// phone's `Prompt.build`).
-pub const PLACE: &str = "You are Mímir, a private AI running on the owner's own PC.";
+/// It also says what a chat can't do (P38: a chat claimed it had run and
+/// stopped a benchmark) and how project work is really started.
+pub const PLACE: &str = "You are Mímir, a private AI running on the owner's own PC. \
+This is a chat: you can only write replies. You cannot run, start, stop, test, change or delete \
+anything on the PC or the phone. Never say or imply that you did, are doing or will do such a \
+thing, and never make up its result. A request to stop is such a thing: never answer \"Stopped\", \
+say you can't stop anything from this chat and that a task is stopped with its Stop button. You \
+don't know their project names: never make one up. When asked to do such a thing, say in one or \
+two sentences that you can't from this chat, and offer it as project work: a task in one of their projects on \
+the PC, which they start themselves with New task, or by sending the request again beginning with \
+\"In <project name>, \". Replying yes in this chat starts nothing. Add no warnings or lecture.";
+/// Told too when the person has no project work here (not the owner).
+const NO_PROJECT_WORK: &str = "The person you are talking with has no project work here: say \
+only that you can't from this chat, and don't offer it.";
 /// After the instructions when older turns had to be left out.
 pub const LEFT_OUT: &str = "(Earlier parts of this chat were left out to fit.)";
 /// Said when the phone should answer instead.
@@ -156,8 +169,16 @@ pub fn claude_words(id: &str) -> Option<String> {
 /// What the online model is told it is. It is Anthropic's model answering and the person's words go to Anthropic,
 /// so it must never call this chat private.
 const PAID_PLACE: &str = "You are Mímir's online answerer: Anthropic's Claude, reached through \
-                          the owner's own PC. This chat's words go to Anthropic, so do not \
-                          call it private. You have no tools: answer from what you know.";
+the owner's own PC. This chat's words go to Anthropic, so do not call it private. You have no \
+tools: answer from what you know. \
+This is a chat: you can only write replies. You cannot run, start, stop, test, change or delete \
+anything on the PC or the phone. Never say or imply that you did, are doing or will do such a \
+thing, and never make up its result. A request to stop is such a thing: never answer \"Stopped\", \
+say you can't stop anything from this chat and that a task is stopped with its Stop button. You \
+don't know their project names: never make one up. When asked to do such a thing, say in one or \
+two sentences that you can't from this chat, and offer it as project work: a task in one of their projects on \
+the PC, which they start themselves with New task, or by sending the request again beginning with \
+\"In <project name>, \". Replying yes in this chat starts nothing. Add no warnings or lecture.";
 
 /// The instructions for the online model: the first message's place line is
 /// swapped for the truthful one.
@@ -1064,6 +1085,12 @@ pub fn fit(
     }
     out.extend(kept);
     out
+}
+
+/// The ground rules of a person who isn't the owner: they come with the line
+/// that there is no project work for them.
+pub fn without_project_work(ground_rules: Option<&str>) -> String {
+    format!("{NO_PROJECT_WORK}\n\n{}", ground_rules.unwrap_or_default())
 }
 
 /// The answer's size and thinking for the effort chip ("low", "medium",
