@@ -1265,6 +1265,111 @@ fn p26_the_phone_reads_and_changes_the_switch_and_never_gets_the_key() {
     assert_eq!(files_with_key(&home), Vec::<String>::new());
 }
 
+/// Owner, 2026-11-27: the API credits only ever pay for the owner's own
+/// work. With the plan out and the credits on, someone else's phone (even
+/// one allowed online answers) can't start or carry on project work, its
+/// online chat never gets the key helper, and neither the saved key's last
+/// characters nor the settings that hold them ever reach it.
+#[test]
+fn p26_someone_elses_phone_never_uses_the_credits_or_sees_the_key_hint() {
+    const HINT: &str = "q7Zk";
+    let Some(home) = home(serde_json::json!({
+        "project_engine": "claude",
+        "chats_engine": "paid",
+        "free_when_out": false,
+        "api_credits": true,
+        "api_key_hint": HINT,
+    })) else {
+        return;
+    };
+    fake_store(&home, Some(KEY));
+    fake_ollama();
+    play_limit(&home, "run-1.jsonl");
+    home.play("resume.jsonl", "live.jsonl");
+    home.play("run-2.jsonl", "live.jsonl");
+    home.play("run-3.jsonl", "live.jsonl");
+    let mut st = home.service();
+    // The owner's task runs the plan out and carries on on the credits.
+    let first = new_task(&mut st, &home, "Tidy up notes.txt.");
+    assert!(service_until(&mut st, |s| home.conversations().len() == 2
+        && task(s, &first).is_some_and(|v| !v.busy() && v.task.via_api)));
+
+    let (c, mut seen) = paired(&mut st, Some("Ana"));
+    assert!(seen.until(&c, |s| s.all.contains("person: \"")));
+    let person = seen.all.split("person: \"").nth(1).unwrap();
+    let person = person.split('"').next().unwrap().to_string();
+    st.call_wait(Call::PersonOnline { person, on: true })
+        .unwrap();
+    seen.call(
+        &c,
+        Call::SetEngines {
+            chats: Some("paid".into()),
+            project: None,
+            chat_model: None,
+        },
+    )
+    .unwrap();
+
+    let project = home.project.display().to_string();
+    let new = Call::NewTask {
+        project,
+        text: "Tidy up notes.txt.".into(),
+        pictures: vec![],
+        files: vec![],
+        mode: Mode::Ask,
+        model: None,
+        effort: None,
+        separate_copy: false,
+        msg_id: None,
+        ground_rules: None,
+        typed: true,
+    };
+    let send = Call::Send {
+        task: first.clone(),
+        text: "Carry on.".into(),
+        pictures: vec![],
+        files: vec![],
+        msg_id: None,
+        typed: true,
+    };
+    assert!(seen.call(&c, new).is_err(), "someone else started a task");
+    assert!(seen.call(&c, send).is_err(), "someone else wrote to a task");
+    assert_eq!(home.conversations().len(), 2);
+
+    // Words that would be project work from the owner, aimed at the
+    // owner's task: only ever a chat, on the plan's route, never the credits.
+    let name = home.project.file_name().unwrap().to_string_lossy();
+    let mut words = chat("t1", &format!("In {name}, tidy up notes.txt."));
+    if let Call::Talk { task, .. } = &mut words {
+        *task = Some(first.clone());
+    }
+    let f: Filed = serde_json::from_value(seen.call(&c, words).unwrap()).unwrap();
+    let Filed::Talk {
+        ran, model_words, ..
+    } = &f
+    else {
+        panic!("not just a chat: {f:?}")
+    };
+    assert_eq!(*ran, mimir_core::proto::Ran::Paid, "{f:?}");
+    assert!(!model_words.contains("API credits"), "{model_words}");
+    assert!(seen.until(&c, |s| s.done.contains_key("t1.a")));
+    for (i, run) in home.conversations().iter().enumerate().skip(2) {
+        assert_eq!(key_helper(run), None, "run {i} had the key helper");
+    }
+
+    // A settings change by the owner is not sent to them either.
+    let mut part = st.settings.clone();
+    part["api_credits"] = false.into();
+    st.set_settings(part);
+    assert!(service_until(&mut st, |s| s.settings["api_credits"] == false));
+    seen.call(&c, Call::Models).unwrap();
+    seen.take(&c);
+    assert!(
+        !seen.all.contains(HINT) && !seen.all.contains("api_key_hint"),
+        "someone else's phone was sent the key hint"
+    );
+}
+
 /// A checkbox in the PC window: (found, on, can be changed).
 fn window_box(
     h: &egui_kittest::Harness<'static, station_ui::App>,
