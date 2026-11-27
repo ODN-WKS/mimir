@@ -187,6 +187,19 @@ fun StatusScreen(state: StationState, station: io.github.odnwks.mimir.data.Stati
             // PC's own setting; it can change while the PC is reached and has a model to carry on with.
             val hasModel = state.models.local.isNotEmpty()
             val canChange = on && hasModel
+            // The credits come before the PC's model when the plan runs out, so their switch comes first. Only the
+            // owner's, and only a switch once a key is saved on the PC (an older PC says nothing: nothing shows).
+            if (state.owner) when (state.models.apiKeySaved) {
+                true -> SwitchRow(state.models.apiCredits, station::setApiCredits, Modifier.padding(horizontal = 4.dp), enabled = on) {
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(ApiCredits.TITLE, style = Type.BodyTight, color = Palette.Text)
+                        // While the PC is away, the switch below says so: said once, not twice.
+                        Text(ApiCredits.ABOUT, style = Type.Small, color = Palette.TextDim)
+                    }
+                }
+                false -> Text(ApiCredits.NO_KEY, style = Type.Small, color = Palette.TextDim, modifier = Modifier.padding(horizontal = 4.dp))
+                null -> {}
+            }
             // The owner's plan and PC: someone else's phone doesn't change it.
             if (state.owner) SwitchRow(canChange && state.models.switchToFree, station::setSwitchToFree, Modifier.padding(horizontal = 4.dp), enabled = canChange) {
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -213,6 +226,17 @@ object FreeWhenOut {
     const val ABOUT = "When online use passes 99% this week, or runs out, your PC's model takes over for chats and project work, and says so."
     const val NO_MODEL = "Needs a model on your PC first: add one on the PC in Settings › Models."
     const val AWAY = "Your PC is away: change this when it's back."
+}
+
+/** The owner's Anthropic API credits: the same words as the PC. */
+object ApiCredits {
+    const val TITLE = "Use my API credits when my plan runs out"
+    const val ABOUT = "Uses your Anthropic API credits; Anthropic bills each answer."
+    const val NO_KEY = "To use your API credits when your plan runs out, add your key on your PC: Settings › Models."
+    /** Under an answer that ran on them. */
+    const val LABEL = "API credits"
+    /** The PC's own note in a task when it moves onto the credits (runner.rs API_CREDITS_NOTE). */
+    const val TASK_NOTE = "This runs on your API credits, because your plan's online use is out or almost out. Anthropic bills each answer."
 }
 
 /** Words for the meters, the same as the PC window's This PC card. */

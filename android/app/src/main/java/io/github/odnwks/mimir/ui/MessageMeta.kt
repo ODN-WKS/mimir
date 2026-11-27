@@ -261,7 +261,8 @@ fun ReplyMeta(m: TaskMessage, onWhy: (() -> Unit)?) {
     // No extra touch height here: it would push the chat apart; the switch line under it takes the same tap.
     val tap = if (m.switched != null && onWhy != null) Modifier.clickable(role = Role.Button, onClickLabel = "Why the model changed", onClick = onWhy) else Modifier
     Box(tap, contentAlignment = Alignment.CenterStart) {
-        MetaLine(m.model, m.effort, m.atMs, switched = m.switched != null)
+        val who = listOfNotNull(modelEffortWords(m.model, m.effort), ApiCredits.LABEL.takeIf { m.apiCredits }).joinToString(" · ")
+        SmallPrint(who.ifEmpty { null }, m.atMs, switched = m.switched != null)
     }
 }
 

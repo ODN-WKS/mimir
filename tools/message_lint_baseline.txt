@@ -12,6 +12,11 @@ claude-name	crates/ui/src/labels.rs	Weekly use: not read (Claude isn't used here
 claude-name	crates/ui/src/labels.rs	Weekly use: sign in to Claude Code to see it
 claude-name	crates/ui/src/labels.rs	Your Anthropic plan's 7-day use could not be read just now (the PC may be offline, or the sign-in needs renewing by Claude Code). Mímir looks again every 10 minutes.
 tech-word	android/app/src/main/java/io/github/odnwks/mimir/standalone/Engine.kt	%.0f tokens a second
+tech-word	android/app/src/main/java/io/github/odnwks/mimir/ui/StatusScreen.kt	API credits
+tech-word	android/app/src/main/java/io/github/odnwks/mimir/ui/StatusScreen.kt	This runs on your API credits, because your plan's online use is out or almost out. Anthropic bills each answer.
+tech-word	android/app/src/main/java/io/github/odnwks/mimir/ui/StatusScreen.kt	To use your API credits when your plan runs out, add your key on your PC: Settings › Models.
+tech-word	android/app/src/main/java/io/github/odnwks/mimir/ui/StatusScreen.kt	Use my API credits when my plan runs out
+tech-word	android/app/src/main/java/io/github/odnwks/mimir/ui/StatusScreen.kt	Uses your Anthropic API credits; Anthropic bills each answer.
 tech-word	crates/core/src/incognito.rs	no socket for loopback
 tech-word	crates/core/src/sockets.rs	no socket was handed over
 tech-word	crates/ui/src/labels.rs	Use my API credits when my plan runs out

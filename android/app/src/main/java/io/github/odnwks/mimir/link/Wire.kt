@@ -294,6 +294,10 @@ object Wire {
     fun setFreeChoice(switchToFree: Boolean?, freeModel: String?): String = obj("SetFreeChoice") {
         put("switch_to_free", switchToFree ?: JSONObject.NULL); put("free_model", freeModel ?: JSONObject.NULL)
     }
+    /** "Use my API credits when my plan runs out" (the owner's; the key itself stays on the PC). */
+    fun setApiCredits(on: Boolean): String = obj("SetFreeChoice") {
+        put("switch_to_free", JSONObject.NULL); put("free_model", JSONObject.NULL); put("api_credits", on)
+    }
     fun setWeeklyCheck(on: Boolean): String = obj("SetWeeklyCheck") { put("on", on) }
     fun phoneSettings(): String = JSONObject.quote("PhoneSettings")
     fun setPcName(name: String): String = obj("SetPcName") { put("name", name) }
@@ -323,6 +327,8 @@ object Wire {
             free, if (o.isNull("free_model")) null else o.optString("free_model"), o.optBoolean("switch_to_free"), o.optString("ollama"),
             o.optJSONObject("standalone")?.toString(),
             weeklyCheck = o.optBoolean("weekly_check", true),
+            apiCredits = o.optBoolean("api_credits"),
+            apiKeySaved = if (o.has("api_key_saved")) o.optBoolean("api_key_saved") else null,
             power = if (o.isNull("power")) null else o.optString("power").ifEmpty { null },
             chatsEngine = if (o.isNull("chats_engine")) null else o.optString("chats_engine").ifEmpty { null },
             projectEngine = if (o.isNull("project_engine")) null else o.optString("project_engine").ifEmpty { null },
@@ -503,6 +509,7 @@ object Wire {
                 Ask(a.optString("tool_name"), a.optJSONObject("tool_input") ?: JSONObject())
             },
             incognito = h.optBoolean("incognito"),
+            viaApi = h.optBoolean("via_api"),
             archived = h.optBoolean("archived"),
             plan = h.optString("mode") == "Plan",
             mode = h.optString("mode", "Ask"),
@@ -626,6 +633,10 @@ data class LModels(
     val projectEngine: String? = null,
     /** Whether what answers this person's chats on the PC can look at pictures (false: no, or an older PC). */
     val seesPictures: Boolean = false,
+    /** "Use my API credits when my plan runs out" is on. */
+    val apiCredits: Boolean = false,
+    /** A key is saved on the PC (null: an older PC, which has no such setting). */
+    val apiKeySaved: Boolean? = null,
 )
 
 /** An update card from the PC. */
@@ -816,6 +827,8 @@ data class LinkTask(
     val asks: List<Ask>,
     /** An Incognito task: kept in memory only, never in the general chat. */
     val incognito: Boolean = false,
+    /** Its latest run was started on the owner's API credits. */
+    val viaApi: Boolean = false,
     /** Archived on the PC: shown only under All tasks › Archived. */
     val archived: Boolean = false,
     /** Plan first (changes nothing yet). */

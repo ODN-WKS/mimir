@@ -1584,6 +1584,16 @@ class LinkStation(
         }
     }
 
+    /** "Use my API credits when my plan runs out": shown at once, then as the PC keeps it. */
+    override fun setApiCredits(on: Boolean) {
+        synchronized(lock) { pcModels = pcModels?.copy(apiCredits = on) }
+        publish()
+        if (!call(Wire.setApiCredits(on)) { _, err -> if (err != null) note(err); refreshModels() }) {
+            note("Your PC is away: try again when it's back.")
+            refreshModels()
+        }
+    }
+
     override fun continueOnClaude(taskId: String) {
         call(Wire.continueOnClaude(taskId)) { _, err -> if (err != null) note(err) }
     }
@@ -1941,7 +1951,9 @@ class LinkStation(
         // PHD-29(c): disable Play while the task is live-streaming; enable once the message is complete.
         val streaming = live[t.id]?.isNotBlank() == true
         val ms = metas[t.id].orEmpty()
-        val messages = es.mapIndexedNotNull { i, e -> taskMessageOf(t.id, i, e, streaming && i == es.lastIndex, ms.getOrNull(i) ?: LMeta()) } + listOfNotNull(live[t.id]?.takeIf { it.isNotBlank() }?.let { TaskMessage("${t.id}-live", true, it) }) +
+        val credits = creditsFrom(es, t.viaApi)
+        val messages = es.mapIndexedNotNull { i, e -> taskMessageOf(t.id, i, e, streaming && i == es.lastIndex, ms.getOrNull(i) ?: LMeta())?.let { if (it.fromClaude && i >= credits) it.copy(apiCredits = true) else it } } +
+            listOfNotNull(live[t.id]?.takeIf { it.isNotBlank() }?.let { TaskMessage("${t.id}-live", true, it, apiCredits = t.viaApi) }) +
             // Still on this phone: Sent until the PC's copy of the task has it.
             data.replies.filter { it.second == t.id }.map { (id, _, text) -> TaskMessage(id, false, text.ifBlank { attachments.words(id) }, waiting = true, failedWhy = failedReplies[id].orEmpty(), receipt = MessageReceipt.Sent) } +
             data.recordings.filter { it.second == t.id }.map { (id, _, secs) -> TaskMessage(id, false, recordingWords(secs), waiting = true) }
@@ -2162,6 +2174,16 @@ const val SIGNED_OUT = "Claude isn't signed in on your PC. Open Mímir on your P
 
 /** The first message of a task carried on from a summary (the PC hands it to Claude). */
 internal const val CARRY_ON_TEXT = "Carry on with this task from the summary."
+
+/**
+ * The first entry of [es] whose replies ran on the owner's API credits ([es]'s size: none). The PC marks only the
+ * task's latest run, and says so with a note when it moves onto the credits: replies after that note are the ones.
+ */
+internal fun creditsFrom(es: List<LEntry>, viaApi: Boolean): Int {
+    if (!viaApi) return es.size
+    val moved = es.indexOfLast { it is LEntry.Note && it.text == io.github.odnwks.mimir.ui.ApiCredits.TASK_NOTE }
+    return if (moved < 0) es.size else moved + 1
+}
 
 /** One chat entry as a task message, with its small print [m]; null for steps, and for the "ran out of room" note (its own panel says it). */
 internal fun taskMessageOf(taskId: String, i: Int, e: LEntry, streamingLast: Boolean, m: LMeta = LMeta()): TaskMessage? = when (e) {

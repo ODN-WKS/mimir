@@ -27,7 +27,9 @@ fun answerAuthor(turn: Turn, pcName: String): String? {
         }
         // The PC's answers were kept as "Qwen 3.6 · <PC name>": the model, once.
         "pc" -> words.removeSuffix("· $pcName").removeSuffix("· Your PC").trim().let { m -> if (m.isEmpty() || m == pcName) "Your PC" else "Your PC · $m" }
-        "paid" -> "Claude" + (claudeModelWord(words)?.let { " · $it" } ?: if (words.isNotEmpty() && !words.startsWith("claude", true)) " · $words" else "")
+        "paid" -> "Claude" + (claudeModelWord(words)?.let { " · $it" } ?: if (words.isNotEmpty() && !words.startsWith("claude", true)) " · $words" else "") +
+            // The owner's money: said whenever the PC says the answer ran on it.
+            if (words.endsWith(ApiCredits.LABEL)) " · ${ApiCredits.LABEL}" else ""
         else -> null
     }
 }

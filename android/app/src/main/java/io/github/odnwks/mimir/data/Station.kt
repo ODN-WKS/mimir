@@ -132,6 +132,8 @@ interface Station {
     /** "Fresh start" in a task's menu: [done] gets null when the PC took it, else why not, in plain words. */
     fun freshStart(taskId: String, done: (String?) -> Unit = {}) {}
     fun setSwitchToFree(on: Boolean)
+    /** "Use my API credits when my plan runs out": the PC's own setting. */
+    fun setApiCredits(on: Boolean)
     /** The PC's weekly look for a better model for this phone ("Worth switching?"), on or off. */
     fun setWeeklyCheck(on: Boolean)
     /** Settings › Who answers' two lines: chats "free" or "paid", project work "free" or "claude" (null: unchanged). */
@@ -560,6 +562,8 @@ data class TaskMessage(
     val playLabel: String = "",
     /** Typed while the PC was away: kept on this phone and sent when it's back. */
     val waiting: Boolean = false,
+    /** A reply that ran on the owner's API credits. */
+    val apiCredits: Boolean = false,
     /** A short line from the PC (not said by you or Claude): drawn small and dim. */
     val note: Boolean = false,
     /** The PC refused this waiting reply (or its pictures can't be read back): why; it stays to try again or remove. */
@@ -795,6 +799,10 @@ data class Models(
     val seesPictures: Boolean? = null,
     /** False only when who answers chats on the PC has never been read on this phone: nothing is shown as chosen then. */
     val chatsEngineKnown: Boolean = true,
+    /** "Use my API credits when my plan runs out" is on, as set on the PC. */
+    val apiCredits: Boolean = false,
+    /** A key is saved on the PC (null: not known, or an older PC). */
+    val apiKeySaved: Boolean? = null,
 ) {
     val selectedName: String get() = (claude + local).firstOrNull { it.id == selected }?.name ?: selected
 }
