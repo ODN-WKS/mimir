@@ -260,6 +260,8 @@ data class Turn(
     val heldFor: String? = null,
     /** On an earlier answer kept after Try again, Look it up or an edit: the words it answered. */
     val asked: String? = null,
+    /** The skill picked for the owner's message ([Skill.id]); kept on this phone only. */
+    val skill: String? = null,
 ) {
     /** As the PC keeps it: pictures and files reduced to words, as the phone's model reads them. */
     fun wire(pcSees: Boolean = false, withPictures: Boolean = false, withFiles: Boolean = false) = io.github.odnwks.mimir.link.LChatTurn(
@@ -463,7 +465,9 @@ object Prompt {
     ): String = buildString {
         val sys = system(rules, online, chatRules, ask, projects) + if (brief) BRIEF else ""
         val last = turns.lastIndex
-        fun said(i: Int, t: Turn) = t.forModel(sees) + if (i == last && t.user && fetched != null) fetched else earlier[t.id].takeIf { t.user && t.id.isNotEmpty() }.orEmpty()
+        fun said(i: Int, t: Turn) = t.forModel(sees) + (if (i == last && t.user && fetched != null) fetched else earlier[t.id].takeIf { t.user && t.id.isNotEmpty() }.orEmpty()) +
+            // A skill speaks for the message it was picked for, while that message is being answered.
+            Skill.of(t.skill.takeIf { i == last && t.user })?.let { "\n\n[${it.instruction}]" }.orEmpty()
         when (format) {
             Format.Gemma4 -> {
                 append("<|turn>system\n").append(sys).append("<turn|>\n")

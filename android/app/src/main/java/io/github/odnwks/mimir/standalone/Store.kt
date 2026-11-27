@@ -235,6 +235,7 @@ class Store(private val file: File, private val codec: Codec = KeystoreCodec()) 
             saw = t.optString("saw").ifEmpty { null },
             heldFor = t.optString("held_for").ifEmpty { null },
             asked = t.optString("asked").ifEmpty { null },
+            skill = t.optString("skill").ifEmpty { null },
         )
     }
 
@@ -259,6 +260,7 @@ class Store(private val file: File, private val codec: Codec = KeystoreCodec()) 
             t.saw?.let { put("saw", it) }
             t.heldFor?.let { put("held_for", it) }
             t.asked?.let { put("asked", it) }
+            t.skill?.let { put("skill", it) }
             if (t.files.isNotEmpty()) put("files", JSONArray(t.files.map { f ->
                 JSONObject().put("name", f.name).put("text", f.text).put("cut", f.cut).apply {
                     if (f.note.isNotEmpty()) put("note", f.note)

@@ -36,6 +36,15 @@ object Glyphs {
     ).apply { paths.forEach { addPath(pathData = addPathNodes(it), fill = SolidColor(Color.Black)) } }.build()
 
     val Chat = line("chat", 2f, "M4 5h16v11H9l-5 4z")
+    // The skills' marks (owner's mock-up 3, 2026-11-27).
+    val SkillNone = line("skill-none", 2f, circle(12f, 12f, 7f))
+    val SkillResearch = line("skill-research", 2f, circle(10.5f, 10.5f, 6f), "M15 15l5 5")
+    val SkillShopping = line("skill-shopping", 2f, "M16 7c-1-1.5-2.5-2-4-2-2.2 0-4 1.2-4 3s1.8 2.6 4 3 4 1.2 4 3-1.8 3-4 3c-1.6 0-3.2-.6-4.2-2M12 3v18")
+    val SkillWriting = line("skill-writing", 2f, "M4 20l4-1 11-11-3-3L5 16z", "M14 7l3 3")
+    val SkillTeach = line("skill-teach", 2f, "M12 7c-2-1.5-5-2-8-1.5v12c3-.5 6 0 8 1.5 2-1.5 5-2 8-1.5v-12c-3-.5-6 0-8 1.5z", "M12 7v12")
+    val SkillPeople = line("skill-people", 1.6f, "M5 18c2-1 3-3 3-6H5V7h5v5c0 4-2 6-5 6zM14 18c2-1 3-3 3-6h-3V7h5v5c0 4-2 6-5 6z")
+    val SkillSummarize = line("skill-summarize", 2f, "M5 9h14M5 15h10")
+    val SkillTrace = line("skill-trace", 2f, "M5 12.5l4.5 4.5L19 7")
     val Gauge = line("gauge", 2f, "M4 16a8 8 0 0 1 16 0", "M12 16l4-5")
     val Speaker = line("speaker", 2f, "M11 5L6 9H3v6h3l5 4z", "M15.5 9a4 4 0 0 1 0 6", "M18.5 6a8 8 0 0 1 0 12")
     val SpeakerLow = line("speaker-low", 2f, "M11 5L6 9H3v6h3l5 4z", "M15.5 9a4 4 0 0 1 0 6")

@@ -828,7 +828,7 @@ class Engine(
         if (!canSend()) return false
         _state.update { it.copy(chat = it.chat.copy(turns = it.chat.turns.dropLast(1))) }
         // The same message (id and version) may have reached the PC already: it goes marked as sent again (P40).
-        return send(last.text, last.files, last.pictures, last.id, last.at, last.version, typed ?: last.typed, again = true)
+        return send(last.text, last.files, last.pictures, last.id, last.at, last.version, typed ?: last.typed, again = true, skill = Skill.of(last.skill))
     }
 
     /**
@@ -849,7 +849,7 @@ class Engine(
         _state.update { it.copy(chat = keepingOld(it.chat, question, answer).let { c -> c.copy(turns = c.turns.dropLast(2)) }, lookupFailed = false) }
         persist()
         // Asked again with a higher version: a PC that keeps each message's reply never gives back the old one.
-        return send(question.text, question.files, question.pictures, question.id, question.at, question.version + 1)
+        return send(question.text, question.files, question.pictures, question.id, question.at, question.version + 1, skill = Skill.of(question.skill))
     }
 
     /**
@@ -883,7 +883,7 @@ class Engine(
         val gone = removed.drop(1).filter { it.user }.map(::answerIdOf).toSet()
         val kept = (removed.getOrNull(1)?.let { keepingOld(c, orig, it) } ?: c).let { k -> k.copy(old = k.old - gone) }
         _state.update { it.copy(chat = kept.copy(turns = c.turns.take(pos), cuts = c.cuts.filter { k -> cuts.none { n -> n.id == k.id } } + cuts), stoppedChat = null) }
-        if (!send(t, orig.files, orig.pictures, orig.id, orig.at, orig.version + 1, typed = true)) {
+        if (!send(t, orig.files, orig.pictures, orig.id, orig.at, orig.version + 1, typed = true, skill = Skill.of(orig.skill))) {
             _state.update { it.copy(chat = before.chat) }
             retryFloor.remove(answerId)
             replaced.remove(answerId)
@@ -986,22 +986,22 @@ class Engine(
      * the model is ready.
      */
     /** True when the message was taken (sent, or kept to wait): only then does the box clear (PHE-02). */
-    fun ask(text: String, files: List<TurnFile> = emptyList(), pictures: List<TurnPicture> = emptyList(), typed: Boolean = false, saw: String? = answererShown()): Boolean {
+    fun ask(text: String, files: List<TurnFile> = emptyList(), pictures: List<TurnPicture> = emptyList(), typed: Boolean = false, saw: String? = answererShown(), skill: Skill? = null): Boolean {
         val t = text.trim()
         val s0 = _state.value
         if ((t.isEmpty() && files.isEmpty() && pictures.isEmpty()) || s0.writing) return false
         // Messages already waiting go first: a new one lines up behind them, so the order never changes.
-        fun message() = Turn(true, t, files, pictures, id = newId(), at = now(), typed = typed, saw = saw)
+        fun message() = Turn(true, t, files, pictures, id = newId(), at = now(), typed = typed, saw = saw, skill = skill?.id)
         if (s0.chat.queued.isNotEmpty() && !s0.whisper) { enqueue(message()); drainQueue(); return true }
         // The PC is there but its choice of who answers isn't read yet: the message waits a moment, then goes by itself.
         // (The read may land between that look and the queueing, so the queue is looked at again at once.)
         if (pcChoiceUnread()) { enqueue(message()); drainQueue(); return true }
         if (s0.ready || pcAnswers() || onlineAnswers()) {
             // A Whisper stays on this phone and is never queued.
-            if (s0.whisper) return send(t, files, pictures, typed = typed)
+            if (s0.whisper) return send(t, files, pictures, typed = typed, skill = skill)
             val who = answererNow()
             if (holds(saw, who)) { enqueue(message().copy(heldFor = who)); return true }
-            return send(t, files, pictures, typed = typed).also { if (it) sayWhoAnswers(saw, who) }
+            return send(t, files, pictures, typed = typed, skill = skill).also { if (it) sayWhoAnswers(saw, who) }
         }
         // Paired and the PC is the answerer: with nothing to answer it now (the PC away, this phone with no model),
         // the message stays in the chat, marked "Sends when your PC is back", and goes by itself, in order, once.
@@ -1119,7 +1119,7 @@ class Engine(
             }
             _state.update { it.copy(chat = it.chat.copy(queued = it.chat.queued.drop(1))) }
             // It is dated when it goes (same id), so its answer never lands before the answers of the ones sent earlier.
-            if (!send(first.text, first.files, first.pictures, first.id, maxOf(first.at, now()), first.version, first.typed, again = first.wentOnce)) {
+            if (!send(first.text, first.files, first.pictures, first.id, maxOf(first.at, now()), first.version, first.typed, again = first.wentOnce, skill = Skill.of(first.skill))) {
                 _state.update { it.copy(chat = it.chat.copy(queued = listOf(first) + it.chat.queued)) }
             } else sayWhoAnswers(first.saw, who)
         }
@@ -1180,7 +1180,7 @@ class Engine(
      * True when the message was taken and a reply is being written. [again]: this very message (id and version)
      * may have reached the PC already, so a PC that never does a message twice gives back what it filed (P40).
      */
-    fun send(text: String, files: List<TurnFile> = emptyList(), pictures: List<TurnPicture> = emptyList(), id: String = "", at: Long = 0L, version: Int = 1, typed: Boolean = false, again: Boolean = false): Boolean {
+    fun send(text: String, files: List<TurnFile> = emptyList(), pictures: List<TurnPicture> = emptyList(), id: String = "", at: Long = 0L, version: Int = 1, typed: Boolean = false, again: Boolean = false, skill: Skill? = null): Boolean {
         val t = text.trim()
         val s0 = _state.value
         val toPc = pcAnswers()
@@ -1196,7 +1196,7 @@ class Engine(
         // A message sent again (it waited for the PC) keeps the time it was typed, so its answer never sorts before it.
         // Who answers it is kept with it, in case it has to wait or be sent again.
         val who = answererNow()
-        val turn = if (failed != null) failed.copy(at = failed.at, typed = typed, saw = who) else Turn(true, t, files, pictures, id = id.ifEmpty { newId() }, at = if (at > 0) at else now(), version = version, typed = typed, saw = who)
+        val turn = if (failed != null) failed.copy(at = failed.at, typed = typed, saw = who, skill = skill?.id) else Turn(true, t, files, pictures, id = id.ifEmpty { newId() }, at = if (at > 0) at else now(), version = version, typed = typed, saw = who, skill = skill?.id)
         _state.update { it.copy(chat = it.chat.copy(turns = (if (failed != null) it.chat.turns.dropLast(1) else it.chat.turns) + turn, model = model.id, at = now()), writing = true, partial = "", problem = null, speed = null, askPlace = false, askSearch = null, stoppedChat = null) }
         persist()
         pcWhy = null
@@ -1415,17 +1415,20 @@ class Engine(
         if (skipLookup.getAndSet(false)) return noLookup
         if (!io.github.odnwks.mimir.online.Online.allowed(mode())) return noLookup
         val last = turns.lastOrNull()?.takeIf { it.user } ?: return noLookup
-        if (mode() == io.github.odnwks.mimir.online.ChatMode.WhisperWeb && (tapped != null || forced != null || io.github.odnwks.mimir.online.Router.need(last.text, timely = mode() == io.github.odnwks.mimir.online.ChatMode.Normal) != null)) {
+        if (mode() == io.github.odnwks.mimir.online.ChatMode.WhisperWeb && (tapped != null || forced != null || Skill.of(last.skill)?.lookup == true || io.github.odnwks.mimir.online.Router.need(last.text, timely = mode() == io.github.odnwks.mimir.online.ChatMode.Normal) != null)) {
             torWait()?.let { return it }
         }
         // A normal chat's lookup, all its steps together, takes about 12 s at most (Tor is slower).
         val budget = if (mode() == io.github.odnwks.mimir.online.ChatMode.WhisperWeb) Long.MAX_VALUE / 4 else io.github.odnwks.mimir.online.Net.BUDGET_MS
         val previous = turns.dropLast(1).lastOrNull { it.user }?.text
+        // A lookup skill looks up whatever the Router would have said.
+        val skill = Skill.of(last.skill)
+        val bySkill = skill?.need(last.text, asked)
         return io.github.odnwks.mimir.online.Net.within(budget) {
             if (tapped != null) page(tapped)
-            else when (val need = forced ?: asked ?: io.github.odnwks.mimir.online.Router.need(last.text, timely = mode() == io.github.odnwks.mimir.online.ChatMode.Normal) ?: (if (mode() == io.github.odnwks.mimir.online.ChatMode.Normal) io.github.odnwks.mimir.online.Router.followUp(last.text, previous) else null)) {
+            else when (val need = forced ?: bySkill ?: asked ?: io.github.odnwks.mimir.online.Router.need(last.text, timely = mode() == io.github.odnwks.mimir.online.ChatMode.Normal) ?: (if (mode() == io.github.odnwks.mimir.online.ChatMode.Normal) io.github.odnwks.mimir.online.Router.followUp(last.text, previous) else null)) {
                 is io.github.odnwks.mimir.online.Router.Need.Weather -> weather(need)
-                is io.github.odnwks.mimir.online.Router.Need.Search -> search(need, forced != null)
+                is io.github.odnwks.mimir.online.Router.Need.Search -> search(need, forced != null, skill)
                 is io.github.odnwks.mimir.online.Router.Need.Encyclopedia -> encyclopedia(need)
                 null -> noLookup
             }
@@ -1536,7 +1539,7 @@ class Engine(
     private val pagesToRead = 4
     private val pagesWithLane = 5
 
-    private fun search(need: io.github.odnwks.mimir.online.Router.Need.Search, forced: Boolean): Pair<String?, List<io.github.odnwks.mimir.online.Source>>? {
+    private fun search(need: io.github.odnwks.mimir.online.Router.Need.Search, forced: Boolean, skill: Skill? = null): Pair<String?, List<io.github.odnwks.mimir.online.Source>>? {
         val settings = io.github.odnwks.mimir.online.Online.settings.value
         if (!settings.search) return noLookup
         val mode = mode()
@@ -1545,7 +1548,8 @@ class Engine(
         // P21 stage 3: open databases for the question (papers, Stack Exchange, Hacker News, Open Library) are asked
         // beside the web search, in the same time, with the same words; never in a Whisper or with Data Saver.
         val lanes = if (readPages && !io.github.odnwks.mimir.online.Online.dataSaver()) {
-            io.github.odnwks.mimir.online.Lanes.lanesFor(_state.value.chat.turns.lastOrNull { it.user }?.text ?: need.words, need.words)
+            io.github.odnwks.mimir.online.Lanes.lanesFor(_state.value.chat.turns.lastOrNull { it.user }?.text ?: need.words, need.words) +
+                setOfNotNull(io.github.odnwks.mimir.online.Lane.PeopleSay.takeIf { skill == Skill.People })
         } else emptySet()
         fun startLanes() = if (lanes.isEmpty()) null else io.github.odnwks.mimir.online.Net.async { io.github.odnwks.mimir.online.Lanes.search(lanes, need.words, mode) }
         // Before the one-time warning is accepted, nothing goes out from this phone until the PC has answered (as for its pages).
@@ -1575,7 +1579,7 @@ class Engine(
             // PHW-07: source label shows "SearXNG" (what Settings shows), not the underlying engine names.
             val via = "your PC's search"
             if (all.isEmpty()) return "\n\n[The app searched the web for \"${need.words}\" through the owner's PC and found nothing. Say so.]" to emptyList()
-            if (readPages) evidence(need.words, all, "a web search", via)?.let { return it }
+            if (readPages) evidence(need.words, all, "a web search", via, skill == Skill.Deep)?.let { return it }
             val shown = results.ifEmpty { all }
             return Prompt.fetched(io.github.odnwks.mimir.online.Search.describe(need.words, shown, "the owner's PC search"), "a web search", clock()) to
                 shown.distinctBy { it.site }.take(3).map { io.github.odnwks.mimir.online.Source(it.site, it.url, need.words, via = if (io.github.odnwks.mimir.online.Lanes.found(it)) "" else via) }
@@ -1591,7 +1595,7 @@ class Engine(
         _state.update { it.copy(looking = "Searching: $words…") }
         fun answer(results: List<io.github.odnwks.mimir.online.Search.Result>, all: List<io.github.odnwks.mimir.online.Search.Result>, label: String) = when {
             all.isEmpty() -> "\n\n[The app searched the web for \"$words\" and found nothing. Say so.]" to emptyList()
-            else -> (if (readPages) evidence(words, all, label, "") else null)
+            else -> (if (readPages) evidence(words, all, label, "", skill == Skill.Deep) else null)
                 ?: results.ifEmpty { all }.let { shown ->
                     Prompt.fetched(io.github.odnwks.mimir.online.Search.describe(words, shown), label, clock()) to
                         shown.distinctBy { it.site }.take(3).map { io.github.odnwks.mimir.online.Source(it.site, it.url, words) }
@@ -1633,11 +1637,11 @@ class Engine(
      * source per number. Null when nothing could be chosen: the caller uses the results as before.
      */
     private fun evidence(
-        words: String, results: List<io.github.odnwks.mimir.online.Search.Result>, from: String, via: String,
+        words: String, results: List<io.github.odnwks.mimir.online.Search.Result>, from: String, via: String, deep: Boolean = false,
     ): Pair<String?, List<io.github.odnwks.mimir.online.Source>>? {
         // Four pages; five when an open database's result is among them (so the web keeps its share).
         val picked = io.github.odnwks.mimir.online.Fuse.pick(results, pagesWithLane)
-            .let { p -> if (p.any { r -> r.engines.any { it in io.github.odnwks.mimir.online.Lanes.ENGINES } }) p else p.take(pagesToRead) }
+            .let { p -> if (p.any { r -> r.engines.any { it in io.github.odnwks.mimir.online.Lanes.ENGINES } }) p else if (deep) p else p.take(pagesToRead) }
         // A database's result whose page is built by script is taken from its snippet (its abstract), not read.
         val toRead = picked.filterNot(io.github.odnwks.mimir.online.Lanes::snippetOnly)
         if (toRead.isNotEmpty() && !io.github.odnwks.mimir.online.Online.dataSaver()) {
@@ -1937,7 +1941,8 @@ class Engine(
         // A lookup's answer is a plain fact: no long thought before it (Think first stays for the rest).
         val think = effort.thinks(model) && block == null
         fun limitFor(fetched: String?) =
-            if (fetched != null) minOf(LOOKUP_REPLY_TOKENS, if (effort == Effort.Quick) Effort.QUICK_TOKENS else MAX_REPLY_TOKENS) else effort.maxTokens(model)
+            // Deep research is a report: it gets the longest reply there is.
+            if (fetched != null && owner?.skill != Skill.Deep.id) minOf(LOOKUP_REPLY_TOKENS, if (effort == Effort.Quick) Effort.QUICK_TOKENS else MAX_REPLY_TOKENS) else effort.maxTokens(model)
         // The model may ask for a lookup only before any fetched text is in this message's prompt, so a web page can never start one.
         val honour = ask != null && block == null && !refer
         _state.update { if (it.chat.id != chatId) it else it.copy(looking = null, reading = true, readingFound = block != null) }
@@ -2309,7 +2314,7 @@ class Engine(
         val last = s.chat.turns.lastIndex
         val system = io.github.odnwks.mimir.online.OnlineModels.system(projects = projectWork()) + " " + Prompt.NO_CLAIM + Prompt.chatTail(s.chat.rules) + if (s.effort == Effort.Quick) Prompt.BRIEF else ""
         val messages = listOf("system" to system) + s.chat.turns.mapIndexed { i, t ->
-            (if (t.user) "user" else "assistant") to (t.forModel() + if (t.user && i == last) fetched.orEmpty() else if (t.user) earlier[t.id].orEmpty() else "")
+            (if (t.user) "user" else "assistant") to (t.forModel() + if (t.user && i == last) fetched.orEmpty() + Skill.of(t.skill)?.let { "\n\n[${it.instruction}]" }.orEmpty() else if (t.user) earlier[t.id].orEmpty() else "")
         }
         _state.update { if (it.chat.id != chatId) it else it.copy(reading = true, readingFound = fetched != null) }
         try {
@@ -2399,7 +2404,9 @@ class Engine(
         val request = TalkRequest(
             chatId, asked.id, s.chat.turns.map { it.wire(pcSees, withPictures = pcSees && it.id == asked.id, withFiles = filesGo && it.id == asked.id) }, fetched,
             sources.map { io.github.odnwks.mimir.link.LChatSource(it.site, it.url, it.words, it.results, it.via) },
-            s.effort.wire, Prompt.rulesForPc(io.github.odnwks.mimir.data.GroundRules.current, s.chat.rules), if (justChat) null else inTask(),
+            s.effort.wire,
+            // The skill goes with the rules (an older PC takes it too), never into the chat's own words.
+            listOfNotNull(Prompt.rulesForPc(io.github.odnwks.mimir.data.GroundRules.current, s.chat.rules), Skill.of(asked.skill)?.instruction).joinToString("\n\n"), if (justChat) null else inTask(),
             chatOnly = justChat,
             typed = asked.typed && asked.text.isNotBlank(),
             again = again && !justChat,

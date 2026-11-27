@@ -145,6 +145,11 @@ fun PhoneChat(
     val whispersLeft by engine.whispersLeft.collectAsStateWithLifecycle()
     LaunchedEffect(whispersLeft, pcWhisper) { if (pcWhisper && whispersLeft != pcWhisperSince) pcWhisper = false }
     inWhisper[0] = s.whisper || pcWhisper
+    // A picked skill belongs to the box it was picked at: another chat or a Whisper starts with none.
+    LaunchedEffect(s.chat.id, pcWhisper) {
+        val box = "${s.chat.id}:$pcWhisper"
+        if (nav.skillBox != box) { nav.skillBox = box; nav.skill = null }
+    }
     // Each chat keeps its own box, held by the engine (outside this screen): Settings or History in between loses nothing.
     val drafts = engine.drafts
     var boxChat by remember { mutableStateOf<String?>(null) }
@@ -179,7 +184,9 @@ fun PhoneChat(
         ?: remember(link) { link?.let { l -> { text: String, typed: Boolean -> l.startTask(text, "", incognito = true, typed = typed).isNotEmpty() } } }
     val pcWhisperGo = { text: String, typed: Boolean ->
         if (text.isNotBlank()) {
-            if (pcStart?.invoke(text, typed) == true) { whisperDraft = ""; pcWhisper = false; nav.open(Screen.IncognitoTask) }
+            // The PC's Whisper takes words only, so a skill goes with them (nothing is kept on either side).
+            val words = io.github.odnwks.mimir.standalone.Skill.withWords(text, nav.skill)
+            if (pcStart?.invoke(words, typed) == true) { nav.skill = null; whisperDraft = ""; pcWhisper = false; nav.open(Screen.IncognitoTask) }
             else attachNote = WHISPER_COULD_NOT_START
         }
     }
@@ -199,7 +206,7 @@ fun PhoneChat(
             val held = picturesHeldNote(sight, pictures.size)
             if (held != null) attachNote = held
             // The box clears only when the message was taken; refused, it stays to try again.
-            else if (engine.ask(text, files.toList(), pictures.toList(), typed, saw = named[0])) { draft = ""; files.clear(); pictures.clear(); markChatted() }
+            else if (engine.ask(text, files.toList(), pictures.toList(), typed, saw = named[0], skill = nav.skill)) { nav.skill = null; draft = ""; files.clear(); pictures.clear(); markChatted() }
         }
     }
     val scope = androidx.compose.runtime.rememberCoroutineScope()
@@ -411,7 +418,7 @@ fun PhoneChat(
                     q.text.ifBlank { if (q.voice != null) "Voice message" else (q.files.map { it.name } + listOfNotNull(q.pictures.size.takeIf { it > 0 }?.let { n -> if (n == 1) "A picture" else "$n pictures" })).joinToString() },
                     Modifier.animateItem(fadeInSpec = motionSpec(Motion.NEW_ITEM_MS), placementSpec = motionSpec(Motion.NEW_ITEM_MS), fadeOutSpec = motionSpec(Motion.NEW_ITEM_MS)),
                     bubble = Palette.BlueBubble.copy(alpha = 0.55f), dashed = true, id = "queued-${q.id}",
-                    meta = { ChatMeta(q.at, null, pcName, MessageReceipt.Sent) },
+                    meta = { ChatMeta(q.at, null, pcName, MessageReceipt.Sent, q.skill) },
                     under = {
                         val waits = when {
                             q.heldFor != null -> heldWords(q.saw, q.heldFor)
@@ -483,7 +490,7 @@ fun PhoneChat(
                 if (turn.user) Column(m, verticalArrangement = Arrangement.spacedBy(16.dp)) { OwnMessage(
                     turn.text.ifBlank { (turn.files.map { it.name } + listOfNotNull(turn.pictures.size.takeIf { it > 0 }?.let { if (it == 1) "A picture" else "$it pictures" })).joinToString() },
                     Modifier, bubble = if (s.whisper) WhisperTint.Bubble else Palette.BlueBubble,
-                    meta = { ChatMeta(turn.at, null, pcName, chatReceipt(s.chat.turns, i, s.writing, s.partial.isNotEmpty())) },
+                    meta = { ChatMeta(turn.at, null, pcName, chatReceipt(s.chat.turns, i, s.writing, s.partial.isNotEmpty()), turn.skill) },
                     id = turn.id.ifEmpty { "mine-${turn.text.hashCode()}" },
                     onEdit = if (!s.writing && turn.text.isNotBlank() && engine.canEdit(s.chat, i) && engine.canReplyNow()) ({ words -> engine.editMessage(turn.id, words)?.let { edited = it } }) else null,
                     under = readLinkFor(s, engine, turn, i).let { read ->
@@ -639,7 +646,12 @@ fun PhoneChat(
             above = { if (!pcWhisper) attach.Chips() },
             attach = { if (!pcWhisper) attach.Button(sight, onModels = { nav.open(Screen.Models) }) },
             // At large text or on a narrow phone, with the mic beside Send, there is less room: shorter whole words, never cut off.
-            chip = { OptionsChip(chosenWords, "Model and effort: $chosenWords. Change", shorter = shortWords) { nav.openSheet(io.github.odnwks.mimir.nav.Sheet.ChatModel) } },
+            chip = {
+                ChipPair(
+                    model = { OptionsChip(chosenWords, "Model and effort: $chosenWords. Change", shorter = shortWords) { nav.openSheet(io.github.odnwks.mimir.nav.Sheet.ChatModel) } },
+                    skill = { SkillChip(nav.skill) { nav.openSheet(io.github.odnwks.mimir.nav.Sheet.ChatSkill) } },
+                )
+            },
         )
         }
         if (showHome && first && !paired && !connectHidden) ConnectHint({ nav.open(Screen.Pair) }, { connectHidden = true; prefs.edit().putBoolean(CONNECT_HIDDEN, true).apply() })

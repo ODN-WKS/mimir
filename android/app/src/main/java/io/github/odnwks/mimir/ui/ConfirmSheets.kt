@@ -136,6 +136,7 @@ private fun Sheet.title(state: StationState) = when (this) {
     is Sheet.ProjectChecks -> project
     Sheet.ChatModel -> "Model for this chat"
     Sheet.NewWorkDefault -> "Default for new work"
+    Sheet.ChatSkill -> SKILL_SHEET_TITLE
     is Sheet.RenameTask -> "Rename this task"
     is Sheet.TaskModel -> "Model for this task"
     is Sheet.Yolo -> "Go ahead without asking in this task?"
@@ -337,6 +338,9 @@ private fun SheetContent(sheet: Sheet, state: StationState, station: Station, na
         // The Mímir chat's own models and efforts, in the same sheet; a pick stays open here too.
         Sheet.ChatModel -> nav.chatChoices?.let { c ->
             ModelEffortList(sheet.title(state), c.models, c.notes, c.more, "Effort", c.efforts)
+        }
+        Sheet.ChatSkill -> Menu(sheet.title(state)) {
+            SkillRows(nav.skill) { nav.skill = it; nav.closeSheet() }
         }
         is Sheet.ProjectOptions -> Menu(sheet.title(state)) {
             // Voice typing for the new-task box (the box keeps only +, the chip and Send).

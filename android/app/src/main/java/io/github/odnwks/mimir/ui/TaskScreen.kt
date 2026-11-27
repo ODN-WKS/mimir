@@ -336,7 +336,7 @@ fun TaskScreen(taskId: String, state: StationState, station: Station, nav: Navig
                             MarkdownText(m.text, style = ChatLook.MessageText, color = Palette.Text)
                         }
                     } else if (m.waiting) OwnMessage(
-                        m.text, bubble = Palette.QueuedBubble, dashed = true, id = "task-${task.id}-${m.id}",
+                        io.github.odnwks.mimir.standalone.Skill.shown(m.text), bubble = Palette.QueuedBubble, dashed = true, id = "task-${task.id}-${m.id}",
                         meta = { ownMeta(m) },
                         under = {
                             if (m.failedWhy.isNotEmpty()) Column {
@@ -353,7 +353,7 @@ fun TaskScreen(taskId: String, state: StationState, station: Station, nav: Navig
                         },
                     ) else AttachedAware(m.text) { shown, chips ->
                       if (shown.isNotBlank()) OwnMessage(
-                        shown, id = "task-${task.id}-${m.id}",
+                        io.github.odnwks.mimir.standalone.Skill.shown(shown), id = "task-${task.id}-${m.id}",
                         meta = { ownMeta(m) },
                         under = chips,
                         onEdit = if (quiet && m.id == lastOwn?.id && io.github.odnwks.mimir.link.Wire.entryIndex(task.id, m.id) != null) {

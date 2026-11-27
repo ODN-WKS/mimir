@@ -250,8 +250,11 @@ fun chatReceipt(turns: List<io.github.odnwks.mimir.standalone.Turn>, i: Int, wri
  * under the person's own message, whose answer says it), and on the person's own messages the [receipt] circle.
  */
 @Composable
-fun ChatMeta(atMs: Long, answer: io.github.odnwks.mimir.standalone.Turn?, pcName: String, receipt: MessageReceipt? = null) =
-    SmallPrint(answer?.let { chatWho(it, pcName) }, atMs.takeIf { it > 0 }, receipt = receipt)
+fun ChatMeta(atMs: Long, answer: io.github.odnwks.mimir.standalone.Turn?, pcName: String, receipt: MessageReceipt? = null, skill: String? = null) =
+    SmallPrint(
+        listOfNotNull(io.github.odnwks.mimir.standalone.Skill.of(skill)?.let { "Skill: ${it.title}" }, answer?.let { chatWho(it, pcName) }).joinToString(" · ").ifEmpty { null },
+        atMs.takeIf { it > 0 }, receipt = receipt,
+    )
 
 /** A reply's small print, beside its Listen pill: a tap on a switched one gives the full reason. */
 @Composable

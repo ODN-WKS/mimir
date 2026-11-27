@@ -318,7 +318,7 @@ LazyColumn(
             if (turn.user) Column(m, verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 OwnMessage(
                     turn.text, id = turn.id.ifEmpty { "mine-${turn.text.hashCode()}" }, under = readLink?.invoke(turn, i),
-                    meta = { ChatMeta(turn.at, null, "Your PC", chatReceipt(s.chat.turns, i, s.writing, s.partial.isNotEmpty())) },
+                    meta = { ChatMeta(turn.at, null, "Your PC", chatReceipt(s.chat.turns, i, s.writing, s.partial.isNotEmpty()), turn.skill) },
                 )
                 if (s.chat.turns.getOrNull(i + 1)?.user != false) s.chat.old[io.github.odnwks.mimir.standalone.answerIdOf(turn)]?.lastOrNull()?.let { EarlierAnswer(it, turn.text, !s.whisper, if (s.whisper) null else "Your PC") }
             } else Box(m) {

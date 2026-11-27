@@ -155,6 +155,8 @@ sealed interface Sheet {
     /** The Mímir chat's model and effort (its own models, not a task's): what it lists is in [Navigator.chatChoices]. */
     data object ChatModel : Sheet
     data object NewWorkDefault : Sheet
+    /** "Skill for this message": the pick is [Navigator.skill]. */
+    data object ChatSkill : Sheet
     /** A project page's three dots: voice typing for its box, and its checks. */
     data class ProjectOptions(val project: String) : Sheet
     /** A project's full list of checks (from its three dots or its slim checks line). */
@@ -283,6 +285,9 @@ class Navigator(start: Screen = Screen.Chat) {
     var composeTo: ComposeTo by mutableStateOf(ComposeTo())
     /** What the open Mímir chat offers in its model and effort sheet (set by the chat while it shows). */
     var chatChoices: ModelEffortChoices? by mutableStateOf(null)
+    /** The skill picked for the chat's next message, in memory only (never saved), and the box it was picked at. */
+    var skill: io.github.odnwks.mimir.standalone.Skill? by mutableStateOf(null)
+    var skillBox: String = ""
     /** The model and effort for the next task a project page's box starts. */
     var newTaskChoice: TaskChoice by mutableStateOf(TaskChoice())
     /** The project just chosen in the picker, for the screen that opened it to take. */
