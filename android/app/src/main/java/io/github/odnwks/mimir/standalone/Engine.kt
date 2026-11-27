@@ -962,7 +962,7 @@ class Engine(
         if (!s.whisper && holds(last.saw, who)) {
             // It would go to Online, which wasn't named when it was sent: it waits, first in line, to be sent again.
             // (Looked at again inside the update: two callers never move it twice.)
-            _state.update { if (it.chat.turns.lastOrNull()?.id != last.id) it else it.copy(chat = it.chat.copy(turns = it.chat.turns.dropLast(1), queued = listOf(last.copy(heldFor = who)) + it.chat.queued), problem = null) }
+            _state.update { if (it.chat.turns.lastOrNull()?.id != last.id) it else it.copy(chat = it.chat.copy(turns = it.chat.turns.dropLast(1), queued = listOf(last.copy(heldFor = who, wentOnce = true)) + it.chat.queued), problem = null) }
             persist()
             return
         }
@@ -2459,10 +2459,24 @@ class Engine(
                         }
                         io.github.odnwks.mimir.link.LTalkState.Unknown -> if (m.sent == sends) {
                             if (sends > 1 || !link.canTalk() || !link.talksOnce()) return false
-                            sends++
-                            if (!link.talk(request.copy(again = true), listener)) return false
-                            askedAt = 0
-                            _state.update { it.copy(pcWaiting = false) }
+                            // The redone link hasn't said who answers yet: nothing goes; the PC is asked again in a moment (P44).
+                            if (link.choiceRead()) {
+                                val who = if (link.chatsEngine() == "paid") "paid" else "pc"
+                                // It would now go to Online, which wasn't named: it waits, first in line, to be sent again (P44).
+                                if (holds(asked.saw, who)) {
+                                    _state.update { x ->
+                                        val last = x.chat.turns.lastOrNull()?.takeIf { it.user && it.id == asked.id }
+                                        if (x.chat.id != chatId || last == null) x
+                                        else x.copy(chat = x.chat.copy(turns = x.chat.turns.dropLast(1), queued = listOf(last.copy(heldFor = who, wentOnce = true)) + x.chat.queued), partial = "", problem = null)
+                                    }
+                                    return true
+                                }
+                                sends++
+                                if (!link.talk(request.copy(again = true), listener)) return false
+                                sayWhoAnswers(asked.saw, who)
+                                _state.update { x -> x.copy(chat = x.chat.copy(turns = x.chat.turns.map { if (it.user && it.id == asked.id) it.copy(saw = who) else it }), pcWaiting = false) }
+                                askedAt = 0
+                            }
                         }
                         is io.github.odnwks.mimir.link.LTalkState.Failed -> return false
                         null -> {}
