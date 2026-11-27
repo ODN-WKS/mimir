@@ -249,6 +249,8 @@ data class Turn(
     val effort: String? = null,
     /** The owner's own message, typed into a message box (kept while it waits; the PC is told). */
     val typed: Boolean = false,
+    /** A waiting message that went to the PC once already (its reply never came): it goes again marked so (P40). */
+    val wentOnce: Boolean = false,
 ) {
     /** As the PC keeps it: pictures and files reduced to words, as the phone's model reads them. */
     fun wire(pcSees: Boolean = false, withPictures: Boolean = false, withFiles: Boolean = false) = io.github.odnwks.mimir.link.LChatTurn(

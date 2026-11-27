@@ -774,7 +774,8 @@ class Engine(
         // The message is taken out of the chat only when it can really be sent again (PHE-02).
         if (!canSend()) return
         _state.update { it.copy(chat = it.chat.copy(turns = it.chat.turns.dropLast(1))) }
-        send(last.text, last.files, last.pictures, last.id, last.at, last.version, typed ?: last.typed)
+        // The same message (id and version) may have reached the PC already: it goes marked as sent again (P40).
+        send(last.text, last.files, last.pictures, last.id, last.at, last.version, typed ?: last.typed, again = true)
     }
 
     /**
@@ -864,14 +865,22 @@ class Engine(
      * Never shown as the answer to the new words (P40).
      */
     private fun older(t: io.github.odnwks.mimir.link.LChatTurn): Boolean {
-        val r = replaced[t.id.ifEmpty { return false }] ?: return false
+        if (t.id.isEmpty()) return false
+        // The answer an edit cut away: the cut is saved with the chat, so this holds after the app is opened again too.
+        val cut = cutOf(t.id)
+        if (cut != null && (t.version < cut.version || (t.at > 0 && t.at == cut.at))) return true
+        val r = replaced[t.id] ?: return false
         return (t.seq in 1..r.seq) || (r.at != null && t.at == r.at)
     }
+
+    /** The open chat's cut of answer [id] (an edit of its message cut it away), if any. */
+    private fun cutOf(id: String): Cut? = if (id.isEmpty()) null else _state.value.chat.cuts.firstOrNull { it.id == id && !it.user }
 
     /** An answer's version never goes below what a "Try again" asked for, so the new one replaces the old everywhere. */
     private val retryFloor = java.util.concurrent.ConcurrentHashMap<String, Int>()
     private fun floored(t: Turn): Turn {
-        val f = retryFloor[t.id] ?: return t
+        // Above an edit's cut too (saved with the chat), so the PC's copy of the new answer is never taken for the cut one.
+        val f = maxOf(retryFloor[t.id] ?: 0, cutOf(t.id)?.let { it.version + 1 } ?: 0).takeIf { it > 0 } ?: return t
         return if (t.version >= f) t else t.copy(version = f, seq = 0)
     }
 
@@ -976,7 +985,7 @@ class Engine(
             if (!canSend() || _state.value.chat.turns.lastOrNull()?.user == true) return
             _state.update { it.copy(chat = it.chat.copy(queued = it.chat.queued.drop(1))) }
             // It is dated when it goes (same id), so its answer never lands before the answers of the ones sent earlier.
-            if (!send(first.text, first.files, first.pictures, first.id, maxOf(first.at, now()), first.version, first.typed)) {
+            if (!send(first.text, first.files, first.pictures, first.id, maxOf(first.at, now()), first.version, first.typed, again = first.wentOnce)) {
                 _state.update { it.copy(chat = it.chat.copy(queued = listOf(first) + it.chat.queued)) }
             }
         }
@@ -1033,8 +1042,11 @@ class Engine(
     /** The last message waits for the model (it came before the model was here). */
     val waiting: Boolean get() = _state.value.let { !it.ready && !it.writing && it.chat.turns.lastOrNull()?.user == true }
 
-    /** True when the message was taken and a reply is being written. */
-    fun send(text: String, files: List<TurnFile> = emptyList(), pictures: List<TurnPicture> = emptyList(), id: String = "", at: Long = 0L, version: Int = 1, typed: Boolean = false): Boolean {
+    /**
+     * True when the message was taken and a reply is being written. [again]: this very message (id and version)
+     * may have reached the PC already, so a PC that never does a message twice gives back what it filed (P40).
+     */
+    fun send(text: String, files: List<TurnFile> = emptyList(), pictures: List<TurnPicture> = emptyList(), id: String = "", at: Long = 0L, version: Int = 1, typed: Boolean = false, again: Boolean = false): Boolean {
         val t = text.trim()
         val s0 = _state.value
         val toPc = pcAnswers()
@@ -1059,7 +1071,7 @@ class Engine(
             val began = wall()
             try {
                 // Paired and connected, the PC answers; if it can't (gone, busy, refused), this phone does.
-                val answered = if (viaOnline) { writeOnline(); true } else toPc && pcAnswers() && writePc()
+                val answered = if (viaOnline) { writeOnline(); true } else toPc && pcAnswers() && writePc(again || failed != null)
                 if (!answered && !stopReply.get()) {
                     // A try that fails at once is still seen: Try again showed no change when it failed within a second (P40).
                     if (!_state.value.ready && pc?.canTalk() == true) (TRY_SEEN_MS - (wall() - began)).takeIf { it > 0 }?.let { Thread.sleep(it) }
@@ -1070,7 +1082,8 @@ class Engine(
                         else {
                             // The PC went away on the way: the message goes back to waiting, and goes when the PC is back.
                             val last = it.chat.turns.lastOrNull()?.takeIf { t -> t.user && t.id == turn.id }
-                            if (last == null) it else it.copy(chat = it.chat.copy(turns = it.chat.turns.dropLast(1), queued = listOf(last) + it.chat.queued), problem = null)
+                            // It may have reached the PC first: marked (and saved) so, it never goes as a new message (P40).
+                            if (last == null) it else it.copy(chat = it.chat.copy(turns = it.chat.turns.dropLast(1), queued = listOf(last.copy(wentOnce = true)) + it.chat.queued), problem = null)
                         }
                     }
                 }
@@ -2202,7 +2215,7 @@ class Engine(
      * model. Returns false when this phone must answer instead (the PC couldn't take it, said to,
      * failed, or the owner tapped Answer on this phone).
      */
-    private fun writePc(): Boolean {
+    private fun writePc(again: Boolean = false): Boolean {
         val link = pc ?: return false
         _state.update { it.copy(lookupFailed = false) }
         val (looked, sources) = lookUp(_state.value.chat.turns) ?: return true
@@ -2228,12 +2241,15 @@ class Engine(
         val pcSees = link.canSeePictures()
         // Files go as they are for the PC to read, with this message only.
         val filesGo = link.canSendFiles()
+        // "Just chat" asks a message the PC took as a task to be answered as a chat instead: never "sent again".
+        val justChat = chatOnly.getAndSet(false)
         val request = TalkRequest(
             chatId, asked.id, s.chat.turns.map { it.wire(pcSees, withPictures = pcSees && it.id == asked.id, withFiles = filesGo && it.id == asked.id) }, fetched,
             sources.map { io.github.odnwks.mimir.link.LChatSource(it.site, it.url, it.words, it.results, it.via) },
-            s.effort.wire, Prompt.rulesForPc(io.github.odnwks.mimir.data.GroundRules.current, s.chat.rules), if (chatOnly.get()) null else inTask(),
-            chatOnly = chatOnly.getAndSet(false),
+            s.effort.wire, Prompt.rulesForPc(io.github.odnwks.mimir.data.GroundRules.current, s.chat.rules), if (justChat) null else inTask(),
+            chatOnly = justChat,
             typed = asked.typed && asked.text.isNotBlank(),
+            again = again && !justChat,
         )
         _state.update { it.copy(onPc = true, partial = "", thinking = false, pcWaiting = false, pcLine = null) }
         if (!link.talk(request, listener)) return false

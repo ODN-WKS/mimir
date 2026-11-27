@@ -98,6 +98,9 @@ class ProjectFromChatTest {
         engine.justChat(); settle()
         assertEquals(listOf("1794-1-1"), pc.dropped.toList())
         assertTrue(pc.sent.last().chatOnly)
+        // Asked anew as a chat, never "sent again": that would only give back the task (P40).
+        assertFalse(pc.sent.last().again)
+        assertEquals(null, pc.sent.last().task)
         val turns = engine.state.value.chat.turns
         assertEquals(listOf(true to "In Garden planner Mod Manager, what version is it?", false to "A chat answer."), turns.map { it.user to it.text })
     }
