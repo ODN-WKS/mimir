@@ -361,9 +361,12 @@ fun PhoneChat(
         val startup = LocalEyeStartup.current
         LaunchedEffect(Unit) { if (!showHome) startup.skip() }
         LaunchedEffect(draft) { if (draft.isNotEmpty()) startup.skip() }
+
         if (showHome && !first) NeedsYouPill(needsYou, pillDismissedFor, { pillDismissedFor = it }, { nav.open(Screen.NeedsYou) })
         // Each chat has its own place in the list: another chat opens at its newest.
         val list = androidx.compose.runtime.key(s.chat.id) { rememberLazyListState() }
+        LaunchedEffect(sought) { if (sought != null) list.scrollToItem(0) }
+        val newestFound = if (sought == null) -1 else s.chat.turns.indexOfLast { found(it.text) }
         val focus = LocalFocusManager.current
         // Every line that can come in under the messages, so a new one is followed or waits behind "New lines".
         val lines = rememberNewLines(
@@ -382,7 +385,7 @@ fun PhoneChat(
         }
         ChatTextSize {
         if (showHome) HomeEmpty(first, answerer, Modifier.weight(1f), online = io.github.odnwks.mimir.online.OnlineModels.answering()?.let(io.github.odnwks.mimir.online.OnlineModels::serviceOf))
-        else LazyColumn(
+        else androidx.compose.runtime.CompositionLocalProvider(LocalFound provides sought) { LazyColumn(
             Modifier.weight(1f).fillMaxWidth().pinchToZoomText(LocalAppSize.current).pointerInput(Unit) { detectTapGestures(onTap = { focus.clearFocus() }) },
             state = list,
             reverseLayout = true,
@@ -402,6 +405,8 @@ fun PhoneChat(
             val stoppedHere = s.stoppedChat == s.chat.id
             // Messages waiting for the PC sit at the bottom, newest last: dim, with how they go and a way to take them back.
             items(s.chat.queued.reversed().filter { found(it.text) }, key = { "queued-${it.id}" }) { q ->
+                // Gone back to waiting (the PC left on the way): the answer it was to replace stays under it.
+                Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 OwnMessage(
                     q.text.ifBlank { if (q.voice != null) "Voice message" else (q.files.map { it.name } + listOfNotNull(q.pictures.size.takeIf { it > 0 }?.let { n -> if (n == 1) "A picture" else "$n pictures" })).joinToString() },
                     Modifier.animateItem(fadeInSpec = motionSpec(Motion.NEW_ITEM_MS), placementSpec = motionSpec(Motion.NEW_ITEM_MS), fadeOutSpec = motionSpec(Motion.NEW_ITEM_MS)),
@@ -420,6 +425,8 @@ fun PhoneChat(
                         IconTarget(Glyphs.Close, "Cancel this message: it won't be sent", { engine.cancelQueued(q.id) }, tint = Palette.TextDim)
                     },
                 )
+                s.chat.old[io.github.odnwks.mimir.standalone.answerIdOf(q)]?.lastOrNull()?.let { EarlierAnswer(it, q.text, !s.whisper, if (s.whisper) null else pcName) }
+                }
             }
             if (waiting && !stoppedHere && paired && (!s.supported || !s.usePc)) item(key = "no-model") { NothingAnswers(s.supported, pcOnline, pcName) { engine.setUsePc(true); engine.answerIfWaiting() } }
             else if ((waiting && !stoppedHere) || getting) item(key = "get-ai") { GetYourAi(engine, s, model, waiting, paired) }
@@ -463,10 +470,11 @@ fun PhoneChat(
             } ?: 0
             val shownTurns = s.chat.turns.withIndex().reversed().filter { found(it.value.text) }
             val turnRow: @Composable androidx.compose.foundation.lazy.LazyItemScope.(IndexedValue<io.github.odnwks.mimir.standalone.Turn>) -> Unit = { (i, turn) ->
+              androidx.compose.runtime.CompositionLocalProvider(LocalFindJump provides (i == newestFound)) {
                 val m = Modifier.animateItem(fadeInSpec = motionSpec(Motion.NEW_ITEM_MS), placementSpec = motionSpec(Motion.NEW_ITEM_MS), fadeOutSpec = motionSpec(Motion.NEW_ITEM_MS))
-                if (turn.user) OwnMessage(
+                if (turn.user) Column(m, verticalArrangement = Arrangement.spacedBy(16.dp)) { OwnMessage(
                     turn.text.ifBlank { (turn.files.map { it.name } + listOfNotNull(turn.pictures.size.takeIf { it > 0 }?.let { if (it == 1) "A picture" else "$it pictures" })).joinToString() },
-                    m, bubble = if (s.whisper) WhisperTint.Bubble else Palette.BlueBubble,
+                    Modifier, bubble = if (s.whisper) WhisperTint.Bubble else Palette.BlueBubble,
                     meta = { ChatMeta(turn.at, null, pcName, chatReceipt(s.chat.turns, i, s.writing, s.partial.isNotEmpty())) },
                     id = turn.id.ifEmpty { "mine-${turn.text.hashCode()}" },
                     onEdit = if (!s.writing && turn.text.isNotBlank() && engine.canEdit(s.chat, i) && engine.canReplyNow()) ({ words -> engine.editMessage(turn.id, words)?.let { edited = it } }) else null,
@@ -478,7 +486,10 @@ fun PhoneChat(
                             read?.invoke()
                         }) else null
                     },
-                ) else if (turn.task != null) androidx.compose.foundation.layout.Box(m) {
+                )
+                // Being answered again (or it failed): the earlier answer stays until a new one is there.
+                if (s.chat.turns.getOrNull(i + 1)?.user != false) s.chat.old[io.github.odnwks.mimir.standalone.answerIdOf(turn)]?.lastOrNull()?.let { EarlierAnswer(it, turn.text, !s.whisper, if (s.whisper) null else pcName) }
+                } else if (turn.task != null) androidx.compose.foundation.layout.Box(m) {
                     // A message that named a project: one card that opens its task (Stage 1, 2.3).
                     ProjectCard(
                         turn, task(turn.task), newest = i == s.chat.turns.lastIndex,
@@ -487,12 +498,16 @@ fun PhoneChat(
                     )
                 } else androidx.compose.foundation.layout.Box(m) {
                     val before = s.chat.turns.getOrNull(i - 1)?.takeIf { it.user }
-                    Reply(
-                        turn.text, dim = false, sources = turn.sources, note = turn.switchNote, lookUp = lookUp.takeIf { i == s.chat.turns.lastIndex }, openSources = !s.whisper,
-                        onTryAgain = if (s.writing || s.whisper || i != s.chat.turns.lastIndex || s.lookupFailed) null else before?.let { { engine.tryAgain() } },
-                        meta = { ChatMeta(turn.at, turn, pcName) },
-                    )
+                    WithEarlier(turn.id, before?.let { s.chat.old[io.github.odnwks.mimir.standalone.answerIdOf(it)] }.orEmpty(), before?.text.orEmpty(), !s.whisper, if (s.whisper) null else pcName) {
+                        Reply(
+                            turn.text, dim = false, sources = turn.sources, note = turn.switchNote, lookUp = lookUp.takeIf { i == s.chat.turns.lastIndex && !s.lookupFailed }, openSources = !s.whisper,
+                            onTryAgain = if (s.writing || s.whisper || i != s.chat.turns.lastIndex || s.lookupFailed) null else before?.let { { engine.tryAgain() } },
+                            meta = { ChatMeta(turn.at, turn, pcName) },
+                            fromMemory = fromMemory(turn, before),
+                        )
+                    }
                 }
+              }
             }
             val turnKey = { t: IndexedValue<io.github.odnwks.mimir.standalone.Turn> -> "${s.chat.id}-${t.index}" }
             if (status != null) {
@@ -504,7 +519,7 @@ fun PhoneChat(
                 WhisperCard(s.web, paired, if (s.chat.turns.isEmpty() && !s.writing) ({ w: Boolean -> engine.startWhisper(web = w) }) else null)
             }
         }
-}
+} }
         if (!showHome) NewLinesButton(lines)
         s.note?.takeIf { !pcWhisper }?.let { note ->
             Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {

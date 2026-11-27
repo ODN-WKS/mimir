@@ -258,6 +258,8 @@ data class Turn(
     val saw: String? = null,
     /** A waiting message that is held: who would answer now. It goes only when the owner sends it again. */
     val heldFor: String? = null,
+    /** On an earlier answer kept after Try again, Look it up or an edit: the words it answered. */
+    val asked: String? = null,
 ) {
     /** As the PC keeps it: pictures and files reduced to words, as the phone's model reads them. */
     fun wire(pcSees: Boolean = false, withPictures: Boolean = false, withFiles: Boolean = false) = io.github.odnwks.mimir.link.LChatTurn(
@@ -411,19 +413,25 @@ object Prompt {
      */
     const val NO_GUESS = "If no looked-up facts are given, say you couldn't look it up; never guess live numbers like weather, prices or dates."
 
+    /**
+     * Said beside [NO_GUESS]: an answer never claims a lookup that did not run (QA16 Q3: "I could not look up"
+     * when nothing had been tried).
+     */
+    const val NO_CLAIM = "When no looked-up facts are given, nothing was looked up for this message: never say you searched, checked, looked something up or tried to."
+
     /** This chat's own rules and the no-guessing line, for the end of a system text. */
     fun chatTail(chatRules: String): String =
         (chatRules.trim().takeIf { it.isNotEmpty() }?.let { "\n\nRules for this chat only:\n$it" }.orEmpty()) + "\n\n$NO_GUESS"
 
     /** What the PC is told as the owner's rules: the ground rules (if on), this chat's, and the no-guessing line. */
     fun rulesForPc(ground: String?, chatRules: String): String =
-        ((ground?.let { listOf(it) } ?: emptyList()) + listOfNotNull(chatRules.trim().takeIf { it.isNotEmpty() }?.let { "Rules for this chat only:\n$it" }, NO_GUESS)).joinToString("\n\n")
+        ((ground?.let { listOf(it) } ?: emptyList()) + listOfNotNull(chatRules.trim().takeIf { it.isNotEmpty() }?.let { "Rules for this chat only:\n$it" }, NO_CLAIM, NO_GUESS)).joinToString("\n\n")
 
     /** The instructions: with ground rules, where it runs and the rules; with them off, the built-in ones. [chatRules] are this chat's own, told after them. */
     fun system(rules: String? = io.github.odnwks.mimir.data.GroundRules.current, online: Boolean = false, chatRules: String = "", ask: String? = null, projects: Boolean = false): String {
         fun own(text: String) = text.replace(NO_ACTIONS, noActions(projects))
         val where = own(ONLINE).let { if (online && ask != null) "$it $ask" else it }
-        val base = if (rules == null) (if (online) "$where$ANSWER" else own(SYSTEM)) else "${if (online) where else own(PLACE)}\n\n$rules"
+        val base = if (rules == null) "${if (online) "$where$ANSWER" else own(SYSTEM)} $NO_CLAIM" else "${if (online) where else own(PLACE)} $NO_CLAIM\n\n$rules"
         return base + chatTail(chatRules)
     }
 

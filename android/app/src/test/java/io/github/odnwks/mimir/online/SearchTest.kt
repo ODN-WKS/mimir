@@ -125,13 +125,14 @@ class SearchTest {
     @Test fun lookItUpSearchesTheOwnersQuestionAndAnswersAgain() {
         Online.set(Online.Settings(searchAccepted = true))
         val e = engine(PromptRunner())
-        e.send("who won the match last night")
+        // Not a recent event (those are searched by themselves now, see RecentSearchTest).
+        e.send("who won the match")
         e.waitDone()
         assertEquals(0, searches())
         e.lookItUp()
         e.waitDone()
         assertEquals(1, searches())
-        assertTrue(web.asked.any { "who+won+the+match+last+night" in it })
+        assertTrue(web.asked.any { "who+won+the+match" in it })
         assertEquals(2, e.state.value.chat.turns.size)
     }
 

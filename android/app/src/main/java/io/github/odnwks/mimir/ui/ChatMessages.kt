@@ -153,7 +153,7 @@ fun OwnMessage(
                     Modifier.widthIn(max = 320.dp).clip(ChatLook.ownShape).background(bubble)
                         .then(if (dashed) Modifier.dashedBorder(Palette.BlueLight, 20.dp) else Modifier),
                     PaddingValues(horizontal = 14.dp, vertical = 11.dp), onHold,
-                ) { Text(text, style = ChatLook.MessageText, color = Palette.Text) }
+                ) { FoundText(AnnotatedString(text), ChatLook.MessageText, Palette.Text) }
             }
         }
         if (meta != null && !editing) Box(Modifier.padding(end = 6.dp)) { meta() }
@@ -232,6 +232,8 @@ fun Answer(
     meta: (@Composable () -> Unit)? = null,
     /** A line under that row: why the model changed (P11), when it did. */
     metaUnder: (@Composable () -> Unit)? = null,
+    /** Nothing was looked up that this answer rests on: said under it, with "Look it up" beside Listen. */
+    fromMemory: Boolean = false,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(5.dp)) {
@@ -249,7 +251,8 @@ fun Answer(
         }
         if (!dim && buttons) {
             // The sources and a switch note keep their 8 dp from the bubble and from each other.
-            if (sources.isNotEmpty() || !note.isNullOrBlank()) Column(Modifier.padding(top = 3.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (sources.isNotEmpty() || !note.isNullOrBlank() || fromMemory) Column(Modifier.padding(top = 3.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (fromMemory) Text(FROM_MEMORY, style = Type.Small, color = Palette.TextDim, modifier = Modifier.testTag("from-memory"))
                 if (sources.isNotEmpty()) SourcesLine(sources, openSources, cited = CITES.containsMatchIn(plain))
                 if (!note.isNullOrBlank()) Text(note, style = Type.Small, color = Palette.TextDim, modifier = Modifier.testTag("switch-note"))
             }
@@ -262,6 +265,8 @@ fun Answer(
                     itemVerticalAlignment = Alignment.CenterVertically,
                 ) {
                     ListenButton(id, plain, pc)
+                    // Where a person looks first for a doubtful answer, not only behind a long press (QA16 Q7).
+                    if (fromMemory && lookUp != null) QuietButton(LOOK_IT_UP, "Look it up: search the web for this answer", onClick = lookUp)
                     meta?.invoke()
                 }
                 metaUnder?.invoke()
@@ -272,6 +277,9 @@ fun Answer(
 
 /** An answer that puts source numbers in its words ("[1]"). */
 private val CITES = Regex("""\[\d{1,2}[\],]""")
+
+/** Under an answer that no looked-up source stands behind. */
+const val FROM_MEMORY = "From memory, no sources"
 
 /** The test tag on an answer's grey bubble. */
 const val REPLY_BUBBLE_TAG = "reply-bubble"

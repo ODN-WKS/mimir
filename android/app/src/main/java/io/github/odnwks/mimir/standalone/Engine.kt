@@ -115,7 +115,20 @@ private fun newId() = UUID.randomUUID().toString()
 data class Deleted(val chat: LocalChat, val at: Int)
 
 /** What an edit of an earlier message cut away (for Undo). */
-data class Edited(val chatId: String, val removed: List<Turn>)
+data class Edited(val chatId: String, val removed: List<Turn>, val old: Map<String, List<Turn>> = emptyMap())
+
+/** How many earlier answers to one message are kept. */
+const val OLD_ANSWERS_KEPT = 5
+
+/** The id of the answer to [question]. */
+fun answerIdOf(question: Turn) = "${question.id}.a"
+
+/** [c] with [answer] kept as an earlier answer to [question]. */
+private fun keepingOld(c: LocalChat, question: Turn, answer: Turn): LocalChat {
+    if (question.id.isEmpty() || answer.user || answer.task != null || answer.text.isBlank()) return c
+    val id = answerIdOf(question)
+    return c.copy(old = c.old + (id to (c.old[id].orEmpty() + answer.copy(asked = question.text)).takeLast(OLD_ANSWERS_KEPT)))
+}
 
 /** Runs a model: llama.cpp on the phone, or a stand-in in checks. */
 interface Runner {
@@ -787,15 +800,17 @@ class Engine(
      * question stays once). The new answer has the same id and a higher version, so it replaces the old one
      * on the PC's copy too. Returns false when there was nothing to redo, or it can't be sent now.
      */
-    fun tryAgain(): Boolean {
+    fun tryAgain(): Boolean = !_state.value.whisper && redo()
+
+    private fun redo(): Boolean {
         val s0 = _state.value
         val turns = s0.chat.turns
         val answer = turns.lastOrNull()?.takeIf { !it.user && it.task == null } ?: return false
         val question = turns.getOrNull(turns.lastIndex - 1)?.takeIf { it.user } ?: return false
-        if (s0.writing || s0.whisper || !canSend()) return false
+        if (s0.writing || !canSend()) return false
         if (question.id.isNotEmpty()) retryFloor["${question.id}.a"] = answer.version + 1
         replacing(s0.chat, answer.id, answer.at)
-        _state.update { it.copy(chat = it.chat.copy(turns = it.chat.turns.dropLast(2))) }
+        _state.update { it.copy(chat = keepingOld(it.chat, question, answer).let { c -> c.copy(turns = c.turns.dropLast(2)) }, lookupFailed = false) }
         persist()
         // Asked again with a higher version: a PC that keeps each message's reply never gives back the old one.
         return send(question.text, question.files, question.pictures, question.id, question.at, question.version + 1)
@@ -826,14 +841,17 @@ class Engine(
         // The new answer takes the version above the tombstone's.
         retryFloor[answerId] = (cuts.firstOrNull { it.id == answerId }?.version ?: 2) + 1
         replacing(c, answerId, removed.firstOrNull { it.id == answerId }?.at)
-        _state.update { it.copy(chat = c.copy(turns = c.turns.take(pos), cuts = c.cuts.filter { k -> cuts.none { n -> n.id == k.id } } + cuts), stoppedChat = null) }
+        // The edited message's answer is kept as an earlier one; those of the later messages go with their messages.
+        val gone = removed.drop(1).filter { it.user }.map(::answerIdOf).toSet()
+        val kept = (removed.getOrNull(1)?.let { keepingOld(c, orig, it) } ?: c).let { k -> k.copy(old = k.old - gone) }
+        _state.update { it.copy(chat = kept.copy(turns = c.turns.take(pos), cuts = c.cuts.filter { k -> cuts.none { n -> n.id == k.id } } + cuts), stoppedChat = null) }
         if (!send(t, orig.files, orig.pictures, orig.id, orig.at, orig.version + 1, typed = true)) {
             _state.update { it.copy(chat = before.chat) }
             retryFloor.remove(answerId)
             replaced.remove(answerId)
             return null
         }
-        return Edited(c.id, removed)
+        return Edited(c.id, removed, c.old)
     }
 
     /** Whether the message at [pos] can be edited: not once a project task followed it (its file changes can't be undone). */
@@ -852,7 +870,8 @@ class Engine(
             }
             val ids = back.map { it.id }.toSet()
             val kept = c.turns.filter { it.id !in ids }
-            s.copy(chat = c.copy(turns = ChatSync.inOrder(kept + back), cuts = c.cuts.filter { it.id !in ids }), stoppedChat = null)
+            // The earlier answers are as they were before the edit.
+            s.copy(chat = c.copy(turns = ChatSync.inOrder(kept + back), cuts = c.cuts.filter { it.id !in ids }, old = e.old), stoppedChat = null)
         }
         persist()
     }
@@ -1171,6 +1190,8 @@ class Engine(
                 tappedPage.set(null)
                 skipLookup.set(false)
                 _state.update { it.copy(writing = false, loading = false, thinking = false, looking = null, onPc = false, pcWaiting = false, pcLine = null, usePcOnce = true) }
+                // Answered: a lookup asked for it is done.
+                if (_state.value.chat.turns.lastOrNull()?.user == false) lookUpAsked.remove(turn.id)
                 persist()
                 busy(false)
                 lastReplyAt = now()
@@ -1259,20 +1280,27 @@ class Engine(
     }
 
     /**
-     * "Look it up" (an answer's long-press menu, normal mode): that answer is replaced by one
-     * written after searching the web for the owner's message.
+     * "Look it up" on the newest answer (normal mode): a new answer is written after searching the web for the
+     * owner's message. The answer it checks is kept, and shows until the new one is there (QA16 Q7). It goes as
+     * "Try again" does (a higher version), so the PC never hands the old answer back.
      */
     fun lookItUp() {
         val s = _state.value
         if (s.writing || (s.whisper && !s.web) || s.askPlace || s.askSearch != null) return
         val turns = s.chat.turns
         if (turns.size < 2 || turns.last().user || !turns[turns.size - 2].user) return
-        val words = io.github.odnwks.mimir.online.Router.lookUp(turns[turns.size - 2].text) ?: return
+        val question = turns[turns.size - 2]
+        val words = io.github.odnwks.mimir.online.Router.lookUp(question.text) ?: return
         if (!canSend()) return
-        forcedSearch.set(words)
-        _state.update { it.copy(chat = it.chat.copy(turns = it.chat.turns.dropLast(1))) }
-        retry()
+        lookUpAsked[question.id] = words
+        if (!redo()) lookUpAsked.remove(question.id)
     }
+
+    /**
+     * Messages "Look it up" was tapped for that have no answer yet: sent again (the link dropped, "Try again",
+     * the PC back), they are still looked up, never answered from memory instead.
+     */
+    private val lookUpAsked = java.util.concurrent.ConcurrentHashMap<String, io.github.odnwks.mimir.online.Router.Need.Search>()
 
     private val noLookup: Pair<String?, List<io.github.odnwks.mimir.online.Source>> = null to emptyList()
 
@@ -1292,10 +1320,7 @@ class Engine(
         val turns = s.chat.turns
         when {
             turns.lastOrNull()?.user == true -> retry()
-            turns.size >= 2 && turns[turns.size - 2].user -> {
-                _state.update { it.copy(chat = it.chat.copy(turns = it.chat.turns.dropLast(1))) }
-                retry()
-            }
+            turns.size >= 2 && turns[turns.size - 2].user -> if (!redo()) tappedPage.set(null)
             else -> send("What does this page say? $url")
         }
     }
@@ -1341,7 +1366,7 @@ class Engine(
      * Router finds in the owner's words.
      */
     private fun lookUp(turns: List<Turn>, asked: io.github.odnwks.mimir.online.Router.Need? = null): Pair<String?, List<io.github.odnwks.mimir.online.Source>>? {
-        val forced = forcedSearch.getAndSet(null)
+        val forced = forcedSearch.getAndSet(null) ?: turns.lastOrNull()?.takeIf { it.user }?.let { lookUpAsked[it.id] }
         val tapped = tappedPage.getAndSet(null)
         if (skipLookup.getAndSet(false)) return noLookup
         if (!io.github.odnwks.mimir.online.Online.allowed(mode())) return noLookup
@@ -2238,7 +2263,7 @@ class Engine(
         } else null
         val earlier = synchronized(fetchedFor) { HashMap(fetchedFor) }
         val last = s.chat.turns.lastIndex
-        val system = io.github.odnwks.mimir.online.OnlineModels.system(projects = projectWork()) + Prompt.chatTail(s.chat.rules) + if (s.effort == Effort.Quick) Prompt.BRIEF else ""
+        val system = io.github.odnwks.mimir.online.OnlineModels.system(projects = projectWork()) + " " + Prompt.NO_CLAIM + Prompt.chatTail(s.chat.rules) + if (s.effort == Effort.Quick) Prompt.BRIEF else ""
         val messages = listOf("system" to system) + s.chat.turns.mapIndexed { i, t ->
             (if (t.user) "user" else "assistant") to (t.forModel() + if (t.user && i == last) fetched.orEmpty() else if (t.user) earlier[t.id].orEmpty() else "")
         }

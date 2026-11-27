@@ -28,6 +28,11 @@ data class LocalChat(
     val cuts: List<Cut> = emptyList(),
     /** Messages typed while nothing could answer (the PC away): they go by themselves, in order, once, when it can. */
     val queued: List<Turn> = emptyList(),
+    /**
+     * Earlier answers, by the answer's id, oldest first: what "Try again", "Look it up" or an edit replaced.
+     * They stay on this phone and go when the chat goes.
+     */
+    val old: Map<String, List<Turn>> = emptyMap(),
 ) {
     /** The last project card's task and project (Stage 1, 2.3), unless the owner took the chat out of it. */
     val projectCard: Turn? get() = turns.lastOrNull { !it.user && it.task != null }?.takeIf { it.task != leftTask }
@@ -188,6 +193,9 @@ class Store(private val file: File, private val codec: Codec = KeystoreCodec()) 
                         (0 until a.length()).map { k -> a.getJSONObject(k).let { Cut(it.getString("id"), it.getBoolean("user"), it.optLong("at"), it.optInt("version", 2), it.optBoolean("sent")) } }
                     },
                     (c.optJSONArray("queued") ?: JSONArray()).let { a -> (0 until a.length()).map { k -> parseTurn(a.getJSONObject(k), "${c.getString("id")}.q$k") } },
+                    (c.optJSONObject("old") ?: JSONObject()).let { o ->
+                        o.keys().asSequence().associateWith { id -> o.getJSONArray(id).let { a -> (0 until a.length()).map { k -> parseTurn(a.getJSONObject(k), "$id.old$k") } } }
+                    },
                 )
             },
         )
@@ -226,6 +234,7 @@ class Store(private val file: File, private val codec: Codec = KeystoreCodec()) 
             wentOnce = t.optBoolean("went_once"),
             saw = t.optString("saw").ifEmpty { null },
             heldFor = t.optString("held_for").ifEmpty { null },
+            asked = t.optString("asked").ifEmpty { null },
         )
     }
 
@@ -249,6 +258,7 @@ class Store(private val file: File, private val codec: Codec = KeystoreCodec()) 
             if (t.wentOnce) put("went_once", true)
             t.saw?.let { put("saw", it) }
             t.heldFor?.let { put("held_for", it) }
+            t.asked?.let { put("asked", it) }
             if (t.files.isNotEmpty()) put("files", JSONArray(t.files.map { f ->
                 JSONObject().put("name", f.name).put("text", f.text).put("cut", f.cut).apply {
                     if (f.note.isNotEmpty()) put("note", f.note)
@@ -284,6 +294,7 @@ class Store(private val file: File, private val codec: Codec = KeystoreCodec()) 
                     if (c.cuts.isNotEmpty()) put("cuts", JSONArray(c.cuts.map { JSONObject().put("id", it.id).put("user", it.user).put("at", it.at).put("version", it.version).put("sent", it.sent) })) }
                     .put("turns", JSONArray(c.turns.map(::turnJson)))
                     .apply { if (c.queued.isNotEmpty()) put("queued", JSONArray(c.queued.map(::queuedJson))) }
+                    .apply { if (c.old.isNotEmpty()) put("old", JSONObject().also { o -> c.old.forEach { (id, answers) -> o.put(id, JSONArray(answers.map(::turnJson))) } }) }
             }),
         )
         io.github.odnwks.mimir.link.SafeFile.write(file, codec.seal(o.toString()))

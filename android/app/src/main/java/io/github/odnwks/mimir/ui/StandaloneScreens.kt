@@ -279,6 +279,7 @@ private fun Conversation(
     val lines = rememberNewLines(list, s.chat.id, s.chat.turns.size to s.writing, if (s.writing) s.partial.length else 0, s.chat.turns.count { it.user })
     Column(modifier) {
     ChatTextSize {
+androidx.compose.runtime.CompositionLocalProvider(LocalFound provides words) {
 LazyColumn(
         Modifier.weight(1f).fillMaxWidth().pinchToZoomText(LocalAppSize.current).pointerInput(Unit) { detectTapGestures(onTap = { focus.clearFocus() }) },
         state = list,
@@ -312,18 +313,26 @@ LazyColumn(
             item(key = "speed") { Text(speed, style = Type.Small, color = Palette.TextDim) }
         }
         items(s.chat.turns.withIndex().reversed().filter { words == null || it.value.text.contains(words, ignoreCase = true) }, key = { "${s.chat.id}-${it.index}" }) { (i, turn) ->
+          androidx.compose.runtime.CompositionLocalProvider(LocalFindJump provides (words != null && i == s.chat.turns.indexOfLast { it.text.contains(words, ignoreCase = true) })) {
             val m = Modifier.animateItem(fadeInSpec = motionSpec(Motion.NEW_ITEM_MS), placementSpec = motionSpec(Motion.NEW_ITEM_MS), fadeOutSpec = motionSpec(Motion.NEW_ITEM_MS))
-            if (turn.user) OwnMessage(
-                turn.text, m, id = turn.id.ifEmpty { "mine-${turn.text.hashCode()}" }, under = readLink?.invoke(turn, i),
-                meta = { ChatMeta(turn.at, null, "Your PC", chatReceipt(s.chat.turns, i, s.writing, s.partial.isNotEmpty())) },
-            ) else Box(m) {
-                val before = s.chat.turns.getOrNull(i - 1)?.takeIf { it.user }
-                Reply(
-                    turn.text, dim = false, sources = turn.sources, note = turn.switchNote, lookUp = lookUp.takeIf { i == s.chat.turns.lastIndex }, openSources = !s.whisper,
-                    onTryAgain = if (s.whisper || i != s.chat.turns.lastIndex || s.lookupFailed) null else before?.let { q -> { askAgain(q) } },
-                    meta = { ChatMeta(turn.at, turn, "Your PC") },
+            if (turn.user) Column(m, verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                OwnMessage(
+                    turn.text, id = turn.id.ifEmpty { "mine-${turn.text.hashCode()}" }, under = readLink?.invoke(turn, i),
+                    meta = { ChatMeta(turn.at, null, "Your PC", chatReceipt(s.chat.turns, i, s.writing, s.partial.isNotEmpty())) },
                 )
+                if (s.chat.turns.getOrNull(i + 1)?.user != false) s.chat.old[io.github.odnwks.mimir.standalone.answerIdOf(turn)]?.lastOrNull()?.let { EarlierAnswer(it, turn.text, !s.whisper, if (s.whisper) null else "Your PC") }
+            } else Box(m) {
+                val before = s.chat.turns.getOrNull(i - 1)?.takeIf { it.user }
+                WithEarlier(turn.id, before?.let { s.chat.old[io.github.odnwks.mimir.standalone.answerIdOf(it)] }.orEmpty(), before?.text.orEmpty(), !s.whisper, if (s.whisper) null else "Your PC") {
+                    Reply(
+                        turn.text, dim = false, sources = turn.sources, note = turn.switchNote, lookUp = lookUp.takeIf { i == s.chat.turns.lastIndex && !s.lookupFailed }, openSources = !s.whisper,
+                        onTryAgain = if (s.whisper || i != s.chat.turns.lastIndex || s.lookupFailed) null else before?.let { q -> { askAgain(q) } },
+                        meta = { ChatMeta(turn.at, turn, "Your PC") },
+                        fromMemory = fromMemory(turn, before),
+                    )
+                }
             }
+          }
         }
         // Earlier chats sit on the chat screen itself, under a new chat (the list is upside down).
         if (s.whisper && s.chat.turns.isEmpty() && !s.writing) item(key = "whisper") { WhisperHello(s.web) }
@@ -338,6 +347,7 @@ LazyColumn(
             )
         }
     }
+}
 }
     NewLinesButton(lines)
     }
@@ -401,15 +411,28 @@ internal fun Reply(
     author: String? = null,
     /** The small print beside the Listen pill: who wrote it, the effort and time. */
     meta: (@Composable () -> Unit)? = null,
+    /** No looked-up source stands behind it. */
+    fromMemory: Boolean = false,
 ) {
     // Mímir's replies are read by the phone's own voice: nothing leaves the phone.
     val id = "mimir-${text.hashCode()}"
     // Listen and Copy get the words without the Markdown marks.
     val plain = androidx.compose.runtime.remember(text) { markdownPlain(text) }
-    Answer(plain, id, dim = dim, sources = sources, openSources = openSources, lookUp = lookUp, onTryAgain = onTryAgain, note = note, buttons = buttons, meta = meta ?: author?.let { who -> { Text(who, style = MetaLook.Tiny, color = Palette.TextDim) } }) {
+    Answer(plain, id, dim = dim, sources = sources, openSources = openSources, lookUp = lookUp, onTryAgain = onTryAgain, note = note, buttons = buttons, fromMemory = fromMemory, meta = meta ?: author?.let { who -> { Text(who, style = MetaLook.Tiny, color = Palette.TextDim) } }) {
         MarkdownText(text, style = ChatLook.MessageText, color = if (dim) Palette.TextDim else Palette.Text, linksOpen = openSources)
     }
 }
+
+/**
+ * Whether [answer] (to [asked]) is the model's own memory: a model wrote it and nothing looked up came with it.
+ * One about a picture or a file the person attached rests on that, and is not marked.
+ */
+internal fun fromMemory(answer: io.github.odnwks.mimir.standalone.Turn, asked: io.github.odnwks.mimir.standalone.Turn?): Boolean =
+    !answer.user && answer.task == null && answer.ran != null && answer.sources.isEmpty() && modelWrote(answer.modelWords) &&
+        asked?.files.isNullOrEmpty() && asked?.pictures.isNullOrEmpty()
+
+/** A model's line is "model · where"; the PC's own report ("What's running?") carries just the PC's name. */
+private fun modelWrote(words: String?) = words == null || '·' in words
 
 /** "Look it up" for a chat's latest answer: normal mode, with lookups and searching on. */
 @Composable

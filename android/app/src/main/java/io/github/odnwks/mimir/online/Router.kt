@@ -160,8 +160,47 @@ object Router {
         RegexOption.IGNORE_CASE,
     )
 
+    private const val LATELY = "(?:today|yesterday|tonight|last night|recently|lately|this (?:week|month|year)|last (?:week|month))"
+
+    /**
+     * Recent studies and recent events (owner-found 2026-11-26: "what do recent studies say about creatine and
+     * memory" was answered with no lookup). The model's memory is older than these, whoever answers.
+     */
+    private val RECENT = Regex(
+        "\\b(?:recent|new|newest|latest)\\s+(?:\\w+\\s+)?(?:stud(?:y|ies)|research|findings|trials?|developments?|news)\\b" +
+            "|\\b(?:studies|research|science|scientists|researchers)\\b.{0,60}?\\b$LATELY\\b" +
+            "|\\bwhat (?:do|does) (?:the )?(?:studies|research|science) (?:say|show|suggest|find)\\b" +
+            "|\\bwhat(?:'s| has| have)? (?:happened|happening|changed)\\b.{0,60}?\\b(?:$LATELY|in 20[2-9]\\d)\\b" +
+            "|\\bwho (?:won|lost|died|was elected|resigned)\\b.{0,60}?\\b$LATELY\\b" + // lint:log-only (a pattern, never shown)
+            "|\\bany news\\b|\\bin the news\\b",
+        RegexOption.IGNORE_CASE,
+    )
+
+    /** Something to make up, not to look up ("summarize the research" is still a question about the world). */
+    private val CREATIVE = Regex("\\b(?:write|draft|compose|draw|create|translate|rewrite|poem|story|joke|essay)\\b", RegexOption.IGNORE_CASE)
+
+    /** "Can you summarize …": asking, not a message about the person ("you"). */
+    private val CAN_YOU = Regex("^(?:please\\s+)?(?:can|could|would) you\\s+(?:please\\s+)?", RegexOption.IGNORE_CASE)
+
+    /**
+     * Whole words for the person asking or someone else. [PERSONAL_PRONOUNS] also matches the start of words
+     * ("me" in "memory"), which would keep "creatine and memory" unsearched. "US" in capitals is the country.
+     */
+    private val A_PERSON = Regex(
+        "\\b(?:my|mine|your|yours|our|ours|his|her|hers|their|theirs|me|(?-i:us)|him|them|myself|yourself|ourselves|himself|herself|themselves|i|we|you|he|she|they)\\b",
+        RegexOption.IGNORE_CASE,
+    )
+
+    /** A recent study or event, as search words, or null. Never with personal pronouns (PHE-05). */
+    private fun recent(text: String): Need.Search? {
+        val t = CAN_YOU.replace(ASK_PREFIX.replace(text.trim(), ""), "")
+        if (!RECENT.containsMatchIn(t) || CREATIVE.containsMatchIn(t) || A_PERSON.containsMatchIn(t)) return null
+        return words(t)?.let { Need.Search(it) }
+    }
+
     /** A time-bound question, as search words, or null. Never with personal pronouns (PHE-05). */
     private fun timely(text: String): Need.Search? {
+        recent(text)?.let { return it }
         val t = ASK_PREFIX.replace(text.trim(), "")
         if (!TIMELY.containsMatchIn(t) || NOT_TIMELY.containsMatchIn(t) || TASK.containsMatchIn(t)) return null
         if (!FACT_QUESTION.containsMatchIn(t) && t.split(Regex("\\s+")).size > 6) return null

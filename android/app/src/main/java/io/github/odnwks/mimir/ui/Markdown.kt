@@ -259,8 +259,8 @@ fun MarkdownText(md: String, style: TextStyle, color: Color, modifier: Modifier 
     Column(modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
         blocks.forEach { b ->
             when (b) {
-                is Markdown.Block.Para -> Text(Markdown.inline(b.text, codeSpan, link, links), style = style, color = color)
-                is Markdown.Block.Heading -> Text(
+                is Markdown.Block.Para -> FoundText(Markdown.inline(b.text, codeSpan, link, links), style, color)
+                is Markdown.Block.Heading -> FoundText(
                     Markdown.inline(b.text, codeSpan, link, links),
                     style = style.copy(fontWeight = FontWeight.Bold, fontSize = style.fontSize * (if (b.level <= 1) 1.2f else if (b.level == 2) 1.1f else 1f)),
                     color = color, modifier = Modifier.semantics { heading() },
@@ -272,11 +272,11 @@ fun MarkdownText(md: String, style: TextStyle, color: Color, modifier: Modifier 
                         softWrap = false, modifier = if (b.number != null) Modifier.widthIn(min = 36.dp) else Modifier.width(20.dp), textAlign = if (b.number != null) TextAlign.End else TextAlign.Start,
                     )
                     Spacer(Modifier.width(if (b.number != null) 8.dp else 0.dp))
-                    Text(Markdown.inline(b.text, codeSpan, link, links), style = style, color = color, modifier = Modifier.weight(1f))
+                    FoundText(Markdown.inline(b.text, codeSpan, link, links), style, color, Modifier.weight(1f))
                 }
                 is Markdown.Block.Quote -> Row {
                     Box(Modifier.width(3.dp).padding(vertical = 2.dp).background(Palette.Outline))
-                    Text(Markdown.inline(b.text, codeSpan, link, links), style = style.copy(fontStyle = FontStyle.Italic), color = color, modifier = Modifier.padding(start = 10.dp))
+                    FoundText(Markdown.inline(b.text, codeSpan, link, links), style.copy(fontStyle = FontStyle.Italic), color, Modifier.padding(start = 10.dp))
                 }
                 is Markdown.Block.Code -> CodeBlock(b, style, color)
                 is Markdown.Block.Table -> TableBlock(b, style, color, codeSpan, link, links)
@@ -303,7 +303,7 @@ private fun CodeBlock(b: Markdown.Block.Code, style: TextStyle, color: Color) {
             }
         }
         Box(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(start = 10.dp, end = 10.dp, bottom = 10.dp)) {
-            Text(b.text, style = style.copy(fontFamily = FontFamily.Monospace, fontSize = style.fontSize * 0.9f), color = color, softWrap = false)
+            Text(AnnotatedString(b.text).marking(LocalFound.current), style = style.copy(fontFamily = FontFamily.Monospace, fontSize = style.fontSize * 0.9f), color = color, softWrap = false)
         }
     }
 }
@@ -345,7 +345,7 @@ private fun TableBlock(b: Markdown.Block.Table, style: TextStyle, color: Color, 
                         Row(Modifier.height(IntrinsicSize.Min).then(if (r == 0) Modifier.background(Palette.Bar) else Modifier)) {
                             row.forEachIndexed { c, cell ->
                                 Text(
-                                    Markdown.inline(cell, code, link, links),
+                                    Markdown.inline(cell, code, link, links).marking(LocalFound.current),
                                     style = style.copy(fontWeight = if (r == 0) FontWeight.Bold else style.fontWeight, fontSize = style.fontSize * 0.95f),
                                     color = color,
                                     modifier = Modifier.width(widths[c]).fillMaxHeight().border(0.5.dp, Palette.Line).padding(horizontal = 10.dp, vertical = 8.dp),
