@@ -624,7 +624,11 @@ fun MessageBox(
     val ctx = androidx.compose.ui.platform.LocalContext.current
     val keys = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
     val hold = LocalKeyboardHold.current
+    // Kept with the screen's saved state: coming back to it (Back) never takes the cursor again.
+    var opened by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf(false) }
     if (autoFocus) androidx.compose.runtime.LaunchedEffect(Unit) {
+        if (opened) return@LaunchedEffect
+        opened = true
         // After a sheet has put the keyboard away as it opens.
         kotlinx.coroutines.delay(150)
         if (hold?.held != true && keyboardAutoOn(ctx)) runCatching { focus.requestFocus(); keys?.show() }

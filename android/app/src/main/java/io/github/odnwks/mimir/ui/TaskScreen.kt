@@ -196,14 +196,17 @@ fun TaskScreen(taskId: String, state: StationState, station: Station, nav: Navig
                     verticalArrangement = Arrangement.Center,
                 ) {
                     Text(task.title, style = Type.Label.copy(fontWeight = FontWeight.SemiBold), color = Palette.Text, maxLines = if (more) 4 else 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.semantics { heading() })
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        if (task.project.isNotBlank()) Text(task.project, style = Type.Small, color = Palette.BlueText, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 96.dp))
+                    TaskFacts(
+                        project = { if (task.project.isNotBlank()) Text(task.project, style = Type.Small, color = Palette.BlueText, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                        tags = {
                         val (fg, bg) = stateColours(task.stateWords)
                         Tag(task.stateWords, fg, bg)
                         // A mode that doesn't ask first is always in sight.
                         task.riskyMode?.let { if (task.yolo) Tag(it, Palette.Ground, Palette.Red) else Tag(it, Palette.AmberInk, Palette.Amber) }
+                        },
+                    ) {
                         // What it's doing right now, on the same line: the words first, the time after them while it fits.
-                        Box(Modifier.weight(1f, fill = false)) {
+                        Box {
                             LiveSignLine(task.sign, oneLine = true) {
                                 if (task.stateWords == "Working" && task.stateLine != "Working on it") Text(task.stateLine, style = Type.Small, color = Palette.TextSoft, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             }
@@ -730,5 +733,29 @@ private fun ElsewhereNote(modifier: Modifier) {
     Panel(modifier.fillMaxWidth(), background = Palette.Bar, border = Palette.Outline) {
         Text(FOLLOWS_ALONG, style = Type.Label, color = Palette.TextSoft)
         LinkText("Open on claude.ai", { runCatching { uri.openUri("https://claude.ai/code") } }, bold = true)
+    }
+}
+
+/**
+ * The task top's second line: project, state, mode, then what it's doing. The state and mode tags are
+ * measured first, so they always show whole; the project name takes what is left (up to 96 dp) and is
+ * shortened with "…", and the doing-now line gets the rest.
+ */
+@Composable
+private fun TaskFacts(project: @Composable () -> Unit, tags: @Composable () -> Unit, now: @Composable () -> Unit) {
+    androidx.compose.ui.layout.Layout(listOf(project, tags, now)) { (projects, tagged, doing), limits ->
+        val gap = 6.dp.roundToPx()
+        var left = limits.maxWidth
+        fun take(m: androidx.compose.ui.layout.Measurable, most: Int = left) =
+            m.measure(androidx.compose.ui.unit.Constraints(maxWidth = minOf(most, left).coerceAtLeast(0))).also { if (it.width > 0) left -= it.width + gap }
+        val shownTags = tagged.map { take(it) }
+        val name = projects.map { take(it, 96.dp.roundToPx()) }
+        val line = doing.map { take(it) }
+        val all = (name + shownTags + line).filter { it.width > 0 }
+        val height = all.maxOfOrNull { it.height } ?: 0
+        layout(limits.maxWidth, height) {
+            var x = 0
+            all.forEach { it.placeRelative(x, (height - it.height) / 2); x += it.width + gap }
+        }
     }
 }
