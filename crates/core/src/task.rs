@@ -267,6 +267,10 @@ pub struct Task {
     /// deleting the task deletes them too.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub past_sessions: Vec<String>,
+    /// Sessions left behind by a fresh start that deleting the task keeps
+    /// (the task came from a session the person already had).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub kept_sessions: Vec<String>,
 }
 
 fn is_zero_u8(n: &u8) -> bool {
@@ -470,6 +474,7 @@ impl Task {
             fresh_pending: None,
             fresh_row: 0,
             past_sessions: Vec::new(),
+            kept_sessions: Vec::new(),
         }
     }
 
@@ -816,6 +821,14 @@ impl Task {
                 self.entry_meta[i].receipt = Some(Receipt::Read);
             }
         }
+    }
+
+    /// This task's session, now or before a fresh start: it is never listed
+    /// as its own, opened as a second task or deleted by another task.
+    pub fn holds(&self, session: &str) -> bool {
+        self.session_id.as_deref() == Some(session)
+            || self.past_sessions.iter().any(|s| s == session)
+            || self.kept_sessions.iter().any(|s| s == session)
     }
 
     /// Applies one event. `now_ms` is a clock in milliseconds used to time

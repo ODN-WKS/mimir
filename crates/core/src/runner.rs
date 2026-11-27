@@ -236,6 +236,8 @@ pub const FRESH_BRIEF: &str = "Continue from the hand-off. Read the project's ha
 /// The most fresh starts without a message from the owner in between.
 pub const FRESH_ROW_MAX: u8 = 3;
 pub const FRESH_ROW_FULL: &str = "Waiting for you: 3 fresh starts in a row.";
+/// How the line in the chat where a new session begins starts.
+const FRESH_DIVIDER: &str = "Fresh start at ";
 
 /// Who asked for a fresh start.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -730,6 +732,11 @@ impl Runner {
                 if n == 1 { "" } else { "s" }
             )
         };
+        // A hand-off no session ever received (its start failed) is still owed.
+        let l = &mut self.tasks[i];
+        if l.session.is_none() && l.task.session_id.is_none() && l.task.brief.is_some() {
+            l.task.brief_pending = true;
+        }
         // Auto model: pick for this message (it applies when Claude Code
         // starts for it).
         let starting = self.tasks[i].session.is_none();
@@ -1678,7 +1685,14 @@ impl Runner {
             return Ok(Fresh::Done);
         }
         if t.fresh_row >= FRESH_ROW_MAX {
-            if why == FreshWhy::Session {
+            // Said once, until the owner writes again.
+            let said = t
+                .entries
+                .iter()
+                .rev()
+                .take_while(|e| !matches!(e, crate::task::Entry::You(_)))
+                .any(|e| matches!(e, crate::task::Entry::Note(n) if n == FRESH_ROW_FULL));
+            if why == FreshWhy::Session && !said {
                 t.add_note(FRESH_ROW_FULL);
                 self.tasks[i].dirty = true;
                 self.save_dirty();
@@ -1726,16 +1740,18 @@ impl Runner {
             let t = &mut l.task;
             t.fresh_pending = None;
             // A session the person had before Mímir is never deleted by it.
-            if let Some(old) = t.session_id.take()
-                && !t.imported
-            {
-                t.past_sessions.push(old);
+            if let Some(old) = t.session_id.take() {
+                if t.imported {
+                    t.kept_sessions.push(old);
+                } else {
+                    t.past_sessions.push(old);
+                }
             }
             t.context_used = 0;
             t.brief = Some(brief.clone());
             t.brief_pending = !run_on;
             t.add_note(&format!(
-                "Fresh start at {:02}:{:02} · continues from the hand-off",
+                "{FRESH_DIVIDER}{:02}:{:02} · continues from the hand-off",
                 now.hour, now.minute
             ));
             if run_on {
@@ -1834,12 +1850,8 @@ impl Runner {
         project: &Path,
         s: &crate::sessions::PastSession,
     ) -> std::io::Result<String> {
-        if let Some(l) = self
-            .tasks
-            .iter()
-            .find(|l| l.task.session_id.as_deref() == Some(s.id.as_str()))
-        {
-            return Ok(l.task.id.clone());
+        if let Some(id) = self.holder(&s.id) {
+            return Ok(id);
         }
         let id = self.new_id();
         let task = crate::sessions::to_task(s, project, id.clone())?;
@@ -1865,6 +1877,31 @@ impl Runner {
         Ok(id)
     }
 
+    /// The task that has `session`: the one on it now, else one that left it
+    /// behind with a fresh start.
+    pub fn holder(&self, session: &str) -> Option<String> {
+        self.tasks
+            .iter()
+            .find(|l| l.task.session_id.as_deref() == Some(session))
+            .or_else(|| self.tasks.iter().find(|l| l.task.holds(session)))
+            .map(|l| l.task.id.clone())
+    }
+
+    /// Sessions fresh starts left behind that no task is on now.
+    pub fn left_behind(&self) -> std::collections::HashSet<String> {
+        self.tasks
+            .iter()
+            .flat_map(|l| l.task.past_sessions.iter().chain(&l.task.kept_sessions))
+            .filter(|s| {
+                !self
+                    .tasks
+                    .iter()
+                    .any(|l| l.task.session_id.as_ref() == Some(*s))
+            })
+            .cloned()
+            .collect()
+    }
+
     fn edit(&mut self, id: &str, f: impl FnOnce(&mut Task)) {
         if let Some(i) = self.index(id) {
             f(&mut self.tasks[i].task);
@@ -1879,16 +1916,25 @@ impl Runner {
         // message in the conversation.
         let again = self.index(id).and_then(|i| {
             let t = &self.tasks[i].task;
-            // After a fresh start the hand-off says what to do.
-            if t.session_id.is_some() || (t.brief_pending && !t.past_sessions.is_empty()) {
+            if t.session_id.is_some() {
                 return None;
             }
-            t.entries.iter().rev().find_map(|e| match e {
-                crate::task::Entry::You(x) if !x.trim().is_empty() && x.trim() != CONTINUE_TEXT => {
-                    Some(x.clone())
-                }
-                _ => None,
-            })
+            // Nothing from before a fresh start is asked again: the hand-off
+            // says what to do.
+            t.entries
+                .iter()
+                .rev()
+                .take_while(
+                    |e| !matches!(e, crate::task::Entry::Note(n) if n.starts_with(FRESH_DIVIDER)),
+                )
+                .find_map(|e| match e {
+                    crate::task::Entry::You(x)
+                        if !x.trim().is_empty() && x.trim() != CONTINUE_TEXT =>
+                    {
+                        Some(x.clone())
+                    }
+                    _ => None,
+                })
         });
         match again {
             Some(text) => self.send_inner(id, &text, &[], false),
@@ -2222,7 +2268,10 @@ impl Runner {
             .map(|i| self.tasks[i].task.past_sessions.clone());
         self.remove(id);
         for s in session.into_iter().chain(past.unwrap_or_default()) {
-            crate::sessions::delete_session(&s);
+            // Never one another task has.
+            if self.holder(&s).is_none() {
+                crate::sessions::delete_session(&s);
+            }
         }
     }
 

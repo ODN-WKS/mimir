@@ -25,6 +25,32 @@ pub struct TaskRef {
     pub whisper: bool,
 }
 
+/// The list for this runner's tasks: sessions their fresh starts left behind
+/// are not shown as sessions of their own.
+pub fn list_for(
+    runner: &crate::runner::Runner,
+    home: &Path,
+    running: &HashSet<String>,
+    hidden: &HashSet<String>,
+    now: i64,
+) -> Vec<PcSession> {
+    let tasks: Vec<TaskRef> = runner
+        .tasks
+        .iter()
+        .map(|l| TaskRef {
+            task: l.task.id.clone(),
+            session: l.task.session_id.clone(),
+            title: l.task.title.clone(),
+            busy: l.busy(),
+            elsewhere: l.task.live_elsewhere,
+            whisper: l.task.incognito,
+        })
+        .collect();
+    let mut hidden = hidden.clone();
+    hidden.extend(runner.left_behind());
+    list(home, running, &hidden, &tasks, now)
+}
+
 /// The sessions to list, newest first. `home` is Claude Code's folder;
 /// `running` are the ids a Claude Code process was started with; `hidden`
 /// are ids the owner removed.
@@ -133,9 +159,8 @@ pub fn open(
         state_of(false, running.contains(session), modified, now) == PcSessionState::Working
     };
     if let Some(l) = runner
-        .tasks
-        .iter()
-        .find(|l| l.task.session_id.as_deref() == Some(session))
+        .holder(session)
+        .and_then(|id| runner.tasks.iter().find(|l| l.task.id == id))
     {
         if l.task.incognito {
             return Err(gone());
@@ -144,7 +169,9 @@ pub fn open(
         // Mímir's own Claude on it is no "elsewhere".
         let own = l.running() || l.busy() || runner.own_recent(&id, now);
         let modified = found.as_ref().map(|o| o.session.modified_unix).unwrap_or(0);
-        let follow = !own && working_elsewhere(modified);
+        // A session left behind by a fresh start is not followed.
+        let now_on_it = l.task.session_id.as_deref() == Some(session);
+        let follow = now_on_it && !own && working_elsewhere(modified);
         if follow && runner.set_elsewhere(&id, true) {
             runner.note(&id, FOLLOW_NOTE);
         }

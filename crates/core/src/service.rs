@@ -1606,12 +1606,7 @@ impl Service {
             Call::PastSessions { project } => {
                 let mut sessions = crate::sessions::list(Path::new(&project));
                 // Sessions that are already tasks here are left out.
-                sessions.retain(|s| {
-                    !self.runner.tasks.iter().any(|l| {
-                        l.task.session_id.as_deref() == Some(s.id.as_str())
-                            || l.task.past_sessions.contains(&s.id)
-                    })
-                });
+                sessions.retain(|s| self.runner.holder(&s.id).is_none());
                 serde_json::to_value(sessions).map_err(|e| e.to_string())
             }
             Call::PcSessions => {
@@ -3328,13 +3323,7 @@ impl Service {
         }
         for o in crate::sessions::recent(500) {
             let sid = &o.session.id;
-            if self.settings.hidden_sessions.contains(sid)
-                || self
-                    .runner
-                    .tasks
-                    .iter()
-                    .any(|l| l.task.session_id.as_deref() == Some(sid.as_str()))
-            {
+            if self.settings.hidden_sessions.contains(sid) || self.runner.holder(sid).is_some() {
                 continue;
             }
             let (text, messages) = crate::sessions::owner_text(&o.session.path, 3000);
@@ -4054,22 +4043,6 @@ impl Service {
         }
     }
 
-    /// The tasks the PC's session list links to.
-    fn pc_task_refs(&self) -> Vec<crate::pcsessions::TaskRef> {
-        self.runner
-            .tasks
-            .iter()
-            .map(|l| crate::pcsessions::TaskRef {
-                task: l.task.id.clone(),
-                session: l.task.session_id.clone(),
-                title: l.task.title.clone(),
-                busy: l.busy(),
-                elsewhere: l.task.live_elsewhere,
-                whisper: l.task.incognito,
-            })
-            .collect()
-    }
-
     /// Looks at the PC's Claude Code sessions (at most every few seconds,
     /// or now when `force`) and tells the owner's phones when the list
     /// changed.
@@ -4098,11 +4071,11 @@ impl Service {
             self.procs = (crate::sessions::running_sessions(), Some(now));
         }
         let hidden: HashSet<String> = self.settings.hidden_sessions.iter().cloned().collect();
-        let list = crate::pcsessions::list(
+        let list = crate::pcsessions::list_for(
+            &self.runner,
             &crate::sessions::claude_home(),
             &self.procs.0,
             &hidden,
-            &self.pc_task_refs(),
             crate::needs::now(),
         );
         if list != self.pc_sessions.0 {
