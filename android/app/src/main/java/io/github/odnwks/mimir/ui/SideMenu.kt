@@ -113,17 +113,17 @@ class MenuFold(private val prefs: SharedPreferences?) {
 }
 
 /** One earlier chat as the menu lists it. */
-data class MenuChat(val key: String, val id: String, val title: String, val at: Long, val mimir: Boolean, val open: Boolean)
+data class MenuChat(val key: String, val id: String, val title: String, val at: Long, val mimir: Boolean, val open: Boolean, /** Its first answer, to tell same-named chats apart while searching. */ val preview: String = "")
 
 /** The chats the menu lists, newest first: this phone's own, and (an older PC) the PC's. */
 fun menuChats(state: StationState, local: LocalState?, now: Long): List<MenuChat> {
     val one = !state.paired || state.pcTalks
     return buildList {
         if (local != null) {
-            if (!local.whisper && local.chat.turns.isNotEmpty()) add(MenuChat("m-${local.chat.id}", local.chat.id, local.chat.title, ListOrder.chat(local.chat), mimir = true, open = true))
-            local.earlier.forEach { add(MenuChat("m-${it.id}", it.id, it.title, ListOrder.chat(it), mimir = true, open = false)) }
+            if (!local.whisper && local.chat.turns.isNotEmpty()) add(MenuChat("m-${local.chat.id}", local.chat.id, local.chat.title, ListOrder.chat(local.chat), mimir = true, open = true, preview = local.chat.turns.firstOrNull { !it.user }?.text.orEmpty()))
+            local.earlier.forEach { add(MenuChat("m-${it.id}", it.id, it.title, ListOrder.chat(it), mimir = true, open = false, preview = it.turns.firstOrNull { t -> !t.user }?.text.orEmpty())) }
         }
-        if (state.paired && !one) state.pastChats.forEach { add(MenuChat("p-${it.id}", it.id, it.title, it.at, mimir = false, open = false)) }
+        if (state.paired && !one) state.pastChats.forEach { add(MenuChat("p-${it.id}", it.id, it.title, it.at, mimir = false, open = false, preview = it.words)) }
     }.sortedByDescending { if (it.open && it.at <= 0) now else it.at }
 }
 
@@ -205,7 +205,7 @@ fun SideMenu(
 
     Column(modifier.background(MenuColors.Background).fillMaxSize()) {
         MessageBox(query, { query = it }, MENU_SEARCH, MENU_SEARCH, Modifier.fillMaxWidth().focusOnlyWhenTapped().padding(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 6.dp), background = Palette.Card, shape = RoundedCornerShape(12.dp))
-        LazyColumn(Modifier.weight(1f).fillMaxWidth()) {
+        fun androidx.compose.foundation.lazy.LazyListScope.newChatRow() {
             item("new") {
                 Row(
                     Modifier.padding(horizontal = 12.dp, vertical = 2.dp).fillMaxWidth().heightIn(min = 48.dp).clip(RoundedCornerShape(10.dp)).background(MenuColors.Tint)
@@ -216,11 +216,8 @@ fun SideMenu(
                     Text(MENU_NEW_CHAT, style = RowText.copy(fontWeight = FontWeight.SemiBold), color = Palette.Text)
                 }
             }
-            // Under New chat (owner, 2026-11-25). Press and hold: a Whisper with internet (Mímir on this phone, through Tor), the old "New Whisper-O".
-            item("whisper") { MenuRow(MENU_WHISPER, right = "a chat that's never kept", onLongClick = { go { nav.selectTab(Tab.Chat); nav.askChat(ChatAsk.StartWebWhisper) } }) { go { nav.selectTab(Tab.Chat); nav.askChat(ChatAsk.StartWhisper) } } }
-            if (state.owner) item("needs") { MenuRow(MENU_NEEDS_YOU, badge = needs, badgeColor = MenuColors.AmberDeep) { go { nav.open(Screen.NeedsYou) } } }
-            // P17: every conversation, newest first; "N working" in green while something works.
-            item("recent") { MenuRow(MENU_RECENT, right = if (working > 0) "$working working" else "", rightColor = PcGreen) { go { nav.open(Screen.Recent) } } }
+        }
+        fun androidx.compose.foundation.lazy.LazyListScope.pcRow() {
             item("pc") {
                 val running = pcRunning(state)
                 MenuRow(MENU_PC, right = pcMenuRight(state), rightColor = if (running > 0) PcGreen else MenuColors.Dim) {
@@ -228,15 +225,28 @@ fun SideMenu(
                     go { if (!state.paired) nav.open(Screen.Pair) else if (state.pcSessions != null) nav.openFromMenu(Screen.PhonePc) else nav.selectTab(Tab.Status) }
                 }
             }
-            if (state.paired) item("usage") { MenuRow(MENU_USAGE, right = usageLeftShort(state.usage), dim = true, ellipsize = true, modifier = Modifier.testTag("menu-usage")) { go { nav.openFromMenu(Screen.Models) } } }
+        }
+        LazyColumn(Modifier.weight(1f).fillMaxWidth()) {
+            // While searching, the results come right under the box: New chat and Your PC follow them.
+            if (q.isEmpty()) {
+                newChatRow()
+                // Under New chat (owner, 2026-11-25). Press and hold: a Whisper with internet (Mímir on this phone, through Tor), the old "New Whisper-O".
+                item("whisper") { MenuRow(MENU_WHISPER, right = "a chat that's never kept", onLongClick = { go { nav.selectTab(Tab.Chat); nav.askChat(ChatAsk.StartWebWhisper) } }) { go { nav.selectTab(Tab.Chat); nav.askChat(ChatAsk.StartWhisper) } } }
+                if (state.owner) item("needs") { MenuRow(MENU_NEEDS_YOU, badge = needs, badgeColor = MenuColors.AmberDeep) { go { nav.open(Screen.NeedsYou) } } }
+                // P17: every conversation, newest first; "N working" in green while something works.
+                item("recent") { MenuRow(MENU_RECENT, right = if (working > 0) "$working working" else "", rightColor = PcGreen) { go { nav.open(Screen.Recent) } } }
+                pcRow()
+                if (state.paired) item("usage") { MenuRow(MENU_USAGE, right = usageLeftShort(state.usage), dim = true, ellipsize = true, modifier = Modifier.testTag("menu-usage")) { go { nav.openFromMenu(Screen.Models) } } }
+            }
             item("chats-head") {
                 Section(MENU_CHATS, if (shownChats.isEmpty()) "" else "${shownChats.size}", fold.chatsOpen, amber = false, fold::toggleChats)
             }
-            if (fold.chatsOpen) {
+            if (fold.chatsOpen || q.isNotEmpty()) {
                 items(capped, key = { "chat-${it.key}" }) { c ->
                     val openIt = { openListedChat(c, state, engine, station, nav) }
                     MenuRow(
                         c.title.ifBlank { "New chat" }, right = menuTime(c.at, now), dim = false, ellipsize = true,
+                        under = if (q.isEmpty()) "" else markdownPlain(c.preview).replace('\n', ' ').trim().take(80),
                         // Press and hold: that chat opens, with its own menu (Rename, Copy, Rules, What was sent, Delete).
                         onLongClick = {
                             go {
@@ -258,7 +268,8 @@ fun SideMenu(
                 if (q.isEmpty() && chats.size > MENU_CHATS_SHOWN) item("all-chats") { MenuRow("All chats", right = "${chats.size}", dim = true) { go { nav.open(Screen.Chats) } } }
                 if (q.isNotEmpty() && capped.isEmpty()) item("no-chats") { Text("No chat has that in its name.", style = RowText, color = MenuColors.Dim, modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) }
             }
-            if (state.paired && state.owner) {
+            if (q.isNotEmpty()) { newChatRow(); pcRow() }
+            if (state.paired && state.owner && q.isEmpty()) {
                 val needing = state.projects.count { it.needsYou > 0 }
                 item("projects-head") {
                     Section(
@@ -294,7 +305,7 @@ const val MENU_USAGE = "Claude use left"
 @Composable
 private fun MenuRow(
     title: String, modifier: Modifier = Modifier, right: String = "", badge: Int = 0, badgeColor: Color = MenuColors.AmberDeep,
-    dim: Boolean = false, rightColor: Color = MenuColors.Dim, ellipsize: Boolean = false, onLongClick: (() -> Unit)? = null, onClick: () -> Unit,
+    dim: Boolean = false, rightColor: Color = MenuColors.Dim, ellipsize: Boolean = false, under: String = "", onLongClick: (() -> Unit)? = null, onClick: () -> Unit,
 ) {
     Row(
         modifier.fillMaxWidth().heightIn(min = 48.dp)
@@ -305,10 +316,13 @@ private fun MenuRow(
             },
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text(
-            title, style = RowText, color = if (dim) MenuColors.Dim else Palette.Text, maxLines = 1,
-            overflow = if (ellipsize) TextOverflow.Ellipsis else TextOverflow.Clip, modifier = Modifier.weight(1f, fill = !ellipsize || right.isEmpty()),
-        )
+        Column(Modifier.weight(1f, fill = !ellipsize || right.isEmpty() || under.isNotEmpty())) {
+            Text(
+                title, style = RowText, color = if (dim) MenuColors.Dim else Palette.Text, maxLines = 1,
+                overflow = if (ellipsize) TextOverflow.Ellipsis else TextOverflow.Clip,
+            )
+            if (under.isNotEmpty()) Text(under, style = TextStyle(fontSize = 12.5.sp, lineHeight = 16.sp), color = MenuColors.Dim, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
         if (badge > 0) Box(Modifier.size(22.dp).clip(CircleShape).background(badgeColor), contentAlignment = Alignment.Center) {
             Text("$badge", style = TextStyle(fontSize = 12.sp, lineHeight = 14.sp, fontWeight = FontWeight.Bold), color = Palette.AmberInk)
         }

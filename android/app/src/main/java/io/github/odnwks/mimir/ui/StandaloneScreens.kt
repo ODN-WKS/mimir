@@ -1,5 +1,9 @@
 package io.github.odnwks.mimir.ui
 
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.border
 import io.github.odnwks.mimir.ui.adaptive.forDevice
 import io.github.odnwks.mimir.ui.theme.ChatTextSize
 import io.github.odnwks.mimir.ui.theme.LocalAppSize
@@ -188,11 +192,6 @@ fun StandaloneScreen(engine: Engine, nav: Navigator) {
                 LinkText("OK", engine::dismissNote)
             }
         }
-        if (s.supported && model.thinking && s.model in s.have) {
-            SwitchRow(s.think, engine::setThink, Modifier.padding(horizontal = 16.dp)) {
-                Text("Think first", style = Type.BodyTight, color = Palette.Text, modifier = Modifier.weight(1f))
-            }
-        }
         when {
             !s.supported -> Notice("This phone is too old to run a model".forDevice(), "It needs a phone from about 2021 on. Chat with your PC works as usual.".forDevice())
             !s.ready -> SetUp(engine, s, model, Modifier.weight(1f))
@@ -222,6 +221,7 @@ fun StandaloneScreen(engine: Engine, nav: Navigator) {
                 verticalAlignment = Alignment.Bottom,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
+                if (model.thinking && s.model in s.have) ThinkToggle(s.think, engine::setThink)
                 NoKeyboardLearning(s.whisper) {
                     MessageBox(draft, { draft = it }, "Message $AI_NAME", "Message $AI_NAME", Modifier.weight(1f), keyboardOptions = whisperKeyboard(s.whisper))
                 }
@@ -237,6 +237,23 @@ fun StandaloneScreen(engine: Engine, nav: Navigator) {
     if (renaming) TopicEditor(s.chat.topic.orEmpty(), onCancel = { renaming = false }) { engine.rename(it); renaming = false }
     if (rulesOpen) ChatRulesDialog(s.chat.rules, onSave = { engine.setChatRules(it); rulesOpen = false }, onClose = { rulesOpen = false })
     if (sentOpen) ChatSentDialog(s.chat, false, null, onClose = { sentOpen = false })
+    }
+}
+
+/** "Think first" as one small switch beside the message box: it takes no row from the chat. */
+@Composable
+private fun ThinkToggle(on: Boolean, set: (Boolean) -> Unit) {
+    val shape = RoundedCornerShape(12.dp)
+    Box(
+        Modifier.heightIn(min = 48.dp)
+            .toggleable(value = on, role = androidx.compose.ui.semantics.Role.Switch, onValueChange = set)
+            .semantics { contentDescription = "Think first" },
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            if (on) "Think ✓" else "Think", style = Type.Small, color = if (on) Palette.White else Palette.TextDim,
+            modifier = Modifier.clip(shape).background(if (on) Palette.Blue else Color.Transparent).border(1.dp, Palette.LineStrong, shape).padding(horizontal = 8.dp, vertical = 6.dp),
+        )
     }
 }
 
@@ -298,12 +315,11 @@ LazyColumn(
             val m = Modifier.animateItem(fadeInSpec = motionSpec(Motion.NEW_ITEM_MS), placementSpec = motionSpec(Motion.NEW_ITEM_MS), fadeOutSpec = motionSpec(Motion.NEW_ITEM_MS))
             if (turn.user) OwnMessage(
                 turn.text, m, id = turn.id.ifEmpty { "mine-${turn.text.hashCode()}" }, under = readLink?.invoke(turn, i),
-                meta = { ChatMeta(turn.at, answerTo(s.chat.turns, i), "Your PC", chatReceipt(s.chat.turns, i, s.writing, s.partial.isNotEmpty())) },
+                meta = { ChatMeta(turn.at, null, "Your PC", chatReceipt(s.chat.turns, i, s.writing, s.partial.isNotEmpty())) },
             ) else Box(m) {
                 val before = s.chat.turns.getOrNull(i - 1)?.takeIf { it.user }
                 Reply(
                     turn.text, dim = false, sources = turn.sources, note = turn.switchNote, lookUp = lookUp.takeIf { i == s.chat.turns.lastIndex }, openSources = !s.whisper,
-                    author = if (s.whisper) null else answerAuthor(turn, "Your PC"),
                     onTryAgain = if (s.whisper || i != s.chat.turns.lastIndex || s.lookupFailed) null else before?.let { q -> { askAgain(q) } },
                     meta = { ChatMeta(turn.at, turn, "Your PC") },
                 )
@@ -326,9 +342,6 @@ LazyColumn(
     NewLinesButton(lines)
     }
 }
-
-/** The answer a chat's message got (the one right after it), whose model and effort it went to. */
-internal fun answerTo(turns: List<io.github.odnwks.mimir.standalone.Turn>, i: Int) = turns.getOrNull(i + 1)?.takeIf { !it.user && it.task == null }
 
 /**
  * The reply being written: three dots until its words begin (as in a task), then the words. What it is
@@ -384,16 +397,16 @@ internal fun Reply(
     note: String? = null,
     /** False while it is still being written (R20). */
     buttons: Boolean = true,
-    /** Who wrote it: "This phone · Qwen 3.5", "Your PC · …", "Claude · …" (null: not known). */
+    /** Who wrote it, for a reply with no [meta] of its own. */
     author: String? = null,
-    /** The small print beside the Listen pill: the model, effort and time. */
+    /** The small print beside the Listen pill: who wrote it, the effort and time. */
     meta: (@Composable () -> Unit)? = null,
 ) {
     // Mímir's replies are read by the phone's own voice: nothing leaves the phone.
     val id = "mimir-${text.hashCode()}"
     // Listen and Copy get the words without the Markdown marks.
     val plain = androidx.compose.runtime.remember(text) { markdownPlain(text) }
-    Answer(plain, id, dim = dim, sources = sources, openSources = openSources, lookUp = lookUp, onTryAgain = onTryAgain, note = note, buttons = buttons, author = author, meta = meta) {
+    Answer(plain, id, dim = dim, sources = sources, openSources = openSources, lookUp = lookUp, onTryAgain = onTryAgain, note = note, buttons = buttons, meta = meta ?: author?.let { who -> { Text(who, style = MetaLook.Tiny, color = Palette.TextDim) } }) {
         MarkdownText(text, style = ChatLook.MessageText, color = if (dim) Palette.TextDim else Palette.Text, linksOpen = openSources)
     }
 }
@@ -404,6 +417,8 @@ internal fun lookItUpFor(s: LocalState, engine: Engine): (() -> Unit)? {
     val o by io.github.odnwks.mimir.online.Online.settings.collectAsStateWithLifecycle()
     return if (!s.whisper && o.lookups && o.search && !s.writing) engine::lookItUp else null
 }
+
+const val SOURCES_TAG = "sources-box"
 
 /** Opens a page in the app's own browser (set by the app; checks leave it empty). */
 val LocalOpenPage = androidx.compose.runtime.staticCompositionLocalOf<((String) -> Unit)?> { null }
@@ -416,10 +431,11 @@ const val OPEN_RESULTS = "Open the results"
  */
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
-internal fun SourcesLine(sources: List<io.github.odnwks.mimir.online.Source>, open: Boolean = true) {
+internal fun SourcesLine(sources: List<io.github.odnwks.mimir.online.Source>, open: Boolean = true, cited: Boolean = false) {
     val uri = androidx.compose.ui.platform.LocalUriHandler.current
     val inApp = LocalOpenPage.current
-    val pages = sources.filter { !it.results }.distinctBy { it.site }
+    val numbered = sources.filter { !it.results }
+    val pages = numbered.distinctBy { it.site }
     sources.firstOrNull { it.results }?.let { r ->
         if (open && inApp != null) SmallButton(OPEN_RESULTS, { inApp(r.url) }, description = "Open the search results for ${r.words} in the app's browser")
     }
@@ -428,11 +444,18 @@ internal fun SourcesLine(sources: List<io.github.odnwks.mimir.online.Source>, op
     val via = pages.firstOrNull { it.via.isNotEmpty() }?.via
     // "Looked up: open-meteo.com": a small dim tag; each name opens its page.
     androidx.compose.foundation.layout.FlowRow(
-        Modifier.clip(RoundedCornerShape(10.dp)).background(ChatLook.LookedUpFill).padding(horizontal = 8.dp),
+        Modifier.testTag(SOURCES_TAG).clip(RoundedCornerShape(10.dp)).background(ChatLook.LookedUpFill).padding(horizontal = 8.dp),
         verticalArrangement = Arrangement.Center, horizontalArrangement = Arrangement.spacedBy(2.dp),
     ) {
         Text(LOOKED_UP_TAG, style = TextStyle(fontSize = 12.5.sp, lineHeight = 16.sp), color = Palette.TextDim, modifier = Modifier.padding(vertical = 6.dp, horizontal = 4.dp))
         pages.forEach { src ->
+          // The number and its page stay on one line.
+          androidx.compose.foundation.layout.Row {
+            // The numbers the answer's words use ("[1]"), beside the page they stand for.
+            if (cited) Text(
+                numbered.indices.filter { numbered[it].site == src.site }.joinToString("") { "[${it + 1}]" },
+                style = TextStyle(fontSize = 12.5.sp, lineHeight = 16.sp), color = Palette.TextSoft, modifier = Modifier.padding(start = 6.dp, top = 6.dp, bottom = 6.dp),
+            )
             Text(
                 src.site, style = TextStyle(fontSize = 12.5.sp, lineHeight = 16.sp, textDecoration = if (open) androidx.compose.ui.text.style.TextDecoration.Underline else null), color = Palette.TextDim,
                 modifier = Modifier.clip(RoundedCornerShape(6.dp))
@@ -440,9 +463,10 @@ internal fun SourcesLine(sources: List<io.github.odnwks.mimir.online.Source>, op
                     .padding(horizontal = 4.dp, vertical = 6.dp)
                     .semantics { contentDescription = "Source: ${src.site}" + if (src.words.isNotEmpty()) ", looked up: ${src.words}" else "" },
             )
+          }
         }
+        if (via != null) Text("via $via", style = TextStyle(fontSize = 12.5.sp, lineHeight = 16.sp), color = Palette.TextDim, modifier = Modifier.padding(horizontal = 4.dp, vertical = 6.dp).semantics { contentDescription = "Searched through your PC" + via.substringAfter("your PC", "").let { e -> if (e.isNotEmpty()) " with" + e.removePrefix(":") else "" } })
     }
-    if (via != null) Text("via $via", style = Type.Small, color = Palette.TextDim, modifier = Modifier.padding(start = 8.dp).semantics { contentDescription = "Searched through your PC" + via.substringAfter("your PC", "").let { e -> if (e.isNotEmpty()) " with" + e.removePrefix(":") else "" } })
 }
 
 /**

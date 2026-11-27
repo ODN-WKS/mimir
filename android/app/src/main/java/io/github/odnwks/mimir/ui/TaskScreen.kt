@@ -263,7 +263,9 @@ fun TaskScreen(taskId: String, state: StationState, station: Station, nav: Navig
                         }
                     }, { dismissed = n.very })
                 }
-                if (task.steps.isNotEmpty()) Steps(task, stepsOpen) { stepsOpen = !stepsOpen }
+                // The steps sit under the person's last message, which they answer; at the top only when none is shown.
+                val stepsAfter = messages.lastOrNull { !it.fromClaude && !it.note && !it.waiting }?.id
+                if (task.steps.isNotEmpty() && stepsAfter == null) Steps(task, stepsOpen) { stepsOpen = !stepsOpen }
                 if (task.freeModel) Panel(background = Palette.Bar) {
                     Text(
                         if (task.outOfRoom) "Your PC's model ran out of room. Mímir can carry on online from a summary of the work."
@@ -345,6 +347,7 @@ fun TaskScreen(taskId: String, state: StationState, station: Station, nav: Navig
                         editNote = EDIT_TASK_NOTE, editFailure = editFailure, onEditCancel = { editFailure = null },
                       ) else Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.End) { chips?.invoke(); ownMeta(m) }
                     }
+                    if (task.steps.isNotEmpty() && m.id == stepsAfter) Steps(task, stepsOpen) { stepsOpen = !stepsOpen }
                 }
                 // Thinking: three dots on the AI's side under the owner's last message, until the answer's words begin.
                 if (working && task.permission == null && task.question == null &&
@@ -504,9 +507,10 @@ private fun Steps(task: Task, open: Boolean, toggle: () -> Unit) {
             // A task last seen working while the PC is away is not finished: no cross for what may still be going.
             val working = task.busy || task.stateWords == "Was working (PC away)"
             val words = listOfNotNull(
-                if (working || going > 0) "${count(done + going, "step")} so far" else "${count(done, "step")} done",
+                // While it works nothing is called "not done": a step that failed may well be tried again.
+                if (working) "${count(task.steps.size, "step")} so far" else if (going > 0) "${count(done + going, "step")} so far" else "${count(done, "step")} done",
                 if (going > 0 && !working) "$going waiting" else null,
-                if (failed > 0) "$failed not done" else null,
+                if (failed > 0 && !working) "$failed not done" else null,
             ).joinToString(", ")
             when {
                 // A red cross is for work that ended with something not done, not for progress that is still going.

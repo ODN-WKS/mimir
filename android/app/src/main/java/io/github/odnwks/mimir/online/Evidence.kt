@@ -7,6 +7,7 @@ package io.github.odnwks.mimir.online
  */
 object Evidence {
     const val INSTRUCTION = "Answer from these sources only. After each fact put its source number like [1]. " +
+        "Start with the answer itself in one or two sentences, then any detail. " +
         "If they don't answer the question, say so. If they disagree, say what each says."
 
     /** Each sentence of [INSTRUCTION] (any spacing, its "[1]" optional), so a page can't repeat even part of it. */

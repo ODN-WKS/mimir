@@ -85,14 +85,14 @@ class P25OneChatLayoutTest {
         listOf(Turn(true, "Question number $it", id = "q$it", at = 1_700_000_000_000L + it), Turn(false, "Answer number $it, with a few words.", id = "q$it.a", at = 1_700_000_000_100L + it, ran = "phone", modelWords = "Qwen 3.5 · This phone"))
     }
 
-    @Test fun thePhonesAnswerShowsItsModelAndTimeAndSoDoesYourMessage() {
+    @Test fun thePhonesAnswerShowsItsModelAndYourMessageItsTime() {
         val engine = testEngine(tmp.newFolder(), ready = true)
         phoneChat(engine)
         engine.send("Tell me a short story."); answered(engine)
-        // One under the message, one beside the answer's Listen pill, each naming the model and the effort.
+        // One under the message (the time), one beside the answer's Listen pill, which alone names the model (owner, 2026-11-27).
         assertEquals(2, timeLines())
-        val model = engine.state.value.chat.turns.last().modelWords!!.substringBefore(" · ")
-        assertEquals(2, timeLinesWith("$model · Balanced · "))
+        assertEquals(1, timeLinesWith("This phone · Qwen 3.5 4B · Balanced · "))
+        assertEquals(1, timeLinesWith("Balanced"))
         // The round read mark under your own message, as in a task chat.
         assertEquals(1, tagged("receipt-Read"))
     }
@@ -103,7 +103,8 @@ class P25OneChatLayoutTest {
         engine.send("What is the capital of Norway?"); answered(engine)
         assertEquals("pc", engine.state.value.chat.turns.last().ran)
         assertEquals(2, timeLines())
-        assertEquals(2, timeLinesWith("Qwen 3.6 · Balanced · "))
+        assertEquals(1, timeLinesWith("Your PC · Qwen 3.6 · Balanced · "))
+        assertEquals(1, timeLinesWith("Qwen"))
     }
 
     @Test fun theEffortStaysWithASavedChat() {
@@ -194,7 +195,7 @@ class P25OneChatLayoutTest {
         compose.onNodeWithText("Old question").assertIsDisplayed()
         compose.onNodeWithText("Old answer").assertIsDisplayed()
         assertEquals(2, timeLines())
-        assertEquals(2, timeLinesWith("Qwen 3.5 · "))
+        assertEquals(1, timeLinesWith("Qwen 3.5 · "))
         assertEquals(0, timeLinesWith("Balanced"))
     }
 }

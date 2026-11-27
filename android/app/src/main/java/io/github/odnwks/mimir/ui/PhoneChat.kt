@@ -443,7 +443,7 @@ fun PhoneChat(
                 if (turn.user) OwnMessage(
                     turn.text.ifBlank { (turn.files.map { it.name } + listOfNotNull(turn.pictures.size.takeIf { it > 0 }?.let { if (it == 1) "A picture" else "$it pictures" })).joinToString() },
                     m, bubble = if (s.whisper) WhisperTint.Bubble else Palette.BlueBubble,
-                    meta = { ChatMeta(turn.at, answerTo(s.chat.turns, i), pcName, chatReceipt(s.chat.turns, i, s.writing, s.partial.isNotEmpty())) },
+                    meta = { ChatMeta(turn.at, null, pcName, chatReceipt(s.chat.turns, i, s.writing, s.partial.isNotEmpty())) },
                     id = turn.id.ifEmpty { "mine-${turn.text.hashCode()}" },
                     onEdit = if (!s.writing && turn.text.isNotBlank() && engine.canEdit(s.chat, i) && engine.canReplyNow()) ({ words -> engine.editMessage(turn.id, words)?.let { edited = it } }) else null,
                     under = readLinkFor(s, engine, turn, i).let { read ->
@@ -465,7 +465,6 @@ fun PhoneChat(
                     val before = s.chat.turns.getOrNull(i - 1)?.takeIf { it.user }
                     Reply(
                         turn.text, dim = false, sources = turn.sources, note = turn.switchNote, lookUp = lookUp.takeIf { i == s.chat.turns.lastIndex }, openSources = !s.whisper,
-                        author = if (s.whisper) null else answerAuthor(turn, pcName),
                         onTryAgain = if (s.writing || s.whisper || i != s.chat.turns.lastIndex || s.lookupFailed) null else before?.let { { engine.tryAgain() } },
                         meta = { ChatMeta(turn.at, turn, pcName) },
                     )
@@ -528,7 +527,7 @@ fun PhoneChat(
         if (paired && claudeOffered && !s.whisper && !pcWhisper) link?.state?.collectAsStateWithLifecycle()?.value?.usage?.let { u ->
             Text(usageLeftWords(u), style = Type.Small, color = Palette.TextDim, modifier = Modifier.padding(horizontal = 20.dp, vertical = 2.dp).testTag("usage-left"))
         }
-        // The three dots' "Talk (voice typing)", done here (with no three dots the mic stays in the box).
+        // The three dots' "Talk (voice typing)", done here (the mic in the box does the same).
         val startVoice = rememberStartVoice(voice)
         LaunchedEffect(nav.taskAsk) {
             if (nav.taskAsk == io.github.odnwks.mimir.nav.TALK_MIMIR) { nav.taskAsk = null; startVoice() }
@@ -588,8 +587,6 @@ fun PhoneChat(
             attach = { if (!pcWhisper) attach.Button(sight, onModels = { nav.open(Screen.Models) }) },
             // At large text or on a narrow phone, with the mic beside Send, there is less room: shorter whole words, never cut off.
             chip = { OptionsChip(chosenWords, "Model and effort: $chosenWords. Change", shorter = shortWords) { nav.openSheet(io.github.odnwks.mimir.nav.Sheet.ChatModel) } },
-            // No three dots to hold voice typing (an empty chat, a Whisper): the mic stays in the box.
-            mic = s.whisper || pcWhisper || s.chat.turns.isEmpty(),
         )
         }
         if (showHome && first && !paired && !connectHidden) ConnectHint({ nav.open(Screen.Pair) }, { connectHidden = true; prefs.edit().putBoolean(CONNECT_HIDDEN, true).apply() })

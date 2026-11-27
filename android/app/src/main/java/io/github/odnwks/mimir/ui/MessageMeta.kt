@@ -220,21 +220,19 @@ private fun SmallPrint(
     }
 }
 
+/** A phone model's family and size, without the maker's extra words ("Qwen 3.5 4B SOMPOA heresy" is "Qwen 3.5 4B"). */
+private val MODEL_EXTRAS = Regex("""\b(\d+(?:\.\d+)?[BM]|E\d+B)(?: [A-Za-z][A-Za-z-]*)+(?= ·|$)""")
+
 /**
- * A chat answer's model and effort in words ("Qwen 3.6 · Balanced"); null when neither is known.
- * The chat keeps "Model · This phone" or "Model · <PC name>": the place is said by the author line.
+ * Who wrote a chat answer, said once under it: "This phone · Qwen 3.5 4B · Balanced", "Your PC · Qwen 3.6",
+ * "Claude · Sonnet 4.6". Null when nothing is known.
  */
 fun chatWho(answer: io.github.odnwks.mimir.standalone.Turn, pcName: String): String? {
-    val words = answer.modelWords?.trim().orEmpty()
-    val model = when {
-        words.isEmpty() || words == pcName -> null
-        answer.ran == "paid" -> claudeModelWord(words) ?: words.substringBefore(" · ")
-        answer.ran == "pc" -> words.substringBeforeLast(" · ")
-        // This phone's model, or an online service the person set up ("Service · model": both stay).
-        else -> words.removeSuffix(" · This phone")
-    }
+    val who = answerAuthor(answer, pcName)?.let { w ->
+        if (answer.ran == "phone") w.replace("Huihui ", "").replace(MODEL_EXTRAS, "$1") else w
+    } ?: answer.modelWords?.trim()?.removeSuffix(" · This phone")?.takeIf { it.isNotEmpty() && it != pcName }
     val effort = io.github.odnwks.mimir.standalone.Effort.entries.firstOrNull { it.wire == answer.effort }?.words
-    return listOfNotNull(model, effort).joinToString(" · ").ifEmpty { null }
+    return listOfNotNull(who, effort).joinToString(" · ").ifEmpty { null }
 }
 
 /**
@@ -248,8 +246,8 @@ fun chatReceipt(turns: List<io.github.odnwks.mimir.standalone.Turn>, i: Int, wri
 }
 
 /**
- * The small print of a chat message: the time it was made, with the model and effort of [answer] (itself,
- * or the one a message got), and on the person's own messages the [receipt] circle.
+ * The small print of a chat message: the time it was made, with who wrote it for an answer ([answer]; null
+ * under the person's own message, whose answer says it), and on the person's own messages the [receipt] circle.
  */
 @Composable
 fun ChatMeta(atMs: Long, answer: io.github.odnwks.mimir.standalone.Turn?, pcName: String, receipt: MessageReceipt? = null) =

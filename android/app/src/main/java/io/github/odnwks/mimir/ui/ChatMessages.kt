@@ -228,8 +228,6 @@ fun Answer(
     note: String? = null,
     /** False while the answer is still being written: no Listen under half an answer (R20). */
     buttons: Boolean = true,
-    /** Who wrote it, one dim line under the answer (null: not shown). */
-    author: String? = null,
     /** The small print beside the Listen pill (P11, P15): the model, effort and time. */
     meta: (@Composable () -> Unit)? = null,
     /** A line under that row: why the model changed (P11), when it did. */
@@ -250,10 +248,9 @@ fun Answer(
             }
         }
         if (!dim && buttons) {
-            // Who wrote it, the sources and a switch note keep their 8 dp from the bubble and from each other.
-            if (!author.isNullOrBlank() || sources.isNotEmpty() || !note.isNullOrBlank()) Column(Modifier.padding(top = 3.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (!author.isNullOrBlank()) Text(author, style = Type.Small, color = Palette.TextDim, modifier = Modifier.testTag("answer-author"))
-                if (sources.isNotEmpty()) SourcesLine(sources, openSources)
+            // The sources and a switch note keep their 8 dp from the bubble and from each other.
+            if (sources.isNotEmpty() || !note.isNullOrBlank()) Column(Modifier.padding(top = 3.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (sources.isNotEmpty()) SourcesLine(sources, openSources, cited = CITES.containsMatchIn(plain))
                 if (!note.isNullOrBlank()) Text(note, style = Type.Small, color = Palette.TextDim, modifier = Modifier.testTag("switch-note"))
             }
             // One short row, snug under the bubble (P15, the owner's pick): the Listen pill, then the model,
@@ -272,6 +269,9 @@ fun Answer(
         }
     }
 }
+
+/** An answer that puts source numbers in its words ("[1]"). */
+private val CITES = Regex("""\[\d{1,2}[\],]""")
 
 /** The test tag on an answer's grey bubble. */
 const val REPLY_BUBBLE_TAG = "reply-bubble"
