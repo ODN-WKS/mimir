@@ -186,6 +186,8 @@ class LinkStation(
     @Volatile private var running = true
     private var chosenModel: String = modelStore.model()
     private var pcModels: io.github.odnwks.mimir.link.LModels? = null
+    /** [pcModels] was read on this connection: after a drop, what was read before doesn't say who answers now. */
+    private var choiceFresh = false
     /** The PC's update cards, newest first. */
     private var cards: List<io.github.odnwks.mimir.link.LCard> = emptyList()
     /** The PC's Claude Code sessions (null until it says; only a PC with feature "pc_sessions" does). */
@@ -366,7 +368,7 @@ class LinkStation(
                     lastSeenAt = System.currentTimeMillis()
                     failedOnce = true
                     val ours = synchronized(lock) {
-                        connected = false; readyAt = 0; data = data.copy(seenAt = lastSeenAt); saveData()
+                        connected = false; readyAt = 0; choiceFresh = false; data = data.copy(seenAt = lastSeenAt); saveData()
                         redoing.also { redoing = false }
                     }
                     // PHD-03: every call still waiting for a reply is finished now (none waits for ever). A talk
@@ -447,7 +449,7 @@ class LinkStation(
                         val earlier = data.person
                         // The earlier person's choice of who answers isn't this one's: it is read again.
                         data = data.copy(person = ev.person, chatsEngine = null); saveData()
-                        synchronized(lock) { pcModels = null }
+                        synchronized(lock) { pcModels = null; choiceFresh = false }
                         if (personChanged(earlier, ev.person)) io.github.odnwks.mimir.standalone.Engine.made()?.newPerson()
                     }
                 }
@@ -552,8 +554,14 @@ class LinkStation(
 
     override fun canTalk(): Boolean = synchronized(lock) { connected && readyAt > 0 && data.pcId != null } && Wire.TALK in pcFeatures
 
-    /** A PC with a choice of who answers chats ("engines") has said which, since the app started. */
-    override fun choiceRead(): Boolean = Wire.ENGINES !in pcFeatures || synchronized(lock) { pcModels != null }
+    /** A PC with a choice of who answers chats ("engines") has said which, on this connection. */
+    override fun choiceRead(): Boolean = Wire.ENGINES !in pcFeatures || synchronized(lock) { choiceFresh }
+
+    override fun chatsEngine(): String? = synchronized(lock) { pcModels?.chatsEngine.orEmpty() }
+
+    override fun chatsShown(): String? = state.value.models.let { if (it.chatsEngineKnown) it.chatsEngine.orEmpty() else null }
+
+    override fun cannotChat(): Boolean = synchronized(lock) { connected && readyAt > 0 } && Wire.TALK !in pcFeatures
 
     override fun canSeePictures(): Boolean = canTalk() && Wire.CHAT_PICTURES in pcFeatures && synchronized(lock) { pcModels?.seesPictures == true }
 
@@ -856,6 +864,7 @@ class LinkStation(
         synchronized(lock) {
             data = data.copy(pcId = null, pcName = null, outbox = emptyList(), newTasks = emptyList(), replies = emptyList(), answers = emptyList(), recordings = emptyList(), past = "[]", chatAt = 0, chatsEngine = null)
             pcModels = null
+            choiceFresh = false
             past.clear(); pastShown = emptyList()
             recordDir?.listFiles()?.forEach { it.delete() }
             attachments.dropAllExcept(emptySet(), ageMs = 0)
@@ -1652,16 +1661,23 @@ class LinkStation(
     private fun refreshModels() {
         call(Wire.models()) { ok, _ ->
             val m = Wire.modelList(ok) ?: return@call
-            val before = synchronized(lock) {
+            var was: String? = null
+            var first = false
+            synchronized(lock) {
+                // Before the first read since the app started, what was chosen is what the phone remembered.
+                was = pcModels?.chatsEngine ?: data.chatsEngine
                 // Kept on the phone so the next start shows the person's choice at once ("" : the PC offers none).
                 val seen = m.chatsEngine.orEmpty()
                 if (data.chatsEngine != seen) { data = data.copy(chatsEngine = seen); saveData() }
-                pcModels.also { pcModels = m }
+                pcModels = m
             }
-            // The first read since the app started: a message that waited for it goes now.
-            if (before == null) io.github.odnwks.mimir.standalone.Engine.made()?.pcChoiceRead()
+            // The screen shows the new choice before it counts as read, so nothing goes while the old one is still named.
+            publish()
+            synchronized(lock) { first = !choiceFresh; choiceFresh = true }
             // The owner took Online away from this person while it was chosen: say so once.
-            if (onlineWithdrawn(before?.chatsEngine, m.chatsEngine, isOwner())) onOnlineWithdrawn?.invoke(ONLINE_WITHDRAWN)
+            if (onlineWithdrawn(was, m.chatsEngine, isOwner())) onOnlineWithdrawn?.invoke(ONLINE_WITHDRAWN)
+            // The first read on this connection: a message that waited for it goes now (or is held).
+            if (first && Wire.ENGINES in pcFeatures) io.github.odnwks.mimir.standalone.Engine.made()?.pcChoiceRead()
             m.standalone?.let { list -> onStandaloneModels?.invoke(list) }
             publish()
         }

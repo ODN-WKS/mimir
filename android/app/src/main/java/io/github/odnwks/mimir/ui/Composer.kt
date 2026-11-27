@@ -274,9 +274,11 @@ fun answerEveryday(text: String, state: StationState, station: Station, nav: Nav
     if (local != null && local.ready && !local.writing && !local.whisper && local.testing == null) {
         // A chat left a while ago isn't continued: a fresh one starts.
         if (local.chat.turns.isNotEmpty() && System.currentTimeMillis() - local.chat.at > EVERYDAY_SAME_CHAT_MS) engine.newChat()
-        engine.send(words, typed = typed)
-        nav.open(io.github.odnwks.mimir.nav.Screen.Standalone)
-        return true
+        // ask, not send: while the PC's choice of who answers is being read, the words wait instead of being lost.
+        if (engine.ask(words, typed = typed)) {
+            nav.open(io.github.odnwks.mimir.nav.Screen.Standalone)
+            return true
+        }
     }
     val general = state.pickable.firstOrNull { it.equals(io.github.odnwks.mimir.online.Everyday.GENERAL, ignoreCase = true) }
     if (general != null && state.pc.online) {

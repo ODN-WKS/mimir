@@ -20,6 +20,15 @@ interface PcTalk {
     /** Which of its answerers the PC uses for chats (its own model or Online) has been read since the app started. */
     fun choiceRead(): Boolean = true
 
+    /** Who the PC uses for chats, as last read there: "paid" (Online), "free", "" (no choice) or null (not read). */
+    fun chatsEngine(): String? = ""
+
+    /** The same as the screens show it now (before the PC is read: what it said last time; null: never heard). */
+    fun chatsShown(): String? = chatsEngine()
+
+    /** The PC is connected and ready but doesn't answer chats at all (an older one). */
+    fun cannotChat(): Boolean = false
+
     /** Whether the PC takes pictures with a message and its answerer can look at them ("chat_pictures"). */
     fun canSeePictures(): Boolean = false
 
@@ -92,6 +101,17 @@ interface PcTalk {
     /** The task started by mistake ("Just chat") is archived on the PC. */
     fun dropTask(id: String) {}
 }
+
+/** An answerer kept with a message (see Turn.saw), in plain words. */
+fun answererName(who: String): String = when {
+    who == "phone" -> "this phone"
+    who == "pc" -> "your PC"
+    who == "paid" -> "Online (Anthropic)"
+    else -> who.removePrefix("own:")
+}
+
+/** Whether what this answerer gets leaves the person's own devices. */
+fun goesOnline(who: String): Boolean = who == "paid" || who.startsWith("own:")
 
 /** One message for the PC. */
 data class TalkRequest(

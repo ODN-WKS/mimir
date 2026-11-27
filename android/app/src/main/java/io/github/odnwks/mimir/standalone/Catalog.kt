@@ -251,6 +251,13 @@ data class Turn(
     val typed: Boolean = false,
     /** A waiting message that went to the PC once already (its reply never came): it goes again marked so (P40). */
     val wentOnce: Boolean = false,
+    /**
+     * Who the screen named when the owner's message was typed or last sent: "phone", "pc", "paid" (Online through
+     * the PC) or "own:<service>"; null: nobody was named. Kept on this phone only.
+     */
+    val saw: String? = null,
+    /** A waiting message that is held: who would answer now. It goes only when the owner sends it again. */
+    val heldFor: String? = null,
 ) {
     /** As the PC keeps it: pictures and files reduced to words, as the phone's model reads them. */
     fun wire(pcSees: Boolean = false, withPictures: Boolean = false, withFiles: Boolean = false) = io.github.odnwks.mimir.link.LChatTurn(

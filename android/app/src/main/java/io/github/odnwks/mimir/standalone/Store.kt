@@ -224,6 +224,8 @@ class Store(private val file: File, private val codec: Codec = KeystoreCodec()) 
             voice = t.optString("voice").ifEmpty { null },
             typed = t.optBoolean("typed"),
             wentOnce = t.optBoolean("went_once"),
+            saw = t.optString("saw").ifEmpty { null },
+            heldFor = t.optString("held_for").ifEmpty { null },
         )
     }
 
@@ -245,6 +247,8 @@ class Store(private val file: File, private val codec: Codec = KeystoreCodec()) 
             t.voice?.let { put("voice", it) }
             if (t.typed) put("typed", true)
             if (t.wentOnce) put("went_once", true)
+            t.saw?.let { put("saw", it) }
+            t.heldFor?.let { put("held_for", it) }
             if (t.files.isNotEmpty()) put("files", JSONArray(t.files.map { f ->
                 JSONObject().put("name", f.name).put("text", f.text).put("cut", f.cut).apply {
                     if (f.note.isNotEmpty()) put("note", f.note)

@@ -47,6 +47,7 @@ import io.github.odnwks.mimir.nav.Navigator
 import io.github.odnwks.mimir.nav.Screen
 import io.github.odnwks.mimir.nav.Tab
 import io.github.odnwks.mimir.data.MessageReceipt
+import io.github.odnwks.mimir.standalone.answererName
 import io.github.odnwks.mimir.standalone.Catalog
 import io.github.odnwks.mimir.standalone.Effort
 import io.github.odnwks.mimir.standalone.Engine
@@ -180,6 +181,8 @@ fun PhoneChat(
         }
     }
     // [typed]: from the message box, not a starter.
+    // What the top bar names, as drawn: it is kept with a message sent under it.
+    val named = remember { arrayOfNulls<String>(1) }
     val send = { text: String, typed: Boolean ->
         if (pcWhisper) pcWhisperGo(text, typed)
         else if (!waiting && (text.isNotBlank() || files.isNotEmpty() || pictures.isNotEmpty())) {
@@ -187,7 +190,7 @@ fun PhoneChat(
             val held = picturesHeldNote(sight, pictures.size)
             if (held != null) attachNote = held
             // The box clears only when the message was taken; refused, it stays to try again.
-            else if (engine.ask(text, files.toList(), pictures.toList(), typed)) { draft = ""; files.clear(); pictures.clear(); markChatted() }
+            else if (engine.ask(text, files.toList(), pictures.toList(), typed, saw = named[0])) { draft = ""; files.clear(); pictures.clear(); markChatted() }
         }
     }
     val scope = androidx.compose.runtime.rememberCoroutineScope()
@@ -311,8 +314,11 @@ fun PhoneChat(
         var turnsAtChoice by remember { mutableStateOf(0) }
         var choiceSeen by remember { mutableStateOf(s.usePc) }
         if (choiceSeen != s.usePc) { choiceSeen = s.usePc; turnsAtChoice = s.chat.turns.size }
-        val now = whoNow(paired, s.usePc, s.supported && s.ready, pcOnline, lastAnswer?.ran, lastAnswer?.switchNote, s.whisper, onlineOn, answeredAfterChoice = s.chat.turns.size > turnsAtChoice)
+        // With Online chosen on the PC, an earlier answer from this phone changes nothing: the next message still
+        // goes Online, so the bar keeps saying so.
+        val now = whoNow(paired, s.usePc, s.supported && s.ready, pcOnline, lastAnswer?.ran.takeUnless { claudeAnswers }, lastAnswer?.switchNote, s.whisper, onlineOn, answeredAfterChoice = s.chat.turns.size > turnsAtChoice)
         val answeringPc = paired && (s.usePc || !s.supported) && !s.whisper && !onlineOn && !now.phoneTookOver
+        named[0] = shownAnswerer(if (onlineOn) io.github.odnwks.mimir.online.OnlineModels.answering()?.let { io.github.odnwks.mimir.online.OnlineModels.serviceOf(it).name } ?: "Online" else null, answeringPc, claudeAnswers, choiceKnown)
         if (s.whisper || pcWhisper) WhisperTopBar(
             onEnd = { if (pcWhisper) pcWhisper = false else if (!s.writing) engine.endWhisper(told = true) },
             onHold = { draft = ""; files.clear(); pictures.clear(); emergencyExit(ctx, engine, readAloud) },
@@ -383,7 +389,15 @@ fun PhoneChat(
                     bubble = Palette.BlueBubble.copy(alpha = 0.55f), dashed = true, id = "queued-${q.id}",
                     meta = { ChatMeta(q.at, null, pcName, MessageReceipt.Sent) },
                     under = {
-                        Text(if (pcOnline && paired) QUEUED_SOON else QUEUED_WORDS, style = Type.Small, color = Palette.TextDim, modifier = Modifier.semantics { liveRegion = androidx.compose.ui.semantics.LiveRegionMode.Polite })
+                        val waits = when {
+                            q.heldFor != null -> heldWords(q.saw, q.heldFor)
+                            s.chat.queued.firstOrNull()?.heldFor != null -> QUEUED_BEHIND
+                            paired && engine.pc?.cannotChat() == true -> QUEUED_NO_CHAT
+                            pcOnline && paired -> QUEUED_SOON
+                            else -> QUEUED_WORDS
+                        }
+                        Text(waits, style = Type.Small, color = Palette.TextDim, modifier = Modifier.semantics { liveRegion = androidx.compose.ui.semantics.LiveRegionMode.Polite })
+                        if (q.heldFor != null) LinkText(SEND_HELD, { engine.sendHeld(q.id) })
                         IconTarget(Glyphs.Close, "Cancel this message: it won't be sent", { engine.cancelQueued(q.id) }, tint = Palette.TextDim)
                     },
                 )
@@ -716,6 +730,26 @@ internal fun writingWords(s: io.github.odnwks.mimir.standalone.LocalState): Stri
     s.partial.isEmpty() -> when { s.onPc -> "Writing…"; s.readingFound -> "Reading it…"; else -> "Reading your message…" }
     else -> s.partial
 }
+
+/** Who the top bar names, as kept with a message typed under it (see Turn.saw). */
+fun shownAnswerer(onlineName: String?, answeringPc: Boolean, claudeAnswers: Boolean, known: Boolean): String? = when {
+    onlineName != null -> "own:$onlineName"
+    !answeringPc -> "phone"
+    !known -> null
+    claudeAnswers -> "paid"
+    else -> "pc"
+}
+
+/** Under a held message: why it wasn't sent. */
+fun heldWords(saw: String?, heldFor: String): String = "Not sent: ${answererName(heldFor)} answers now" + (saw?.let { ", not ${answererName(it)}" } ?: "") + "."
+
+const val SEND_HELD = "Send it again"
+
+/** Under a message waiting behind a held one. */
+const val QUEUED_BEHIND = "Waits for the message above"
+
+/** Under a waiting message when the PC is connected but too old to answer chats. */
+const val QUEUED_NO_CHAT = "Your PC can't answer chats yet. Update Mímir on your PC."
 
 /** What a message waiting for the PC says under itself. */
 const val QUEUED_WORDS = "Sends when your PC is back"

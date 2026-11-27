@@ -30,6 +30,8 @@ object ChatSync {
         val base = local ?: LocalChat(r.id, model, emptyList(), r.name, r.at)
         val mine = base.turns.associateBy { it.id }
         val fresh = ArrayList<Turn>()
+        // A message waiting here (held, say) that the PC already has isn't listed a second time.
+        val waiting = base.queued.mapTo(HashSet()) { it.id }
         val replaced = HashMap<String, Turn>()
         var cuts = base.cuts
         val cutAway = HashSet<String>()
@@ -47,7 +49,7 @@ object ChatSync {
             }
             val have = mine[t.id]
             when {
-                have == null -> fresh += fromWire(t)
+                have == null -> if (t.id !in waiting) fresh += fromWire(t)
                 t.version > have.version -> replaced[t.id] = fromWire(t)
                 // The same turn: the phone's copy keeps its pictures and files, and learns the PC's number.
                 t.version == have.version && have.seq == 0L -> replaced[t.id] = have.copy(seq = t.seq)

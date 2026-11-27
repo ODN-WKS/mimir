@@ -768,18 +768,18 @@ class Engine(
      * The last message got no answer (the app was closed mid-reply, or the reply failed):
      * it is asked again.
      */
-    fun retry() = resendLast(typed = false)
+    fun retry() { resendLast(typed = false) }
 
     /** [typed] stays only for a message that was waiting and never answered. */
-    private fun resendLast(typed: Boolean?) {
+    private fun resendLast(typed: Boolean?): Boolean {
         val s0 = _state.value
-        val last = s0.chat.turns.lastOrNull() ?: return
-        if (s0.writing || !last.user) return
+        val last = s0.chat.turns.lastOrNull() ?: return false
+        if (s0.writing || !last.user) return false
         // The message is taken out of the chat only when it can really be sent again (PHE-02).
-        if (!canSend()) return
+        if (!canSend()) return false
         _state.update { it.copy(chat = it.chat.copy(turns = it.chat.turns.dropLast(1))) }
         // The same message (id and version) may have reached the PC already: it goes marked as sent again (P40).
-        send(last.text, last.files, last.pictures, last.id, last.at, last.version, typed ?: last.typed, again = true)
+        return send(last.text, last.files, last.pictures, last.id, last.at, last.version, typed ?: last.typed, again = true)
     }
 
     /**
@@ -926,20 +926,28 @@ class Engine(
      * the model is ready.
      */
     /** True when the message was taken (sent, or kept to wait): only then does the box clear (PHE-02). */
-    fun ask(text: String, files: List<TurnFile> = emptyList(), pictures: List<TurnPicture> = emptyList(), typed: Boolean = false): Boolean {
+    fun ask(text: String, files: List<TurnFile> = emptyList(), pictures: List<TurnPicture> = emptyList(), typed: Boolean = false, saw: String? = answererShown()): Boolean {
         val t = text.trim()
         val s0 = _state.value
         if ((t.isEmpty() && files.isEmpty() && pictures.isEmpty()) || s0.writing) return false
         // Messages already waiting go first: a new one lines up behind them, so the order never changes.
-        if (s0.chat.queued.isNotEmpty() && !s0.whisper) { enqueue(Turn(true, t, files, pictures, id = newId(), at = now(), typed = typed)); drainQueue(); return true }
+        fun message() = Turn(true, t, files, pictures, id = newId(), at = now(), typed = typed, saw = saw)
+        if (s0.chat.queued.isNotEmpty() && !s0.whisper) { enqueue(message()); drainQueue(); return true }
         // The PC is there but its choice of who answers isn't read yet: the message waits a moment, then goes by itself.
-        if (pcChoiceUnread()) { enqueue(Turn(true, t, files, pictures, id = newId(), at = now(), typed = typed)); return true }
-        if (s0.ready || pcAnswers() || onlineAnswers()) return send(t, files, pictures, typed = typed)
+        // (The read may land between that look and the queueing, so the queue is looked at again at once.)
+        if (pcChoiceUnread()) { enqueue(message()); drainQueue(); return true }
+        if (s0.ready || pcAnswers() || onlineAnswers()) {
+            // A Whisper stays on this phone and is never queued.
+            if (s0.whisper) return send(t, files, pictures, typed = typed)
+            val who = answererNow()
+            if (holds(saw, who)) { enqueue(message().copy(heldFor = who)); return true }
+            return send(t, files, pictures, typed = typed).also { if (it) sayWhoAnswers(saw, who) }
+        }
         // Paired and the PC is the answerer: with nothing to answer it now (the PC away, this phone with no model),
         // the message stays in the chat, marked "Sends when your PC is back", and goes by itself, in order, once.
-        if (pc != null && !s0.whisper && (s0.usePc || !s0.supported)) { enqueue(Turn(true, t, files, pictures, id = newId(), at = now(), typed = typed)); return true }
+        if (pc != null && !s0.whisper && (s0.usePc || !s0.supported)) { enqueue(message()); return true }
         if (waiting || (!s0.supported && pc == null)) return false
-        _state.update { it.copy(chat = it.chat.copy(turns = it.chat.turns + Turn(true, t, files, pictures, id = newId(), at = now(), typed = typed), model = it.model, at = now()), problem = null) }
+        _state.update { it.copy(chat = it.chat.copy(turns = it.chat.turns + message(), model = it.model, at = now()), problem = null) }
         persist()
         return true
     }
@@ -948,7 +956,54 @@ class Engine(
     fun answerIfWaiting() {
         refreshStatus()
         val s = _state.value
-        if ((s.ready || pcAnswers() || onlineAnswers()) && !pcChoiceUnread() && !s.writing && s.chat.turns.lastOrNull()?.user == true) resendLast(typed = null)
+        val last = s.chat.turns.lastOrNull()?.takeIf { it.user } ?: return
+        if (!(s.ready || pcAnswers() || onlineAnswers()) || pcChoiceUnread() || s.writing) return
+        val who = answererNow()
+        if (!s.whisper && holds(last.saw, who)) {
+            // It would go to Online, which wasn't named when it was sent: it waits, first in line, to be sent again.
+            // (Looked at again inside the update: two callers never move it twice.)
+            _state.update { if (it.chat.turns.lastOrNull()?.id != last.id) it else it.copy(chat = it.chat.copy(turns = it.chat.turns.dropLast(1), queued = listOf(last.copy(heldFor = who)) + it.chat.queued), problem = null) }
+            persist()
+            return
+        }
+        if (resendLast(typed = null)) sayWhoAnswers(last.saw, who)
+    }
+
+    // ---------- Who answers, as the owner saw it ----------
+
+    /** Who would answer a message sent now (see [Turn.saw]). */
+    private fun answererNow(): String {
+        io.github.odnwks.mimir.online.OnlineModels.answering()?.takeIf { onlineAnswers() }?.let { return "own:" + io.github.odnwks.mimir.online.OnlineModels.serviceOf(it).name }
+        return when { !pcAnswers() -> "phone"; pc?.chatsEngine() == "paid" -> "paid"; else -> "pc" }
+    }
+
+    /** Who the screen names for the next message, for a box that doesn't say it itself. */
+    private fun answererShown(): String? {
+        if (onlineAnswers()) return answererNow()
+        val s = _state.value
+        val link = pc
+        // This phone is named when "Your PC" isn't chosen, and while the PC is away and this phone can answer.
+        if (link == null || s.whisper || !(s.usePc || !s.supported) || (!link.canTalk() && s.ready)) return "phone"
+        return link.chatsShown()?.let { if (it == "paid") "paid" else "pc" }
+    }
+
+    /** Online that wasn't the one named: such a message is never sent by itself. Nobody named: it goes, with a line. */
+    private fun holds(saw: String?, who: String): Boolean = saw != null && saw != who && goesOnline(who)
+
+    /** The one plain line when a message goes to another answerer than the one named when it was typed. */
+    private fun sayWhoAnswers(saw: String?, who: String) {
+        when {
+            saw == who -> {}
+            saw != null -> say("${answererName(who).replaceFirstChar { it.uppercase() }} answers this now, not ${answererName(saw)}.")
+            goesOnline(who) -> say("${answererName(who)} answers this.")
+        }
+    }
+
+    /** The owner sends a held message again, to the answerer its line named. */
+    fun sendHeld(id: String) {
+        _state.update { st -> st.copy(chat = st.chat.copy(queued = st.chat.queued.map { q -> if (q.id == id && q.heldFor != null) q.copy(saw = q.heldFor, heldFor = null) else q })) }
+        persist()
+        drainQueue()
     }
 
     // ---------- Messages waiting for the PC ----------
@@ -968,6 +1023,8 @@ class Engine(
         _state.update { it.copy(chat = it.chat.copy(queued = it.chat.queued.filter { q -> q.id != id })) }
         gone.voice?.let { File(voiceDir, it).delete() }
         persist()
+        // A held message held up the ones behind it.
+        if (gone.heldFor != null) drainQueue()
     }
 
     /**
@@ -982,18 +1039,26 @@ class Engine(
             if (s.whisper || s.writing) return
             if (s.chat.queued.isEmpty()) {
                 // Waiting messages of another chat (after a restart the app opens on the home screen): that chat is opened for them.
-                val other = s.earlier.firstOrNull { it.queued.isNotEmpty() }
+                val other = s.earlier.firstOrNull { it.queued.firstOrNull()?.let { q -> q.heldFor == null } == true }
                 if (other != null && s.chat.turns.isEmpty() && (pcAnswers() || s.ready || onlineAnswers())) open(other.id) else return
                 if (_state.value.chat.queued.isEmpty()) return
             }
             val first = _state.value.chat.queued.first()
+            // A held message waits for the owner, and the ones behind it keep their order.
+            if (first.heldFor != null) return
             if (first.voice != null && first.text.isBlank()) { hear(first, link); return }
             if (!canSend() || _state.value.chat.turns.lastOrNull()?.user == true) return
+            val who = answererNow()
+            if (holds(first.saw, who)) {
+                _state.update { it.copy(chat = it.chat.copy(queued = it.chat.queued.map { q -> if (q.id == first.id) q.copy(heldFor = who) else q })) }
+                persist()
+                return
+            }
             _state.update { it.copy(chat = it.chat.copy(queued = it.chat.queued.drop(1))) }
             // It is dated when it goes (same id), so its answer never lands before the answers of the ones sent earlier.
             if (!send(first.text, first.files, first.pictures, first.id, maxOf(first.at, now()), first.version, first.typed, again = first.wentOnce)) {
                 _state.update { it.copy(chat = it.chat.copy(queued = listOf(first) + it.chat.queued)) }
-            }
+            } else sayWhoAnswers(first.saw, who)
         }
     }
 
@@ -1034,7 +1099,7 @@ class Engine(
         val name = "$id.wav"
         val ok = runCatching { voiceDir.mkdirs(); store.sealAudio(File(voiceDir, name), wav) }.isSuccess
         if (!ok) { _state.update { it.copy(note = "The recording couldn't be kept on this phone. Type it instead.") }; return false }
-        enqueue(Turn(true, "", id = id, at = now(), voice = name))
+        enqueue(Turn(true, "", id = id, at = now(), voice = name, saw = answererShown()))
         drainQueue()
         return true
     }
@@ -1066,7 +1131,9 @@ class Engine(
         // The same words sent again after a failed answer are that message again (same id): never a second copy.
         val failed = s0.chat.turns.lastOrNull()?.takeIf { id.isEmpty() && it.user && it.text.trim() == t && it.files == files && it.pictures == pictures }
         // A message sent again (it waited for the PC) keeps the time it was typed, so its answer never sorts before it.
-        val turn = if (failed != null) failed.copy(at = failed.at, typed = typed) else Turn(true, t, files, pictures, id = id.ifEmpty { newId() }, at = if (at > 0) at else now(), version = version, typed = typed)
+        // Who answers it is kept with it, in case it has to wait or be sent again.
+        val who = answererNow()
+        val turn = if (failed != null) failed.copy(at = failed.at, typed = typed, saw = who) else Turn(true, t, files, pictures, id = id.ifEmpty { newId() }, at = if (at > 0) at else now(), version = version, typed = typed, saw = who)
         _state.update { it.copy(chat = it.chat.copy(turns = (if (failed != null) it.chat.turns.dropLast(1) else it.chat.turns) + turn, model = model.id, at = now()), writing = true, partial = "", problem = null, speed = null, askPlace = false, askSearch = null, stoppedChat = null) }
         persist()
         pcWhy = null
@@ -1969,7 +2036,7 @@ class Engine(
 
     /**
      * The PC answers, but which of its answerers it uses for chats (its own model or Online) hasn't been read
-     * since the app started: a message waits for it, so it never goes to an answerer the person didn't pick.
+     * on this connection: a message waits for it, so it never goes to an answerer the person didn't pick.
      */
     private fun pcChoiceUnread(): Boolean = pcAnswers() && pc?.choiceRead() == false
 
@@ -1992,6 +2059,8 @@ class Engine(
      * is awaited; only a PC that never had the message (or lost it) is sent it again. Then the waiting messages go.
      */
     private fun recoverThenAnswer(tries: Int = 0) {
+        // Until the PC's choice is read on this connection nothing is sent; [pcChoiceRead] comes back here then.
+        if (pcChoiceUnread()) return
         val s = _state.value
         val last = s.chat.turns.lastOrNull()
         val link = pc

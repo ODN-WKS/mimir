@@ -105,4 +105,41 @@ class P44RememberedChoiceTest {
         assertEquals("free", st.state.value.models.chatsEngine)
         st.close()
     }
+
+    // ---- verify-p44 finding 1: Online taken away while the app was closed ----
+
+    @Test fun onlineTakenAwayWhileTheAppWasClosedIsSaid() {
+        val v = vault(); v.save(v.load().copy(pcId = "pc-1", pcName = "Test PC", person = "guest-1", chatsEngine = "paid"))
+        val link = FakeLink("""{"chats_engine":"free"}""")
+        val st = station(link)
+        val said = java.util.concurrent.CopyOnWriteArrayList<String>()
+        st.onOnlineWithdrawn = { said += it }
+        link.ready()
+        assertTrue("said", until { said.isNotEmpty() })
+        assertEquals(listOf(ONLINE_WITHDRAWN), said.toList())
+        st.close()
+    }
+
+    // ---- verify-p44 finding 2: after the link dropped, the choice is read again before anything goes ----
+
+    @Test fun afterAReconnectTheChoiceIsReadAgain() {
+        val link = FakeLink("""{"chats_engine":"free"}""")
+        val st = station(link)
+        link.ready()
+        assertTrue("read", until { st.canTalk() && st.choiceRead() })
+        link.modelsReply = null
+        val asked = link.callsOf("\"Models\"").size
+        link.up = false
+        assertTrue("dropped", until { !st.canTalk() })
+        assertFalse("what was read before the drop doesn't count", st.choiceRead())
+        st.networkChanged("test")
+        assertTrue("connected again", until(20_000) { link.connects >= 2 })
+        link.ready()
+        assertTrue(until { link.callsOf("\"Models\"").size > asked && st.canTalk() })
+        assertFalse("not read yet on this connection", st.choiceRead())
+        link.reply(link.callsOf("\"Models\"").last().first, """{"chats_engine":"paid"}""")
+        assertTrue(until { st.choiceRead() })
+        assertEquals("paid", st.chatsEngine())
+        st.close()
+    }
 }
