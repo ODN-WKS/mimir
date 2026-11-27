@@ -38,6 +38,8 @@ class LinkStationQueueTest {
         /** The PC answers a Stop with this refusal instead of Ok. */
         @Volatile var refuseStop: String? = null
         @Volatile var connects = 0
+        /** The PC can't be reached for a new session. */
+        @Volatile var refuseConnect = false
         private val seq = AtomicLong(100)
         private val held = listOf("{\"Chat\"", "{\"Send\"", "{\"Talk\"", "{\"Answer", "{\"NewTask\"", "{\"Listen\"")
         override fun start(key: ByteArray, relays: Boolean) = 1L
@@ -45,7 +47,7 @@ class LinkStationQueueTest {
         override fun addHint(handle: Long, addr: String) {}
         override fun pairStart(handle: Long, code: String, phoneName: String) = "{}"
         override fun pairFinish(handle: Long, code: String, timeoutMs: Long) = "{}"
-        override fun connect(handle: Long, pcId: String): String { connects++; up = true; return "" }
+        override fun connect(handle: Long, pcId: String): String { if (refuseConnect) { up = false; return "Couldn't connect." }; connects++; up = true; return "" }
         override fun call(handle: Long, json: String): Long {
             if (dropped) return -1L
             val id = ids.incrementAndGet()
@@ -125,6 +127,50 @@ class LinkStationQueueTest {
         link.kill()
         assertTrue(until { synchronized(log) { log.contains("lost") } })
         assertFalse("a dropped link is not the PC's answer", synchronized(log) { log.any { it.startsWith("filed") } })
+        st.close()
+    }
+
+    // P40 (QA16 Q6): after a quiet spell the link still looked open but carried nothing; every message
+    // failed after a second and the app kept saying "connected" until it was closed and opened again.
+    @Test fun aChatMessageAnOpenLinkNeverAnswersRedoesTheLinkInsteadOfFailing() {
+        val link = FakeLink(); val st = paired(link)
+        assertTrue(until { st.state.value.pc.online })
+        val log = java.util.Collections.synchronizedList(ArrayList<String>())
+        val listener = object : TalkListener {
+            override fun filed(f: io.github.odnwks.mimir.link.Filed?, err: String?) { log += "filed:$err" }
+            override fun piece(text: String, thinking: Boolean) {}
+            override fun done(turn: io.github.odnwks.mimir.link.LChatTurn?, err: String?) { log += "done:$err" }
+            override fun lost() { log += "lost" }
+            override fun back() { log += "back" }
+            override fun nudge() { log += "nudge" }
+        }
+        // The link stays "up" but the PC never answers the message: no failure, the link is made again.
+        link.refuseConnect = true
+        assertTrue(st.talk(TalkRequest("c1", "t1", emptyList(), null, emptyList(), null, null, null), listener))
+        assertTrue("not shown as connected once the link carried nothing", until(6_000) { !st.state.value.pc.online })
+        link.refuseConnect = false
+        assertTrue("the link was made again", until(8_000) { link.connects >= 2 })
+        assertFalse("no failure was given for the message", synchronized(log) { log.any { it.startsWith("done") || it.startsWith("filed") } })
+        link.ready()
+        assertTrue("the answer is looked for again once the link is back", until { synchronized(log) { log.contains("back") } })
+        assertTrue("connected again", until { st.state.value.pc.online })
+        st.close()
+    }
+
+    @Test fun aCallTheOpenLinkCantTakeRedoesTheLink() {
+        val link = FakeLink(); val st = paired(link)
+        val listener = object : TalkListener {
+            override fun filed(f: io.github.odnwks.mimir.link.Filed?, err: String?) {}
+            override fun piece(text: String, thinking: Boolean) {}
+            override fun done(turn: io.github.odnwks.mimir.link.LChatTurn?, err: String?) {}
+            override fun lost() {}
+            override fun back() {}
+        }
+        // The session says it is open, but no call can go out on it.
+        link.dropped = true
+        assertTrue("kept for when the link is back", st.talk(TalkRequest("c1", "t2", emptyList(), null, emptyList(), null, null, null), listener))
+        link.dropped = false
+        assertTrue("the link was made again", until(6_000) { link.connects >= 2 })
         st.close()
     }
 

@@ -1035,10 +1035,13 @@ class Engine(
         answerHere.set(false)
         busy(true)
         writer.execute {
+            val began = wall()
             try {
                 // Paired and connected, the PC answers; if it can't (gone, busy, refused), this phone does.
                 val answered = if (viaOnline) { writeOnline(); true } else toPc && pcAnswers() && writePc()
                 if (!answered && !stopReply.get()) {
+                    // A try that fails at once is still seen: Try again showed no change when it failed within a second (P40).
+                    if (!_state.value.ready && pc?.canTalk() == true) (TRY_SEEN_MS - (wall() - began)).takeIf { it > 0 }?.let { Thread.sleep(it) }
                     if (_state.value.ready) write(model)
                     else _state.update {
                         // The PC answers pings but could not answer this message: say that, once, and let the owner send again (never "not reachable").
@@ -2090,7 +2093,8 @@ class Engine(
         data class Filed(val f: io.github.odnwks.mimir.link.Filed?, val err: String?) : FromPc
         data class Piece(val text: String, val thinking: Boolean) : FromPc
         data class Done(val turn: io.github.odnwks.mimir.link.LChatTurn?, val err: String?) : FromPc
-        data class State(val st: io.github.odnwks.mimir.link.LTalkState?) : FromPc
+        /** [sent]: how many times the message had been sent when this was asked (an older reply can't count). */
+        data class State(val st: io.github.odnwks.mimir.link.LTalkState?, val sent: Int = 1) : FromPc
         data object Lost : FromPc
         data object Back : FromPc
         data object Nudge : FromPc
@@ -2222,6 +2226,8 @@ class Engine(
         var stopped = false
         var lastHeard = wall()
         var askedAt = 0L
+        // A message the PC never got (it went out on a link that carried nothing) is sent once more, never twice (P40).
+        var sends = 1
         fun finish(turn: Turn) {
             // Another model answered because the usual one can't see pictures: what the PC sees may have changed, so ask again.
             if (turn.switchNote != null) link.refreshSight()
@@ -2250,7 +2256,8 @@ class Engine(
                 // Once the link is back, the PC is asked how its answer stands every 2 s until it's done.
                 if (askedAt > 0 && wall() - askedAt > PC_ASK_MS) {
                     askedAt = wall()
-                    link.talkTurn(chatId, asked.id) { st -> q.put(FromPc.State(st)) }
+                    val n = sends
+                    link.talkTurn(chatId, asked.id) { st -> q.put(FromPc.State(st, n)) }
                 }
                 val m = q.poll(200, java.util.concurrent.TimeUnit.MILLISECONDS)
                 if (m == null) {
@@ -2323,7 +2330,14 @@ class Engine(
                             out.setLength(0); out.append(st.text)
                             _state.update { it.copy(partial = Thought.split(st.text).second) }
                         }
-                        is io.github.odnwks.mimir.link.LTalkState.Failed, io.github.odnwks.mimir.link.LTalkState.Unknown -> return false
+                        io.github.odnwks.mimir.link.LTalkState.Unknown -> if (m.sent == sends) {
+                            if (sends > 1 || !link.canTalk()) return false
+                            sends++
+                            if (!link.talk(request, listener)) return false
+                            askedAt = 0
+                            _state.update { it.copy(pcWaiting = false) }
+                        }
+                        is io.github.odnwks.mimir.link.LTalkState.Failed -> return false
                         null -> {}
                     }
                 }
@@ -2731,6 +2745,8 @@ class Engine(
         fun plainPcWords(why: String?): String? = why?.replace(Regex("Claude\\s+Code"), "Claude")?.trim()?.ifBlank { null }
         /** While waiting for the PC after the link came back, how often it's asked how its answer stands. */
         const val PC_ASK_MS = 2_000L
+        /** The shortest time a try at the PC stays in view before its failure card shows (P40). */
+        const val TRY_SEEN_MS = 1_500L
         /** How many times a still-writing PC is asked after the link came back (about 3 minutes). */
         const val RECOVER_TRIES = 90
         /** No word from the PC for this long, on a link that looks up: "Waiting for your PC…". */

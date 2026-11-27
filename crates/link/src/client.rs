@@ -191,9 +191,17 @@ impl Client {
             .await
             .map_err(|_| "The PC didn't answer in time.".to_string())??;
             let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<CallMsg>();
+            // A session whose calls can't be written any more is over, even if the
+            // connection still looks open: the phone then connects again instead of
+            // handing calls to a stream that goes nowhere.
+            let (wclosed, wevents, wconn) = (cl.clone(), events.clone(), conn.clone());
             tokio::spawn(async move {
                 while let Some(c) = rx.recv().await {
                     if write_json(&mut send, &c).await.is_err() {
+                        wclosed.store(true, Ordering::SeqCst);
+                        wconn.close(0u32.into(), b"write failed");
+                        let (_, cv) = &*wevents;
+                        cv.notify_all();
                         break;
                     }
                 }

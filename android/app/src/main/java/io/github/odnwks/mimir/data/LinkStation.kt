@@ -298,6 +298,22 @@ class LinkStation(
 
     /** The session didn't answer after a network change: the link loop drops it and connects again. */
     @Volatile private var dropNow = false
+    /** The drop is this phone's own (a link that looked open but carried nothing), not a lost network. */
+    @Volatile private var redoing = false
+
+    /**
+     * A link that looks open but doesn't carry a chat message (P40: after a quiet spell on the emulator
+     * the PC heard nothing, and every message failed while the app said "connected"): it is dropped and
+     * made again at once. Answers being waited for are asked after once it's back, never failed here.
+     */
+    private fun redoLink(why: String) {
+        if (!synchronized(lock) { connected }) return
+        LinkLog.i("$why: connecting again")
+        synchronized(lock) { reconnect.soon() }
+        redoing = true
+        dropNow = true
+        wakeLoop()
+    }
 
     private fun probe() {
         // iroh gets a moment to move to the new network first.
@@ -337,7 +353,11 @@ class LinkStation(
                     // answer is not: it is kept and told lost(), so it resumes after the reconnect (back()), or the
                     // owner taps Answer on this phone.
                     replies.failAll()
-                    talkers().forEach { it.lost() }
+                    // A link this phone redid is back within a moment: the answer is asked after then, with no
+                    // "away" line; a lost one says so.
+                    val ours = redoing
+                    redoing = false
+                    talkers().forEach { if (ours) it.nudge() else it.lost() }
                     // PHD-06: clear the "Claude is working on N tasks" notification within 5 s
                     // of detecting the PC is offline (not on the main thread, so this is safe).
                     onWorking?.invoke(emptyList())
@@ -533,19 +553,26 @@ class LinkStation(
     override fun talk(request: io.github.odnwks.mimir.standalone.TalkRequest, listener: io.github.odnwks.mimir.standalone.TalkListener): Boolean {
         val answer = "${request.turnId}.a"
         synchronized(lock) { talking[answer] = listener }
-        // PHD-03: 1-second deadline for the initial wire call (not for the reply itself)
+        // PHD-03: the PC takes a message at once (its reply to the call, not the answer itself). None within
+        // [TALK_TAKEN_MS] on a link that looks open means the link carries nothing: it is redone, and the
+        // message is asked after once it's back (P40), instead of failing it.
         val deadline = java.util.concurrent.Executors.newSingleThreadScheduledExecutor()
         deadline.schedule({
-            synchronized(lock) { if (talking.containsKey(answer)) { talking.remove(answer)?.done(null, "timeout") } }
+            if (synchronized(lock) { talking.containsKey(answer) }) redoLink("a chat message wasn't taken") // lint:log-only
             deadline.shutdown()
-        }, 1, java.util.concurrent.TimeUnit.SECONDS)
+        }, TALK_TAKEN_MS, java.util.concurrent.TimeUnit.MILLISECONDS)
         val sent = call(Wire.talk(request.chatId, request.turnId, request.turns, request.lookup, request.sources, request.effort, request.rules, request.task, request.chatOnly && canChatOnly(), request.typed)) { ok, err ->
             deadline.shutdownNow()
             // A link that went away is not the PC's answer: the finished answer is picked up after the reconnect (lost()/back()).
             if (err == WENT_AWAY) return@call
             listener.filed(if (err == null) Wire.filed(ok) else null, err)
         }
-        if (!sent) { deadline.shutdownNow(); synchronized(lock) { talking.remove(answer) } }
+        if (!sent) {
+            deadline.shutdownNow()
+            // An open link that can't take a call is redone, and the message waits for it (P40).
+            if (synchronized(lock) { connected }) { redoLink("a chat message couldn't go out"); return true } // lint:log-only
+            synchronized(lock) { talking.remove(answer) }
+        }
         return sent
     }
 
@@ -1952,6 +1979,8 @@ class LinkStation(
         /** After a network change: a moment for the link to move, then how long the PC has to answer a check. */
         const val PROBE_SETTLE_MS = 1_000L
         const val PROBE_WAIT_MS = 4_000L
+        /** How long the PC has to take a chat message before the link is redone (P40). */
+        const val TALK_TAKEN_MS = 2_000L
 
         /** What the screens show before anything comes from the PC. */
         fun empty(appVersion: String) = StationState(
