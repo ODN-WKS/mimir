@@ -2401,13 +2401,23 @@ class Engine(
         val filesGo = link.canSendFiles()
         // "Just chat" asks a message the PC took as a task to be answered as a chat instead: never "sent again".
         val justChat = chatOnly.getAndSet(false)
+        // A skill is for one message: it goes only with a message the PC answers as a chat (it is then sent as one),
+        // never with one that may become project work, where the PC would keep it as the task's standing rules or
+        // drop it. A message in an open task, naming a project, or to a PC that can't be told "chat", goes without
+        // it, and its line no longer says a skill was used (P46 fix round 2).
+        val task = if (justChat) null else inTask()
+        val skill = Skill.of(asked.skill)?.takeIf { task == null && link.canChatOnly() && link.projectNamed(asked.text) == null }
+        if (asked.skill != null && skill == null) {
+            _state.update { st -> st.copy(chat = st.chat.copy(turns = st.chat.turns.map { if (it.id == asked.id) it.copy(skill = null) else it })) }
+            persist()
+        }
         val request = TalkRequest(
             chatId, asked.id, s.chat.turns.map { it.wire(pcSees, withPictures = pcSees && it.id == asked.id, withFiles = filesGo && it.id == asked.id) }, fetched,
             sources.map { io.github.odnwks.mimir.link.LChatSource(it.site, it.url, it.words, it.results, it.via) },
             s.effort.wire,
             // The skill goes with the rules (an older PC takes it too), never into the chat's own words.
-            listOfNotNull(Prompt.rulesForPc(io.github.odnwks.mimir.data.GroundRules.current, s.chat.rules), Skill.of(asked.skill)?.instruction).joinToString("\n\n"), if (justChat) null else inTask(),
-            chatOnly = justChat,
+            listOfNotNull(Prompt.rulesForPc(io.github.odnwks.mimir.data.GroundRules.current, s.chat.rules), skill?.instruction).joinToString("\n\n"), task,
+            chatOnly = justChat || skill != null,
             typed = asked.typed && asked.text.isNotBlank(),
             again = again && !justChat,
         )
