@@ -32,6 +32,8 @@ class P38NeverClaimsTest {
         station?.close()
         OnlineModels.answerWith(null)
         OnlineModels.guard = io.github.odnwks.mimir.online.Net::answerGuard
+        // No key set up here is left behind for later tests (they share this JVM).
+        OnlineModels.init(java.nio.file.Files.createTempDirectory("vault").toFile(), OnlineModelsTest.PlainSealer())
     }
 
     private fun told(what: String, projects: Boolean) {

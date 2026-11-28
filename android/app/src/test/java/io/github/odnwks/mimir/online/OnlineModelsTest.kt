@@ -45,7 +45,7 @@ class OnlineModelsTest {
         OnlineModels.guard = { }
     }
 
-    @After fun down() { server.stop(0); OnlineModels.guard = Net::answerGuard; OnlineModels.transport = OnlineModels.transport }
+    @After fun down() { server.stop(0); OnlineModels.guard = Net::answerGuard; OnlineModels.transport = OnlineModels.transport; OnlineModels.init(java.nio.file.Files.createTempDirectory("vault").toFile(), PlainSealer()) } // no key left behind for later tests
 
     private val openRouterList = """{"data":[
         {"id":"meta-llama/llama-3.3-70b-instruct:free","pricing":{"prompt":"0","completion":"0"}},

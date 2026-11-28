@@ -46,7 +46,7 @@ class R12OnlineTest {
     private fun setup(model: String? = "meta-llama/llama-3.3-70b-instruct:free") = Setup("openrouter", "OpenRouter", "https://openrouter.ai/api/v1", key, model)
 
     @Before fun up() { Net.forgetAnswerHost("router.example.org"); OnlineModels.init(tmp.newFolder(), OnlineModelsTest.PlainSealer()); OnlineModels.guard = { } }
-    @After fun down() { OnlineModels.guard = Net::answerGuard }
+    @After fun down() { OnlineModels.guard = Net::answerGuard; OnlineModels.init(java.nio.file.Files.createTempDirectory("vault").toFile(), OnlineModelsTest.PlainSealer()) } // no key left behind for later tests
 
     private fun store(supported: Boolean): Engine {
         val e = testEngine(tmp.newFolder(), ready = false, supported = supported)
