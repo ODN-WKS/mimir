@@ -171,7 +171,7 @@ object Router {
             "|\\b(?:studies|research|science|scientists|researchers)\\b.{0,60}?\\b$LATELY\\b" +
             "|\\bwhat (?:do|does) (?:the )?(?:studies|research|science) (?:say|show|suggest|find)\\b" +
             "|\\bwhat(?:'s| has| have)? (?:happened|happening|changed)\\b.{0,60}?\\b(?:$LATELY|in 20[2-9]\\d)\\b" +
-            "|\\bwho (?:won|lost|died|was elected|resigned)\\b.{0,60}?\\b$LATELY\\b" + // lint:log-only (a pattern, never shown)
+            "|\\bwho (?:won|lost|was elected|resigned)\\b.{0,60}?\\b$LATELY\\b" + // lint:log-only (a pattern, never shown)
             "|\\bany news\\b|\\bin the news\\b",
         RegexOption.IGNORE_CASE,
     )
@@ -191,9 +191,20 @@ object Router {
         RegexOption.IGNORE_CASE,
     )
 
-    /** A recent study or event, as search words, or null. Never with personal pronouns (PHE-05). */
+    /** How a question starts, and how "can you …" goes on when it asks for facts. */
+    private val ASKS_FIRST = Regex("^(?:what|what's|whats|which|who|who's|whos|when|where|how|is|are|was|were|did|does|do|has|have|will|any)\\b", RegexOption.IGNORE_CASE)
+    private val ASKS_FOR = Regex("^(?:summari[sz]e|explain|find|check|show me|give me|tell me)\\b", RegexOption.IGNORE_CASE)
+
+    /**
+     * A recent study or event, as search words, or null. Only a question or request, or a few loose words: a
+     * longer note ("Jane Doe …, latest research on …") is never searched, nor is one with personal pronouns (PHE-05).
+     */
     private fun recent(text: String): Need.Search? {
-        val t = CAN_YOU.replace(ASK_PREFIX.replace(text.trim(), ""), "")
+        val typed = text.trim()
+        val bare = ASK_PREFIX.replace(typed, "")
+        val t = CAN_YOU.replace(bare, "")
+        val asking = bare != typed || ASKS_FIRST.containsMatchIn(t) || (t != bare && ASKS_FOR.containsMatchIn(t)) || t.split(Regex("\\s+")).size <= 6
+        if (!asking) return null
         if (!RECENT.containsMatchIn(t) || CREATIVE.containsMatchIn(t) || A_PERSON.containsMatchIn(t)) return null
         return words(t)?.let { Need.Search(it) }
     }

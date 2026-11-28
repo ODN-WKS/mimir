@@ -122,6 +122,92 @@ class TruthAnswersTest {
         assertEquals(listOf("The market opens at eight"), old("m2.a"))
     }
 
+    /** An engine whose model gives no answer at all while [broken], as when the link to the PC drops. */
+    private var broken = false
+    private fun makeBreakable() {
+        val words = WordsRunner()
+        dir = tmp.newFolder()
+        testEngine(dir, ready = true, turns = two())
+        engine = Engine(dir, Store(File(dir, "standalone.bin"), PlainCodec), object : io.github.odnwks.mimir.standalone.Runner by words {
+            override fun open(path: String) = !broken && words.open(path)
+            // A model already loaded gives no answer either.
+            override fun reply(prompt: String, maxTokens: Int, sink: io.github.odnwks.mimir.standalone.PieceSink, pictures: List<ByteArray>): String =
+                if (broken) error("gone") else words.reply(prompt, maxTokens, sink, pictures)
+            override fun reply(prompt: String, maxTokens: Int, sink: io.github.odnwks.mimir.standalone.PieceSink): String =
+                if (broken) error("gone") else words.reply(prompt, maxTokens, sink)
+        }, supported = true, now = { 1_800_000_000_000L })
+        engine.open("c1")
+    }
+
+    private fun web(): io.github.odnwks.mimir.online.FakeWeb {
+        Online.set(Online.Settings(searchAccepted = true))
+        val web = io.github.odnwks.mimir.online.FakeWeb().also { it.install() }
+        io.github.odnwks.mimir.online.Search.forget()
+        io.github.odnwks.mimir.online.Net.forget()
+        return web
+    }
+
+    @Test fun anEditAfterAFailedLookItUpNeverSearchesTheOldWords() {
+        val web = web()
+        makeBreakable()
+        broken = true
+        engine.lookItUp()
+        done()
+        val before = web.asked.size
+        broken = false
+        io.github.odnwks.mimir.online.Search.forget()
+        io.github.odnwks.mimir.online.Net.forget()
+        engine.editMessage("m2", "Say hello")!!
+        done()
+        assertEquals(emptyList<String>(), web.asked.drop(before).filter { "market" in it })
+    }
+
+    @Test fun undoingAnEditForgetsALookItUpAskedForTheNewWords() {
+        val web = web()
+        makeBreakable()
+        val cut = engine.editMessage("m2", "Tell me about zebras please")!!
+        done()
+        broken = true
+        engine.lookItUp()
+        done()
+        engine.undoEdit(cut)
+        // The old message and its answer are back: asked again, it must not search the words that were undone.
+        broken = false
+        io.github.odnwks.mimir.online.Search.forget()
+        io.github.odnwks.mimir.online.Net.forget()
+        val before = web.asked.size
+        assertTrue(engine.tryAgain())
+        done()
+        assertEquals(emptyList<String>(), web.asked.drop(before).filter { "zebras" in it })
+    }
+
+    private fun waitingReAsk(words: String) {
+        dir = tmp.newFolder()
+        testEngine(dir, ready = true)
+        val q = two()[2].copy(text = words, version = 2, wentOnce = true)
+        val c = io.github.odnwks.mimir.standalone.LocalChat(
+            "c1", Catalog.default.id, two().take(2), queued = listOf(q),
+            old = mapOf("m2.a" to listOf(two()[3].copy(text = "An older one", asked = "When does the market open"), two()[3].copy(asked = "When does the market open"))),
+        )
+        Store(File(dir, "standalone.bin"), PlainCodec).save(io.github.odnwks.mimir.standalone.Saved(Catalog.default.id, listOf(c)))
+        engine = Engine(dir, Store(File(dir, "standalone.bin"), PlainCodec), WordsRunner(), supported = true, now = { 1_800_000_000_000L })
+        engine.open("c1")
+    }
+
+    @Test fun cancellingAWaitingReAskPutsTheQuestionAndItsAnswerBack() {
+        for (words in listOf("When does the market open", "When does the market open, reworded")) {
+            waitingReAsk(words)
+            engine.cancelQueued("m2")
+            val chat = engine.state.value.chat
+            assertTrue(chat.queued.isEmpty())
+            assertEquals(listOf("First question", "First answer", "When does the market open", "The market opens at eight"), chat.turns.map { it.text })
+            assertEquals(listOf("An older one"), old("m2.a"))
+            val saved = Store(File(dir, "standalone.bin"), PlainCodec).load()!!.chats.first { it.id == "c1" }
+            assertEquals(4, saved.turns.size)
+            assertTrue(saved.queued.isEmpty())
+        }
+    }
+
     @Test fun anEditKeepsTheOldAnswerAndUndoLeavesNoCopy() {
         make(two())
         val cut = engine.editMessage("m1", "First question, better")!!

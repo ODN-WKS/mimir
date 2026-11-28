@@ -30,6 +30,13 @@ class RecentSearchTest {
             "write a poem about last night",
             "yesterday was a long day",
             "can you fix this recent change in my code",
+            // A note about a person is not a question about the world (PHE-05), pronoun or not.
+            "Notes from Dr. Patel visit: new treatment developments for stage 3 lymphoma, follow up Tuesday",
+            "Biopsy came back, what happened at the clinic today was scary",
+            "Jane Doe HIV positive latest research on PrEP for partner",
+            "Who died in the crash on Route 9 last night",
+            "Notes from Dr. Patel: new research on lymphoma. Any questions?",
+            "Can you keep this: Jane Doe, latest research on PrEP for partner",
         ).forEach { assertNull(it, Router.need(it)) }
     }
 }

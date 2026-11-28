@@ -130,6 +130,28 @@ private fun keepingOld(c: LocalChat, question: Turn, answer: Turn): LocalChat {
     return c.copy(old = c.old + (id to (c.old[id].orEmpty() + answer.copy(asked = question.text)).takeLast(OLD_ANSWERS_KEPT)))
 }
 
+/**
+ * [c] without the waiting message [q]. When it was a question being asked again (Try again, Look it up, an
+ * edit), the words it was asked with and the answer it was replacing come back.
+ */
+private fun withoutWaiting(c: LocalChat, q: Turn): LocalChat {
+    val rest = c.copy(queued = c.queued.filter { it.id != q.id })
+    val id = answerIdOf(q)
+    val before = c.old[id]?.lastOrNull() ?: return rest
+    if (q.id.isEmpty() || c.turns.any { it.id == q.id || it.id == id }) return rest
+    val question = q.copy(text = before.asked ?: q.text, version = q.version + 1, seq = 0, heldFor = null, wentOnce = false)
+    // Above what the cancelled asking would have got (and above an edit's cut), so every copy keeps this one.
+    val cut = c.cuts.firstOrNull { it.id == id }
+    val answer = before.copy(asked = null, version = maxOf(before.version, cut?.version ?: 0) + 2, seq = 0)
+    val earlier = c.old.getValue(id).dropLast(1)
+    val turns = c.turns + question + answer
+    return rest.copy(
+        turns = if (turns.all { it.at > 0 }) ChatSync.inOrder(turns) else turns,
+        cuts = c.cuts.filter { it.id != id },
+        old = if (earlier.isEmpty()) c.old - id else c.old + (id to earlier),
+    )
+}
+
 /** Runs a model: llama.cpp on the phone, or a stand-in in checks. */
 interface Runner {
     /** False if the model can't load. */
@@ -841,6 +863,8 @@ class Engine(
         // The new answer takes the version above the tombstone's.
         retryFloor[answerId] = (cuts.firstOrNull { it.id == answerId }?.version ?: 2) + 1
         replacing(c, answerId, removed.firstOrNull { it.id == answerId }?.at)
+        // A lookup asked for the old words is never made for the new ones.
+        val asked = removed.filter { it.user }.mapNotNull { r -> lookUpAsked.remove(r.id)?.let { r.id to it } }
         // The edited message's answer is kept as an earlier one; those of the later messages go with their messages.
         val gone = removed.drop(1).filter { it.user }.map(::answerIdOf).toSet()
         val kept = (removed.getOrNull(1)?.let { keepingOld(c, orig, it) } ?: c).let { k -> k.copy(old = k.old - gone) }
@@ -849,6 +873,7 @@ class Engine(
             _state.update { it.copy(chat = before.chat) }
             retryFloor.remove(answerId)
             replaced.remove(answerId)
+            lookUpAsked.putAll(asked)
             return null
         }
         return Edited(c.id, removed, c.old)
@@ -861,6 +886,8 @@ class Engine(
     fun undoEdit(e: Edited) {
         if (_state.value.writing) stop()
         e.removed.firstOrNull()?.let { replaced.remove("${it.id}.a") }
+        // Nor is one asked for the new words made for the old ones.
+        e.removed.forEach { lookUpAsked.remove(it.id) }
         _state.update { s ->
             if (s.chat.id != e.chatId) return@update s
             val c = s.chat
@@ -1039,7 +1066,10 @@ class Engine(
     /** The owner took a waiting message back (✕): it is never sent, and a kept recording is deleted. */
     fun cancelQueued(id: String) {
         val gone = _state.value.chat.queued.firstOrNull { it.id == id } ?: return
-        _state.update { it.copy(chat = it.chat.copy(queued = it.chat.queued.filter { q -> q.id != id })) }
+        _state.update { it.copy(chat = withoutWaiting(it.chat, gone)) }
+        lookUpAsked.remove(id)
+        replaced.remove(answerIdOf(gone))
+        retryFloor.remove(answerIdOf(gone))
         gone.voice?.let { File(voiceDir, it).delete() }
         persist()
         // A held message held up the ones behind it.
