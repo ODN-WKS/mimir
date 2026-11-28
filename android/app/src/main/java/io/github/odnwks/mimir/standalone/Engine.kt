@@ -753,9 +753,23 @@ class Engine(
         return d
     }
 
+    /**
+     * "Delete forever" from a row: this chat goes at once, with no Undo, here and (when it can be
+     * told) on the PC. False when nothing was deleted: it is being answered, or it isn't there.
+     */
+    fun deleteForever(id: String): Boolean {
+        deleteChat(id) ?: return false
+        synchronized(undoable) { undoable.removeAll { it.id == id } }
+        forgetGone(listOf(id))
+        return true
+    }
+
     /** Undo has passed (or the app went to the background): deleted chats leave the phone's storage. */
     fun forgetDeleted() {
-        val gone = synchronized(undoable) { undoable.map { it.id }.also { undoable.clear() } }
+        forgetGone(synchronized(undoable) { undoable.map { it.id }.also { undoable.clear() } })
+    }
+
+    private fun forgetGone(gone: List<String>) {
         // The PC is told too, so the chat goes from every device and never comes back.
         pendingDeletes += gone
         gone.forEach { forgetChatDraft(it); chatRepo?.deleteChat(it) }

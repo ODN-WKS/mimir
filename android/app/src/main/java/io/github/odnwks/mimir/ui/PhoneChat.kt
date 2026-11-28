@@ -431,6 +431,14 @@ fun PhoneChat(
             if (waiting && !stoppedHere && paired && (!s.supported || !s.usePc)) item(key = "no-model") { NothingAnswers(s.supported, pcOnline, pcName) { engine.setUsePc(true); engine.answerIfWaiting() } }
             else if ((waiting && !stoppedHere) || getting) item(key = "get-ai") { GetYourAi(engine, s, model, waiting, paired) }
             if (s.web) item(key = "tor") { TorLines(s, engine) }
+            // A question only a task on the PC can do offers it right there; picking a project puts the words in its box, unsent.
+            if (!s.writing && !s.whisper && paired && owner && found("")) {
+                val answer = s.chat.turns.lastOrNull()?.takeIf { !it.user && it.task == null }
+                val question = s.chat.turns.dropLast(1).lastOrNull()?.takeIf { it.user }?.text.orEmpty()
+                if (answer != null && question.isNotBlank() && needsProjectWork(question, answer.text)) item(key = "project-work") {
+                    SmallButton(PROJECT_WORK, { nav.openSheet(io.github.odnwks.mimir.nav.Sheet.TakeToProject(question)) }, description = PROJECT_WORK)
+                }
+            }
             if (s.writing) item(key = "writing") {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     WritingReply(s, openSources = !s.whisper)

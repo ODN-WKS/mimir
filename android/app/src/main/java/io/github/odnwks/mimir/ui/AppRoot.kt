@@ -154,7 +154,10 @@ fun AppRoot(station: Station, nav: Navigator, chatDraft: String = "", standalone
         if (undoable === u) { undoable = null; u.later() }
     }
     val offerUndo: (Undoable) -> Unit = { u -> undoable?.later(); undoable = u }
-    CompositionLocalProvider(LocalStandIn provides standIn, LocalTapTracker provides tracker, LocalStandaloneOk provides standaloneOk, LocalUndo provides offerUndo, LocalOpenPage provides { url: String -> nav.open(Screen.Browse(url)) }, LocalEyeStartup provides startup, LocalKeyboardHold provides nav.keyboard) {
+    val prefsContext = LocalContext.current
+    val rowKeep = remember { RowKeep(prefsContext.getSharedPreferences(MenuFold.PREFS, 0)) }
+    val menuFold = remember { MenuFold(prefsContext.getSharedPreferences(MenuFold.PREFS, 0)) }
+    CompositionLocalProvider(LocalRowKeep provides rowKeep, LocalMenuFold provides menuFold, LocalStandIn provides standIn, LocalTapTracker provides tracker, LocalStandaloneOk provides standaloneOk, LocalUndo provides offerUndo, LocalOpenPage provides { url: String -> nav.open(Screen.Browse(url)) }, LocalEyeStartup provides startup, LocalKeyboardHold provides nav.keyboard) {
         // Leaving (home, recents, another app): the box lets go, so coming back never brings the keyboard up.
         val putKeyboardAway = rememberPutKeyboardAway(nav.keyboard)
         androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_PAUSE) { putKeyboardAway() }
@@ -186,7 +189,8 @@ fun AppRoot(station: Station, nav: Navigator, chatDraft: String = "", standalone
                 nav.menuAskTaken()
                 if (drawer.currentValue != androidx.compose.material3.DrawerValue.Closed || drawer.targetValue != androidx.compose.material3.DrawerValue.Closed) scope.launch { drawer.close() }
             }
-            DrawerBack(drawer, asked = { nav.menuAsked }, close = closeMenu)
+            // A sheet opened over the menu (a row held) is what Back closes first.
+            DrawerBack(drawer, asked = { nav.menuAsked }, sheetUp = { nav.sheet != null }, close = closeMenu)
             // A screen opened from elsewhere (a tapped notification) is not left under an open menu. This
             // stays above the effect below, so it still sees Back's own ask.
             val top = nav.currentEntry.key to nav.detail.lastOrNull()?.key
@@ -212,7 +216,7 @@ fun AppRoot(station: Station, nav: Navigator, chatDraft: String = "", standalone
             val local = engine?.state?.collectAsStateWithLifecycle()?.value
             // A Whisper that ends by any way takes its unsent words with it, whichever screen shows.
             LaunchedEffect(engine) { engine?.state?.map { s -> s.chat.id.takeIf { s.whisper } }?.distinctUntilChanged()?.collect(nav::keepOnlyWhisper) }
-            val fold = remember { MenuFold(ctx.getSharedPreferences(MenuFold.PREFS, 0)) }
+            val fold = menuFold
             val menu: @Composable (Modifier) -> Unit = { m -> SideMenu(state, local, station, engine, nav, fold, m, close = closeMenu) }
             val body: @Composable () -> Unit = {
             androidx.compose.foundation.layout.Row(
@@ -524,9 +528,9 @@ private fun navShortcut(cut: Shortcut, nav: Navigator, paired: Boolean): Boolean
 
 /** Back closes an open or opening menu. The drawer's state is read here, so a change recomposes only this. */
 @Composable
-private fun DrawerBack(drawer: androidx.compose.material3.DrawerState, asked: () -> Boolean, close: () -> Unit) {
+private fun DrawerBack(drawer: androidx.compose.material3.DrawerState, asked: () -> Boolean, sheetUp: () -> Boolean, close: () -> Unit) {
     val up = asked() || drawer.currentValue != androidx.compose.material3.DrawerValue.Closed || drawer.targetValue != androidx.compose.material3.DrawerValue.Closed
-    BackHandler(enabled = up) { close() }
+    BackHandler(enabled = up && !sheetUp()) { close() }
 }
 
 /** The kept menu is invisible to TalkBack and tests while shut. The drawer's state is read here, not in the menu. */

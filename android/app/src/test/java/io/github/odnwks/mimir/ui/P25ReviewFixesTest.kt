@@ -1,5 +1,8 @@
 package io.github.odnwks.mimir.ui
 
+import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.onLast
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasScrollToIndexAction
@@ -156,12 +159,21 @@ class P25ReviewFixesTest {
         assertEquals(Effort.Balanced.wire, engine.state.value.chat.turns.last().effort)
     }
 
+    // P29: holding a chat gives its short menu and leaves the open chat alone; Find is under the
+    // chat's own menu once it is opened.
     @Test fun holdingAChatInTheSideMenuOffersFindInThisChat() {
         val engine = twoChats()
         app(engine, Navigator())
         compose.menuRowHold("Mint question 1", substring = true)
-        compose.onNodeWithText(FIND_IN_CHAT).performClick(); compose.waitForIdle()
+        compose.onNodeWithText(ROW_DELETE).assertExists()
+        assertEquals("c1", engine.state.value.chat.id)
+        compose.onNodeWithText(ROW_DELETE).performScrollTo()
+        compose.runOnIdle { }
+        compose.onNodeWithContentDescription("Close").performClick(); compose.waitForIdle()
+        compose.onAllNodesWithText("Mint question 1", substring = true).onLast().performClick(); compose.waitForIdle()
         assertEquals("c2", engine.state.value.chat.id)
+        compose.openChatOptions()
+        compose.onNodeWithText(FIND_IN_CHAT).performClick(); compose.waitForIdle()
         compose.onNodeWithContentDescription(FIND_IN_CHAT).performTextInput("answer 12"); compose.waitForIdle()
         compose.onNodeWithText("1 message has \"answer 12\"").assertIsDisplayed()
     }

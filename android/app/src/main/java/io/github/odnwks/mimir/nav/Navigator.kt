@@ -97,8 +97,20 @@ fun Screen.opensOnRight(left: Screen): Boolean = when (this) {
     else -> false
 }
 
+/** What kind of row a hold menu is about. */
+enum class RowKind { Project, Chat, Task }
+
 /** The choices that ask first: each slides up from the bottom, near the thumb. */
 sealed interface Sheet {
+    /** Press and hold on a row: its menu. [id] is a project's name, a chat's id or a task's id; [project] is set on a project's page. */
+    data class RowMenu(val kind: RowKind, val id: String, val name: String, val mimir: Boolean = true, val project: String? = null,
+        /** Held in the side menu, whose lists can be folded from here. */ val inMenu: Boolean = false) : Sheet
+    /** "Delete forever": what goes, a sum, then 10 seconds to stop it. */
+    data class DeleteForever(val kind: RowKind, val id: String, val name: String, val mimir: Boolean = true) : Sheet
+    data class RenameChat(val chatId: String, val name: String, val mimir: Boolean) : Sheet
+    /** [words] go into the box of the project picked, unsent. */
+    data class TakeToProject(val words: String) : Sheet
+    data class MoveTaskTo(val taskId: String) : Sheet
     data class TaskOptions(val taskId: String) : Sheet
     data class StopTask(val taskId: String) : Sheet
     /** "Delete this task?": the task, its conversation and its files on the PC go (after 8 seconds to undo). */

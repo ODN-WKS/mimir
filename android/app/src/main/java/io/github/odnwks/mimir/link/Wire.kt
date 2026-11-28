@@ -49,6 +49,7 @@ object Wire {
     const val TASK_REPLY_OPTIONS = "task_reply_options"
     /** The same chat carries on in a new Claude session from the hand-off ([freshStart]). */
     const val FRESH_START = "fresh_start"
+    const val DELETE_PROJECT = "delete_project"
 
     fun hello(appVersion: String, phoneName: String, @Suppress("UNUSED_PARAMETER") pushToken: String? = null, features: List<String> = FEATURES): String = obj("Hello") {
         put("proto", PROTO); put("app_version", appVersion); put("client_name", phoneName)
@@ -270,6 +271,7 @@ object Wire {
     fun rename(task: String, title: String): String = obj("Rename") { put("task", task); put("title", title) }
     /** The task, its conversation and its files go from the PC (refused while it works). */
     fun deleteTask(task: String): String = obj("DeleteTask") { put("task", task) }
+    fun deleteProject(path: String): String = obj("DeleteProject") { put("project", path) }
     fun archive(task: String, archived: Boolean): String = obj("Archive") { put("task", task); put("archived", archived) }
     /** A phone may only switch a task between asking first and planning first. */
     fun setMode(task: String, plan: Boolean): String = obj("SetMode") { put("task", task); put("mode", if (plan) "Plan" else "Ask") }

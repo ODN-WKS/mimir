@@ -195,6 +195,16 @@ class FakeStation(initial: StationState = ExampleData.awake()) : Station {
         }
     }
 
+    /** For checks: the projects asked to be deleted, once each time it was asked. */
+    val deletedProjects = mutableListOf<String>()
+    var deletesProjects = true
+    override fun canDeleteProjects(): Boolean = deletesProjects
+    override fun deleteProject(name: String, done: (String?) -> Unit) {
+        deletedProjects += name
+        flow.update { s -> s.copy(projects = s.projects.filter { it.name != name }, tasks = s.tasks.filter { it.project != name }, archived = s.archived.filter { it.project != name }) }
+        done(null)
+    }
+
     override fun newProject(name: String, done: (String?, String) -> Unit) {
         val n = name.trim()
         if (n.isEmpty() || n.startsWith(".") || n.contains("/") || n.contains("..")) {

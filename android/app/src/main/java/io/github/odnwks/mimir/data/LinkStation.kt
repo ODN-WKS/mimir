@@ -1490,6 +1490,33 @@ class LinkStation(
         if (now) Thread({ flushNewTasks(); publish() }, "mimir-newtask").start()
     }
 
+    /** Project deletes asked of the PC and not yet answered: never asked a second time meanwhile. */
+    private val deletingProjects = java.util.Collections.synchronizedSet(HashSet<String>())
+
+    override fun canDeleteProjects(): Boolean = synchronized(lock) { connected } && Wire.DELETE_PROJECT in pcFeatures
+
+    override fun deleteProject(name: String, done: (String?) -> Unit) {
+        val path = pathOf(name) ?: return done("That project isn't on your PC.")
+        if (!canDeleteProjects()) return done("Your PC is away, or needs an update.")
+        if (!deletingProjects.add(path)) return done("Your PC was already asked and hasn't answered yet.")
+        val sent = call(Wire.deleteProject(path)) { _, err ->
+            deletingProjects.remove(path)
+            if (err == null) {
+                synchronized(lock) {
+                    projects = projects.filter { it.first != path }
+                    projectStore.save(projects)
+                    tasks.entries.removeAll { it.value.project == path }
+                    if (lastProject == path) lastProject = null
+                }
+                refreshStatus()
+                publish()
+            }
+            // The link dropped before the answer: it isn't known whether the PC did it.
+            done(if (err == WENT_AWAY) "the connection dropped before your PC answered. The list shows whether it went." else err)
+        }
+        if (!sent) { deletingProjects.remove(path); done("Your PC is away: try again when it's back.") }
+    }
+
     override fun newProject(name: String, done: (String?, String) -> Unit) {
         val paired = synchronized(lock) { data.pcId != null }
         if (!paired) { done(null, "Pair with your PC to make projects there."); return }

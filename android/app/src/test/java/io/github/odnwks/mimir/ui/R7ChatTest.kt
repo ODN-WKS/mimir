@@ -293,11 +293,16 @@ class R7ChatTest {
         compose.onAllNodesWithText(MENU_NEW_CHAT).fetchSemanticsNodes().let { assertTrue(it.isNotEmpty()) }
     }
 
+    // P29 (mock-up p29-1): holding a chat gives its short menu without leaving the side menu;
+    // Copy and Rules stay under the chat's own menu.
     @Test fun pressAndHoldOnAChatInTheSideMenuOpensItsMenu() {
         startOpen()
         engine.rename("Dinner ideas"); compose.waitForIdle()
         compose.menuRowHold("Dinner ideas")
-        compose.onNodeWithText(CHAT_COPY).assertIsDisplayed()
-        compose.onNodeWithText(CHAT_DELETE).assertIsDisplayed()
+        compose.onNodeWithText(ROW_RENAME).assertIsDisplayed()
+        compose.onNodeWithText(ROW_ARCHIVE).assertIsDisplayed()
+        compose.onNodeWithText(ROW_DELETE).assertIsDisplayed()
+        compose.onNodeWithText(CHAT_COPY).assertDoesNotExist()
+        nav.closeSheet(); nav.askChat(io.github.odnwks.mimir.nav.ChatAsk.NewChat); compose.waitForIdle()
     }
 }

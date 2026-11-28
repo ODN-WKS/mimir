@@ -124,6 +124,15 @@ interface Station {
 
     /** Changes the PC's default for new work (null: unchanged; "" Claude's own choice). */
     fun setNewWorkDefault(model: String?, effort: String?) {}
+
+    /** Whether the PC can delete a project now (connected, and new enough). */
+    fun canDeleteProjects(): Boolean = false
+    /**
+     * Deletes the project from the PC's list with its tasks and their conversations; the folder stays.
+     * Asked once and never kept to send later. [done] gets null once the PC did it, or why it didn't.
+     */
+    fun deleteProject(name: String, done: (String?) -> Unit) { done("Update your PC first.") }
+
     fun selectModel(modelId: String)
     /** A free-model task carries on in a new task on Claude ("Continue on Claude", "Use Claude instead"). */
     fun continueOnClaude(taskId: String)

@@ -55,6 +55,7 @@ import io.github.odnwks.mimir.data.Station
 import io.github.odnwks.mimir.data.StationState
 import io.github.odnwks.mimir.nav.ChatAsk
 import io.github.odnwks.mimir.nav.Navigator
+import io.github.odnwks.mimir.nav.RowKind
 import io.github.odnwks.mimir.nav.Screen
 import io.github.odnwks.mimir.nav.Sheet
 import io.github.odnwks.mimir.nav.Tab
@@ -113,7 +114,10 @@ class MenuFold(private val prefs: SharedPreferences?) {
 }
 
 /** One earlier chat as the menu lists it. */
-data class MenuChat(val key: String, val id: String, val title: String, val at: Long, val mimir: Boolean, val open: Boolean, /** Its first answer, to tell same-named chats apart while searching. */ val preview: String = "")
+data class MenuChat(val key: String, val id: String, val title: String, val at: Long, val mimir: Boolean, val open: Boolean, /** Its first answer, to tell same-named chats apart while searching. */ val preview: String = "") {
+    /** How [RowKeep] names this chat. */
+    val keepKey: String get() = if (mimir) id else "p-$id"
+}
 
 /** The chats the menu lists, newest first: this phone's own, and (an older PC) the PC's. */
 fun menuChats(state: StationState, local: LocalState?, now: Long): List<MenuChat> {
@@ -195,7 +199,15 @@ fun SideMenu(
     val now = System.currentTimeMillis()
     val chats = menuChats(state, local, now)
     val q = query.trim().lowercase()
-    val shownChats = if (q.isEmpty()) chats else chats.filter { q in it.title.lowercase() }
+    // Archived chats are out of the list (and out of its count), but a search still finds them: nothing is lost.
+    val keep = LocalRowKeep.current
+    val (putAway, kept) = chats.partition { keep.chatArchived(it.keepKey, it.at) }
+    val shownChats = if (q.isEmpty()) kept else chats.filter { q in it.title.lowercase() }
+    var archivedChatsOpen by rememberSaveable { mutableStateOf(false) }
+    var archivedProjectsOpen by rememberSaveable { mutableStateOf(false) }
+    // The menu stays as it is under the row's own menu.
+    val holdChat = { c: MenuChat -> nav.openSheet(Sheet.RowMenu(RowKind.Chat, c.id, c.title.ifBlank { "New chat" }, c.mimir, inMenu = true)) }
+    val holdProject = { name: String -> nav.openSheet(Sheet.RowMenu(RowKind.Project, name, name, inMenu = true)) }
     // A few of the newest; the rest are one tap away in Chats (or by searching here).
     val capped = if (q.isEmpty()) shownChats.take(MENU_CHATS_SHOWN) else shownChats
     val go = { action: () -> Unit -> action(); close() }
@@ -248,42 +260,42 @@ fun SideMenu(
                     MenuRow(
                         c.title.ifBlank { "New chat" }, right = menuTime(c.at, now), dim = false, ellipsize = true,
                         under = if (q.isEmpty()) "" else markdownPlain(c.preview).replace('\n', ' ').trim().take(80),
-                        // Press and hold: that chat opens, with its own menu (Rename, Copy, Rules, What was sent, Delete).
-                        onLongClick = {
-                            go {
-                                openIt()
-                                // A phone chat that did open: its menu counts what it sent, and offers Find, as the "⋯" menu does.
-                                val opened = engine?.state?.value?.chat?.takeIf { c.mimir && it.id == c.id }
-                                nav.openSheet(io.github.odnwks.mimir.nav.Sheet.ChatOptions(
-                                    topic = c.title.ifBlank { null }, canRename = c.mimir, whisper = false, canWhisper = false,
-                                    pc = state.paired && one && (local?.usePc == true || local?.supported == false) && io.github.odnwks.mimir.online.OnlineModels.answering() == null,
-                                    online = io.github.odnwks.mimir.online.OnlineModels.answering()?.let { io.github.odnwks.mimir.online.OnlineModels.serviceOf(it).company },
-                                    sentToPc = opened?.sentToPc ?: -1,
-                                    lookups = opened?.turns?.sumOf { it.sources.size } ?: 0,
-                                ))
-                            }
-                        },
+                        onLongClick = { holdChat(c) },
                     ) { go { openIt() } }
                 }
+                if (q.isEmpty() && putAway.isNotEmpty()) item("chats-archived") {
+                    MenuRow(ARCHIVED_ROW, right = "${putAway.size}", dim = true, modifier = Modifier.testTag("archived-chats")) { archivedChatsOpen = !archivedChatsOpen }
+                }
+                if (q.isEmpty() && archivedChatsOpen) items(putAway, key = { "archived-chat-${it.key}" }) { c ->
+                    MenuRow(c.title.ifBlank { "New chat" }, right = ROW_BRING_BACK, dim = true, ellipsize = true, onLongClick = { holdChat(c) }) { keep.bringBackChat(c.keepKey) }
+                }
                 if (q.isEmpty() && chats.isEmpty()) item("no-chats-yet") { Text(MENU_NO_CHATS, style = RowText, color = MenuColors.Dim, modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) }
-                if (q.isEmpty() && chats.size > MENU_CHATS_SHOWN) item("all-chats") { MenuRow("All chats", right = "${chats.size}", dim = true) { go { nav.open(Screen.Chats) } } }
+                if (q.isEmpty() && kept.size > MENU_CHATS_SHOWN) item("all-chats") { MenuRow("All chats", right = "${chats.size}", dim = true) { go { nav.open(Screen.Chats) } } }
                 if (q.isNotEmpty() && capped.isEmpty()) item("no-chats") { Text("No chat has that in its name.", style = RowText, color = MenuColors.Dim, modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) }
             }
             if (q.isNotEmpty()) { newChatRow(); pcRow() }
             if (state.paired && state.owner && q.isEmpty()) {
-                val needing = state.projects.count { it.needsYou > 0 }
+                val listed = keep.listed(state.projects)
+                val away = keep.archived(state.projects)
+                val needing = listed.count { it.needsYou > 0 }
                 item("projects-head") {
                     Section(
                         MENU_PROJECTS,
-                        if (!fold.projectsOpen && needing > 0) "${state.projects.size} · $needing needs you" else "${state.projects.size}",
+                        if (!fold.projectsOpen && needing > 0) "${listed.size} · $needing needs you" else "${listed.size}",
                         fold.projectsOpen, amber = !fold.projectsOpen && needing > 0, fold::toggleProjects,
                     )
                 }
-                if (fold.projectsOpen) items(state.projects, key = { "project-${it.name}" }) { p ->
+                if (fold.projectsOpen) items(listed, key = { "project-${it.name}" }) { p ->
                     val (words, tone) = projectState(p, projectRunningElsewhere(state, p))
-                    MenuRow(p.name, right = words, rightColor = when (tone) { ProjectTone.Needs -> MenuColors.Amber; ProjectTone.Running -> Palette.GreenText; ProjectTone.Idle -> MenuColors.Dim }, ellipsize = true) {
+                    MenuRow(p.name, right = words, rightColor = when (tone) { ProjectTone.Needs -> MenuColors.Amber; ProjectTone.Running -> Palette.GreenText; ProjectTone.Idle -> MenuColors.Dim }, ellipsize = true, onLongClick = { holdProject(p.name) }) {
                         go { nav.open(Screen.Project(p.name)) }
                     }
+                }
+                if (fold.projectsOpen && away.isNotEmpty()) item("projects-archived") {
+                    MenuRow(ARCHIVED_ROW, right = "${away.size}", dim = true, modifier = Modifier.testTag("archived-projects")) { archivedProjectsOpen = !archivedProjectsOpen }
+                }
+                if (fold.projectsOpen && archivedProjectsOpen) items(away, key = { "archived-project-${it.name}" }) { p ->
+                    MenuRow(p.name, right = ROW_BRING_BACK, dim = true, ellipsize = true, onLongClick = { holdProject(p.name) }) { keep.bringBackProject(p.name) }
                 }
                 // The last row: a name, then the PC makes the folder, and the new project opens.
                 item("project-new") {

@@ -23,17 +23,11 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -55,8 +49,8 @@ import io.github.odnwks.mimir.ui.theme.Type
 import kotlinx.coroutines.launch
 
 /**
- * A task on a project's page: tap opens it; a long press gives Archive and Delete; pulling the row
- * left uncovers the same two buttons (nothing happens by the swipe alone). TalkBack has both as
+ * A task on a project's page: tap opens it; a long press gives its menu; pulling the row
+ * left uncovers Archive and Delete (nothing happens by the swipe alone). TalkBack has both as
  * actions. Archive can be undone at once; Delete asks first and can be undone for 8 seconds.
  */
 @OptIn(ExperimentalFoundationApi::class)
@@ -64,8 +58,9 @@ import kotlinx.coroutines.launch
 fun TaskRow(
     id: String, title: String, meta: String?, state: String, stateFg: Color, stateBg: Color,
     onOpen: (() -> Unit)?, onArchive: () -> Unit, onDelete: () -> Unit, modifier: Modifier = Modifier,
+    /** Press and hold: the row's menu. */
+    onHold: () -> Unit = {},
 ) {
-    var menu by rememberSaveable(id) { mutableStateOf(false) }
     val reduce = LocalReduceMotion.current
     val buttonDp = 84.dp
     val reveal = with(LocalDensity.current) { (buttonDp * 2).toPx() }
@@ -78,10 +73,8 @@ fun TaskRow(
             SwipeButton("Delete", Palette.RedBorder, Palette.Text, buttonDp, "Delete $title") { settle(0f); onDelete() }
         }
         val density = LocalDensity.current
-        // The long-press menu opens on the pressed row, not below it over the next one.
-        var rowHeight by remember { mutableIntStateOf(0) }
         Box(
-            Modifier.padding(end = with(density) { (-offset.value).toDp() }).onSizeChanged { rowHeight = it.height }
+            Modifier.padding(end = with(density) { (-offset.value).toDp() })
                 .draggable(
                     rememberDraggableState { d -> scope.launch { offset.snapTo((offset.value + d).coerceIn(-reveal, 0f)) } },
                     Orientation.Horizontal,
@@ -92,7 +85,7 @@ fun TaskRow(
                 Modifier.fillMaxWidth().heightIn(min = 64.dp).clip(RoundedCornerShape(16.dp)).background(Palette.Card)
                     .border(1.dp, Palette.Line, RoundedCornerShape(16.dp))
                     .combinedClickable(
-                        role = Role.Button, onLongClickLabel = "Archive or delete", onLongClick = { menu = true },
+                        role = Role.Button, onLongClickLabel = "Menu for this one", onLongClick = onHold,
                         onClick = { if (offset.value < -1f) settle(0f) else onOpen?.invoke() },
                     )
                     .semantics {
@@ -109,10 +102,6 @@ fun TaskRow(
                     if (meta != null) Text(meta.forDevice(), style = Type.Small, color = Palette.TextDim)
                 }
                 Tag(state, stateFg, stateBg)
-            }
-            DropdownMenu(menu, { menu = false }, offset = androidx.compose.ui.unit.DpOffset(16.dp, with(density) { -rowHeight.toDp() })) {
-                DropdownMenuItem({ Text("Archive") }, { menu = false; onArchive() })
-                DropdownMenuItem({ Text("Delete", color = Palette.Red) }, { menu = false; onDelete() })
             }
         }
     }

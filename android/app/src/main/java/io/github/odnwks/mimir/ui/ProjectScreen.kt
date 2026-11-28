@@ -64,8 +64,12 @@ fun ProjectScreen(name: String, state: StationState, station: Station, nav: Navi
             // 2026-11-25); the full list opens from it and from the three dots ("Checks (7)").
             if (p.state != CheckState.None) ChecksLine(p) { nav.openSheet(Sheet.ProjectChecks(p.name)) }
             SectionTitle("Tasks", Modifier.padding(start = 4.dp, end = 4.dp, top = 4.dp))
-            val shownTasks = p.tasks.filter { it.taskId !in nav.hiddenTasks && (it.taskId == null || state.archived.none { a -> a.id == it.taskId }) }
-            if (shownTasks.isEmpty()) Text("No tasks yet. Type below to start one.", style = Type.Label, color = Palette.TextDim, modifier = Modifier.padding(horizontal = 4.dp))
+            val allTasks = p.tasks.filter { it.taskId !in nav.hiddenTasks && (it.taskId == null || state.archived.none { a -> a.id == it.taskId }) }
+            val keep = LocalRowKeep.current
+            val finished = allTasks.count { it.chip == Chip.Done }
+            val folded = p.name in keep.foldedDone
+            val shownTasks = if (folded) allTasks.filter { it.chip != Chip.Done } else allTasks
+            if (allTasks.isEmpty()) Text("No tasks yet. Type below to start one.", style = Type.Label, color = Palette.TextDim, modifier = Modifier.padding(horizontal = 4.dp))
             val undo = LocalUndo.current
             shownTasks.forEach { t ->
                 val (fg, bg) = when (t.chip) {
@@ -84,6 +88,7 @@ fun ProjectScreen(name: String, state: StationState, station: Station, nav: Navi
                     // else the first words of its first message, unless the name already says them.
                     t.meta.takeIf { it.isNotBlank() && it != t.chip.label } ?: t.taskId?.let { wordsBeyondName(t.name, firstWords(state.task(it))) }?.ifEmpty { null }, t.chip.label, fg, bg,
                     onOpen = t.taskId?.let { id -> { nav.open(Screen.Task(id), tap.last) } },
+                    onHold = { t.taskId?.let { nav.openSheet(Sheet.RowMenu(io.github.odnwks.mimir.nav.RowKind.Task, it, t.name, project = p.name)) } },
                     onArchive = {
                         t.taskId?.let { id ->
                             station.archiveTask(id)
@@ -96,6 +101,8 @@ fun ProjectScreen(name: String, state: StationState, station: Station, nav: Navi
                     },
                 )
             }
+            // Folded from a task's menu: one line says how many, and a tap shows them again.
+            if (folded && finished > 0) QuietButton("Finished · $finished", ROW_SHOW_DONE, onClick = { keep.toggleDone(p.name) })
         }
         }
         NeedsYouBar(state.needsYou.size, { nav.open(Screen.NeedsYou) }, Modifier.padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 4.dp))

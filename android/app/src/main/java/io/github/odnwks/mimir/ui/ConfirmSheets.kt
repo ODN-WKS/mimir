@@ -140,14 +140,34 @@ private fun Sheet.title(state: StationState) = when (this) {
     is Sheet.TaskModel -> "Model for this task"
     is Sheet.Yolo -> "Go ahead without asking in this task?"
     is Sheet.ChatOptions -> topic ?: "This chat"
+    is Sheet.RowMenu -> name
+    is Sheet.DeleteForever -> "Delete forever?"
+    is Sheet.RenameChat -> "Rename this chat"
+    is Sheet.TakeToProject -> "Which project?"
+    is Sheet.MoveTaskTo -> "Move to another project"
 }
 
 @Composable
 private fun SheetContent(sheet: Sheet, state: StationState, station: Station, nav: Navigator) {
     val standIn = LocalStandIn.current
     val undo = LocalUndo.current
+    val keep = LocalRowKeep.current
     val ctx = androidx.compose.ui.platform.LocalContext.current.applicationContext
     when (sheet) {
+        is Sheet.RowMenu -> RowMenuSheet(sheet, state, station, nav)
+        is Sheet.DeleteForever -> DeleteForeverSheet(sheet, state, station, nav)
+        is Sheet.RenameChat -> RenameChatSheet(sheet, state, station, nav)
+        is Sheet.TakeToProject -> PickProjectSheet(sheet.title(state), state, nav, leaveOut = null) { name ->
+            // Added under whatever already waits in that box; the person reads it and sends it.
+            var draft by nav.projectDraft(name)
+            draft = if (draft.isBlank()) sheet.words else draft + "\n\n" + sheet.words
+            nav.closeSheet()
+            nav.open(Screen.Project(name))
+        }
+        is Sheet.MoveTaskTo -> PickProjectSheet(sheet.title(state), state, nav, leaveOut = state.task(sheet.taskId)?.project) { name ->
+            nav.closeSheet()
+            station.moveTask(sheet.taskId, name) { m -> android.os.Handler(android.os.Looper.getMainLooper()).post { standIn(m) } }
+        }
         is Sheet.TaskOptions -> Menu(sheet.title(state)) {
             val task = state.task(sheet.taskId)
             val id = sheet.taskId
@@ -400,7 +420,7 @@ private fun SheetContent(sheet: Sheet, state: StationState, station: Station, na
         Sheet.Unpair -> Ask(
             sheet.title(state),
             "This phone forgets your PC at once. To cut it off on the PC side too, remove it in $AI_NAME on the PC (Settings › Phones). You can pair again later with a new code.",
-            "Unpair this phone", Look.Danger, { nav.closeSheet(); station.removePhone("this"); nav.resetTo(Screen.Chat) },
+            "Unpair this phone", Look.Danger, { nav.closeSheet(); keep.forgetAllProjects(); station.removePhone("this"); nav.resetTo(Screen.Chat) },
             "Cancel", { nav.closeSheet() },
         )
     }
@@ -529,12 +549,12 @@ private fun PrivacyLine(text: String) {
 }
 
 @Composable
-private fun Handle() {
+internal fun Handle() {
     Spacer(Modifier.size(36.dp, 4.dp).clip(RoundedCornerShape(2.dp)).background(Palette.Outline))
 }
 
 @Composable
-private fun Menu(title: String, rows: @Composable ColumnScope.() -> Unit) {
+internal fun Menu(title: String, rows: @Composable ColumnScope.() -> Unit) {
     Column(Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, top = 10.dp, bottom = 12.dp)) {
         Box(Modifier.fillMaxWidth().padding(bottom = 8.dp), contentAlignment = Alignment.Center) { Handle() }
         SectionTitle(title, Modifier.padding(start = 12.dp, end = 12.dp, top = 4.dp, bottom = 8.dp),
@@ -578,7 +598,7 @@ private fun ModelEffortList(
 }
 
 @Composable
-private fun MenuRow(icon: ImageVector, text: String, color: Color = Palette.Text, checked: Boolean? = null, note: String? = null, tick: String = "In use", onClick: () -> Unit) {
+internal fun MenuRow(icon: ImageVector, text: String, color: Color = Palette.Text, checked: Boolean? = null, note: String? = null, tick: String = "In use", onClick: () -> Unit) {
     Row(
         Modifier.fillMaxWidth().heightIn(min = 52.dp).clip(RoundedCornerShape(12.dp))
             .then(

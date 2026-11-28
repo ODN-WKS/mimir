@@ -39,6 +39,9 @@ import io.github.odnwks.mimir.data.Station
 import io.github.odnwks.mimir.data.StationState
 import io.github.odnwks.mimir.data.Task
 import io.github.odnwks.mimir.nav.Navigator
+import io.github.odnwks.mimir.nav.RowKind
+import io.github.odnwks.mimir.nav.Sheet
+import androidx.compose.foundation.combinedClickable
 import io.github.odnwks.mimir.nav.Screen
 import io.github.odnwks.mimir.nav.Tab
 import io.github.odnwks.mimir.standalone.Engine
@@ -177,7 +180,8 @@ private object RecentColors {
 @Composable
 fun RecentActivityScreen(state: StationState, station: Station, engine: Engine?, nav: Navigator, now: Long = System.currentTimeMillis()) {
     val local = engine?.state?.collectAsStateWithLifecycle()?.value
-    val items = recentActivity(state, local, now)
+    val keep = LocalRowKeep.current
+    val items = recentActivity(state, local, now).filterNot { i -> i.chat?.let { keep.chatArchived(it.keepKey, it.at) } == true || i.task in nav.hiddenTasks }
     val tap = LocalTapTracker.current
     // The spoken reports live on the Updates screen (P19): a line at the top while some are unheard,
     // else a dim link at the foot when there are heard ones, else nothing.
@@ -206,7 +210,11 @@ fun RecentActivityScreen(state: StationState, station: Station, engine: Engine?,
                 if (list.isEmpty()) continue
                 item("head-$head") { CapsLabel(head, Modifier.padding(start = 2.dp, top = 8.dp, bottom = 4.dp)) }
                 items(list, key = { it.key }) { item ->
-                    RecentBubble(item) {
+                    RecentBubble(item, onHold = {
+                        val c = item.chat
+                        if (item.task != null) nav.openSheet(Sheet.RowMenu(RowKind.Task, item.task, item.name))
+                        else if (c != null) nav.openSheet(Sheet.RowMenu(RowKind.Chat, c.id, item.name, c.mimir))
+                    }) {
                         if (item.task != null) nav.open(Screen.Task(item.task), tap.last)
                         else item.chat?.let { openListedChat(it, state, engine, station, nav) }
                     }
@@ -243,12 +251,13 @@ private fun PastUpdatesLink(onOpen: () -> Unit) {
     Box(Modifier.fillMaxWidth().padding(top = 8.dp), contentAlignment = Alignment.Center) { LinkText(PAST_UPDATES, onOpen, color = RecentColors.Dim) }
 }
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
-private fun RecentBubble(item: RecentItem, onOpen: () -> Unit) {
+private fun RecentBubble(item: RecentItem, onHold: () -> Unit, onOpen: () -> Unit) {
     val shape = RoundedCornerShape(14.dp)
     Column(
         Modifier.padding(vertical = 3.dp).fillMaxWidth().heightIn(min = 48.dp).clip(shape).background(Palette.Card).border(1.dp, Palette.Line, shape)
-            .clickable(role = Role.Button, onClickLabel = "Open", onClick = onOpen)
+            .combinedClickable(role = Role.Button, onClickLabel = "Open", onLongClickLabel = "Menu for this one", onLongClick = onHold, onClick = onOpen)
             .padding(horizontal = 14.dp, vertical = 9.dp),
         verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
