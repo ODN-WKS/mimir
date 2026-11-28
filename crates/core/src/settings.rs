@@ -4,6 +4,14 @@ use crate::paths::{clean_path, settings_path};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
+/// A project deleted forever (see `Settings::deleted_projects`).
+#[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct DeletedProject {
+    pub name: String,
+    pub path: String,
+    pub at: i64,
+}
+
 #[derive(Default, Serialize, Deserialize)]
 pub struct Settings {
     #[serde(default)]
@@ -70,6 +78,10 @@ pub struct Settings {
     /// Sessions of deleted tasks: not offered again under "On this PC".
     #[serde(default)]
     pub hidden_sessions: Vec<String>,
+    /// Projects deleted forever from a phone (their folders stay): not listed
+    /// again unless added again, and kept for the owner's next clean-up.
+    #[serde(default)]
+    pub deleted_projects: Vec<DeletedProject>,
     /// The sidebar shows the claude.ai side (chats from the export), not
     /// the work on this PC.
     #[serde(default)]
@@ -579,12 +591,36 @@ impl Settings {
         }
     }
 
+    /// Takes a project off the list for good and notes it as deleted at `at`
+    /// (seconds since 1970). Nothing on disk is touched.
+    pub fn forget_project(&mut self, path: &str, name: &str, at: i64) {
+        use crate::paths::same;
+        self.projects.retain(|p| !same(p, path));
+        if self.last_project.as_deref().is_some_and(|p| same(p, path)) {
+            self.last_project = None;
+        }
+        self.aliases.retain(|p, _| !same(p, path));
+        self.project_names.retain(|p, _| !same(p, path));
+        self.remote_projects.retain(|p| !same(p, path));
+        self.defaults.retain(|p, _| !same(p, path));
+        self.handoff_files.retain(|p, _| !same(p, path));
+        self.deleted_projects.retain(|d| !same(&d.path, path));
+        self.deleted_projects.push(DeletedProject {
+            name: name.to_string(),
+            path: crate::paths::clean_path(path),
+            at,
+        });
+    }
+
     pub fn add_project(&mut self, p: &Path) {
         // One spelling per folder: no "x" and "x/" side by side.
         let s = clean_path(&p.display().to_string());
         if !self.projects.contains(&s) {
             self.projects.push(s.clone());
         }
+        // Made or added again: it is no longer a deleted one.
+        self.deleted_projects
+            .retain(|d| !crate::paths::same(&d.path, &s));
         self.last_project = Some(s);
     }
 
@@ -1132,5 +1168,39 @@ mod tests {
         assert_eq!(part["api_credits"], true);
         assert_eq!(part["api_key_hint"], "1234");
         assert!(with_part(&Settings::default(), &part).api_credits_on());
+    }
+}
+
+#[cfg(test)]
+mod delete_project_tests {
+    use super::Settings;
+
+    #[test]
+    fn a_deleted_project_leaves_the_list_and_stays_off_it_though_its_folder_stays() {
+        let root = std::env::temp_dir().join(format!("mimir-delproj-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        for p in ["Garden planner", "Recipe box"] {
+            std::fs::create_dir_all(root.join(p).join(".git")).unwrap();
+        }
+        let keep = root.join("Garden planner").display().to_string();
+        let gone = root.join("Recipe box").display().to_string();
+        let mut s = Settings::default();
+        s.add_project(root.join("Recipe box").as_path());
+        s.add_project(root.join("Garden planner").as_path());
+        s.last_project = Some(gone.clone());
+        s.forget_project(&gone, "Recipe box", 5);
+        assert_eq!(s.projects, vec![keep.clone()]);
+        assert_eq!(s.last_project, None);
+        assert_eq!(s.deleted_projects.len(), 1);
+        // A git folder beside a listed one would be listed by itself: not this one.
+        let listed = crate::paths::project_list(&s, []);
+        assert!(listed.contains(&keep), "{listed:?}");
+        assert!(!listed.contains(&gone), "{listed:?}");
+        assert!(root.join("Recipe box").is_dir(), "the folder stays");
+        // Added again: listed, and no longer noted as deleted.
+        s.add_project(root.join("Recipe box").as_path());
+        assert!(s.deleted_projects.is_empty());
+        assert!(crate::paths::project_list(&s, []).contains(&gone));
+        let _ = std::fs::remove_dir_all(&root);
     }
 }

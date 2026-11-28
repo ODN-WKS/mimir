@@ -284,6 +284,7 @@ const OFFERED: &[&str] = &[
     "task_reply_options",
     "fresh_start",
     "talk_once",
+    "delete_project",
 ];
 
 /// The effort levels Claude Code's `--effort` takes.
@@ -2165,6 +2166,10 @@ impl Service {
             }
             Call::TidyPlan => serde_json::to_value(self.tidy_plan()).map_err(|e| e.to_string()),
             Call::Tidy { rows } => Ok(self.tidy(rows)),
+            Call::DeleteProject { project } => {
+                let n = self.delete_project(&project)?;
+                Ok(json!(n))
+            }
             Call::MergeProject { from, into } => {
                 let n = self.merge_project(&from, &into)?;
                 Ok(json!(n))
@@ -3437,6 +3442,46 @@ impl Service {
         }
         self.fold_names(from, into);
         Ok(moved)
+    }
+
+    /// A phone's "Delete forever" on a project: its tasks go as with
+    /// `DeleteTask`, it leaves the list and is noted as deleted; the folder
+    /// stays. Everything is asked first, so it never ends half done.
+    fn delete_project(&mut self, project: &str) -> Result<usize, String> {
+        use crate::paths::same;
+        if same(project, &crate::paths::chats_dir().display().to_string()) {
+            return Err("That one is Mímir's own: it can't be deleted.".into());
+        }
+        let name = crate::paths::display_name(&self.settings, project);
+        if !self.pickable_projects().iter().any(|p| same(p, project)) {
+            return Err(format!("{name} isn't on your PC's list any more."));
+        }
+        let now = crate::needs::now();
+        let mut ids = vec![];
+        for l in &self.runner.tasks {
+            if !same(l.task.home_project(), project) {
+                continue;
+            }
+            let why = if l.busy() || (l.task.outside && l.task.active_at(now)) {
+                "is still working. Stop it first"
+            } else if l.task.copy_branch.is_some() {
+                "has a separate copy. Bring its changes in or remove the copy first"
+            } else {
+                ids.push(l.task.id.clone());
+                continue;
+            };
+            return Err(format!("\"{}\" {why}. Nothing was deleted.", l.task.title));
+        }
+        for id in &ids {
+            self.remove_task(id, true)?;
+            self.touched.insert(id.clone());
+        }
+        self.settings.forget_project(project, &name, now);
+        self.settings.save();
+        self.broadcast(Event::Settings {
+            settings: settings::service_part(&self.settings),
+        });
+        Ok(ids.len())
     }
 
     /// A project that went into another: its names find that one from now

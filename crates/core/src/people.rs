@@ -161,3 +161,15 @@ impl Book {
 pub fn is_check_chat(id: &str) -> bool {
     id.starts_with("labs-check")
 }
+
+#[cfg(test)]
+mod delete_project_tests {
+    #[test]
+    fn a_project_is_deleted_only_by_the_owners_phone() {
+        let call = mimir_proto::Call::DeleteProject {
+            project: "/tmp/recipe-box".into(),
+        };
+        assert!(call.phone_may());
+        assert!(!super::other_may(&call));
+    }
+}

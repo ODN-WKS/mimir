@@ -173,6 +173,11 @@ pub fn project_list<'a>(
             all.push(r);
         }
     }
+    // Deleted from a phone: its folder stays, but it isn't listed again.
+    all.retain(|p| {
+        settings.projects.iter().any(|s| same(s, p))
+            || !settings.deleted_projects.iter().any(|d| same(&d.path, p))
+    });
     tidy_projects(all)
 }
 

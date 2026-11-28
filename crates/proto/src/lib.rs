@@ -370,7 +370,8 @@ pub const PROTO: u32 = 2;
 /// "fresh_start" (`Call::StartFresh { same_chat: true }`: the same chat
 /// carries on in a new Claude session from the hand-off) and "talk_once"
 /// (`Call::Talk`'s `again`: a message sent again is never acted on twice, and
-/// `TalkTurn` says `Unknown` only for a message the PC never took).
+/// `TalkTurn` says `Unknown` only for a message the PC never took) and
+/// "delete_project" (`Call::DeleteProject`, owner only).
 /// A client lists the
 /// ones it knows in `Hello`, and only gets the new events when it does.
 pub const FEATURES: &[&str] = &[
@@ -393,6 +394,7 @@ pub const FEATURES: &[&str] = &[
     "task_reply_options",
     "fresh_start",
     "talk_once",
+    "delete_project",
 ];
 
 /// Where a PC session is at.
@@ -1872,6 +1874,14 @@ pub enum Call {
     NewProject {
         name: String,
     },
+    /// "Delete forever" on a project (`project`: its folder, as `Projects`
+    /// lists it): it leaves the list and its tasks go with their
+    /// conversations and files, as `DeleteTask` does for one. The folder and
+    /// everything in it stay on the PC. Refused as a whole while any of its
+    /// tasks works. Feature "delete_project".
+    DeleteProject {
+        project: String,
+    },
 }
 
 impl Call {
@@ -1885,6 +1895,7 @@ impl Call {
             | Call::PcSessions
             | Call::OpenPcSession { .. }
             | Call::NewProject { .. }
+            | Call::DeleteProject { .. }
             | Call::Chat { .. }
             | Call::Talk { .. }
             | Call::TalkStop { .. }
