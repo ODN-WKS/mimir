@@ -2,6 +2,9 @@
 
 Every Mímir version, newest first. Full notes for each are in `docs/release-notes/`.
 
+## 0.11
+Everything fixed since 0.10, put together: a status card in the chat with no model used, a press-and-hold menu to move, fold, archive or delete on the phone, a Skill choice beside Model and Effort, typed "use opus 5.5 high", the PC's own model (or your API credits, if you allow it) taking over when online use runs out, Fresh start when a conversation runs long, honest answers from memory, look-ups from numbered sources, chats that keep answering after a quiet spell and never do a message twice, and one Back that works the same everywhere. See `docs/release-notes/0.11.md`.
+
 ## 0.10
 The phone's conversations, easier to follow and the same everywhere: one reply box with one model and effort chip, a grey bubble around every answer, a small Listen button, times and read receipts on every message with the answering model beside them, moving dots while the AI works, Recent activity in place of Updates, project tasks named by their start time, a slim checks line, and temperatures on Your PC. See `docs/release-notes/0.10.md`.
 
