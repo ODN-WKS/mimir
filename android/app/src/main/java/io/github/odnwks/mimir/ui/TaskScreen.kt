@@ -1,5 +1,6 @@
 package io.github.odnwks.mimir.ui
 
+import io.github.odnwks.mimir.data.asksStatus
 import io.github.odnwks.mimir.link.LongNotice
 import io.github.odnwks.mimir.ui.theme.ChatTextSize
 import io.github.odnwks.mimir.ui.theme.LocalAppSize
@@ -172,6 +173,15 @@ fun TaskScreen(taskId: String, state: StationState, station: Station, nav: Navig
             atBottom = true; unseen = false
         } else unseen = true
     }
+    // A newly asked Status card is brought into view, once.
+    val asked = io.github.odnwks.mimir.data.StatusCards.shown?.takeIf { it.chat == "task:${task.id}" }?.asked ?: 0
+    LaunchedEffect(asked) {
+        if (asked > io.github.odnwks.mimir.data.StatusCards.scrolled) {
+            kotlinx.coroutines.delay(250)
+            scroll.animateScrollTo(scroll.maxValue)
+            io.github.odnwks.mimir.data.StatusCards.scrolled = asked
+        }
+    }
     BoxWithConstraints(Modifier.fillMaxSize().background(Palette.Ground)) {
         val screenHeight = maxHeight
         Column(Modifier.fillMaxSize()) {
@@ -297,6 +307,11 @@ fun TaskScreen(taskId: String, state: StationState, station: Station, nav: Navig
                         if (!m.waiting) NotReadYetLine(m.atMs, m.receipt, working, busyWithStep)
                     }
                 }
+                // The Status card asked for here sits after the message that was last then, and scrolls with it.
+                val status = io.github.odnwks.mimir.data.StatusCards.shown?.takeIf { it.chat == "task:${task.id}" }
+                val statusAfter = status?.let { c -> if (messages.any { it.id == c.after }) c.after else messages.lastOrNull()?.id }
+                val statusCard: @Composable () -> Unit = { status?.let { c -> StatusCardInChat(c, station) { id -> if (id != task.id) nav.open(Screen.Task(id)) } } }
+                if (messages.isEmpty()) statusCard()
                 messages.forEach { m ->
                     if (m.note && isFreshStartNote(m.text)) FreshStartDivider(m.text)
                     else if (m.note) Text(
@@ -348,6 +363,7 @@ fun TaskScreen(taskId: String, state: StationState, station: Station, nav: Navig
                       ) else Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.End) { chips?.invoke(); ownMeta(m) }
                     }
                     if (task.steps.isNotEmpty() && m.id == stepsAfter) Steps(task, stepsOpen) { stepsOpen = !stepsOpen }
+                    if (m.id == statusAfter) statusCard()
                 }
                 // Thinking: three dots on the AI's side under the owner's last message, until the answer's words begin.
                 if (working && task.permission == null && task.question == null &&
@@ -471,6 +487,13 @@ fun TaskScreen(taskId: String, state: StationState, station: Station, nav: Navig
                         hint = if (state.pcAway) "Reply (${state.waitsUntil})" else "Reply to Mímir",
                         label = "Reply to this task", voice = voice, micLabel = "Talk (voice typing): speak a reply",
                         onSend = {
+                            // "status" is answered by the card, here on the phone: nothing goes to Claude.
+                            if (asksStatus(draft) && attach.pictures.isEmpty() && attach.files.isEmpty() &&
+                                // After a message whose id stays: a reply still being written, or waiting here, gets a new one.
+                                askStatus("task:${task.id}", task.messages.lastOrNull { !it.waiting && !it.id.endsWith("-live") }?.id.orEmpty(), station)
+                            ) {
+                                draft = ""; focus.clearFocus()
+                            } else
                             // The pictures are saved off the main thread; the box keeps its content until they are.
                             if (!sendingReply) {
                                 sendingReply = true

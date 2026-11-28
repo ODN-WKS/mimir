@@ -354,6 +354,7 @@ private fun ScreenFor(screen: Screen, state: io.github.odnwks.mimir.data.Station
                 needsYou = state.needsYou.size, unheard = unheardUpdates(state), pcModel = state.models.selectedName, claudeAnswers = state.models.chatsEngine == "paid",
                 claudeOffered = state.models.chatsEngine != null, owner = state.owner, onPickEngine = { station.setEngines(it, null) }, choiceKnown = state.models.chatsEngineKnown,
                 claudeModel = state.models.chatsModel, claudeChoices = state.models.chatModels, onPickClaudeModel = station::setChatModel,
+                station = station,
             )
         }
         Screen.Status -> StatusScreen(state, station, nav)

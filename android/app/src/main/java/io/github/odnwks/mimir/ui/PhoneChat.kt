@@ -47,6 +47,7 @@ import io.github.odnwks.mimir.nav.Navigator
 import io.github.odnwks.mimir.nav.Screen
 import io.github.odnwks.mimir.nav.Tab
 import io.github.odnwks.mimir.data.MessageReceipt
+import io.github.odnwks.mimir.data.asksStatus
 import io.github.odnwks.mimir.standalone.answererName
 import io.github.odnwks.mimir.standalone.Catalog
 import io.github.odnwks.mimir.standalone.Effort
@@ -85,6 +86,8 @@ fun PhoneChat(
     startPcWhisper: ((String) -> Boolean)? = null,
     /** Whether the PC has a project for a Whisper to run in (null: ask the link). */
     pcWhisperProjects: Boolean? = null,
+    /** Whose facts the Status card shows (null: the link's). */
+    station: io.github.odnwks.mimir.data.Station? = null,
 ) {
     if (engine == null) return CantRunHere(nav)
     val s by engine.state.collectAsStateWithLifecycle()
@@ -181,10 +184,16 @@ fun PhoneChat(
         }
     }
     // [typed]: from the message box, not a starter.
+    val focusManager = LocalFocusManager.current
+    val status = io.github.odnwks.mimir.data.StatusCards.shown?.takeIf { it.chat == "chat:${s.chat.id}" && !pcWhisper }
     // What the top bar names, as drawn: it is kept with a message sent under it.
     val named = remember { arrayOfNulls<String>(1) }
     val send = { text: String, typed: Boolean ->
         if (pcWhisper) pcWhisperGo(text, typed)
+        // "status" is answered by the card, here on the phone: no model runs and the chat never keeps it.
+        else if (asksStatus(text) && files.isEmpty() && pictures.isEmpty() && askStatus("chat:${s.chat.id}", s.chat.turns.lastOrNull()?.id.orEmpty(), station ?: link)) {
+            draft = ""; focusManager.clearFocus()
+        }
         else if (!waiting && (text.isNotBlank() || files.isNotEmpty() || pictures.isNotEmpty())) {
             // Pictures the answerer can't see stay in the box with a note; they are never dropped quietly.
             val held = picturesHeldNote(sight, pictures.size)
@@ -206,6 +215,8 @@ fun PhoneChat(
     val startOn = { pc: Boolean ->
         val place = { if (paired && s.supported && s.usePc != pc) engine.setUsePc(pc) }
         pcWhisper = false
+        // New chat takes the Status card away, also from a still empty chat (which stays the same chat).
+        if (!s.writing && !s.whisper && s.chat.turns.isEmpty()) io.github.odnwks.mimir.data.StatusCards.dismiss()
         // True only when a new chat really started (not while writing, nor while the question about ending a Whisper opens).
         when {
             s.writing -> false
@@ -344,7 +355,7 @@ fun PhoneChat(
         EndWhisperQuestion(endAsk, onCancel = { endAsk = false; endThen = null }) { endAsk = false; engine.endWhisper(); endThen?.invoke(); endThen = null }
         WhisperNeedsMimir(needsMimir, model.sizeText, onGet = { needsMimir = false; nav.open(Screen.Models) }, onClose = { needsMimir = false })
         val answerer = when { onlineOn -> Answerer.Online; claudeAnswers && pcPrivate && !now.phoneTookOver -> Answerer.Claude; pcPrivate && !now.phoneTookOver -> Answerer.Pc; else -> Answerer.Phone }
-        val showHome = !s.whisper && !pcWhisper && s.chat.turns.isEmpty() && s.chat.queued.isEmpty() && !s.writing && !getting && !renaming
+        val showHome = !s.whisper && !pcWhisper && status == null && s.chat.turns.isEmpty() && s.chat.queued.isEmpty() && !s.writing && !getting && !renaming
         val first = isFirstOpen(hasChatted, s.earlier.isNotEmpty())
         // The startup animation belongs to the home screen: opening on a chat or a Whisper plays nothing; typing skips it.
         val startup = LocalEyeStartup.current
@@ -361,6 +372,14 @@ fun PhoneChat(
             if (s.writing) s.partial.length else 0,
             s.chat.turns.count { it.user } + s.chat.queued.size,
         )
+        LaunchedEffect(status?.asked) {
+            val asked = status?.asked ?: return@LaunchedEffect
+            if (asked > io.github.odnwks.mimir.data.StatusCards.scrolled) {
+                kotlinx.coroutines.delay(100)
+                list.animateScrollToItem(0)
+                io.github.odnwks.mimir.data.StatusCards.scrolled = asked
+            }
+        }
         ChatTextSize {
         if (showHome) HomeEmpty(first, answerer, Modifier.weight(1f), online = io.github.odnwks.mimir.online.OnlineModels.answering()?.let(io.github.odnwks.mimir.online.OnlineModels::serviceOf))
         else LazyColumn(
@@ -438,7 +457,12 @@ fun PhoneChat(
             if (!s.writing && stoppedHere && s.chat.turns.lastOrNull()?.user == false) item(key = "stopped") {
                 Text(YOU_STOPPED, style = Type.Small, color = Palette.TextDim)
             }
-            items(s.chat.turns.withIndex().reversed().filter { found(it.value.text) }, key = { "${s.chat.id}-${it.index}" }) { (i, turn) ->
+            // The Status card sits after the message that was last when it was asked for (the list runs upwards).
+            val cut = status?.let { c ->
+                if (c.after.isEmpty()) 0 else s.chat.turns.indexOfLast { it.id == c.after }.let { if (it < 0) s.chat.turns.size else it + 1 }
+            } ?: 0
+            val shownTurns = s.chat.turns.withIndex().reversed().filter { found(it.value.text) }
+            val turnRow: @Composable androidx.compose.foundation.lazy.LazyItemScope.(IndexedValue<io.github.odnwks.mimir.standalone.Turn>) -> Unit = { (i, turn) ->
                 val m = Modifier.animateItem(fadeInSpec = motionSpec(Motion.NEW_ITEM_MS), placementSpec = motionSpec(Motion.NEW_ITEM_MS), fadeOutSpec = motionSpec(Motion.NEW_ITEM_MS))
                 if (turn.user) OwnMessage(
                     turn.text.ifBlank { (turn.files.map { it.name } + listOfNotNull(turn.pictures.size.takeIf { it > 0 }?.let { if (it == 1) "A picture" else "$it pictures" })).joinToString() },
@@ -470,6 +494,12 @@ fun PhoneChat(
                     )
                 }
             }
+            val turnKey = { t: IndexedValue<io.github.odnwks.mimir.standalone.Turn> -> "${s.chat.id}-${t.index}" }
+            if (status != null) {
+                items(shownTurns.filter { it.index >= cut }, key = turnKey, itemContent = turnRow)
+                item(key = "status-card") { StatusCardInChat(status, station ?: link, Modifier.animateItem(fadeInSpec = motionSpec(Motion.NEW_ITEM_MS))) { nav.open(Screen.Task(it)) } }
+            }
+            items(shownTurns.filter { status == null || it.index < cut }, key = turnKey, itemContent = turnRow)
             if (s.whisper) item(key = "whisper") {
                 WhisperCard(s.web, paired, if (s.chat.turns.isEmpty() && !s.writing) ({ w: Boolean -> engine.startWhisper(web = w) }) else null)
             }

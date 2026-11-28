@@ -518,6 +518,9 @@ object Wire {
                 Ask(a.optString("tool_name"), a.optJSONObject("tool_input") ?: JSONObject())
             },
             incognito = h.optBoolean("incognito"),
+            checklist = h.optJSONArray("plan")?.let { a ->
+                (0 until a.length()).mapNotNull { a.optJSONObject(it) }.map { io.github.odnwks.mimir.data.PlanStep(it.optString("text"), it.optBoolean("done"), it.optBoolean("doing")) }
+            }.orEmpty(),
             viaApi = h.optBoolean("via_api"),
             archived = h.optBoolean("archived"),
             plan = h.optString("mode") == "Plan",
@@ -839,6 +842,8 @@ data class LinkTask(
     val asks: List<Ask>,
     /** An Incognito task: kept in memory only, never in the general chat. */
     val incognito: Boolean = false,
+    /** Claude's checklist for it, as the PC keeps it (empty: none). */
+    val checklist: List<io.github.odnwks.mimir.data.PlanStep> = emptyList(),
     /** Its latest run was started on the owner's API credits. */
     val viaApi: Boolean = false,
     /** Archived on the PC: shown only under All tasks › Archived. */

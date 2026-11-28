@@ -1879,7 +1879,7 @@ class LinkStation(
                 PcSession(l.id, l.title, l.project, l.here, l.app, l.task, PcSessionState.valueOf(l.state.name), l.last)
             } else null,
             owner = isOwner(),
-            pc = Pc(Mapping.pcName(pcName), online = connected, lastSeen = when { connected -> "now"; !failedOnce -> "not connected"; else -> seenWords(lastSeenAt, System.currentTimeMillis()) }, route = "private connection", tasksRunning = if (!connected) 0 else t?.working ?: tasks.values.count { Mapping.working(it) }),
+            pc = Pc(Mapping.pcName(pcName), online = connected, lastSeen = when { connected -> "now"; !failedOnce -> "not connected"; else -> seenWords(lastSeenAt, System.currentTimeMillis()) }, route = "private connection", tasksRunning = if (!connected) 0 else t?.working ?: tasks.values.count { Mapping.working(it) }, seenAtMs = lastSeenAt),
             needsYou = needs,
             tasks = ts,
             archived = all.filter { it.archived }.map { t -> task(t, needs) },
@@ -2018,6 +2018,8 @@ class LinkStation(
             stopPending = t.id in pendingStops,
             elsewhereIn = t.elsewhereIn,
             fromChats = isChatsFolder(t.project),
+            checklist = t.checklist,
+            sinceUnix = truth?.tasks?.firstOrNull { it.id == t.id }?.since ?: 0,
         )
     }
 

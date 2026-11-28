@@ -386,6 +386,8 @@ data class Pc(
     val lastSeen: String,
     val route: String,
     val tasksRunning: Int,
+    /** When the PC was last reached (ms; 0: never, or not said): the age of what is shown while it is away. */
+    val seenAtMs: Long = 0,
 )
 
 sealed interface ChatEntry {
@@ -514,6 +516,10 @@ data class Task(
     val effort: String = "",
     /** A chat, not a project's task: it has no hand-off to start fresh from. */
     val fromChats: Boolean = false,
+    /** Its checklist, when the PC has one (the Status card's percent and next step). */
+    val checklist: List<PlanStep> = emptyList(),
+    /** When it went into its state, as the PC says (seconds since 1970; 0: not said). */
+    val sinceUnix: Long = 0,
 ) {
     /** A mode that does things without asking, in words for its chip; null when it asks first. */
     val riskyMode: String? get() = when (mode) {
