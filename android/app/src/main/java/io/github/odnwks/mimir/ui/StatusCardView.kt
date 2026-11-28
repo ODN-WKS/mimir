@@ -71,7 +71,7 @@ fun StatusCardView(s: StatusSnapshot, modifier: Modifier = Modifier, onOpen: (St
             if (s.asOfMs > 0) Text("as of ${messageTime(s.asOfMs)}", style = Type.Small, color = Palette.TextDim)
         }
         if (s.away) Text(
-            if (s.asOfMs > 0) "Can't reach your PC. This is what it said last." else "Can't reach your PC yet.",
+            if (s.asOfMs > 0) "Can't reach your PC. This is what it said last; it updates once the PC connects." else "Can't reach your PC yet. It shows here once the PC connects.",
             style = Type.Label, color = Palette.AmberNote,
         )
         Section(if (s.away) "RUNNING THEN" else "RUNNING", s.running.size)
